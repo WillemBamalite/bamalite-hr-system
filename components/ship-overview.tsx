@@ -38,7 +38,7 @@ export function ShipOverview() {
   });
 
   // Gebruik de hook voor gecombineerde crew data
-  const allCrewData = useCrewData()
+  const { crewDatabase: allCrewData } = useCrewData()
 
   // Alle 15 operationele schepen met volledige bemanning details
   const ships = Object.values(shipDatabase)

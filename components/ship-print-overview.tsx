@@ -13,7 +13,7 @@ import { useCrewData } from "@/hooks/use-crew-data"
 
 export function ShipPrintOverview() {
   // Gebruik de hook voor gecombineerde crew data
-  const allCrewData = useCrewData()
+  const { crewDatabase: allCrewData } = useCrewData()
 
   // Firma mapping
   const companyMapping = {

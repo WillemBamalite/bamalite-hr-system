@@ -14,6 +14,7 @@ import { useState, useEffect } from "react"
 import { crewDatabase, shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase, documentDatabase } from "@/data/crew-database"
 import { Search, Users, Ship, FileText, UserX, Calendar, MapPin, Phone, Mail, Printer } from "lucide-react"
 import { DataBackup } from "@/components/data-backup"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 export default function Dashboard() {
   // State voor universele zoekbalk
@@ -21,26 +22,10 @@ export default function Dashboard() {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showResults, setShowResults] = useState(false)
 
-  // Haal localStorage data op
-  const [localStorageCrew, setLocalStorageCrew] = useState<any>({})
-  const [localStorageDocs, setLocalStorageDocs] = useState<any>({})
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        const storedDocs = JSON.parse(localStorage.getItem('documentDatabase') || '{}')
-        setLocalStorageCrew(storedCrew)
-        setLocalStorageDocs(storedDocs)
-      } catch (e) {
-        console.error('Error parsing localStorage:', e)
-      }
-    }
-  }, [])
 
-  // Combineer alle databases
-  const allCrewData = { ...crewDatabase, ...localStorageCrew }
-  const allDocsData = { ...documentDatabase, ...localStorageDocs }
+  // Gebruik de nieuwe hook voor gecombineerde data
+  const { crewDatabase: allCrewData, documentDatabase: allDocsData } = useCrewData()
 
   // Zoekfunctie
   const performSearch = (query: string) => {
@@ -94,7 +79,7 @@ export default function Dashboard() {
 
     // Zoek in ziekmeldingen
     Object.values(sickLeaveDatabase).forEach((sick: any) => {
-      const crewMember = allCrewData[sick.crewMemberId]
+      const crewMember = (allCrewData as Record<string, any>)[sick.crewMemberId]
       if (crewMember) {
         const fullName = `${crewMember.firstName} ${crewMember.lastName}`.toLowerCase()
         const description = sick.description?.toLowerCase() || ""
@@ -113,7 +98,7 @@ export default function Dashboard() {
     Object.values(allDocsData).forEach((doc: any) => {
       const name = doc.name?.toLowerCase() || ""
       const type = doc.type?.toLowerCase() || ""
-      const crewMember = allCrewData[doc.crewMemberId]
+      const crewMember = (allCrewData as Record<string, any>)[doc.crewMemberId]
       
       if (crewMember) {
         const fullName = `${crewMember.firstName} ${crewMember.lastName}`.toLowerCase()
