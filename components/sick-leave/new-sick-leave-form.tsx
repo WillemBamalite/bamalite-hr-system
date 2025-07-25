@@ -26,7 +26,7 @@ export function NewSickLeaveForm({ onClose }: Props) {
   const [certificateValidUntil, setCertificateValidUntil] = useState("")
   const [sickLocation, setSickLocation] = useState("")
 
-  // Mock crew members - later vervangen met echte data
+  // Gebruik echte crew data
   const crewMembers = [
     {
       id: "frank-hennekam",

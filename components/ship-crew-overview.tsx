@@ -6,175 +6,36 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, MapPin, Phone, AlertCircle, CheckCircle, Clock, Plus } from "lucide-react"
 import Link from "next/link"
+import { useCrewData } from "@/hooks/use-crew-data"
+import { shipDatabase } from "@/data/crew-database"
 
 export function ShipCrewOverview() {
-  const ships = [
-    {
-      id: "ms-bellona",
-      name: "MTS Bellona",
-      status: "Operationeel",
-      crew: [
-        {
-          id: "frank-hennekam",
-          name: "Frank Hennekam",
-          position: "Kapitein",
-          nationality: "NL",
-          regime: "2/2",
-          status: "aan-boord",
-          onBoardSince: "2024-01-01",
-          offBoardDate: "2024-01-15",
-          daysLeft: 3,
-          phone: "+31 6 12345678",
-        },
-        {
-          id: "yovanni-smith",
-          name: "Yovanni Smith",
-          position: "Stuurman",
-          nationality: "NL",
-          regime: "3/3",
-          status: "aan-boord",
-          onBoardSince: "2023-12-20",
-          offBoardDate: "2024-01-20",
-          daysLeft: 8,
-          phone: "+31 6 23456789",
-        },
-        {
-          id: "dominik-medulan",
-          name: "Dominik Medulan",
-          position: "Matroos",
-          nationality: "CZ",
-          regime: "2/2",
-          status: "thuis",
-          onBoardSince: null,
-          offBoardDate: "2024-01-18",
-          daysLeft: -2,
-          phone: "+420 123 456 789",
-        },
-        {
-          id: "jakub-misar",
-          name: "Jakub Misar",
-          position: "Deksman",
-          nationality: "CZ",
-          regime: "3/3",
-          status: "aan-boord",
-          onBoardSince: "2024-01-05",
-          offBoardDate: "2024-01-25",
-          daysLeft: 13,
-          phone: "+420 234 567 890",
-        },
-        {
-          id: "jack-suiker",
-          name: "Jack Suiker",
-          position: "Lichtmatroos",
-          nationality: "NL",
-          regime: "1/1",
-          status: "aan-boord",
-          onBoardSince: "2024-01-12",
-          offBoardDate: "2024-01-19",
-          daysLeft: 7,
-          phone: "+31 6 34567890",
-        },
-      ],
-    },
-    {
-      id: "ms-bacchus",
-      name: "MTS Bacchus",
-      status: "Operationeel",
-      crew: [
-        {
-          id: "koert-van-veen",
-          name: "Koert van Veen",
-          position: "Kapitein",
-          nationality: "NL",
-          regime: "2/2",
-          status: "aan-boord",
-          onBoardSince: "2024-01-08",
-          offBoardDate: "2024-01-22",
-          daysLeft: 10,
-          phone: "+31 6 67890123",
-        },
-        {
-          id: "joao-fonseca",
-          name: "Joao Jose Brito Fonseca",
-          position: "Stuurman",
-          nationality: "NL",
-          regime: "3/3",
-          status: "aan-boord",
-          onBoardSince: "2024-01-01",
-          offBoardDate: "2024-01-28",
-          daysLeft: 16,
-          phone: "+31 6 78901234",
-        },
-        {
-          id: "roy-landsbergen",
-          name: "Roy Landsbergen",
-          position: "Stuurman",
-          nationality: "NL",
-          regime: "2/2",
-          status: "thuis",
-          onBoardSince: null,
-          offBoardDate: "2024-01-20",
-          daysLeft: -1,
-          phone: "+31 6 89012345",
-        },
-        {
-          id: "ernst-van-de-vlucht",
-          name: "Ernst van de Vlucht",
-          position: "Lichtmatroos",
-          nationality: "NL",
-          regime: "1/1",
-          status: "aan-boord",
-          onBoardSince: "2024-01-10",
-          offBoardDate: "2024-01-17",
-          daysLeft: 5,
-          phone: "+31 6 90123456",
-        },
-      ],
-    },
-    {
-      id: "ms-pluto",
-      name: "MTS Pluto",
-      status: "Operationeel",
-      crew: [
-        {
-          id: "jaroslav-polak",
-          name: "Jaroslav Polak",
-          position: "Kapitein",
-          nationality: "CZ",
-          regime: "3/3",
-          status: "aan-boord",
-          onBoardSince: "2024-01-02",
-          offBoardDate: "2024-01-23",
-          daysLeft: 11,
-          phone: "+420 345 678 901",
-        },
-        {
-          id: "pavel-krejci",
-          name: "Pavel Krejci",
-          position: "Stuurman",
-          nationality: "CZ",
-          regime: "2/2",
-          status: "aan-boord",
-          onBoardSince: "2024-01-06",
-          offBoardDate: "2024-01-20",
-          daysLeft: 8,
-          phone: "+420 456 789 012",
-        },
-        {
-          id: "michal-dudka",
-          name: "Michal Dudka",
-          position: "Stuurman",
-          nationality: "CZ",
-          regime: "3/3",
-          status: "ziek",
-          onBoardSince: "2024-01-01",
-          offBoardDate: "2024-01-22",
-          daysLeft: 10,
-          phone: "+420 567 890 123",
-        },
-      ],
-    },
-  ]
+  // Gebruik echte data uit de database
+  const { crewDatabase } = useCrewData();
+  
+  const ships = Object.values(shipDatabase)
+    .filter((ship: any) => ship.status === "Operationeel")
+    .map((ship: any) => {
+      const shipCrew = Object.values(crewDatabase).filter((crew: any) => 
+        crew.shipId === ship.id && crew.status !== "uit-dienst"
+      );
+      
+      return {
+        ...ship,
+        crew: shipCrew.map((crew: any) => ({
+          id: crew.id,
+          name: `${crew.firstName} ${crew.lastName}`,
+          position: crew.position,
+          nationality: crew.nationality,
+          regime: crew.regime,
+          status: crew.status,
+          onBoardSince: crew.onBoardSince,
+          offBoardDate: crew.nextRotationDate,
+          daysLeft: crew.nextRotationDate ? Math.ceil((new Date(crew.nextRotationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0,
+          phone: crew.phone || "",
+        }))
+      };
+    });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -259,7 +120,7 @@ export function ShipCrewOverview() {
 
           <CardContent className="p-0">
             <div className="divide-y">
-              {ship.crew.map((member) => (
+              {ship.crew.map((member: any) => (
                 <div key={member.id} className="p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
@@ -267,7 +128,7 @@ export function ShipCrewOverview() {
                         <AvatarFallback className="bg-blue-100 text-blue-700">
                           {member.name
                             .split(" ")
-                            .map((n) => n[0])
+                            .map((n: string) => n[0])
                             .join("")}
                         </AvatarFallback>
                       </Avatar>
@@ -284,26 +145,30 @@ export function ShipCrewOverview() {
                         <div className="flex items-center space-x-4 text-sm text-gray-600">
                           <span className="font-medium">{member.position}</span>
                           <Badge className={getRegimeColor(member.regime)}>{member.regime} weken</Badge>
-                          <div className="flex items-center space-x-1">
-                            <Phone className="w-3 h-3" />
-                            <span className="text-xs">{member.phone}</span>
-                          </div>
+                          {member.phone && (
+                            <div className="flex items-center space-x-1">
+                              <Phone className="w-3 h-3" />
+                              <span className="text-xs">{member.phone}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center space-x-4">
                       <div className="text-right text-sm">
-                        {member.status === "aan-boord" && (
+                        {member.status === "aan-boord" && member.onBoardSince && (
                           <>
                             <div className="text-gray-500">Aan boord sinds</div>
                             <div className="font-medium">
-                              {new Date(member.onBoardSince!).toLocaleDateString("nl-NL")}
+                              {new Date(member.onBoardSince).toLocaleDateString("nl-NL")}
                             </div>
-                            <div className="text-xs text-gray-400 mt-1">Nog {member.daysLeft} dagen</div>
+                            {member.daysLeft > 0 && (
+                              <div className="text-xs text-gray-400 mt-1">Nog {member.daysLeft} dagen</div>
+                            )}
                           </>
                         )}
-                        {member.status === "thuis" && (
+                        {member.status === "thuis" && member.offBoardDate && (
                           <>
                             <div className="text-gray-500">Terug aan boord</div>
                             <div className="font-medium">
@@ -311,11 +176,11 @@ export function ShipCrewOverview() {
                             </div>
                           </>
                         )}
-                        {member.status === "ziek" && (
+                        {member.status === "ziek" && member.onBoardSince && (
                           <>
                             <div className="text-gray-500">Ziek sinds</div>
                             <div className="font-medium">
-                              {new Date(member.onBoardSince!).toLocaleDateString("nl-NL")}
+                              {new Date(member.onBoardSince).toLocaleDateString("nl-NL")}
                             </div>
                           </>
                         )}

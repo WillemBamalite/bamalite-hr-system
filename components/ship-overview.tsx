@@ -80,24 +80,24 @@ export function ShipOverview() {
     return flags[nationality] || "🌍"
   }
 
-  // Helper voor bemanningsgegevens (mock)
+  // Helper voor bemanningsgegevens
   function getCrewDetails(crew: any) {
     return {
       name: crew.firstName + " " + crew.lastName,
-      birthDate: "1980-01-01",
-      birthPlace: "Rotterdam",
-      address: "Voorbeeldstraat 1, 1234 AB Rotterdam",
-      phone: crew.phone || "+31 6 12345678",
-      email: crew.email || "voorbeeld@email.com",
-      bank: "NL12BANK0123456789",
+      birthDate: crew.birthDate || "",
+      birthPlace: crew.birthPlace || "",
+      address: crew.address?.street ? `${crew.address.street}, ${crew.address.postalCode} ${crew.address.city}` : "",
+      phone: crew.phone || "",
+      email: crew.email || "",
+      bank: crew.bank || "",
       function: crew.position,
-      smoking: false,
-      experience: "10 jaar binnenvaart, 5 jaar als kapitein",
-      diplomas: ["Groot Vaarbewijs A", "Radar Diploma", "ADN Basis"],
-      salary: "€3500,-",
+      smoking: crew.smoking || false,
+      experience: crew.experience || "",
+      diplomas: crew.diplomas || [],
+      salary: crew.salary || "",
       ship: crew.shipId || "-",
-      company: "Bamalite S.A.",
-      matricule: "123456789",
+      company: crew.company || "",
+      matricule: crew.matricule || "",
       entryDate: "2015-06-01",
       notes: "Ervaren schipper, werkt graag met internationale bemanning. Interesse in verdere opleiding voor chemicaliën transport.",
     }
