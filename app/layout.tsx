@@ -3,25 +3,41 @@ import './globals.css'
 import Link from "next/link"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { CrewProvider } from "@/components/crew/CrewProvider"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/toaster"
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.dev',
+  title: 'Bamalite HR System',
+  description: 'Bemanningslijst management systeem',
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
     <html lang="nl">
-      <body>
-        <CrewProvider>
-          <DashboardHeader />
-          {children}
-        </CrewProvider>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+      </head>
+      <body className={inter.className}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <CrewProvider>
+            <DashboardHeader />
+            {children}
+            <Toaster />
+          </CrewProvider>
+        </ThemeProvider>
       </body>
     </html>
   )
