@@ -1,4 +1,3 @@
-import { CrewPrintOverview } from "@/components/crew/crew-print-overview"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 
@@ -7,7 +6,15 @@ export default function CrewPrintPage() {
     <>
       <MobileHeaderNav />
       <div className="container mx-auto px-4 py-6">
-        <CrewPrintOverview />
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-yellow-800 mb-2">
+            🚧 Print Functionaliteit in Onderhoud
+          </h2>
+          <p className="text-yellow-700">
+            Deze pagina wordt momenteel bijgewerkt om compatibel te zijn met het nieuwe data systeem. 
+            Probeer het later opnieuw.
+          </p>
+        </div>
         {/* Mobiele actieknoppen */}
         <div className="block md:hidden mt-8 space-y-4">
           <div className="text-lg font-semibold text-gray-800 mb-3">Print acties</div>
