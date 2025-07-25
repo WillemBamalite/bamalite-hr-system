@@ -17,7 +17,11 @@ export function DashboardStats() {
   const studenten = crew.filter((c: any) => c.isStudent).length
   const aanBoord = crew.filter((c: any) => c.status === "aan-boord").length
   const thuis = crew.filter((c: any) => c.status === "thuis").length
-  const ziek = crew.filter((c: any) => c.status === "ziek").length
+  
+  // Tel actieve ziekmeldingen uit de sickLeaveDatabase (consistent met ziekte overzicht)
+  const actieveZiekmeldingen = Object.values(sickLeaveDatabase).filter((s: any) => 
+    s.status === "actief" || s.status === "wacht-op-briefje"
+  ).length
 
   const nogInTeDelen = crew.filter((c: any) => c.shipId === 'nog-in-te-delen').length;
 
@@ -40,7 +44,7 @@ export function DashboardStats() {
     },
     {
       title: "Ziekmeldingen",
-      value: ziek.toString(),
+      value: actieveZiekmeldingen.toString(),
       description: `${Object.values(sickLeaveDatabase).filter((s: any) => s.hasCertificate).length} met ziektebriefje`,
       icon: AlertTriangle,
       color: "text-orange-600",
@@ -69,7 +73,7 @@ export function DashboardStats() {
         <div className="text-xs text-purple-700 mt-1">Studenten</div>
       </Link>
       <Link href="/ziekte" className="bg-red-50 border border-red-200 rounded-lg p-4 text-center hover:bg-red-100 transition cursor-pointer">
-        <div className="text-2xl font-bold text-red-800">{ziek}</div>
+        <div className="text-2xl font-bold text-red-800">{actieveZiekmeldingen}</div>
         <div className="text-xs text-red-700 mt-1">Ziek</div>
       </Link>
       <Link href="/bemanning/nog-in-te-delen" className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center hover:bg-gray-100 transition cursor-pointer">
