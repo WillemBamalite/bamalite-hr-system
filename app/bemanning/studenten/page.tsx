@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { crewDatabase, shipDatabase } from "@/data/crew-database";
+import { useCrewData } from "@/hooks/use-crew-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,23 +41,8 @@ export default function StudentenManagementPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Haal studenten uit database en localStorage
-  const [localStorageCrew, setLocalStorageCrew] = useState<any>({});
-  
-  // Laad localStorage data
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
-        setLocalStorageCrew(storedCrew);
-      } catch (e) {
-        console.error('Error parsing localStorage crew:', e);
-      }
-    }
-  }, [refreshKey]);
-
-  // Combineer database en localStorage data
-  const allCrewData = { ...crewDatabase, ...localStorageCrew };
+  // Gebruik de nieuwe hook voor crew data
+  const { crewDatabase: allCrewData } = useCrewData();
   
   // Filter alle studenten (met refreshKey dependency voor re-render)
   const studenten = Object.values(allCrewData).filter((c: any) => c.isStudent);
@@ -144,18 +130,15 @@ export default function StudentenManagementPage() {
       console.log("Alle schoolperiodes voor student:", (crewDatabase as any)[selectedStudent.id].schoolPeriods);
     }
 
-    // Update ook localStorage als de student daar staat
-    if (localStorageCrew[selectedStudent.id]) {
-      try {
-        const existingCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
-        const currentSchoolPeriods = existingCrew[selectedStudent.id].schoolPeriods || [];
-        existingCrew[selectedStudent.id].schoolPeriods = [...currentSchoolPeriods, newSchoolPeriodData];
-        localStorage.setItem('crewDatabase', JSON.stringify(existingCrew));
-        console.log("Schoolperiode toegevoegd aan localStorage:", newSchoolPeriodData);
-      } catch (e) {
-        console.error('Error updating localStorage:', e);
+    // Update via de nieuwe hook
+    const { updateData } = useCrewData();
+    const currentSchoolPeriods = (allCrewData as any)[selectedStudent.id]?.schoolPeriods || [];
+    updateData('crewDatabase', {
+      [selectedStudent.id]: {
+        ...(allCrewData as any)[selectedStudent.id],
+        schoolPeriods: [...currentSchoolPeriods, newSchoolPeriodData]
       }
-    }
+    });
 
     setNewSchoolPeriod({ fromDate: "", toDate: "", reason: "School" });
     setShowSchoolPeriodDialog(false);

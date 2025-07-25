@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 // Diploma opties
 const diplomaOptions = [
@@ -55,6 +56,7 @@ const nationalityOptions = [
 ]
 
 export default function NieuwAflosser() {
+  const { addItem } = useCrewData();
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -136,29 +138,24 @@ export default function NieuwAflosser() {
       notes: form.notes
     }
 
-    // Voeg toe aan crew database (in localStorage voor nu)
-    if (typeof window !== 'undefined') {
-      const existingCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-      existingCrew[id] = newAflosser
-      localStorage.setItem('crewDatabase', JSON.stringify(existingCrew))
-      
-      // Voeg ook diploma's toe aan document database
-      const existingDocs = JSON.parse(localStorage.getItem('documentDatabase') || '{}')
-      form.selectedDiplomas.forEach((diploma, index) => {
-        const docId = `${id}-${diploma.toLowerCase().replace(/\s+/g, '-')}`
-        existingDocs[docId] = {
-          id: docId,
-          crewMemberId: id,
-          type: "diploma",
-          name: diploma,
-          fileName: `${diploma.toLowerCase().replace(/\s+/g, '_')}_${id}.pdf`,
-          uploadDate: new Date().toISOString().split('T')[0],
-          expiryDate: null, // Kan later worden ingevuld
-          isValid: true,
-        }
-      })
-      localStorage.setItem('documentDatabase', JSON.stringify(existingDocs))
-    }
+    // Voeg toe via de nieuwe hook
+    addItem('crewDatabase', id, newAflosser)
+    
+    // Voeg ook diploma's toe aan document database
+    form.selectedDiplomas.forEach((diploma, index) => {
+      const docId = `${id}-${diploma.toLowerCase().replace(/\s+/g, '-')}`
+      const newDoc = {
+        id: docId,
+        crewMemberId: id,
+        type: "diploma",
+        name: diploma,
+        fileName: `${diploma.toLowerCase().replace(/\s+/g, '_')}_${id}.pdf`,
+        uploadDate: new Date().toISOString().split('T')[0],
+        expiryDate: null, // Kan later worden ingevuld
+        isValid: true,
+      }
+      addItem('documentDatabase', docId, newDoc)
+    })
     
     console.log("Nieuwe aflosser toegevoegd:", newAflosser)
     

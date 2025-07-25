@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCircle, Edit, Save, X, Trash2 } from "lucide-react"
 import { OutOfServiceDialog } from "./out-of-service-dialog"
 import { BackInServiceDialog, BackInServiceData } from "./back-in-service-dialog"
-import { shipDatabase, crewDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
+import { useCrewData, useCrewMember } from "@/hooks/use-crew-data"
 import { addOutOfServiceCrew, removeOutOfServiceCrew, isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
@@ -82,22 +83,9 @@ interface Props {
 }
 
 export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
-  // Haal bemanningslid uit database en localStorage
-  const crewFromDb = (crewDatabase as any)[crewMemberId]
-  
-  // Haal ook uit localStorage
-  let localStorageCrew = null
-  if (typeof window !== 'undefined') {
-    try {
-      const allCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-      localStorageCrew = allCrew[crewMemberId]
-    } catch (e) {
-      console.error('Error parsing localStorage crew:', e)
-    }
-  }
-  
-  // Gebruik localStorage data als het bestaat, anders database
-  const crewData = localStorageCrew || crewFromDb
+  // Gebruik de nieuwe hook voor crew data
+  const { crewDatabase, updateData, removeItem } = useCrewData()
+  const crewData = (crewDatabase as any)[crewMemberId]
   
   const [edit, setEdit] = useState(false)
   const [profile, setProfile] = useState(() => {
@@ -258,19 +246,10 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
     }
     setProfile(updatedProfile);
     
-    // Update zowel database als localStorage
-    (crewDatabase as any)[profile.id] = updatedProfile;
-    
-    // Update localStorage als het een localStorage crew member is
-    if (typeof window !== 'undefined' && localStorageCrew) {
-      try {
-        const existingCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        existingCrew[profile.id] = updatedProfile
-        localStorage.setItem('crewDatabase', JSON.stringify(existingCrew))
-      } catch (e) {
-        console.error('Error updating localStorage:', e)
-      }
-    }
+    // Update via de nieuwe hook
+    updateData('crewDatabase', {
+      [profile.id]: updatedProfile
+    });
     
     setEdit(false);
     
@@ -344,19 +323,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
 
   function handleDeleteAflosser() {
     if (isAflosser && confirm("Weet je zeker dat je deze aflosser wilt verwijderen? Dit kan niet ongedaan worden gemaakt.")) {
-      // Verwijder uit database
-      delete (crewDatabase as any)[crewMemberId]
-      
-      // Verwijder ook uit localStorage als het een localStorage aflosser is
-      if (typeof window !== 'undefined' && localStorageCrew) {
-        try {
-          const existingCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-          delete existingCrew[crewMemberId]
-          localStorage.setItem('crewDatabase', JSON.stringify(existingCrew))
-        } catch (e) {
-          console.error('Error removing from localStorage:', e)
-        }
-      }
+      // Verwijder via de nieuwe hook
+      removeItem('crewDatabase', crewMemberId)
       
       // Redirect naar aflosser overzicht
       window.location.href = "/bemanning/aflossers"
