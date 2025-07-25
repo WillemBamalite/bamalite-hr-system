@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 export default function ZiektePage() {
-  const { crewDatabase, sickLeaveDatabase, activeSickLeaves, stats, updateData } = useCrewData()
+  const { crewDatabase, sickLeaveDatabase, activeSickLeaves, stats, updateData, forceRefresh } = useCrewData()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -27,8 +27,9 @@ export default function ZiektePage() {
     notes: ""
   })
 
-  // Gebruik de centrale actieve ziekmeldingen (al gefilterd)
+  // Gebruik de centrale actieve ziekmeldingen (al gefilterd) en filter op status
   const sickLeaveRecords = activeSickLeaves
+    .filter((sick: any) => sick.status === "actief" || sick.status === "wacht-op-briefje") // Extra filter voor zekerheid
     .map((sick: any) => {
       const crewMember = (crewDatabase as any)[sick.crewMemberId]
       const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
