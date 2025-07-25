@@ -169,9 +169,11 @@ export function DataBackup() {
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-red-600">
-              {Object.keys(sickLeaveDatabase).length}
+              {Object.values(sickLeaveDatabase).filter((sick: any) => 
+                sick.status === "actief" || sick.status === "wacht-op-briefje"
+              ).length}
             </div>
-            <div className="text-sm text-gray-600">Ziekmeldingen</div>
+            <div className="text-sm text-gray-600">Actieve ziekmeldingen</div>
           </div>
         </div>
 

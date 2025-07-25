@@ -2528,18 +2528,7 @@ export const documentDatabase = {
 
 // Ziekte database - huidige actieve ziekmeldingen
 export const sickLeaveDatabase = {
-  "michal-dudka-sick-1": {
-    id: "michal-dudka-sick-1",
-    crewMemberId: "michal-dudka",
-    startDate: "2024-01-08",
-    endDate: null,
-    description: "Griep met koorts",
-    hasCertificate: true,
-    certificateValidUntil: "2024-01-15",
-    salaryPercentage: 100, // Ziek aan boord
-    sickLocation: "aan-boord",
-    status: "actief",
-  },
+  // Leeg - alle ziekmeldingen worden nu dynamisch toegevoegd via localStorage
 }
 
 // Nieuwe database voor ziekte history en terug staan dagen
