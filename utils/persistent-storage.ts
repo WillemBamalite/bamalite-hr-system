@@ -107,6 +107,7 @@ export function removeFromDatabase<T extends keyof PersistentStorage>(
 
 // Exporteer data naar JSON bestand (alleen bij handmatige backup)
 export function exportData(): void {
+  console.log('🔍 exportData called - this should only happen on manual backup');
   const data = loadFromStorage();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -121,6 +122,7 @@ export function exportData(): void {
 
 // Lokale backup zonder download (voor auto-backup)
 export function createLocalBackup(): void {
+  console.log('🔍 createLocalBackup called - auto-backup without download');
   const data = loadFromStorage();
   const backupKey = `bamalite-backup-${new Date().toISOString().split('T')[0]}`;
   
