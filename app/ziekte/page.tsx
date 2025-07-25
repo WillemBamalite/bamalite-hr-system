@@ -1,6 +1,6 @@
 "use client"
 
-import { crewDatabase, sickLeaveDatabase, shipDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { crewDatabase, shipDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone, Edit, Heart } from "lucide-react"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
-import { useCrew } from "@/components/crew/CrewProvider"
+import { useCrewData } from "@/hooks/use-crew-data"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 export default function ZiektePage() {
-  const { crew, setCrew } = useCrew()
+  const { crewDatabase, sickLeaveDatabase, updateData } = useCrewData()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -95,7 +95,9 @@ export default function ZiektePage() {
     if (!record.hasCertificate) {
       // Update status naar "wacht-op-briefje" als er geen briefje is
       if (record.status === "actief") {
-        ;(sickLeaveDatabase as any)[record.id].status = "wacht-op-briefje"
+        updateData('sickLeaveDatabase', {
+          [record.id]: { ...record, status: "wacht-op-briefje" }
+        })
       }
       return {
         color: "bg-red-100 text-red-800",
@@ -112,7 +114,9 @@ export default function ZiektePage() {
       if (daysUntilExpiry < 0) {
         // Update status naar "wacht-op-briefje" als briefje verlopen is
         if (record.status === "actief") {
-          ;(sickLeaveDatabase as any)[record.id].status = "wacht-op-briefje"
+          updateData('sickLeaveDatabase', {
+            [record.id]: { ...record, status: "wacht-op-briefje" }
+          })
         }
         return {
           color: "bg-red-100 text-red-800",
@@ -128,7 +132,9 @@ export default function ZiektePage() {
       } else {
         // Update status naar "actief" als briefje geldig is
         if (record.status === "wacht-op-briefje") {
-          ;(sickLeaveDatabase as any)[record.id].status = "actief"
+          updateData('sickLeaveDatabase', {
+            [record.id]: { ...record, status: "actief" }
+          })
         }
         return {
           color: "bg-green-100 text-green-800",
@@ -140,7 +146,9 @@ export default function ZiektePage() {
 
     // Update status naar "actief" als briefje aanwezig is zonder vervaldatum
     if (record.status === "wacht-op-briefje") {
-      ;(sickLeaveDatabase as any)[record.id].status = "actief"
+      updateData('sickLeaveDatabase', {
+        [record.id]: { ...record, status: "actief" }
+      })
     }
     return {
       color: "bg-green-100 text-green-800",
@@ -170,16 +178,15 @@ export default function ZiektePage() {
       notes: editForm.notes
     }
 
-    // Update in sickLeaveDatabase
-    ;(sickLeaveDatabase as any)[editingRecord.id] = updatedRecord
-
     // Update status naar "actief" als er een briefje is
     if (editForm.hasCertificate && editingRecord.status === "wacht-op-briefje") {
-      ;(sickLeaveDatabase as any)[editingRecord.id].status = "actief"
+      updatedRecord.status = "actief"
     }
 
-    // Force re-render door state te updaten
-    setCrew({ ...crew })
+    // Update via de nieuwe hook
+    updateData('sickLeaveDatabase', {
+      [editingRecord.id]: updatedRecord
+    })
 
     setEditDialogOpen(false)
     setEditingRecord(null)
@@ -222,13 +229,12 @@ export default function ZiektePage() {
     ;(sickLeaveHistoryDatabase as any)[historyRecord.id] = historyRecord
 
     // Update crew member status naar "thuis" (niet meer ziek)
-    const crewMember = (crewDatabase as any)[record.crewMemberId]
-    if (crewMember) {
-      ;(crewDatabase as any)[record.crewMemberId].status = "thuis"
-    }
-
-    // Force re-render
-    setCrew({ ...crew })
+    updateData('crewDatabase', {
+      [record.crewMemberId]: {
+        ...(crewDatabase as any)[record.crewMemberId],
+        status: "thuis"
+      }
+    })
 
     setEditDialogOpen(false)
     setEditingRecord(null)
