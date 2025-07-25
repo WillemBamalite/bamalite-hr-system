@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Bamalite HR System',
-  description: 'Bemanningslijst management systeem - Updated',
+  description: 'Bemanningslijst management systeem - Updated 2025',
 }
 
 export default function RootLayout({
