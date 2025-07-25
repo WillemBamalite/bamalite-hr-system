@@ -37,6 +37,54 @@ interface AflosserUnavailable {
   createdAt: string;
 }
 
+// Helper functions
+const getNationalityFlag = (nationality: string) => {
+  const flags: { [key: string]: string } = {
+    NL: "🇳🇱",
+    CZ: "🇨🇿",
+    SLK: "🇸🇰",
+    EG: "🇪🇬",
+    PO: "🇵🇱",
+    SERV: "🇷🇸",
+    HUN: "🇭🇺",
+    BE: "🇧🇪",
+    FR: "🇫🇷",
+    DE: "🇩🇪",
+    LUX: "🇱🇺",
+  }
+  return flags[nationality] || "🌍"
+}
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "aan-boord":
+      return "bg-green-100 text-green-800"
+    case "thuis":
+      return "bg-blue-100 text-blue-800"
+    case "ziek":
+      return "bg-red-100 text-red-800"
+    case "uit-dienst":
+      return "bg-gray-100 text-gray-800"
+    default:
+      return "bg-gray-100 text-gray-800"
+  }
+}
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case "aan-boord":
+      return "Aan boord"
+    case "thuis":
+      return "Thuis"
+    case "ziek":
+      return "Ziek"
+    case "uit-dienst":
+      return "Uit dienst"
+    default:
+      return status
+  }
+}
+
 export default function AflossersOverzicht() {
   const { crewDatabase: allCrewData, stats, updateData } = useCrewData()
   const [selectedAflosser, setSelectedAflosser] = useState<any>(null)
@@ -113,53 +161,6 @@ export default function AflossersOverzicht() {
       activeUnavailable
     }
   })
-
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "aan-boord":
-        return "bg-green-100 text-green-800"
-      case "thuis":
-        return "bg-blue-100 text-blue-800"
-      case "ziek":
-        return "bg-red-100 text-red-800"
-      case "uit-dienst":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "aan-boord":
-        return "Aan boord"
-      case "thuis":
-        return "Thuis"
-      case "ziek":
-        return "Ziek"
-      case "uit-dienst":
-        return "Uit dienst"
-      default:
-        return status
-    }
-  }
 
   const handleAssignToShip = (aflosser: any) => {
     setSelectedAflosser(aflosser)
