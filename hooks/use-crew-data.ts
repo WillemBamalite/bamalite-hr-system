@@ -97,7 +97,6 @@ export function useCrewData() {
 
   // Force refresh functie
   const forceRefresh = () => {
-    console.log('🔄 Force refresh triggered...')
     // Reload data from localStorage
     const storedData = loadFromStorage()
     setLocalData({
@@ -106,7 +105,6 @@ export function useCrewData() {
       sickLeaveHistoryDatabase: storedData.sickLeaveHistoryDatabase || {},
       documentDatabase: storedData.documentDatabase || {},
     })
-    console.log('🔄 Data reloaded:', storedData)
   }
 
   // CENTRALE BEREKENDE WAARDEN - Alle componenten gebruiken deze

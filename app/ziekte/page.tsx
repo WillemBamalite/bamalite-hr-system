@@ -27,9 +27,8 @@ export default function ZiektePage() {
     notes: ""
   })
 
-  // Gebruik de centrale actieve ziekmeldingen (al gefilterd) en filter op status
+  // Gebruik de centrale actieve ziekmeldingen (al gefilterd)
   const sickLeaveRecords = activeSickLeaves
-    .filter((sick: any) => sick.status === "actief" || sick.status === "wacht-op-briefje") // Extra filter voor zekerheid
     .map((sick: any) => {
       const crewMember = (crewDatabase as any)[sick.crewMemberId]
       const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
