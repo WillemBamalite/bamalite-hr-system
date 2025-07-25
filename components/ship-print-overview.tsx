@@ -167,6 +167,10 @@ export function ShipPrintOverview() {
     window.print()
   }
 
+  // Helper: haal studentenlijst op uit crewDatabase
+  const studentenLijst = Object.values(allCrewData).filter((c: any) => c.isStudent)
+  const isStudent = (crew: any) => crew.isStudent === true
+
   return (
     <div className="print-container">
       {/* Print Button - Alleen zichtbaar op scherm */}
@@ -452,6 +456,25 @@ export function ShipPrintOverview() {
                                       <span className="font-medium">D:</span> {crew.diplomas.join(', ')}
                                     </div>
                                   )}
+                                  {isStudent(crew) && (
+                                    <div className="text-xs text-purple-700 font-semibold">
+                                      Student ({crew.educationType})
+                                      {crew.educationType === "BOL" && crew.educationEndDate && (
+                                        <div className="text-xs text-gray-600">Stage tot: {crew.educationEndDate}</div>
+                                      )}
+                                      {crew.educationType === "BBL" && crew.schoolPeriods && crew.schoolPeriods.length > 0 && (
+                                        <div className="text-xs text-gray-600">
+                                          Schoolperiodes:
+                                          <ul className="ml-2 list-disc">
+                                            {crew.schoolPeriods.slice(0,2).map((p: any, i: number) => (
+                                              <li key={i}>{p.fromDate} - {p.toDate}</li>
+                                            ))}
+                                            {crew.schoolPeriods.length > 2 && <li>+{crew.schoolPeriods.length-2} meer</li>}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                   {crew.notes && (
                                     <div className="text-xs text-orange-600 italic">
                                         {getNotes(crew)}
@@ -491,6 +514,25 @@ export function ShipPrintOverview() {
                                       <span className="font-medium">D:</span> {crew.diplomas.join(', ')}
                                     </div>
                                   )}
+                                  {isStudent(crew) && (
+                                    <div className="text-xs text-purple-700 font-semibold">
+                                      Student ({crew.educationType})
+                                      {crew.educationType === "BOL" && crew.educationEndDate && (
+                                        <div className="text-xs text-gray-600">Stage tot: {crew.educationEndDate}</div>
+                                      )}
+                                      {crew.educationType === "BBL" && crew.schoolPeriods && crew.schoolPeriods.length > 0 && (
+                                        <div className="text-xs text-gray-600">
+                                          Schoolperiodes:
+                                          <ul className="ml-2 list-disc">
+                                            {crew.schoolPeriods.slice(0,2).map((p: any, i: number) => (
+                                              <li key={i}>{p.fromDate} - {p.toDate}</li>
+                                            ))}
+                                            {crew.schoolPeriods.length > 2 && <li>+{crew.schoolPeriods.length-2} meer</li>}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                   {crew.notes && (
                                     <div className="text-xs text-orange-600 italic">
                                         {getNotes(crew)}
@@ -511,6 +553,8 @@ export function ShipPrintOverview() {
                   {(() => {
                     const shipSickCrew = shipCrew.filter((crew: any) => {
                       const sickInfo = getSickLeaveInfo(crew.id)
+                      // Michal Dudka mag niet als ziek getoond worden
+                      if (crew.firstName === "Michal" && crew.lastName === "Dudka") return false
                       return sickInfo !== null
                     })
                     
@@ -582,6 +626,25 @@ export function ShipPrintOverview() {
                               {crew.diplomas && crew.diplomas.length > 0 && (
                                 <div className="text-xs text-gray-500">
                                   <span className="font-medium">D:</span> {crew.diplomas.join(', ')}
+                                </div>
+                              )}
+                              {isStudent(crew) && (
+                                <div className="text-xs text-purple-700 font-semibold">
+                                  Student ({crew.educationType})
+                                  {crew.educationType === "BOL" && crew.educationEndDate && (
+                                    <div className="text-xs text-gray-600">Stage tot: {crew.educationEndDate}</div>
+                                  )}
+                                  {crew.educationType === "BBL" && crew.schoolPeriods && crew.schoolPeriods.length > 0 && (
+                                    <div className="text-xs text-gray-600">
+                                      Schoolperiodes:
+                                      <ul className="ml-2 list-disc">
+                                        {crew.schoolPeriods.slice(0,2).map((p: any, i: number) => (
+                                          <li key={i}>{p.fromDate} - {p.toDate}</li>
+                                        ))}
+                                        {crew.schoolPeriods.length > 2 && <li>+{crew.schoolPeriods.length-2} meer</li>}
+                                      </ul>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                               {crew.notes && (
