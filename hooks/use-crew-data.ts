@@ -113,6 +113,11 @@ export function useCrewData() {
     s.hasCertificate
   );
   
+  // Debug logs
+  console.log('🔍 DEBUG - Combined sickLeaveDatabase:', combinedData.sickLeaveDatabase);
+  console.log('🔍 DEBUG - Active sick leaves:', activeSickLeaves);
+  console.log('🔍 DEBUG - Active sick leaves count:', activeSickLeaves.length);
+  
   // Statistieken
   const stats = {
     totalCrew: crewMembers.length,

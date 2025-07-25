@@ -11,6 +11,10 @@ import Link from "next/link"
 export function DashboardStats() {
   // Gebruik de centrale statistieken uit de hook
   const { stats } = useCrewData()
+  
+  // Debug log
+  console.log('🔍 DASHBOARD - Stats:', stats);
+  console.log('🔍 DASHBOARD - Actieve ziekmeldingen:', stats.actieveZiekmeldingen);
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
