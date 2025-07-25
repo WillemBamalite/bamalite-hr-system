@@ -60,6 +60,9 @@ export function saveToStorage(data: Partial<PersistentStorage>): void {
         localStorage.setItem(STORAGE_KEYS[key as keyof typeof STORAGE_KEYS], JSON.stringify(value));
       }
     });
+    
+    // Trigger custom event voor real-time updates
+    window.dispatchEvent(new CustomEvent('localStorageUpdate'));
   } catch (error) {
     console.error('Error saving to localStorage:', error);
   }

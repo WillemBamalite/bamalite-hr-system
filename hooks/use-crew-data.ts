@@ -16,11 +16,40 @@ export function useCrewData() {
     documentDatabase: {}
   });
 
-  // Laad data bij component mount
+  // Laad data bij component mount en luister naar localStorage wijzigingen
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedData = loadFromStorage();
-      setLocalData(storedData);
+      const loadData = () => {
+        const storedData = loadFromStorage();
+        setLocalData(storedData);
+      };
+
+      // Laad initiële data
+      loadData();
+
+      // Luister naar localStorage wijzigingen
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key && (e.key.includes('crewDatabase') || e.key.includes('sickLeaveDatabase') || e.key.includes('documentDatabase'))) {
+          console.log('🔄 localStorage changed, reloading data...');
+          loadData();
+        }
+      };
+
+      // Luister naar storage events (voor andere tabs)
+      window.addEventListener('storage', handleStorageChange);
+
+      // Custom event voor real-time updates binnen dezelfde tab
+      const handleCustomStorageChange = () => {
+        console.log('🔄 Custom storage event, reloading data...');
+        loadData();
+      };
+
+      window.addEventListener('localStorageUpdate', handleCustomStorageChange);
+
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('localStorageUpdate', handleCustomStorageChange);
+      };
     }
   }, []);
 
@@ -66,11 +95,21 @@ export function useCrewData() {
     saveToStorage(newLocalData);
   };
 
+  // Force refresh functie
+  const forceRefresh = () => {
+    if (typeof window !== 'undefined') {
+      const storedData = loadFromStorage();
+      setLocalData(storedData);
+      console.log('🔄 Force refresh triggered');
+    }
+  };
+
   return {
     data: combinedData,
     updateData,
     addItem,
     removeItem,
+    forceRefresh,
     // Directe toegang tot gecombineerde data
     crewDatabase: combinedData.crewDatabase,
     sickLeaveDatabase: combinedData.sickLeaveDatabase,
@@ -92,6 +131,9 @@ export function useCrewMember(crewMemberId: string) {
         const storedData = loadFromStorage();
         const updatedCrew = { ...storedData.crewDatabase, [crewMemberId]: updatedMember };
         saveToStorage({ crewDatabase: updatedCrew });
+        
+        // Force re-render van alle componenten die deze data gebruiken
+        console.log('🔄 Crew member updated, triggering re-render...');
       }
     }
   };
