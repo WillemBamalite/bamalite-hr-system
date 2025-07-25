@@ -5,11 +5,13 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { CrewProvider } from "@/components/crew/CrewProvider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { Inter } from "next/font/google"
+
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Bamalite HR System',
-  description: 'Bemanningslijst management systeem',
+  description: 'Bemanningslijst management systeem - Updated',
 }
 
 export default function RootLayout({
