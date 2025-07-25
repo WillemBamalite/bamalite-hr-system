@@ -188,7 +188,12 @@ export default function AflossersOverzicht() {
               {aflosser.address && (
                 <div className="flex items-center space-x-2 text-sm text-gray-600">
                   <MapPin className="w-4 h-4" />
-                  <span>{aflosser.address}</span>
+                  <span>
+                    {aflosser.address.street && `${aflosser.address.street}, `}
+                    {aflosser.address.city && `${aflosser.address.city} `}
+                    {aflosser.address.postalCode && `${aflosser.address.postalCode}`}
+                    {aflosser.address.country && `, ${aflosser.address.country}`}
+                  </span>
                 </div>
               )}
               
