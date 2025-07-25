@@ -1,6 +1,6 @@
 "use client"
 
-import { crewDatabase, sickLeaveDatabase, shipDatabase } from "@/data/crew-database"
+import { crewDatabase, shipDatabase } from "@/data/crew-database"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,13 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { UserX, ArrowLeft, Search } from "lucide-react"
 import { useState } from "react"
-import { useCrew } from "@/components/crew/CrewProvider"
+import { useCrewData, useCrewMember } from "@/hooks/use-crew-data"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export default function NieuwZiektePage() {
-  const { crew, setCrew } = useCrew()
+  const { crewDatabase, addItem, updateData } = useCrewData()
   const router = useRouter()
   const [formData, setFormData] = useState({
     crewMemberId: "",
@@ -33,7 +33,7 @@ export default function NieuwZiektePage() {
 
   // Haal alle crew members op
   const crewMembers = Object.values(crewDatabase).filter((member: any) => 
-    member.id !== "ziek" // Filter alleen de "ziek" placeholder uit
+    member.id !== "ziek" && member.status !== "uit-dienst" // Filter alleen de "ziek" placeholder en uit-dienst uit
   )
 
   // Filter crew members op basis van zoekopdracht
@@ -75,24 +75,16 @@ export default function NieuwZiektePage() {
       status: formData.hasCertificate ? "actief" : "wacht-op-briefje"
     }
 
-    // Voeg toe aan database
-    ;(sickLeaveDatabase as any)[newSickLeave.id] = newSickLeave
+    // Voeg ziekmelding toe via de hook
+    addItem('sickLeaveDatabase', newSickLeave.id, newSickLeave)
 
-    // Sla op in localStorage
-    if (typeof window !== 'undefined') {
-      const existingSickLeave = JSON.parse(localStorage.getItem('sickLeaveDatabase') || '{}')
-      existingSickLeave[newSickLeave.id] = newSickLeave
-      localStorage.setItem('sickLeaveDatabase', JSON.stringify(existingSickLeave))
-    }
-
-    // Update crew member status
-    const crewMember = (crewDatabase as any)[formData.crewMemberId]
-    if (crewMember) {
-      ;(crewDatabase as any)[formData.crewMemberId].status = "ziek"
-    }
-
-    // Force re-render
-    setCrew({ ...crew })
+    // Update crew member status naar ziek
+    updateData('crewDatabase', {
+      [formData.crewMemberId]: {
+        ...(crewDatabase as any)[formData.crewMemberId],
+        status: "ziek"
+      }
+    })
 
     // Redirect naar ziekte overzicht
     router.push("/ziekte")
