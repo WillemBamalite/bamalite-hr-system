@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useState, useEffect } from "react"
 import { crewDatabase, shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase, documentDatabase } from "@/data/crew-database"
 import { Search, Users, Ship, FileText, UserX, Calendar, MapPin, Phone, Mail, Printer } from "lucide-react"
+import { DataBackup } from "@/components/data-backup"
 
 export default function Dashboard() {
   // State voor universele zoekbalk
@@ -306,8 +307,9 @@ export default function Dashboard() {
           <div className="lg:col-span-2">
             <ShipOverview />
           </div>
-          <div>
+          <div className="space-y-6">
             <RecentAlerts />
+            <DataBackup />
           </div>
         </div>
       </main>

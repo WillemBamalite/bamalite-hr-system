@@ -3,7 +3,7 @@
 import { shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import { isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import { format } from "date-fns"
-import { nl } from "date-fns/locale/nl"
+import { nl } from "date-fns/locale"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"

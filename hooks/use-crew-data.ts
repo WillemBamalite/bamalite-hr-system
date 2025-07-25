@@ -1,49 +1,142 @@
-import { useState, useEffect } from 'react'
-import { crewDatabase } from '@/data/crew-database'
+import { useState, useEffect } from 'react';
+import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase, documentDatabase } from '@/data/crew-database';
+import { loadFromStorage, saveToStorage, usePersistentStorage } from '@/utils/persistent-storage';
 
+// Hook voor gecombineerde crew data met automatische synchronisatie
 export function useCrewData() {
-  const [localStorageCrew, setLocalStorageCrew] = useState<any>({})
+  const [localData, setLocalData] = useState<{
+    crewDatabase: Record<string, any>;
+    sickLeaveDatabase: Record<string, any>;
+    sickLeaveHistoryDatabase: Record<string, any>;
+    documentDatabase: Record<string, any>;
+  }>({
+    crewDatabase: {},
+    sickLeaveDatabase: {},
+    sickLeaveHistoryDatabase: {},
+    documentDatabase: {}
+  });
 
+  // Laad data bij component mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      try {
-        const storedCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        // Filter lege of incomplete data uit
-        const filteredCrew: any = {}
-        Object.keys(storedCrew).forEach(crewId => {
-          const member = storedCrew[crewId]
-          // Alleen toevoegen als het een geldig object is met minimaal een id
-          if (member && typeof member === 'object' && member.id) {
-            filteredCrew[crewId] = member
-          }
-        })
-        setLocalStorageCrew(filteredCrew)
-      } catch (e) {
-        console.error('Error parsing localStorage:', e)
-      }
+      const storedData = loadFromStorage();
+      setLocalData(storedData);
     }
-  }, [])
+  }, []);
 
-  // Start met de originele database data
-  const allCrewData = { ...crewDatabase }
-  
-  // Voeg localStorage wijzigingen toe, maar behoud originele data als backup
-  Object.keys(localStorageCrew).forEach(crewId => {
-    const localStorageMember = localStorageCrew[crewId]
-    const databaseMember = (crewDatabase as any)[crewId]
+  // Combineer statische database met localStorage data
+  const combinedData = {
+    crewDatabase: { ...crewDatabase, ...localData.crewDatabase },
+    sickLeaveDatabase: { ...sickLeaveDatabase, ...localData.sickLeaveDatabase },
+    sickLeaveHistoryDatabase: { ...sickLeaveHistoryDatabase, ...localData.sickLeaveHistoryDatabase },
+    documentDatabase: { ...documentDatabase, ...localData.documentDatabase }
+  };
+
+  // Functie om data te updaten
+  const updateData = (databaseName: keyof typeof localData, updates: any) => {
+    const newLocalData = {
+      ...localData,
+      [databaseName]: { ...localData[databaseName], ...updates }
+    };
     
-    if (localStorageMember && databaseMember) {
-      // Merge: behoud originele data, voeg alleen wijzigingen toe
-      (allCrewData as any)[crewId] = {
-        ...databaseMember,  // Start met originele data
-        ...localStorageMember,  // Voeg wijzigingen toe
-        // Behoud originele datums als ze niet expliciet zijn gewijzigd in localStorage
-        onBoardSince: localStorageMember.onBoardSince !== undefined ? localStorageMember.onBoardSince : databaseMember.onBoardSince,
-        thuisSinds: localStorageMember.thuisSinds !== undefined ? localStorageMember.thuisSinds : databaseMember.thuisSinds,
-        status: localStorageMember.status !== undefined ? localStorageMember.status : databaseMember.status
+    setLocalData(newLocalData);
+    saveToStorage(newLocalData);
+  };
+
+  // Functie om item toe te voegen
+  const addItem = (databaseName: keyof typeof localData, id: string, item: any) => {
+    const newLocalData = {
+      ...localData,
+      [databaseName]: { ...localData[databaseName], [id]: item }
+    };
+    
+    setLocalData(newLocalData);
+    saveToStorage(newLocalData);
+  };
+
+  // Functie om item te verwijderen
+  const removeItem = (databaseName: keyof typeof localData, id: string) => {
+    const { [id]: removed, ...remaining } = localData[databaseName];
+    const newLocalData = {
+      ...localData,
+      [databaseName]: remaining
+    };
+    
+    setLocalData(newLocalData);
+    saveToStorage(newLocalData);
+  };
+
+  return {
+    data: combinedData,
+    updateData,
+    addItem,
+    removeItem,
+    // Directe toegang tot gecombineerde data
+    crewDatabase: combinedData.crewDatabase,
+    sickLeaveDatabase: combinedData.sickLeaveDatabase,
+    sickLeaveHistoryDatabase: combinedData.sickLeaveHistoryDatabase,
+    documentDatabase: combinedData.documentDatabase
+  };
+}
+
+// Hook voor specifieke crew member data
+export function useCrewMember(crewMemberId: string) {
+  const { crewDatabase } = useCrewData();
+  const crewMember = (crewDatabase as Record<string, any>)[crewMemberId];
+
+  const updateCrewMember = (updates: any) => {
+    if (crewMember) {
+      const updatedMember = { ...crewMember, ...updates };
+      // Update via localStorage
+      if (typeof window !== 'undefined') {
+        const storedData = loadFromStorage();
+        const updatedCrew = { ...storedData.crewDatabase, [crewMemberId]: updatedMember };
+        saveToStorage({ crewDatabase: updatedCrew });
       }
     }
-  })
+  };
 
-  return allCrewData
+  return {
+    crewMember,
+    updateCrewMember
+  };
+}
+
+// Hook voor ziekmeldingen
+export function useSickLeave() {
+  const { sickLeaveDatabase } = useCrewData();
+
+  const addSickLeave = (sickLeave: any) => {
+    if (typeof window !== 'undefined') {
+      const storedData = loadFromStorage();
+      const updatedSickLeave = { ...storedData.sickLeaveDatabase, [sickLeave.id]: sickLeave };
+      saveToStorage({ sickLeaveDatabase: updatedSickLeave });
+    }
+  };
+
+  const updateSickLeave = (id: string, updates: any) => {
+    if (typeof window !== 'undefined') {
+      const storedData = loadFromStorage();
+      const currentSickLeave = storedData.sickLeaveDatabase[id];
+      if (currentSickLeave) {
+        const updatedSickLeave = { ...storedData.sickLeaveDatabase, [id]: { ...currentSickLeave, ...updates } };
+        saveToStorage({ sickLeaveDatabase: updatedSickLeave });
+      }
+    }
+  };
+
+  const removeSickLeave = (id: string) => {
+    if (typeof window !== 'undefined') {
+      const storedData = loadFromStorage();
+      const { [id]: removed, ...remaining } = storedData.sickLeaveDatabase;
+      saveToStorage({ sickLeaveDatabase: remaining });
+    }
+  };
+
+  return {
+    sickLeaveDatabase,
+    addSickLeave,
+    updateSickLeave,
+    removeSickLeave
+  };
 } 
