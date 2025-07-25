@@ -104,6 +104,29 @@ export function useCrewData() {
     }
   };
 
+  // CENTRALE BEREKENDE WAARDEN - Alle componenten gebruiken deze
+  const crewMembers = Object.values(combinedData.crewDatabase);
+  const activeSickLeaves = Object.values(combinedData.sickLeaveDatabase).filter((s: any) => 
+    s.status === "actief" || s.status === "wacht-op-briefje"
+  );
+  const sickLeavesWithCertificate = Object.values(combinedData.sickLeaveDatabase).filter((s: any) => 
+    s.hasCertificate
+  );
+  
+  // Statistieken
+  const stats = {
+    totalCrew: crewMembers.length,
+    aflossers: crewMembers.filter((c: any) => 
+      c.position?.toLowerCase().includes("aflos") || c.position?.toLowerCase().includes("relief")
+    ).length,
+    studenten: crewMembers.filter((c: any) => c.isStudent).length,
+    aanBoord: crewMembers.filter((c: any) => c.status === "aan-boord").length,
+    thuis: crewMembers.filter((c: any) => c.status === "thuis").length,
+    actieveZiekmeldingen: activeSickLeaves.length,
+    ziekmeldingenMetBriefje: sickLeavesWithCertificate.length,
+    nogInTeDelen: crewMembers.filter((c: any) => c.shipId === 'nog-in-te-delen').length
+  };
+
   return {
     data: combinedData,
     updateData,
@@ -114,7 +137,12 @@ export function useCrewData() {
     crewDatabase: combinedData.crewDatabase,
     sickLeaveDatabase: combinedData.sickLeaveDatabase,
     sickLeaveHistoryDatabase: combinedData.sickLeaveHistoryDatabase,
-    documentDatabase: combinedData.documentDatabase
+    documentDatabase: combinedData.documentDatabase,
+    // Berekende waarden
+    crewMembers,
+    activeSickLeaves,
+    sickLeavesWithCertificate,
+    stats
   };
 }
 

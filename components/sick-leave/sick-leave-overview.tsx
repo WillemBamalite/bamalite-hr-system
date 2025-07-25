@@ -9,10 +9,10 @@ import { shipDatabase } from "@/data/crew-database"
 import { useCrewData } from "@/hooks/use-crew-data"
 
 export function SickLeaveOverview() {
-  const { crewDatabase, sickLeaveDatabase } = useCrewData()
+  const { activeSickLeaves, crewDatabase } = useCrewData()
   
-  // Combineer ziekmelding data met bemanning data
-  const sickLeaveRecords = Object.values(sickLeaveDatabase)
+  // Gebruik de centrale actieve ziekmeldingen
+  const sickLeaveRecords = activeSickLeaves
     .map((sick: any) => {
       const crewMember = (crewDatabase as any)[sick.crewMemberId]
       const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
