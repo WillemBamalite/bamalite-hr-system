@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 export default function ZiektePage() {
-  const { crewDatabase, sickLeaveDatabase, activeSickLeaves, updateData } = useCrewData()
+  const { crewDatabase, sickLeaveDatabase, activeSickLeaves, stats, updateData } = useCrewData()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -27,7 +27,7 @@ export default function ZiektePage() {
     notes: ""
   })
 
-  // Gebruik de centrale actieve ziekmeldingen
+  // Gebruik de centrale actieve ziekmeldingen (al gefilterd)
   const sickLeaveRecords = activeSickLeaves
     .map((sick: any) => {
       const crewMember = (crewDatabase as any)[sick.crewMemberId]
@@ -46,7 +46,6 @@ export default function ZiektePage() {
       }
     })
     .filter((record) => record.crewMember) // Filter out records zonder crew member
-    .filter((record) => record.status === "actief" || record.status === "wacht-op-briefje") // Alleen actieve ziekmeldingen
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -245,9 +244,9 @@ export default function ZiektePage() {
     })
   }
 
-  // Bereken statistieken
-  const activeSick = sickLeaveRecords.filter(r => r.status === "actief").length
-  const waitingForCertificate = sickLeaveRecords.filter(r => r.status === "wacht-op-briefje").length
+  // Gebruik centrale statistieken
+  const activeSick = stats.actieveZiekmeldingen
+  const waitingForCertificate = activeSickLeaves.filter((r: any) => r.status === "wacht-op-briefje").length
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
