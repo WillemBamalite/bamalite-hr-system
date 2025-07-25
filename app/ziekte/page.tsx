@@ -202,8 +202,13 @@ export default function ZiektePage() {
     // Bereken verschuldigde dagen (altijd 7 dagen)
     const owedDays = 7
 
-    // Update de record status naar "hersteld"
-    ;(sickLeaveDatabase as any)[record.id].status = "hersteld"
+    // Update de ziekmelding status naar "hersteld" via de hook
+    updateData('sickLeaveDatabase', {
+      [record.id]: {
+        ...record,
+        status: "hersteld"
+      }
+    })
 
     // Voeg toe aan sickLeaveHistoryDatabase voor "terug te staan" dagen
     const historyRecord = {
@@ -224,8 +229,10 @@ export default function ZiektePage() {
       paidBy: record.paidBy || "Bamalite S.A."
     }
 
-    // Voeg toe aan sickLeaveHistoryDatabase
-    ;(sickLeaveHistoryDatabase as any)[historyRecord.id] = historyRecord
+    // Voeg toe aan sickLeaveHistoryDatabase via de hook
+    updateData('sickLeaveHistoryDatabase', {
+      [historyRecord.id]: historyRecord
+    })
 
     // Update crew member status naar "thuis" (niet meer ziek)
     updateData('crewDatabase', {
