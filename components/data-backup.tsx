@@ -73,6 +73,12 @@ export function DataBackup() {
     }
   };
 
+  const handleClearStorage = () => {
+    clearAllStorage()
+    // Force page reload om alle data te resetten
+    window.location.reload()
+  }
+
   const getStatusColor = () => {
     switch (backupStatus) {
       case 'success': return 'bg-green-100 text-green-800';
@@ -159,16 +165,12 @@ export function DataBackup() {
           </div>
 
           <Button 
-            onClick={() => {
-              if (window.confirm('Weet je zeker dat je alle localStorage data wilt wissen? Dit kan niet ongedaan worden gemaakt.')) {
-                clearAllStorage();
-                window.location.reload();
-              }
-            }}
-            variant="destructive"
-            className="flex items-center gap-2"
+            onClick={handleClearStorage}
+            variant="destructive" 
+            size="sm"
+            className="text-xs"
           >
-            🧹 Clear localStorage
+            🧹 Clear localStorage & Reload
           </Button>
         </div>
 

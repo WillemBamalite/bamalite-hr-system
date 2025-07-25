@@ -97,12 +97,17 @@ export function useCrewData() {
 
   // Force refresh functie
   const forceRefresh = () => {
-    if (typeof window !== 'undefined') {
-      const storedData = loadFromStorage();
-      setLocalData(storedData);
-      console.log('🔄 Force refresh triggered');
-    }
-  };
+    console.log('🔄 Force refresh triggered...')
+    // Reload data from localStorage
+    const storedData = loadFromStorage()
+    setLocalData({
+      crewDatabase: storedData.crewDatabase || {},
+      sickLeaveDatabase: storedData.sickLeaveDatabase || {},
+      sickLeaveHistoryDatabase: storedData.sickLeaveHistoryDatabase || {},
+      documentDatabase: storedData.documentDatabase || {},
+    })
+    console.log('🔄 Data reloaded:', storedData)
+  }
 
   // CENTRALE BEREKENDE WAARDEN - Alle componenten gebruiken deze
   const crewMembers = Object.values(combinedData.crewDatabase);

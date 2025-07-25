@@ -86,8 +86,8 @@ export default function NieuwZiektePage() {
       }
     })
 
-    // Redirect naar ziekte overzicht
-    router.push("/ziekte")
+    // Force page refresh en redirect naar ziekte overzicht
+    window.location.href = "/ziekte"
   }
 
   return (
