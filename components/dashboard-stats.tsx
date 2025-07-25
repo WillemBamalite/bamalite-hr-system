@@ -3,27 +3,14 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Ship, Users, AlertTriangle, FileText } from "lucide-react"
-import { crewDatabase, shipDatabase, documentDatabase, sickLeaveDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 import { isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import Link from "next/link"
 
 export function DashboardStats() {
-  // Haal localStorage data op
-  const [localStorageCrew, setLocalStorageCrew] = useState<any>({})
-  
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        setLocalStorageCrew(storedCrew)
-      } catch (e) {
-        console.error('Error parsing localStorage:', e)
-      }
-    }
-  }, [])
-
-  // Combineer alle databases
-  const allCrewData = { ...crewDatabase, ...localStorageCrew }
+  // Gebruik de nieuwe hook voor crew data
+  const { crewDatabase: allCrewData, sickLeaveDatabase } = useCrewData()
   const crew = Object.values(allCrewData).filter((c: any) => !isCrewMemberOutOfService(c.id))
   const total = crew.length
   const aflossers = crew.filter((c: any) => c.position?.toLowerCase().includes("aflos") || c.position?.toLowerCase().includes("relief")).length

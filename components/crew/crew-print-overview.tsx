@@ -1,7 +1,8 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import { PrinterIcon as Print, Download, ArrowLeft } from "lucide-react"
-import { crewDatabase, shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { shipDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 import { useRouter } from "next/navigation"
 
 export function CrewPrintOverview() {

@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { crewDatabase } from "@/data/crew-database";
+import { crewDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export default function UpdatePage() {
+  const { crewDatabase: allCrewData, updateData } = useCrewData()
   const [updateStatus, setUpdateStatus] = useState<string>("");
 
   const crewUpdates = {

@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { ClockIcon as UserClock, Calendar, CheckCircle, Ship, Plus } from "lucide-react"
-import { crewDatabase, sickLeaveHistoryDatabase, shipDatabase } from "@/data/crew-database"
+import { sickLeaveHistoryDatabase, shipDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 export function StandBackDaysOverview() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)

@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { crewDatabase, sickLeaveHistoryDatabase, shipDatabase } from "@/data/crew-database"
+import { sickLeaveHistoryDatabase, shipDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -16,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function SickLeaveHistoryPage() {
-  const [localStorageCrew, setLocalStorageCrew] = useState<any>({});
+  const { crewDatabase: allCrewData } = useCrewData()
   const [afboekenDialog, setAfboekenDialog] = useState<string | null>(null);
   const [afboekenData, setAfboekenData] = useState({
     daysCompleted: 1,
@@ -25,27 +26,12 @@ export default function SickLeaveHistoryPage() {
     endDate: new Date().toISOString().split('T')[0],
     ship: ""
   });
-  
-  // Laad localStorage data
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
-        setLocalStorageCrew(storedCrew);
-      } catch (e) {
-        console.error('Error parsing localStorage crew:', e);
-      }
-    }
-  }, []);
-
-  // Combineer database en localStorage data
-  const allCrewData = { ...crewDatabase, ...localStorageCrew };
 
   // Combineer history data met bemanning data
   const historyRecords = Object.values(sickLeaveHistoryDatabase)
     .map((record: any) => {
-      const crewMember = allCrewData[record.crewMemberId]
-      const ship = crewMember?.shipId ? shipDatabase[crewMember.shipId] : null
+      const crewMember = (allCrewData as any)[record.crewMemberId]
+      const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
       return {
         ...record,
         crewMember,

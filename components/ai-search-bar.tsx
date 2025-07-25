@@ -8,9 +8,11 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { crewDatabase, shipDatabase, documentDatabase, sickLeaveDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 export function AISearchBar() {
+  const { crewDatabase, documentDatabase, sickLeaveDatabase } = useCrewData()
   const [query, setQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<any>(null)

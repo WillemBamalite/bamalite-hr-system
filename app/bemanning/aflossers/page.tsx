@@ -1,6 +1,7 @@
 "use client"
 
-import { crewDatabase, shipDatabase, documentDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 import { getCustomCrewDocuments } from "@/utils/out-of-service-storage"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,12 +14,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
-import { useCrew } from "@/components/crew/CrewProvider"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { UserX, CheckCircle, Clock, AlertTriangle, Ship, Calendar, Phone, Mail, MapPin, GraduationCap, History, Plus, X, User, Users } from "lucide-react"
 
 export default function AflossersOverzicht() {
-  const { crew, setCrew } = useCrew()
+  const { crewDatabase: allCrew, documentDatabase } = useCrewData()
   
   // Alleen echte aflossers tonen op basis van naam
   const echteAflossers = [
@@ -26,19 +26,6 @@ export default function AflossersOverzicht() {
     "erik dijken", 
     "piet noordzij",
   ]
-  
-  // Haal ook aflossers uit localStorage op
-  let localStorageCrew = {}
-  if (typeof window !== 'undefined') {
-    try {
-      localStorageCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-    } catch (e) {
-      console.error('Error parsing localStorage crew:', e)
-    }
-  }
-  
-  // Combineer crew database met localStorage data
-  const allCrew = { ...crewDatabase, ...localStorageCrew }
   
   const aflossers = Object.values(allCrew).filter((crew: any) =>
     crew.position === "Aflosser" || echteAflossers.includes(`${crew.firstName.toLowerCase()} ${crew.lastName.toLowerCase()}`)

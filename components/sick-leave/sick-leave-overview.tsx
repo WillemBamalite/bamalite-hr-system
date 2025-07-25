@@ -5,14 +5,17 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone } from "lucide-react"
-import { crewDatabase, sickLeaveDatabase, shipDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 export function SickLeaveOverview() {
+  const { crewDatabase, sickLeaveDatabase } = useCrewData()
+  
   // Combineer ziekmelding data met bemanning data
   const sickLeaveRecords = Object.values(sickLeaveDatabase)
     .map((sick: any) => {
-      const crewMember = crewDatabase[sick.crewMemberId]
-      const ship = crewMember?.shipId ? shipDatabase[crewMember.shipId] : null
+      const crewMember = (crewDatabase as any)[sick.crewMemberId]
+      const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
 
       // Bereken dagen ziek
       const startDate = new Date(sick.startDate)

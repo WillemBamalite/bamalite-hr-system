@@ -1,6 +1,7 @@
 "use client"
 
-import { crewDatabase, shipDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
+import { useCrewData } from "@/hooks/use-crew-data"
 import { isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
@@ -20,22 +21,12 @@ const RANK_ORDER = [
 ];
 
 export default function CrewOverviewPage() {
+  const { crewDatabase: allCrewData } = useCrewData()
   const [filteredCrew, setFilteredCrew] = useState<any[]>([])
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
 
   useEffect(() => {
-    // Haal localStorage data op
-    let localStorageCrew = {}
-    if (typeof window !== 'undefined') {
-      try {
-        localStorageCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-      } catch (e) {
-        console.error('Error parsing localStorage:', e)
-      }
-    }
-
     // Combineer alle databases
-    const allCrewData = { ...crewDatabase, ...localStorageCrew }
     
     // MIGRATIE: Zet alle 'Kapitein' direct om naar 'Schipper' in de database
     Object.values(allCrewData).forEach((c: any) => {
