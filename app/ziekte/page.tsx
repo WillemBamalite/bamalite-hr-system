@@ -1,6 +1,6 @@
 "use client"
 
-import { crewDatabase, shipDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { shipDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -248,11 +248,7 @@ export default function ZiektePage() {
   const activeSick = stats.actieveZiekmeldingen
   const waitingForCertificate = activeSickLeaves.filter((r: any) => r.status === "wacht-op-briefje").length
   
-  // Debug logs
-  console.log('🔍 ZIEKTE PAGE - Stats:', stats);
-  console.log('🔍 ZIEKTE PAGE - Active sick:', activeSick);
-  console.log('🔍 ZIEKTE PAGE - Active sick leaves:', activeSickLeaves);
-  console.log('🔍 ZIEKTE PAGE - Sick leave records:', sickLeaveRecords);
+
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">

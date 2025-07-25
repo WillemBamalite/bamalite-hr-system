@@ -181,6 +181,18 @@ export function usePersistentStorage() {
   const updateSickLeaveHistory = (updates: any) => updateDatabase('sickLeaveHistoryDatabase', updates);
   const updateDocuments = (updates: any) => updateDatabase('documentDatabase', updates);
   const updateOutOfService = (updates: any) => updateDatabase('outOfServiceDatabase', updates);
+
+  // Functie om localStorage volledig op te schonen
+  const clearAllStorage = (): void => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.CREW)
+      localStorage.removeItem(STORAGE_KEYS.SICK_LEAVE)
+      localStorage.removeItem(STORAGE_KEYS.SICK_LEAVE_HISTORY)
+      localStorage.removeItem(STORAGE_KEYS.DOCUMENTS)
+      localStorage.removeItem(STORAGE_KEYS.OUT_OF_SERVICE)
+      console.log('🧹 Alle localStorage data opgeschoond')
+    }
+  }
   
   return {
     getData,
@@ -191,6 +203,7 @@ export function usePersistentStorage() {
     updateDocuments,
     updateOutOfService,
     exportData,
-    importData
+    importData,
+    clearAllStorage
   };
 } 

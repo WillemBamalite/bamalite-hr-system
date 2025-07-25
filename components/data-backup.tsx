@@ -9,7 +9,7 @@ import { usePersistentStorage, createLocalBackup } from '@/utils/persistent-stor
 import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase, documentDatabase } from '@/data/crew-database';
 
 export function DataBackup() {
-  const { exportData, importData } = usePersistentStorage();
+  const { exportData, importData, clearAllStorage } = usePersistentStorage();
   const [lastBackup, setLastBackup] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [backupStatus, setBackupStatus] = useState<'idle' | 'backing-up' | 'success' | 'error'>('idle');
@@ -157,6 +157,19 @@ export function DataBackup() {
               </Button>
             </label>
           </div>
+
+          <Button 
+            onClick={() => {
+              if (window.confirm('Weet je zeker dat je alle localStorage data wilt wissen? Dit kan niet ongedaan worden gemaakt.')) {
+                clearAllStorage();
+                window.location.reload();
+              }
+            }}
+            variant="destructive"
+            className="flex items-center gap-2"
+          >
+            🧹 Clear localStorage
+          </Button>
         </div>
 
         {/* Data statistieken */}
