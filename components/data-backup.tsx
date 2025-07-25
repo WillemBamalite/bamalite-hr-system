@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Download, Upload, Database, Save, AlertTriangle } from 'lucide-react';
-import { usePersistentStorage } from '@/utils/persistent-storage';
+import { usePersistentStorage, createLocalBackup } from '@/utils/persistent-storage';
 import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase, documentDatabase } from '@/data/crew-database';
 
 export function DataBackup() {
@@ -19,7 +19,7 @@ export function DataBackup() {
     const autoBackup = () => {
       setBackupStatus('backing-up');
       try {
-        exportData();
+        createLocalBackup(); // Lokale backup zonder download
         setLastBackup(new Date().toLocaleString('nl-NL'));
         setBackupStatus('success');
         setTimeout(() => setBackupStatus('idle'), 3000);
@@ -122,7 +122,7 @@ export function DataBackup() {
             <span className="text-sm font-medium">Auto-backup actief</span>
           </div>
           <p className="text-sm text-blue-600 mt-1">
-            Data wordt automatisch elke 5 minuten opgeslagen in je browser
+            Data wordt automatisch elke 5 minuten lokaal opgeslagen (geen downloads)
           </p>
         </div>
 
@@ -182,7 +182,7 @@ export function DataBackup() {
             <span className="text-sm font-medium">Belangrijk</span>
           </div>
           <p className="text-sm text-yellow-700 mt-1">
-            Maak regelmatig backups van je data. Browser data kan verloren gaan bij het wissen van cache of cookies.
+            Maak regelmatig handmatige backups voor veiligheid. Auto-backup gebeurt alleen lokaal in je browser.
           </p>
         </div>
       </CardContent>

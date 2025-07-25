@@ -105,7 +105,7 @@ export function removeFromDatabase<T extends keyof PersistentStorage>(
   });
 }
 
-// Exporteer data naar JSON bestand (voor backup)
+// Exporteer data naar JSON bestand (alleen bij handmatige backup)
 export function exportData(): void {
   const data = loadFromStorage();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -117,6 +117,32 @@ export function exportData(): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Lokale backup zonder download (voor auto-backup)
+export function createLocalBackup(): void {
+  const data = loadFromStorage();
+  const backupKey = `bamalite-backup-${new Date().toISOString().split('T')[0]}`;
+  
+  if (typeof window !== 'undefined') {
+    try {
+      // Bewaar backup in localStorage met timestamp
+      localStorage.setItem(backupKey, JSON.stringify({
+        timestamp: new Date().toISOString(),
+        data: data
+      }));
+      
+      // Behoud alleen de laatste 5 backups (verwijder oudere)
+      const backupKeys = Object.keys(localStorage).filter(key => key.startsWith('bamalite-backup-'));
+      if (backupKeys.length > 5) {
+        backupKeys.sort().slice(0, backupKeys.length - 5).forEach(key => {
+          localStorage.removeItem(key);
+        });
+      }
+    } catch (error) {
+      console.error('Error creating local backup:', error);
+    }
+  }
 }
 
 // Importeer data uit JSON bestand
