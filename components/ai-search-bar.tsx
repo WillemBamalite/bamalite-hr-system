@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Search, Sparkles, User, Ship, FileText, Calendar } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,23 @@ export function AISearchBar() {
   const [query, setQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<any>(null)
+
+  // Haal localStorage data op
+  const [localStorageCrew, setLocalStorageCrew] = useState<any>({})
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+        setLocalStorageCrew(storedCrew)
+      } catch (e) {
+        console.error('Error parsing localStorage:', e)
+      }
+    }
+  }, [])
+
+  // Combineer alle databases
+  const allCrewData = { ...crewDatabase, ...localStorageCrew }
 
   const handleSearch = async () => {
     if (!query.trim()) return
@@ -38,7 +55,7 @@ export function AISearchBar() {
     }
 
     // Zoek in bemanning
-    Object.values(crewDatabase).forEach((crew: any) => {
+    Object.values(allCrewData).forEach((crew: any) => {
       const fullName = `${crew.firstName} ${crew.lastName}`.toLowerCase()
       if (
         fullName.includes(searchQuery) ||
@@ -51,7 +68,7 @@ export function AISearchBar() {
     })
 
     // Zoek in schepen
-    Object.values(shipDatabase).forEach((ship: any) => {
+    Object.values(shipDatabase as any).forEach((ship: any) => {
       if (
         ship.name.toLowerCase().includes(searchQuery) ||
         ship.location.toLowerCase().includes(searchQuery) ||
@@ -64,14 +81,14 @@ export function AISearchBar() {
     // Zoek in documenten
     Object.values(documentDatabase).forEach((doc: any) => {
       if (doc.name.toLowerCase().includes(searchQuery) || doc.type.toLowerCase().includes(searchQuery)) {
-        const crew = crewDatabase[doc.crewMemberId]
+        const crew = (allCrewData as any)[doc.crewMemberId]
         results.documents.push({ ...doc, crewMember: crew })
       }
     })
 
     // Zoek in ziekmeldingen
     Object.values(sickLeaveDatabase).forEach((sick: any) => {
-      const crew = crewDatabase[sick.crewMemberId]
+      const crew = (allCrewData as any)[sick.crewMemberId]
       if (crew) {
         const fullName = `${crew.firstName} ${crew.lastName}`.toLowerCase()
         if (

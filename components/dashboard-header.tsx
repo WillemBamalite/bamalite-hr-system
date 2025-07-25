@@ -15,7 +15,7 @@ import Link from "next/link"
 
 export function DashboardHeader() {
   return (
-    <header className="border-b bg-white shadow-sm">
+    <header className="border-b bg-white shadow-sm no-print">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           {/* Logo en bedrijfsnaam */}

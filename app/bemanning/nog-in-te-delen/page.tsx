@@ -1,11 +1,15 @@
 "use client";
-import { crewDatabase, shipDatabase } from "@/data/crew-database";
+import { shipDatabase } from "@/data/crew-database";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useCrewData } from "@/hooks/use-crew-data";
 
 export default function NogInTeDelenPage() {
+  // Gebruik de hook voor gecombineerde crew data
+  const allCrewData = useCrewData()
+  
   // Filter bemanningsleden zonder schip
-  const crew = Object.values(crewDatabase).filter((c: any) => c.shipId === "nog-in-te-delen" && c.status !== "uit-dienst");
+  const crew = Object.values(allCrewData).filter((c: any) => c.shipId === "nog-in-te-delen" && c.status !== "uit-dienst");
 
   return (
     <div className="container mx-auto px-4 py-8">

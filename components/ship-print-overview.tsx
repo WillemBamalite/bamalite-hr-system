@@ -1,32 +1,19 @@
 "use client"
 
-import { crewDatabase, shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import { isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import { format } from "date-fns"
-import { nl } from "date-fns/locale"
+import { nl } from "date-fns/locale/nl"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Printer, Users, CheckCircle, Clock, UserX } from "lucide-react"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 export function ShipPrintOverview() {
-  // State voor localStorage data
-  const [localStorageCrew, setLocalStorageCrew] = useState<any>({})
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        setLocalStorageCrew(storedCrew)
-      } catch (e) {
-        console.error('Error parsing localStorage:', e)
-      }
-    }
-  }, [])
-
-  // Combineer alle databases
-  const allCrewData = { ...crewDatabase, ...localStorageCrew }
+  // Gebruik de hook voor gecombineerde crew data
+  const allCrewData = useCrewData()
 
   // Firma mapping
   const companyMapping = {
@@ -121,6 +108,14 @@ export function ShipPrintOverview() {
   }
 
   const getHomeDate = (crew: any) => {
+    // Voor thuis bemanning: gebruik onBoardSince als basis voor wanneer ze naar huis zijn gegaan
+    if (crew.status === "thuis" && crew.onBoardSince) {
+      const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
+      const homeSince = new Date(crew.onBoardSince)
+      homeSince.setDate(homeSince.getDate() + regimeWeeks * 7)
+      return format(homeSince, "dd-MM-yyyy", { locale: nl })
+    }
+    
     if (crew.thuisSinds) {
       return format(new Date(crew.thuisSinds), "dd-MM-yyyy", { locale: nl })
     }
@@ -147,9 +142,24 @@ export function ShipPrintOverview() {
   }
 
   const getSickLeaveInfo = (crewId: string) => {
-    const sickLeave = Object.values(sickLeaveDatabase).find((sick: any) => 
+    // Check localStorage first
+    let localStorageSickLeave = {}
+    if (typeof window !== 'undefined') {
+      try {
+        const storedSickLeave = JSON.parse(localStorage.getItem('sickLeaveDatabase') || '{}')
+        localStorageSickLeave = storedSickLeave
+      } catch (e) {
+        console.error('Error parsing localStorage sickLeave:', e)
+      }
+    }
+    
+    // Combine databases
+    const allSickLeaveData = { ...sickLeaveDatabase, ...localStorageSickLeave }
+    
+    const sickLeave = Object.values(allSickLeaveData).find((sick: any) => 
       sick.crewMemberId === crewId && (sick.status === "actief" || sick.status === "wacht-op-briefje")
     )
+    
     return sickLeave || null
   }
 
@@ -184,10 +194,21 @@ export function ShipPrintOverview() {
               background: white;
             }
             .no-print { display: none !important; }
-            .page-break { page-break-before: always; }
+            .page-break { 
+              page-break-before: always; 
+              margin-top: 1.5cm !important;
+            }
             
             .print-header {
-              margin-bottom: 1px !important;
+              margin-bottom: 6px !important;
+              margin-top: 0 !important;
+              padding-top: 0 !important;
+              display: block !important;
+            }
+            
+            .print-container {
+              margin-top: 0 !important;
+              padding-top: 0 !important;
             }
             
             .company-header {
@@ -253,19 +274,25 @@ export function ShipPrintOverview() {
             .mb-8 { margin-bottom: 0.5px !important; }
             .mb-4 { margin-bottom: 0.3px !important; }
             .mt-8 { margin-top: 0.3px !important; }
+            .mt-12 { margin-top: 1.5cm !important; }
             .mt-4 { margin-top: 0.3px !important; }
             .mt-2 { margin-top: 0.3px !important; }
             .mt-1 { margin-top: 0.3px !important; }
+            .mt-0\\.5 { margin-top: 0.15px !important; }
+            .mb-0\\.25 { margin-bottom: 0.1px !important; }
+            .mt-0\\.5 { margin-top: 0.15px !important; }
             .p-3 { padding: 0.3px !important; }
             .p-4 { padding: 0.3px !important; }
             .p-2 { padding: 0.3px !important; }
             .p-1 { padding: 0.3px !important; }
             .p-0\\.5 { padding: 0.4px !important; }
+            .p-0\\.25 { padding: 0.2px !important; }
             .space-x-3 > * + * { margin-left: 0.5px !important; }
             .space-x-2 > * + * { margin-left: 1px !important; }
             .space-x-1 > * + * { margin-left: 0.5px !important; }
             .ml-5 { margin-left: 2.5px !important; }
             .ml-8 { margin-left: 4px !important; }
+            .ml-4 { margin-left: 2px !important; }
             
             .text-lg { font-size: 15px !important; }
             .text-base { font-size: 13px !important; }
@@ -282,6 +309,8 @@ export function ShipPrintOverview() {
             .h-4 { height: 2px !important; }
             .w-3 { width: 1px !important; height: 1px !important; }
             .h-3 { height: 1px !important; }
+            .w-1\\.5 { width: 1px !important; height: 1px !important; }
+            .h-1\\.5 { height: 1px !important; }
             
             .rounded-lg { border-radius: 1px !important; }
             .rounded { border-radius: 0.5px !important; }
@@ -293,6 +322,7 @@ export function ShipPrintOverview() {
             .gap-4 { gap: 0.5px !important; }
             .gap-1 { gap: 0.3px !important; }
             .gap-0\\.5 { gap: 0.2px !important; }
+            .gap-0\\.25 { gap: 0.1px !important; }
             
             .min-w-0 { min-width: 0 !important; }
             .flex-1 { flex: 1 !important; }
@@ -362,21 +392,15 @@ export function ShipPrintOverview() {
         `
       }} />
 
-      {/* Header */}
-      <div className="text-center mb-8 no-print">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Bemanningslijst</h1>
-        <p className="text-sm text-gray-500 mt-2">Geprint op {format(new Date(), "dd-MM-yyyy HH:mm", { locale: nl })}</p>
-      </div>
-
-      {/* Print Header */}
-      <div className="print-header hidden print:block text-center mb-2">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Bemanningslijst</h1>
-        <p className="text-sm text-gray-500">Geprint op {format(new Date(), "dd-MM-yyyy HH:mm", { locale: nl })}</p>
+      {/* Print Header - Direct boven de eerste firma */}
+      <div className="print-header text-center mb-4">
+        <h1 className="text-sm font-bold text-gray-900 mb-1">Bemanningslijst</h1>
+        <p className="text-xs text-gray-500">Printdatum: {format(new Date(), "dd-MM-yyyy HH:mm", { locale: nl })}</p>
       </div>
 
       {/* Schepen per firma */}
       {Object.entries(groupedShips).map(([company, companyShips]: [string, any], companyIndex) => (
-        <div key={company} className={companyIndex > 0 ? "page-break" : ""}>
+        <div key={company} className={companyIndex > 0 ? "page-break mt-12" : ""}>
           {/* Firma Header */}
           <div className="company-header bg-gradient-to-r from-gray-800 to-gray-900 text-white p-1 rounded mb-1">
             <h2 className="text-sm font-bold text-center">{company}</h2>
@@ -388,9 +412,9 @@ export function ShipPrintOverview() {
               crew.shipId === ship.id && crew.id !== "ziek"
             )
             
-            const aanBoordCrew = shipCrew.filter((crew: any) => crew.status === "aan-boord")
-            const thuisCrew = shipCrew.filter((crew: any) => crew.status === "thuis")
-            const nogInTeDelenCrew = shipCrew.filter((crew: any) => crew.status === "nog-in-te-delen")
+            const aanBoordCrew = shipCrew.filter((crew: any) => crew.status === "aan-boord" && !getSickLeaveInfo(crew.id))
+            const thuisCrew = shipCrew.filter((crew: any) => crew.status === "thuis" && !getSickLeaveInfo(crew.id))
+            const nogInTeDelenCrew = shipCrew.filter((crew: any) => crew.status === "nog-in-te-delen" && !getSickLeaveInfo(crew.id))
 
             return (
               <Card key={ship.id} className={`ship-card ${shipIndex > 0 ? 'mt-0.25' : ''}`}>
@@ -423,9 +447,9 @@ export function ShipPrintOverview() {
                                   </div>
                                   <div className="text-xs text-gray-600">{crew.position} • {crew.regime}</div>
                                   <div className="text-xs text-gray-600">{getOnBoardDate(crew)} → {getRotationDate(crew)}</div>
-                                  {crew.qualifications && crew.qualifications.length > 0 && (
+                                  {crew.diplomas && crew.diplomas.length > 0 && (
                                     <div className="text-xs text-gray-500">
-                                      <span className="font-medium">D:</span> {crew.qualifications.join(', ')}
+                                      <span className="font-medium">D:</span> {crew.diplomas.join(', ')}
                                     </div>
                                   )}
                                   {crew.notes && (
@@ -462,9 +486,9 @@ export function ShipPrintOverview() {
                                   </div>
                                   <div className="text-xs text-gray-600">{crew.position} • {crew.regime}</div>
                                   <div className="text-xs text-gray-600">{getHomeDate(crew)} → {getRotationDate(crew)}</div>
-                                  {crew.qualifications && crew.qualifications.length > 0 && (
+                                  {crew.diplomas && crew.diplomas.length > 0 && (
                                     <div className="text-xs text-gray-500">
-                                      <span className="font-medium">D:</span> {crew.qualifications.join(', ')}
+                                      <span className="font-medium">D:</span> {crew.diplomas.join(', ')}
                                     </div>
                                   )}
                                   {crew.notes && (
@@ -472,6 +496,7 @@ export function ShipPrintOverview() {
                                         {getNotes(crew)}
                                     </div>
                                   )}
+
                                 </div>
                               </div>
                             ))}
@@ -481,6 +506,56 @@ export function ShipPrintOverview() {
                     </div>
 
                   </div>
+
+                  {/* Ziekte informatie voor dit schip - Compact onder bemanningsleden */}
+                  {(() => {
+                    const shipSickCrew = shipCrew.filter((crew: any) => {
+                      const sickInfo = getSickLeaveInfo(crew.id)
+                      return sickInfo !== null
+                    })
+                    
+                    if (shipSickCrew.length > 0) {
+                      return (
+                        <div className="mt-0.5">
+                          <div className="flex items-center space-x-1 mb-0.25">
+                            <UserX className="w-1.5 h-1.5 text-red-600" />
+                            <h4 className="font-medium text-gray-900 text-xs">Ziek ({shipSickCrew.length})</h4>
+                          </div>
+                          <div className="grid grid-cols-2 gap-0.25">
+                            {shipSickCrew.map((crew: any) => {
+                              const sickInfo = getSickLeaveInfo(crew.id)
+                              if (!sickInfo) return null
+                              
+                              return (
+                                <div 
+                                  key={crew.id} 
+                                  className="p-0.25 ziek-bg rounded border border-red-600"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="font-medium text-xs text-gray-900">
+                                      <span className="text-red-700">{crew.firstName} {crew.lastName}</span>
+                                      <span className="text-xs ml-4">{getNationalityFlag(crew.nationality)}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-600">{crew.position}</div>
+                                    <div className="text-xs text-red-600">
+                                      <span className="font-medium">Ziek:</span> {(sickInfo as any)?.notes || "Onbekend"}
+                                    </div>
+                                    <div className="text-xs text-red-600">
+                                      <span className="font-medium">Briefje tot:</span> {(sickInfo as any)?.certificateValidUntil ? format(new Date((sickInfo as any).certificateValidUntil), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
+                                    </div>
+                                    <div className="text-xs text-red-600">
+                                      <span className="font-medium">Betaald door:</span> {(sickInfo as any)?.paidBy || "Onbekend"} • {(sickInfo as any)?.salaryPercentage || 0}%
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
 
                   {/* Nog in te delen bemanning */}
                   {nogInTeDelenCrew.length > 0 && (
@@ -504,9 +579,9 @@ export function ShipPrintOverview() {
                                 <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200">
                                   Nog in te delen
                                 </Badge>
-                              {crew.qualifications && crew.qualifications.length > 0 && (
+                              {crew.diplomas && crew.diplomas.length > 0 && (
                                 <div className="text-xs text-gray-500">
-                                  <span className="font-medium">D:</span> {crew.qualifications.join(', ')}
+                                  <span className="font-medium">D:</span> {crew.diplomas.join(', ')}
                                 </div>
                               )}
                               {crew.notes && (
@@ -514,6 +589,7 @@ export function ShipPrintOverview() {
                                     {getNotes(crew)}
                                 </div>
                               )}
+
                             </div>
                           </div>
                         ))}
@@ -521,54 +597,7 @@ export function ShipPrintOverview() {
                     </div>
                   )}
 
-                  {/* Ziekte informatie voor dit schip */}
-                  {(() => {
-                    const shipSickCrew = shipCrew.filter((crew: any) => {
-                      const sickInfo = getSickLeaveInfo(crew.id)
-                      return sickInfo !== null
-                    })
-                    
-                    if (shipSickCrew.length > 0) {
-                      return (
-                        <div className="mt-1">
-                          <div className="flex items-center space-x-1 mb-0.5">
-                            <UserX className="w-2 h-2 text-red-600" />
-                            <h4 className="font-medium text-gray-900 text-xs">Ziek ({shipSickCrew.length})</h4>
-                          </div>
-                          <div className="space-y-0.5">
-                            {shipSickCrew.map((crew: any) => {
-                              const sickInfo = getSickLeaveInfo(crew.id)
-                              if (!sickInfo) return null
-                              
-                              return (
-                                <div 
-                                  key={crew.id} 
-                                  className="flex items-center space-x-1 p-0.5 ziek-bg rounded border border-red-600"
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-xs text-gray-900">
-                                      <span className="text-red-700">{crew.firstName} {crew.lastName}</span>
-                                      <span className="text-xs ml-8">{getNationalityFlag(crew.nationality)}</span>
-                                    </div>
-                                    <div className="text-xs text-gray-600">{crew.position} • {crew.regime}</div>
-                                    <div className="text-xs text-red-600">
-                                      Ziek vanaf: {(sickInfo as any)?.startDate ? format(new Date((sickInfo as any).startDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"} • 
-                                      Duur: {(sickInfo as any)?.duration || 0} dagen • 
-                                      Briefje tot: {(sickInfo as any)?.endDate ? format(new Date((sickInfo as any).endDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
-                                    </div>
-                                    <div className="text-xs text-red-600">
-                                      Klacht: {(sickInfo as any)?.description || "Onbekend"} • {(sickInfo as any)?.percentagePaid || 0}% betaald • Door: {(sickInfo as any)?.doctor || "Onbekend"}
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    }
-                    return null
-                  })()}
+
 
                 </CardContent>
               </Card>
@@ -577,63 +606,122 @@ export function ShipPrintOverview() {
         </div>
       ))}
 
-      {/* Ziekte Sectie */}
+      {/* Overzicht Sectie - Alle extra informatie op één blad */}
       <div className="page-break">
-        {/* Ziekte Header */}
-        <div className="sick-header bg-gradient-to-r from-red-600 to-red-700 text-white p-2 rounded mb-2">
-          <h2 className="text-sm font-bold text-center">🏥 ZIEKTE OVERZICHT</h2>
+        {/* Nog in te delen bemanning */}
+        {(() => {
+          const allNogInTeDelenCrew = Object.values(allCrewData).filter((crew: any) => 
+            crew.shipId === "nog-in-te-delen" && crew.status !== "uit-dienst"
+          )
+          
+          if (allNogInTeDelenCrew.length > 0) {
+            return (
+              <div className="mb-4">
+                <div className="sick-header bg-gradient-to-r from-yellow-600 to-yellow-700 text-white p-2 rounded mb-2">
+                  <h2 className="text-sm font-bold text-center">👥 NOG IN TE DELEN BEMANNING</h2>
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {allNogInTeDelenCrew.map((crew: any) => (
+                    <div 
+                      key={crew.id} 
+                      className="border border-yellow-200 rounded p-1 bg-yellow-50"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="font-medium text-xs text-yellow-700">{crew.firstName} {crew.lastName}</h4>
+                        <span className="text-xs">{getNationalityFlag(crew.nationality)}</span>
+                      </div>
+                      <div className="text-xs text-yellow-600">
+                        <div>{crew.position} • {crew.regime}</div>
+                        {crew.diplomas && crew.diplomas.length > 0 && (
+                          <div><span className="font-medium">D:</span> {crew.diplomas.join(', ')}</div>
+                        )}
+                        {crew.phone && (
+                          <div>📞 {crew.phone}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          }
+          return null
+        })()}
+
+        {/* Ziekte Sectie */}
+        <div className="mb-4">
+          <div className="sick-header bg-gradient-to-r from-red-600 to-red-700 text-white p-2 rounded mb-2">
+            <h2 className="text-sm font-bold text-center">🏥 ZIEKTE OVERZICHT</h2>
         </div>
 
         {/* Actieve ziekmeldingen */}
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold mb-2">Actieve ziekmeldingen</h3>
-          <div className="space-y-1">
-            {Object.values(sickLeaveDatabase)
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold mb-2">Actieve ziekmeldingen</h3>
+            <div className="space-y-1">
+              {(() => {
+                // Get localStorage sick leave data
+                let localStorageSickLeave = {}
+                if (typeof window !== 'undefined') {
+                  try {
+                    const storedSickLeave = JSON.parse(localStorage.getItem('sickLeaveDatabase') || '{}')
+                    localStorageSickLeave = storedSickLeave
+                  } catch (e) {
+                    console.error('Error parsing localStorage sickLeave:', e)
+                  }
+                }
+                
+                // Combine databases
+                const allSickLeaveData = { ...sickLeaveDatabase, ...localStorageSickLeave }
+                
+                return Object.values(allSickLeaveData)
               .filter((sick: any) => sick.status === "actief" || sick.status === "wacht-op-briefje")
               .map((sick: any) => {
-                const crewMember = allCrewData[sick.crewMemberId]
+                  const crewMember = (allCrewData as any)[sick.crewMemberId]
                 if (!crewMember) return null
 
                 return (
-                  <div key={sick.id} className="border border-red-200 rounded p-1 bg-red-50">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-medium text-xs text-red-700">{crewMember.firstName} {crewMember.lastName}</h4>
-                      <Badge variant={sick.status === "actief" ? "destructive" : "secondary"} className="text-xs">
+                    <div key={sick.id} className="border border-red-200 rounded p-1 bg-red-50">
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="font-medium text-xs text-red-700">{crewMember.firstName} {crewMember.lastName}</h4>
+                        <Badge variant={sick.status === "actief" ? "destructive" : "secondary"} className="text-xs">
                         {sick.status === "actief" ? "Actief" : "Wacht op briefje"}
                       </Badge>
+                      </div>
+                      <div className="text-xs text-red-600">
+                        <div><span className="font-medium">Ziek vanaf:</span> {sick.startDate ? format(new Date(sick.startDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}</div>
+                        <div><span className="font-medium">Ziek:</span> {sick.notes || "Onbekend"}</div>
+                        <div><span className="font-medium">Briefje tot:</span> {sick.certificateValidUntil ? format(new Date(sick.certificateValidUntil), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}</div>
+                        <div><span className="font-medium">Betaald door:</span> {sick.paidBy || "Onbekend"} • {sick.salaryPercentage || 0}%</div>
+                      </div>
                     </div>
-                    <div className="text-xs text-red-600">
-                      <div>Ziek vanaf: {sick.startDate ? format(new Date(sick.startDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"} • Duur: {sick.duration} dagen • Briefje tot: {sick.endDate ? format(new Date(sick.endDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}</div>
-                      <div>Klacht: {sick.description} • {sick.percentagePaid}% betaald • Door: {sick.doctor}</div>
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })
+              })()}
           </div>
         </div>
 
         {/* Openstaande terug staan dagen */}
         <div>
-          <h3 className="text-sm font-semibold mb-2">Openstaande terug staan dagen</h3>
-          <div className="space-y-1">
+            <h3 className="text-sm font-semibold mb-2">Openstaande terug staan dagen</h3>
+            <div className="space-y-1">
             {Object.values(sickLeaveHistoryDatabase)
               .filter((history: any) => history.type === "terug-staan" && !history.completed)
               .map((history: any) => {
-                const crewMember = allCrewData[history.crewMemberId]
+                  const crewMember = (allCrewData as any)[history.crewMemberId]
                 if (!crewMember) return null
 
                 return (
-                  <div key={history.id} className="border border-gray-200 rounded p-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-medium text-xs">{crewMember.firstName} {crewMember.lastName}</h4>
-                      <Badge variant="outline" className="text-xs">Terug staan</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div>
-                        <span className="font-medium">Van:</span> {history.startDate ? format(new Date(history.startDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
+                    <div key={history.id} className="border border-gray-200 rounded p-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="font-medium text-xs">{crewMember.firstName} {crewMember.lastName}</h4>
+                        <Badge variant="outline" className="text-xs">Terug staan</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 text-xs">
+                        <div>
+                          <span className="font-medium">Van:</span> {history.startDate ? format(new Date(history.startDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
                       </div>
                       <div>
-                        <span className="font-medium">Tot:</span> {history.endDate ? format(new Date(history.endDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
+                          <span className="font-medium">Tot:</span> {history.endDate ? format(new Date(history.endDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
                       </div>
                       <div className="col-span-2">
                         <span className="font-medium">Notitie:</span> {history.note}
@@ -642,6 +730,7 @@ export function ShipPrintOverview() {
                   </div>
                 )
               })}
+            </div>
           </div>
         </div>
       </div>

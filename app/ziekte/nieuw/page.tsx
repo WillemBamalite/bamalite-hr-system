@@ -78,6 +78,13 @@ export default function NieuwZiektePage() {
     // Voeg toe aan database
     ;(sickLeaveDatabase as any)[newSickLeave.id] = newSickLeave
 
+    // Sla op in localStorage
+    if (typeof window !== 'undefined') {
+      const existingSickLeave = JSON.parse(localStorage.getItem('sickLeaveDatabase') || '{}')
+      existingSickLeave[newSickLeave.id] = newSickLeave
+      localStorage.setItem('sickLeaveDatabase', JSON.stringify(existingSickLeave))
+    }
+
     // Update crew member status
     const crewMember = (crewDatabase as any)[formData.crewMemberId]
     if (crewMember) {

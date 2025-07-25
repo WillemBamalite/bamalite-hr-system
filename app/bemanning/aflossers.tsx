@@ -1,9 +1,10 @@
 import { useState } from "react"
-import { crewDatabase, shipDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 const ships = [
   "MTS Bellona",
@@ -37,8 +38,11 @@ const initialAflossers = [
 ]
 
 export default function AflossersOverzicht() {
+  // Gebruik de hook voor gecombineerde crew data
+  const allCrewData = useCrewData()
+  
   // Filter aflossers: bijvoorbeeld op functie "Aflosser" of een tag, hier als voorbeeld op positie "Kapitein" met regime 1/1, 2/2, 3/3
-  const aflossers = Object.values(crewDatabase).filter(
+  const aflossers = Object.values(allCrewData).filter(
     (crew: any) => crew.position?.toLowerCase().includes("aflos") || crew.position?.toLowerCase().includes("relief") || crew.position?.toLowerCase().includes("kapitein")
   )
 

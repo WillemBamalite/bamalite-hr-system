@@ -5,13 +5,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, Users, CheckCircle, Clock, UserX } from "lucide-react"
-import { crewDatabase, shipDatabase } from "@/data/crew-database"
+import { shipDatabase } from "@/data/crew-database"
 import { isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { calculateRegimeStatus } from "@/utils/regime-calculator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { useCrewData } from "@/hooks/use-crew-data"
 
 export function ShipOverview() {
   const [quickNoteDialog, setQuickNoteDialog] = useState<{
@@ -36,12 +37,15 @@ export function ShipOverview() {
     noteContent: ""
   });
 
+  // Gebruik de hook voor gecombineerde crew data
+  const allCrewData = useCrewData()
+
   // Alle 15 operationele schepen met volledige bemanning details
   const ships = Object.values(shipDatabase)
     .filter((ship) => ship.status === "Operationeel")
     .map((ship) => {
       // Haal alle bemanning op voor dit schip (inclusief aflossers en zieke mensen)
-      const allShipCrew = Object.values(crewDatabase).filter((crew: any) => 
+      const allShipCrew = Object.values(allCrewData).filter((crew: any) => 
         crew.shipId === ship.id
       )
 
@@ -122,7 +126,7 @@ export function ShipOverview() {
 
   function handleSaveQuickNote() {
     if (quickNote.trim() && quickNoteDialog.crewId) {
-      const crewMember = (crewDatabase as any)[quickNoteDialog.crewId];
+      const crewMember = (allCrewData as any)[quickNoteDialog.crewId];
       if (crewMember) {
         const newNote = {
           id: `note-${Date.now()}`,
@@ -153,7 +157,7 @@ export function ShipOverview() {
   }
 
   function handleConfirmDeleteNote() {
-    const crewMember = (crewDatabase as any)[deleteNoteDialog.crewId];
+    const crewMember = (allCrewData as any)[deleteNoteDialog.crewId];
     if (crewMember && Array.isArray(crewMember.notes)) {
       // Verwijder de notitie uit de array
       crewMember.notes = crewMember.notes.filter((note: any) => note.id !== deleteNoteDialog.noteId);
@@ -227,20 +231,28 @@ export function ShipOverview() {
                         ) : (
                           <div className="text-xs text-gray-600">Vaarregime: {crew.regime}</div>
                         )}
-                        {crew.status === "aan-boord" && crew.onBoardSince && !crew.position?.toLowerCase().includes("aflos") && (
+                        {crew.status === "aan-boord" && !crew.position?.toLowerCase().includes("aflos") && (
                           (() => {
-                            const calc = calculateRegimeStatus(crew.regime, crew.onBoardSince, crew.status)
-                            return (
-                              <div className="text-xs text-gray-500">
-                                <span className="mr-2">Aan boord sinds: {new Date(crew.onBoardSince).toLocaleDateString("nl-NL")}</span>
-                                <span>Naar huis op: {calc.offBoardDate ? new Date(calc.offBoardDate).toLocaleDateString("nl-NL") : "-"}</span>
-                              </div>
-                            )
+                            if (crew.onBoardSince) {
+                              const calc = calculateRegimeStatus(crew.regime, crew.onBoardSince, crew.status)
+                              return (
+                                <div className="text-xs text-gray-500">
+                                  <span className="mr-2">Aan boord sinds: {new Date(crew.onBoardSince).toLocaleDateString("nl-NL")}</span>
+                                  <span>Naar huis op: {calc.offBoardDate ? new Date(calc.offBoardDate).toLocaleDateString("nl-NL") : "-"}</span>
+                                </div>
+                              )
+                            } else {
+                              return (
+                                <div className="text-xs text-gray-400 italic">
+                                  <span>Geen aan boord datum</span>
+                                </div>
+                              )
+                            }
                           })()
                         )}
                         <div className="flex flex-wrap gap-2 mt-1">
-                          {crew.qualifications && crew.qualifications.length > 0 ? (
-                            crew.qualifications.map((diploma: string, idx: number) => (
+                          {crew.diplomas && crew.diplomas.length > 0 ? (
+                            crew.diplomas.map((diploma: string, idx: number) => (
                               <span key={idx} className="flex items-center bg-green-50 border border-green-200 rounded px-2 py-0.5 text-xs text-green-800">
                                 {diploma}
                               </span>
@@ -315,23 +327,31 @@ export function ShipOverview() {
                         </div>
                         <div className="text-xs text-gray-600">Functie: {crew.position}</div>
                         <div className="text-xs text-gray-600">Vaarregime: {crew.regime}</div>
-                        {crew.status === "thuis" && crew.onBoardSince && (
+                        {crew.status === "thuis" && (
                           (() => {
-                            const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
-                            const homeSince = new Date(crew.onBoardSince)
-                            const nextOnBoard = new Date(homeSince)
-                            nextOnBoard.setDate(homeSince.getDate() + regimeWeeks * 7)
-                            return (
-                              <div className="text-xs text-gray-500">
-                                <span className="mr-2">Naar huis sinds: {homeSince.toLocaleDateString("nl-NL")}</span>
-                                <span>Aan boord op: {nextOnBoard.toLocaleDateString("nl-NL")}</span>
-                              </div>
-                            )
+                            if (crew.thuisSinds) {
+                              const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
+                              const homeSince = new Date(crew.thuisSinds)
+                              const nextOnBoard = new Date(homeSince)
+                              nextOnBoard.setDate(homeSince.getDate() + regimeWeeks * 7)
+                              return (
+                                <div className="text-xs text-gray-500">
+                                  <span className="mr-2">Naar huis sinds: {homeSince.toLocaleDateString("nl-NL")}</span>
+                                  <span>Aan boord op: {nextOnBoard.toLocaleDateString("nl-NL")}</span>
+                                </div>
+                              )
+                            } else {
+                              return (
+                                <div className="text-xs text-gray-400 italic">
+                                  <span>Geen thuis datum</span>
+                                </div>
+                              )
+                            }
                           })()
                         )}
                         <div className="flex flex-wrap gap-2 mt-1">
-                          {crew.qualifications && crew.qualifications.length > 0 ? (
-                            crew.qualifications.map((diploma: string, idx: number) => (
+                          {crew.diplomas && crew.diplomas.length > 0 ? (
+                            crew.diplomas.map((diploma: string, idx: number) => (
                               <span key={idx} className="flex items-center bg-blue-50 border border-blue-200 rounded px-2 py-0.5 text-xs text-blue-800">
                                 {diploma}
                               </span>
@@ -409,6 +429,11 @@ export function ShipOverview() {
                         </div>
                         <div className="text-xs text-gray-600">Functie: {crew.position}</div>
                         <div className="text-xs text-gray-600">Vaarregime: {crew.regime}</div>
+                        {crew.onBoardSince && (
+                          <div className="text-xs text-gray-500">
+                            <span>Laatste aan boord: {new Date(crew.onBoardSince).toLocaleDateString("nl-NL")}</span>
+                          </div>
+                        )}
                         <div className="flex flex-wrap gap-2 mt-1">
                           {crew.qualifications && crew.qualifications.length > 0 ? (
                             crew.qualifications.map((diploma: string, idx: number) => (
