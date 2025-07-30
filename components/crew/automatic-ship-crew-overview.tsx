@@ -37,25 +37,7 @@ export function AutomaticShipCrewOverview() {
     })
 
   function getShipLocation(shipId: string): string {
-    const locations: { [key: string]: string } = {
-      "ms-bellona": "Nederlandse wateren",
-      "ms-bacchus": "Duitse route",
-      "ms-pluto": "Tsjechische route",
-      "ms-apollo": "Poolse route",
-      "ms-jupiter": "Duitse wateren",
-      "ms-neptunus": "Slowaakse route",
-      "ms-libertas": "Belgische route",
-      "ms-realite": "Franse route",
-      "ms-harmonie": "Tsjechische wateren",
-      "ms-linde": "Duitse route",
-      "ms-primera": "Slowaakse route",
-      "ms-caritas": "Nederlandse route",
-      "ms-maike": "Belgische wateren",
-      "ms-egalite": "Franse wateren",
-      "ms-fidelitas": "Duitse route",
-      "ms-serenitas": "Tsjechische route",
-    }
-    return locations[shipId] || "Onbekende locatie"
+    return "Operationeel"
   }
 
   const getStatusColor = (status: string) => {

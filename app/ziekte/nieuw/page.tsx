@@ -1,6 +1,6 @@
 "use client"
 
-import { crewDatabase, shipDatabase } from "@/data/crew-database"
+import { crewDatabase, shipDatabase, sickLeaveDatabase } from "@/data/crew-database"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -61,6 +61,20 @@ export default function NieuwZiektePage() {
       return
     }
 
+    // PREVENTIEVE FIX: Controleer of er al een actieve ziekmelding is voor deze crew member
+    const existingSickLeaves = Object.values(sickLeaveDatabase as Record<string, any>).filter((sick: any) => 
+      sick.crewMemberId === formData.crewMemberId && 
+      (sick.status === "actief" || sick.status === "wacht-op-briefje")
+    );
+
+    if (existingSickLeaves.length > 0) {
+      const crewMember = (crewDatabase as any)[formData.crewMemberId];
+      const crewName = crewMember ? `${crewMember.firstName} ${crewMember.lastName}` : formData.crewMemberId;
+      
+      alert(`⚠️ ${crewName} heeft al een actieve ziekmelding!\n\nStartdatum: ${existingSickLeaves[0].startDate}\nStatus: ${existingSickLeaves[0].status}\n\nGa eerst naar het ziekte overzicht om de bestaande ziekmelding te beheren.`);
+      return;
+    }
+
     // Maak nieuwe ziekmelding
     const newSickLeave = {
       id: `sick-${Date.now()}`,
@@ -78,16 +92,18 @@ export default function NieuwZiektePage() {
     // Voeg ziekmelding toe via de hook
     addItem('sickLeaveDatabase', newSickLeave.id, newSickLeave)
 
-    // Update crew member status naar ziek
+    // Update crew member status naar ziek (behoud shipId)
+    const currentCrewMember = (crewDatabase as any)[formData.crewMemberId]
     updateData('crewDatabase', {
       [formData.crewMemberId]: {
-        ...(crewDatabase as any)[formData.crewMemberId],
-        status: "ziek"
+        ...currentCrewMember,
+        status: "ziek",
+        shipId: currentCrewMember.shipId // Expliciet behouden
       }
     })
 
-    // Redirect naar ziekte overzicht
-    router.push("/ziekte")
+    // Redirect naar dashboard
+    router.push("/")
   }
 
   return (

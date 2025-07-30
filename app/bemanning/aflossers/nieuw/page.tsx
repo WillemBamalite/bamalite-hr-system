@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +16,7 @@ const diplomaOptions = [
   "Rijnpatent tot Wesel",
   "Rijnpatent tot Koblenz", 
   "Rijnpatent tot Iffezheim",
+  "Rijnpatent tot Mannheim",
   "Elbepatent",
   "Donaupatent",
   "ADN",
@@ -55,8 +57,11 @@ const nationalityOptions = [
   "FI"
 ]
 
+// Functie opties voor aflossers (verwijderd - aflossers zijn gewoon aflossers)
+
 export default function NieuwAflosser() {
-  const { addItem } = useCrewData();
+  const { addItem, forceRefresh } = useCrewData();
+  const router = useRouter();
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -117,14 +122,15 @@ export default function NieuwAflosser() {
     // Genereer unieke ID
     const id = `${form.firstName.toLowerCase()}-${form.lastName.toLowerCase()}`
     
-    // Nieuwe aflosser object
+    // Nieuwe aflosser object - exact dezelfde structuur als bestaande aflossers
     const newAflosser = {
       id: id,
       firstName: form.firstName,
       lastName: form.lastName,
       nationality: form.nationality || "NL",
-      position: "Aflosser",
-      shipId: "",
+      position: "Aflosser", // Altijd "Aflosser" voor nieuwe aflossers
+      function: "Aflosser", // Aflossers zijn gewoon aflossers
+      shipId: null, // null in plaats van ""
       regime: "2/2",
       phone: form.phone,
       email: form.email || "",
@@ -133,14 +139,26 @@ export default function NieuwAflosser() {
       birthDate: form.birthDate || "",
       address: form.address,
       assignmentHistory: [],
-      unavailablePeriods: [],
+      aflosserAssignments: [], // Toegevoegd: lege array voor aflosser toewijzingen
+      vasteDienst: false, // Toegevoegd: zoals bestaande aflossers
+      inDienstVanaf: null, // Toegevoegd: zoals bestaande aflossers
       smoking: form.smoking,
-      notes: form.notes
+      notes: form.notes,
+      isAflosser: true,
+      diplomas: form.selectedDiplomas // Toegevoegd: diploma's van het formulier
     }
 
-    // Voeg toe via de nieuwe hook
-    addItem('crewDatabase', id, newAflosser)
-    
+    // Direct localStorage updaten
+    if (typeof window !== 'undefined') {
+      const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+      currentData[id] = newAflosser
+      localStorage.setItem('crewDatabase', JSON.stringify(currentData))
+      
+      // Trigger events
+      window.dispatchEvent(new Event('localStorageUpdate'))
+      window.dispatchEvent(new Event('forceRefresh'))
+    }
+
     // Voeg ook diploma's toe aan document database
     form.selectedDiplomas.forEach((diploma, index) => {
       const docId = `${id}-${diploma.toLowerCase().replace(/\s+/g, '-')}`
@@ -154,29 +172,20 @@ export default function NieuwAflosser() {
         expiryDate: null, // Kan later worden ingevuld
         isValid: true,
       }
-      addItem('documentDatabase', docId, newDoc)
+      
+      // Direct document database updaten
+      if (typeof window !== 'undefined') {
+        const currentDocData = JSON.parse(localStorage.getItem('documentDatabase') || '{}')
+        currentDocData[docId] = newDoc
+        localStorage.setItem('documentDatabase', JSON.stringify(currentDocData))
+      }
     })
     
-    console.log("Nieuwe aflosser toegevoegd:", newAflosser)
+    // Toon success message
+    alert("✅ Aflosser succesvol toegevoegd!")
     
-    setSuccess(true)
-    setForm({
-      firstName: "",
-      lastName: "",
-      nationality: "",
-      smoking: "",
-      phone: "",
-      email: "",
-      birthDate: "",
-      address: {
-        street: "",
-        city: "",
-        postalCode: "",
-        country: ""
-      },
-      selectedDiplomas: [],
-      notes: ""
-    })
+    // Navigeer terug naar aflossers pagina
+    router.push("/bemanning/aflossers")
   }
 
   return (
@@ -271,6 +280,8 @@ export default function NieuwAflosser() {
                 onChange={handleChange} 
               />
             </div>
+            
+
           </CardContent>
         </Card>
 
@@ -388,9 +399,6 @@ export default function NieuwAflosser() {
           </Link>
           <Link href="/bemanning/overzicht" className="bg-blue-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-blue-700 shadow">
             👥 Bemanning
-          </Link>
-          <Link href="/schepen" className="bg-purple-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-purple-700 shadow">
-            🚢 Schepen
           </Link>
           <Link href="/documenten" className="bg-orange-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-orange-700 shadow">
             📄 Documenten

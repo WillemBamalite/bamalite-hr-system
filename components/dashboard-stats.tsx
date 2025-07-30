@@ -10,12 +10,41 @@ import Link from "next/link"
 
 export function DashboardStats() {
   // Gebruik de centrale statistieken uit de hook
-  const { stats } = useCrewData()
+  const { crewDatabase: allCrewData, stats: centralStats, forceRefresh } = useCrewData()
+  
+  // Bereken stats direct uit allCrewData
+  const crewMembers = Object.values(allCrewData)
+  const aflossers = crewMembers.filter((c: any) => 
+    !c.deleted && (
+      c.isAflosser === true || 
+      c.position === "Aflosser" ||
+      c.function === "Aflosser"
+    )
+  )
   
 
+  
+  const stats = {
+    totalCrew: crewMembers.filter((c: any) => !c.deleted).length,
+    aflossers: aflossers.length,
+    studenten: crewMembers.filter((c: any) => !c.deleted && c.isStudent).length,
+    aanBoord: crewMembers.filter((c: any) => !c.deleted && c.status === "aan-boord").length,
+    thuis: crewMembers.filter((c: any) => !c.deleted && c.status === "thuis").length,
+    actieveZiekmeldingen: centralStats.actieveZiekmeldingen,
+    ziekmeldingenMetBriefje: centralStats.ziekmeldingenMetBriefje,
+    nogInTeDelen: crewMembers.filter((c: any) => 
+      !c.deleted && c.status === "nog-in-te-delen" && 
+      c.status !== "uit-dienst" && 
+      c.status !== "ziek"
+    ).length
+  }
 
+
+  
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div className="space-y-4 mb-6">
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
       <Link href="/bemanning/overzicht" className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
         <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
         <div className="text-xs text-blue-700 mt-1">Totaal bemanningsleden</div>
@@ -36,6 +65,7 @@ export function DashboardStats() {
         <div className="text-2xl font-bold text-gray-800">{stats.nogInTeDelen}</div>
         <div className="text-xs text-gray-700 mt-1">Nog in te delen</div>
       </Link>
+      </div>
     </div>
   )
 }

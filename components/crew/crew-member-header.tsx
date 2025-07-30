@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowLeft, Edit, Ship, MoreHorizontal, UserX, RefreshCw } from "lucide-react"
+import { ArrowLeft, Edit, Ship, MoreHorizontal, UserX, RefreshCw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -14,6 +14,7 @@ import {
 import Link from "next/link"
 import { crewDatabase, shipDatabase } from "@/data/crew-database"
 import { useRouter } from "next/navigation"
+import { useState } from "react"
 
 interface Props {
   crewMemberId: string
@@ -21,8 +22,47 @@ interface Props {
 
 export function CrewMemberHeader({ crewMemberId }: Props) {
   const router = useRouter()
+  const [isDeleting, setIsDeleting] = useState(false)
   // Haal echte data uit database
   const crewMember = (crewDatabase as any)[crewMemberId]
+  
+  const handleDelete = async () => {
+    if (!confirm(`Weet je zeker dat je ${crewMember.firstName} ${crewMember.lastName} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
+      return
+    }
+    
+    setIsDeleting(true)
+    
+    try {
+      // Haal huidige localStorage data op
+      const crewData = localStorage.getItem('crewDatabase')
+      const storedData = crewData ? JSON.parse(crewData) : {}
+      
+      // Voeg een "deleted" flag toe aan de crew member in localStorage
+      // Dit zorgt ervoor dat de useCrewData hook deze member niet meer toont
+      storedData[crewMemberId] = {
+        ...storedData[crewMemberId],
+        deleted: true,
+        status: 'deleted'
+      }
+      
+      // Sla op in localStorage
+      localStorage.setItem('crewDatabase', JSON.stringify(storedData))
+      
+      // Dispatch events om app te updaten
+      window.dispatchEvent(new CustomEvent('localStorageUpdate'))
+      window.dispatchEvent(new CustomEvent('forceRefresh'))
+      
+      // Ga terug naar bemanningslijst
+      router.push('/bemanning')
+      
+    } catch (error) {
+      console.error('Error deleting crew member:', error)
+      alert('Er is een fout opgetreden bij het verwijderen van het bemanningslid.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
   
   if (!crewMember) {
     return (
@@ -121,7 +161,14 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                   Ziekmelding registreren
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-red-600">Bemanningslid deactiveren</DropdownMenuItem>
+                <DropdownMenuItem 
+                  className="text-red-600" 
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {isDeleting ? 'Verwijderen...' : 'Bemanningslid verwijderen'}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

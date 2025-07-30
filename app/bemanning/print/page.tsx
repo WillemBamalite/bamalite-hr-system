@@ -87,8 +87,8 @@ export default function CrewPrintPage() {
             <Printer className="w-4 h-4 mr-2" />
             Print Alles
           </Button>
-          <Link href="/bemanning" className="text-blue-600 hover:text-blue-800">
-            ← Terug naar bemanning
+                      <Link href="/" className="text-blue-600 hover:text-blue-800">
+            ← Terug naar Dashboard
           </Link>
         </div>
       </div>

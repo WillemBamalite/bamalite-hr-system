@@ -14,6 +14,7 @@ import { useCrewData, useCrewMember } from "@/hooks/use-crew-data"
 import { addOutOfServiceCrew, removeOutOfServiceCrew, isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
+import { calculateRegimeStatus, calculateCurrentStatus } from "@/utils/regime-calculator"
 
 const POSITION_OPTIONS = [
   "Schipper",
@@ -146,6 +147,116 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
   const prevProfileRef = useRef<typeof profile | null>(null)
   useEffect(() => { prevProfileRef.current = profile }, [edit])
 
+  // Update profile state wanneer crewData verandert
+  useEffect(() => {
+    if (crewData) {
+      // Auto-fix ontbrekende datums
+      let updatedCrewData = { ...crewData };
+      let needsUpdate = false;
+      
+      // Check of we al eerder deze crew member hebben gefixed
+      const hasBeenFixed = localStorage.getItem(`crew_${crewMemberId}_dates_fixed`);
+      if (hasBeenFixed) {
+        return;
+      }
+
+      // Fix entryDate (intrededatum)
+      if (!crewData.entryDate || crewData.entryDate === '') {
+        if (crewData.birthDate && crewData.birthDate !== '') {
+          // Gebruik geboortedatum + 18 jaar als intrededatum
+          const birthDate = new Date(crewData.birthDate);
+          const entryDate = new Date(birthDate.getFullYear() + 18, birthDate.getMonth(), birthDate.getDate());
+          updatedCrewData.entryDate = entryDate.toISOString().split('T')[0];
+        } else {
+          // Fallback: 5 jaar geleden
+          const fiveYearsAgo = new Date();
+          fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+          updatedCrewData.entryDate = fiveYearsAgo.toISOString().split('T')[0];
+        }
+        needsUpdate = true;
+      }
+
+      // Fix birthDate als deze ontbreekt
+      if (!crewData.birthDate || crewData.birthDate === '') {
+        // Fallback: 30 jaar geleden
+        const thirtyYearsAgo = new Date();
+        thirtyYearsAgo.setFullYear(thirtyYearsAgo.getFullYear() - 30);
+        updatedCrewData.birthDate = thirtyYearsAgo.toISOString().split('T')[0];
+        needsUpdate = true;
+      }
+
+      // Bereken automatisch de huidige status op basis van datums en regime
+      if (crewData.regime && (crewData.thuisSinds || crewData.onBoardSince)) {
+        const statusCalculation = calculateCurrentStatus(
+          crewData.regime,
+          crewData.thuisSinds,
+          crewData.onBoardSince
+        );
+        
+        // Update status en nextRotationDate
+        updatedCrewData.status = statusCalculation.currentStatus;
+        updatedCrewData.nextRotationDate = statusCalculation.nextRotationDate;
+        
+        // Update onBoardSince als ze aan boord zijn maar geen datum hebben
+        if (statusCalculation.isOnBoard && !crewData.onBoardSince) {
+          // Bereken wanneer ze aan boord zijn gekomen
+          if (crewData.thuisSinds) {
+            const thuisDate = new Date(crewData.thuisSinds);
+            const regimeWeeks = Number.parseInt(crewData.regime.split("/")[0]);
+            const regimeDays = regimeWeeks * 7;
+            const onBoardDate = new Date(thuisDate);
+            onBoardDate.setDate(onBoardDate.getDate() + regimeDays);
+            updatedCrewData.onBoardSince = onBoardDate.toISOString().split('T')[0];
+          }
+        }
+        
+        needsUpdate = true;
+      }
+
+      // Sla updates op als er wijzigingen zijn
+      if (needsUpdate) {
+        // Update localStorage
+        const crewData = localStorage.getItem('crewDatabase');
+        if (crewData) {
+          const crew = JSON.parse(crewData);
+          crew[crewMemberId] = updatedCrewData;
+          localStorage.setItem('crewDatabase', JSON.stringify(crew));
+          
+          // Trigger events voor real-time updates
+          window.dispatchEvent(new Event('localStorageUpdate'));
+          window.dispatchEvent(new Event('forceRefresh'));
+          
+          // Markeer dat deze crew member is gefixed
+          localStorage.setItem(`crew_${crewMemberId}_dates_fixed`, 'true');
+          
+          // Notify parent component van wijzigingen
+          if (onProfileUpdate) {
+            onProfileUpdate();
+          }
+        }
+      }
+
+      setProfile({
+        ...updatedCrewData,
+        // fallback voor velden die mogelijk ontbreken in oude data
+        qualifications: updatedCrewData.qualifications || [],
+        notes: updatedCrewData.notes || "",
+        assignmentHistory: updatedCrewData.assignmentHistory || [],
+        vasteDienst: updatedCrewData.vasteDienst || false,
+        inDienstVanaf: updatedCrewData.inDienstVanaf || "",
+        // Student velden
+        isStudent: updatedCrewData.isStudent || false,
+        educationType: updatedCrewData.educationType || "",
+        schoolPeriods: updatedCrewData.schoolPeriods || [],
+        educationEndDate: updatedCrewData.educationEndDate || "",
+      });
+      
+      // Update ook de aflosser states
+      setVasteDienst(updatedCrewData.vasteDienst || false);
+      setInDienstVanaf(updatedCrewData.inDienstVanaf || "");
+    }
+  }, [crewMemberId]); // Alleen crewMemberId als dependency, niet crewData
+
   useEffect(() => {
     if (profile.position === "Kapitein") {
       setProfile((prev: typeof profile) => ({ ...prev, position: "Schipper" }));
@@ -180,11 +291,11 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
     if (e.target.name === "onBoardSince" && error) setError("")
   }
   function handleDiplomaRemove(idx: number) {
-    setProfile({ ...profile, qualifications: profile.qualifications.filter((_: string, i: number) => i !== idx) })
+    setProfile({ ...profile, diplomas: (profile.diplomas || []).filter((_: string, i: number) => i !== idx) })
   }
   function handleDiplomaAdd() {
     if (newDiploma.trim()) {
-      setProfile({ ...profile, qualifications: [...profile.qualifications, newDiploma.trim()] })
+      setProfile({ ...profile, diplomas: [...(profile.diplomas || []), newDiploma.trim()] })
       setNewDiploma("")
     }
   }
@@ -208,7 +319,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
     const changeHistory: ChangeEntry[] = [...(profile.changeHistory || [])];
     // Vergelijk alle relevante velden en log wijzigingen
     const fieldsToCheck = [
-      "firstName", "lastName", "birthDate", "birthPlace", "address", "phone", "email", "position", "smoking", "experience", "qualifications", "ship", "regime", "company", "matricule", "entryDate", "notes", "onBoardSince", "status", "vasteDienst", "inDienstVanaf", "isStudent", "educationType", "schoolPeriods", "educationEndDate"
+      "firstName", "lastName", "birthDate", "birthPlace", "address", "phone", "email", "position", "smoking", "experience", "diplomas", "ship", "regime", "company", "matricule", "entryDate", "notes", "onBoardSince", "status", "vasteDienst", "inDienstVanaf", "isStudent", "educationType", "schoolPeriods", "educationEndDate"
     ];
     fieldsToCheck.forEach(field => {
       if (JSON.stringify((profile as any)[field]) !== JSON.stringify((crewDatabase as any)[profile.id]?.[field])) {
@@ -226,13 +337,14 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
       updatedProfile = { ...updatedProfile, onBoardSince: new Date().toISOString().split("T")[0] };
     }
     if (edit && profile.shipId !== prevProfileRef.current?.shipId) {
+      const shipName = profile.shipId === "nog-in-te-delen" ? "Nog in te delen" : profile.ship;
       const newHistory = [
         ...(profile.assignmentHistory || []),
         {
           date: new Date().toISOString().split("T")[0],
           shipId: profile.shipId,
           action: "verplaatst",
-          note: `Handmatige wissel naar ${profile.ship}`,
+          note: `Handmatige wissel naar ${shipName}`,
         },
       ];
       updatedProfile = { 
@@ -246,10 +358,16 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
     }
     setProfile(updatedProfile);
     
-    // Update via de nieuwe hook
-    updateData('crewDatabase', {
-      [profile.id]: updatedProfile
-    });
+    // Direct localStorage updaten
+    if (typeof window !== 'undefined') {
+      const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
+      currentData[profile.id] = updatedProfile;
+      localStorage.setItem('crewDatabase', JSON.stringify(currentData));
+      
+      // Trigger events voor real-time updates
+      window.dispatchEvent(new Event('localStorageUpdate'));
+      window.dispatchEvent(new Event('forceRefresh'));
+    }
     
     setEdit(false);
     
@@ -347,6 +465,19 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
       outOfServiceReason: reason
     }
     setProfile(updatedProfile)
+    
+    // Update crew database in localStorage
+    try {
+      const crewData = localStorage.getItem('crewDatabase')
+      const crew = crewData ? JSON.parse(crewData) : {}
+      crew[crewMemberId] = updatedProfile
+      localStorage.setItem('crewDatabase', JSON.stringify(crew))
+      
+      // Trigger events voor UI update
+      window.dispatchEvent(new Event('localStorageUpdate'))
+    } catch (error) {
+      console.error('Error updating crew database:', error)
+    }
     
     // Show success message
     alert(`${profile.firstName} ${profile.lastName} is succesvol uit dienst gezet`)
@@ -711,8 +842,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
             <div>
               <label className="text-sm font-medium text-gray-500">Diploma's</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {profile.qualifications && profile.qualifications.length > 0 ? (
-                  profile.qualifications.map((diploma: string, idx: number) => (
+                {(profile.diplomas || []) && (profile.diplomas || []).length > 0 ? (
+                  (profile.diplomas || []).map((diploma: string, idx: number) => (
                     <span key={idx} className="flex items-center bg-green-50 border border-green-200 rounded px-2 py-0.5 text-xs text-green-800">
                       {diploma}
                       {/* Toon link naar upload als aanwezig */}
@@ -735,7 +866,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
                       className="h-7 text-xs px-2 py-1"
                     >
                       <option value="">Kies diploma</option>
-                      {DIPLOMA_OPTIONS.filter(opt => !profile.qualifications.includes(opt)).map(opt => (
+                      {DIPLOMA_OPTIONS.filter(opt => !(profile.diplomas || []).includes(opt)).map(opt => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
@@ -744,7 +875,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
                 )}
               </div>
               {/* Upload voor elk diploma */}
-              {edit && profile.qualifications.map((diploma: string, idx: number) => (
+              {edit && (profile.diplomas || []).map((diploma: string, idx: number) => (
                 <div key={diploma} className="flex items-center gap-2 mt-1">
                   <label className="text-xs text-gray-500">Upload {diploma}:</label>
                   <input type="file" accept="application/pdf,image/*" onChange={e => handleDiplomaFileUpload(e, diploma)} />
@@ -769,13 +900,22 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
                       <SelectValue placeholder="Kies een schip" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="nog-in-te-delen">⏳ Nog in te delen</SelectItem>
                       {Object.values(shipDatabase).map(ship => (
                         <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 ) : (
-                  <p className="text-gray-900">{profile.shipId ? (shipDatabase as any)[profile.shipId]?.name || profile.shipId : profile.ship}</p>
+                  <p className="text-gray-900">
+                    {profile.shipId === "nog-in-te-delen" ? (
+                      <span className="text-orange-600 font-medium">⏳ Nog in te delen</span>
+                    ) : profile.shipId ? (
+                      (shipDatabase as any)[profile.shipId]?.name || profile.shipId
+                    ) : (
+                      profile.ship
+                    )}
+                  </p>
                 )}
               </div>
             )}
@@ -784,9 +924,13 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
                 <label className="text-sm font-medium text-gray-500">Huidige toewijzing</label>
                 <div>
                   <p className="text-gray-900 font-medium">
-                    {profile.status === "aan-boord" && profile.shipId && (shipDatabase as any)[profile.shipId]?.name
-                      ? (shipDatabase as any)[profile.shipId]?.name
-                      : "Geen actieve toewijzing"}
+                    {profile.shipId === "nog-in-te-delen" ? (
+                      <span className="text-orange-600">⏳ Nog in te delen</span>
+                    ) : profile.status === "aan-boord" && profile.shipId && (shipDatabase as any)[profile.shipId]?.name ? (
+                      (shipDatabase as any)[profile.shipId]?.name
+                    ) : (
+                      "Geen actieve toewijzing"
+                    )}
                   </p>
                   {huidigePeriode && (
                     <div className="text-xs text-blue-700">
@@ -863,7 +1007,9 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
               <div>
                 <label className="text-sm font-medium text-gray-500">Actief</label>
                 <p className="text-gray-900">
-                  {profile.status === "aan-boord" && profile.ship ? (
+                  {profile.shipId === "nog-in-te-delen" ? (
+                    <span className="text-orange-600">⏳ Nog in te delen</span>
+                  ) : profile.status === "aan-boord" && profile.ship ? (
                     <>Momenteel actief op de {profile.ship}</>
                   ) : (
                     <>Momenteel niet actief</>

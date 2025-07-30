@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, FileX, UserX, Calendar } from "lucide-react"
@@ -20,6 +21,30 @@ type AlertItem = {
 export function RecentAlerts() {
   // Genereer echte alerts
   const alerts: AlertItem[] = []
+  
+  // Gebruik useEffect om client-side rendering te garanderen
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  
+  if (!mounted) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <AlertTriangle className="w-5 h-5" />
+            <span>Recente Meldingen</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="text-center py-4 text-gray-500">Laden...</div>
+        </CardContent>
+      </Card>
+    )
+  }
+  
   const today = new Date()
 
   // Verlopen documenten (rood) en bijna verlopen (oranje)

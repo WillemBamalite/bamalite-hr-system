@@ -9,6 +9,132 @@ export interface RegimeCalculation {
   rotationAlert: boolean
 }
 
+// Nieuwe functie om automatisch status te berekenen op basis van thuisSinds en regime
+export function calculateCurrentStatus(
+  regime: "1/1" | "2/2" | "3/3",
+  thuisSinds: string | null,
+  onBoardSince: string | null,
+): {
+  currentStatus: "aan-boord" | "thuis"
+  nextRotationDate: string
+  daysUntilRotation: number
+  isOnBoard: boolean
+} {
+  const today = new Date()
+  const todayString = today.toISOString().split('T')[0]
+  
+  if (!regime) {
+    return {
+      currentStatus: "thuis",
+      nextRotationDate: "",
+      daysUntilRotation: 0,
+      isOnBoard: false
+    }
+  }
+
+  const regimeWeeks = Number.parseInt(regime.split("/")[0])
+  const regimeDays = regimeWeeks * 7
+
+  // Als er een thuisSinds datum is, bereken vanaf daar
+  if (thuisSinds) {
+    const thuisDate = new Date(thuisSinds)
+    const nextOnBoardDate = new Date(thuisDate)
+    nextOnBoardDate.setDate(nextOnBoardDate.getDate() + regimeDays)
+    
+    const nextOffBoardDate = new Date(nextOnBoardDate)
+    nextOffBoardDate.setDate(nextOffBoardDate.getDate() + regimeDays)
+
+    // Check of vandaag tussen thuisSinds en nextOnBoardDate ligt
+    if (today >= thuisDate && today < nextOnBoardDate) {
+      // Ze zijn thuis
+      const daysUntil = Math.floor((nextOnBoardDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      return {
+        currentStatus: "thuis",
+        nextRotationDate: nextOnBoardDate.toISOString().split('T')[0],
+        daysUntilRotation: daysUntil,
+        isOnBoard: false
+      }
+    } else if (today >= nextOnBoardDate && today < nextOffBoardDate) {
+      // Ze zijn aan boord
+      const daysUntil = Math.floor((nextOffBoardDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      return {
+        currentStatus: "aan-boord",
+        nextRotationDate: nextOffBoardDate.toISOString().split('T')[0],
+        daysUntilRotation: daysUntil,
+        isOnBoard: true
+      }
+    } else {
+      // Bereken de volgende cyclus
+      const cyclesPassed = Math.floor((today.getTime() - thuisDate.getTime()) / (1000 * 60 * 60 * 24 * regimeDays * 2))
+      const cycleStart = new Date(thuisDate)
+      cycleStart.setDate(cycleStart.getDate() + (cyclesPassed * regimeDays * 2))
+      
+      const nextThuisDate = new Date(cycleStart)
+      nextThuisDate.setDate(nextThuisDate.getDate() + regimeDays)
+      
+      if (today >= cycleStart && today < nextThuisDate) {
+        // Ze zijn thuis
+        const daysUntil = Math.floor((nextThuisDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        return {
+          currentStatus: "thuis",
+          nextRotationDate: nextThuisDate.toISOString().split('T')[0],
+          daysUntilRotation: daysUntil,
+          isOnBoard: false
+        }
+      } else {
+        // Ze zijn aan boord
+        const nextOffDate = new Date(nextThuisDate)
+        nextOffDate.setDate(nextOffDate.getDate() + regimeDays)
+        const daysUntil = Math.floor((nextOffDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        return {
+          currentStatus: "aan-boord",
+          nextRotationDate: nextOffDate.toISOString().split('T')[0],
+          daysUntilRotation: daysUntil,
+          isOnBoard: true
+        }
+      }
+    }
+  }
+
+  // Als er geen thuisSinds is maar wel onBoardSince
+  if (onBoardSince) {
+    const onBoardDate = new Date(onBoardSince)
+    const offBoardDate = new Date(onBoardDate)
+    offBoardDate.setDate(offBoardDate.getDate() + regimeDays)
+    
+    const nextOnBoardDate = new Date(offBoardDate)
+    nextOnBoardDate.setDate(nextOnBoardDate.getDate() + regimeDays)
+
+    if (today >= onBoardDate && today < offBoardDate) {
+      // Ze zijn aan boord
+      const daysUntil = Math.floor((offBoardDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      return {
+        currentStatus: "aan-boord",
+        nextRotationDate: offBoardDate.toISOString().split('T')[0],
+        daysUntilRotation: daysUntil,
+        isOnBoard: true
+      }
+    } else {
+      // Ze zijn thuis
+      const daysUntil = Math.floor((nextOnBoardDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      return {
+        currentStatus: "thuis",
+        nextRotationDate: nextOnBoardDate.toISOString().split('T')[0],
+        daysUntilRotation: daysUntil,
+        isOnBoard: false
+      }
+    }
+  }
+
+  // Fallback: thuis
+  return {
+    currentStatus: "thuis",
+    nextRotationDate: "",
+    daysUntilRotation: 0,
+    isOnBoard: false
+  }
+}
+
 export function calculateRegimeStatus(
   regime: "1/1" | "2/2" | "3/3",
   onBoardSince: string | null,
@@ -32,6 +158,18 @@ export function calculateRegimeStatus(
   const daysOnBoard = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
 
   // Bepaal regime duur in weken
+  if (!regime) {
+    return {
+      currentStatus: "aan-boord",
+      daysOnBoard: 0,
+      daysLeft: 0,
+      offBoardDate: "",
+      nextOnBoardDate: "",
+      isOverdue: false,
+      rotationAlert: false,
+    }
+  }
+  
   const regimeWeeks = Number.parseInt(regime.split("/")[0])
   const regimeDays = regimeWeeks * 7
 
@@ -69,7 +207,7 @@ export function getUpcomingRotations(crewDatabase: any): Array<{
   const today = new Date()
 
   Object.values(crewDatabase).forEach((crew: any) => {
-    if (crew.status === "aan-boord" && crew.onBoardSince) {
+    if (crew.status === "aan-boord" && crew.onBoardSince && crew.regime) {
       const calculation = calculateRegimeStatus(crew.regime, crew.onBoardSince, crew.status)
 
       if (calculation.offBoardDate) {
@@ -101,20 +239,20 @@ export function getRotationAlerts(crewDatabase: any): Array<{
   const alerts: any[] = []
 
   Object.values(crewDatabase).forEach((crew: any) => {
-    if (crew.status === "aan-boord" && crew.onBoardSince) {
+    if (crew.status === "aan-boord" && crew.onBoardSince && crew.regime) {
       const calculation = calculateRegimeStatus(crew.regime, crew.onBoardSince, crew.status)
 
       if (calculation.isOverdue) {
         alerts.push({
           type: "urgent",
-          message: `${crew.firstName} ${crew.lastName} is ${Math.abs(calculation.daysLeft)} dagen over tijd!`,
+          message: `${crew.firstName || 'Onbekend'} ${crew.lastName || 'Onbekend'} is ${Math.abs(calculation.daysLeft)} dagen over tijd!`,
           crewMember: crew,
           daysUntil: calculation.daysLeft,
         })
       } else if (calculation.rotationAlert) {
         alerts.push({
           type: "warning",
-          message: `${crew.firstName} ${crew.lastName} moet over ${calculation.daysLeft} dagen van boord`,
+          message: `${crew.firstName || 'Onbekend'} ${crew.lastName || 'Onbekend'} moet over ${calculation.daysLeft} dagen van boord`,
           crewMember: crew,
           daysUntil: calculation.daysLeft,
         })

@@ -161,9 +161,9 @@ export default function RotationCalendarPage() {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">📅 Rotatie Kalender</h1>
-        <Link href="/bemanning/overzicht">
+                  <Link href="/">
           <Button variant="outline" size="sm">
-            ← Terug naar overzicht
+            ← Terug naar Dashboard
           </Button>
         </Link>
       </div>

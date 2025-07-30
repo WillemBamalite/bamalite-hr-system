@@ -31,13 +31,19 @@ export function ShipCrewOverview() {
           status: crew.status,
           onBoardSince: crew.onBoardSince,
           offBoardDate: crew.nextRotationDate,
+          terugkeerDatum: crew.terugkeerDatum,
           daysLeft: crew.nextRotationDate ? Math.ceil((new Date(crew.nextRotationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0,
           phone: crew.phone || "",
         }))
       };
     });
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, terugkeerDatum?: string) => {
+    // Als er een terugkeer datum is, toon dan een speciale status
+    if (terugkeerDatum && status === "thuis") {
+      return "bg-yellow-100 text-yellow-800"
+    }
+    
     switch (status) {
       case "aan-boord":
         return "bg-green-100 text-green-800"
@@ -50,7 +56,12 @@ export function ShipCrewOverview() {
     }
   }
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, terugkeerDatum?: string) => {
+    // Als er een terugkeer datum is, toon dan een speciale icon
+    if (terugkeerDatum && status === "thuis") {
+      return <CheckCircle className="w-3 h-3" />
+    }
+    
     switch (status) {
       case "aan-boord":
         return <CheckCircle className="w-3 h-3" />
@@ -168,11 +179,11 @@ export function ShipCrewOverview() {
                             )}
                           </>
                         )}
-                        {member.status === "thuis" && member.offBoardDate && (
+                        {member.status === "thuis" && (member.offBoardDate || member.terugkeerDatum) && (
                           <>
-                            <div className="text-gray-500">Terug aan boord</div>
+                            <div className="text-gray-500">Aan boord op</div>
                             <div className="font-medium">
-                              {new Date(member.offBoardDate).toLocaleDateString("nl-NL")}
+                              {new Date(member.terugkeerDatum || member.offBoardDate).toLocaleDateString("nl-NL")}
                             </div>
                           </>
                         )}
@@ -187,9 +198,11 @@ export function ShipCrewOverview() {
                       </div>
 
                       <div className="flex items-center space-x-2">
-                        <Badge className={getStatusColor(member.status)}>
-                          {getStatusIcon(member.status)}
-                          <span className="ml-1 capitalize">{member.status.replace("-", " ")}</span>
+                        <Badge className={getStatusColor(member.status, member.terugkeerDatum)}>
+                          {getStatusIcon(member.status, member.terugkeerDatum)}
+                          <span className="ml-1 capitalize">
+                            {member.terugkeerDatum && member.status === "thuis" ? "hersteld" : member.status.replace("-", " ")}
+                          </span>
                         </Badge>
                         <Link href={`/bemanning/${member.id}`}>
                           <Button variant="outline" size="sm">

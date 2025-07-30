@@ -130,9 +130,9 @@ export default function SickLeaveHistoryPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-4">
-          <Link href="/ziekte" className="flex items-center text-sm text-gray-700 hover:text-blue-700">
+                      <Link href="/" className="flex items-center text-sm text-gray-700 hover:text-blue-700">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Terug naar Ziekte
+            Terug naar Dashboard
           </Link>
           <div>
             <h1 className="text-2xl font-bold">Terug Te Staan Overzicht</h1>

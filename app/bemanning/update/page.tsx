@@ -61,7 +61,7 @@ export default function UpdatePage() {
     "aliana-bruinsma": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
     "juraj-paal": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
     "jozef-tamas": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "martin-patzeld": { status: "nog-in-te-delen", regime: "2/2" },
+    // "martin-patzeld": { status: "nog-in-te-delen", regime: "2/2" }, // UITGESCHAKELD - automatische reset
 
     // MS Neptunus
     "erik-span": { status: "aan-boord", onBoardSince: "2025-07-17", regime: "2/2" },
@@ -109,7 +109,7 @@ export default function UpdatePage() {
     "pavol-pastorek": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
     "v-danasz": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
     "jozef-nemcek": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "peter-mazereeuw": { status: "nog-in-te-delen", regime: "2/2" },
+    // "peter-mazereeuw": { status: "nog-in-te-delen", regime: "2/2" }, // UITGESCHAKELD - automatische reset
 
     // MS Caritas - Allemaal 2/2 regime
     "pierre-spronk": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
@@ -170,7 +170,7 @@ export default function UpdatePage() {
     "vaclav-m-lady": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
     "jakob-leunis": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
     "milos-jurica": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
-    "kirill-sevatstianov": { status: "nog-in-te-delen", regime: "3/3" },
+    // "kirill-sevatstianov": { status: "nog-in-te-delen", regime: "3/3" }, // UITGESCHAKELD - automatische reset
     "ladislav-mesarcik-ser": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
   };
 

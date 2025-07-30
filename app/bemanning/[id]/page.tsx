@@ -62,9 +62,6 @@ export default function BemanningslidPage({ params }: Props) {
               <Link href="/bemanning/aflossers" className="bg-green-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-green-700 shadow">
                 🔄 Aflossers
               </Link>
-              <Link href="/schepen" className="bg-purple-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-purple-700 shadow">
-                🚢 Schepen
-              </Link>
               <Link href="/documenten" className="bg-orange-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-orange-700 shadow">
                 📄 Documenten
               </Link>

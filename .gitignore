@@ -25,3 +25,36 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Debug and utility files
+*.html
+*.js
+backup-*/
+debug-*/
+fix-*/
+force-*/
+remove-*/
+restore-*/
+test-*/
+auto-*/
+direct-*/
+final-*/
+find-*/
+simple-*/
+check-*/
+reset-*/
+update-*/
+add-*/
+
+# Database files
+full-crew-database.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

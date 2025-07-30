@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useState, useEffect } from "react"
 import { crewDatabase, shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase, documentDatabase } from "@/data/crew-database"
 import { Search, Users, Ship, FileText, UserX, Calendar, MapPin, Phone, Mail, Printer } from "lucide-react"
-import { DataBackup } from "@/components/data-backup"
+
 import { useCrewData } from "@/hooks/use-crew-data"
 
 export default function Dashboard() {
@@ -294,7 +294,6 @@ export default function Dashboard() {
           </div>
           <div className="space-y-6">
             <RecentAlerts />
-            <DataBackup />
           </div>
         </div>
       </main>
