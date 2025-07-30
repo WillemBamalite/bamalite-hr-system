@@ -15,6 +15,7 @@ import { crewDatabase, shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase
 import { Search, Users, Ship, FileText, UserX, Calendar, MapPin, Phone, Mail, Printer } from "lucide-react"
 
 import { useCrewData } from "@/hooks/use-crew-data"
+import { useAutomaticRotation } from "@/hooks/use-automatic-rotation"
 
 export default function Dashboard() {
   // State voor universele zoekbalk
@@ -22,10 +23,17 @@ export default function Dashboard() {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showResults, setShowResults] = useState(false)
 
-
-
   // Gebruik de nieuwe hook voor gecombineerde data
   const { crewDatabase: allCrewData, documentDatabase: allDocsData } = useCrewData()
+  
+  // Automatische rotatie hook
+  const { hasExecuted, rotationResult, executeRotation } = useAutomaticRotation()
+
+  // Handmatige rotatie uitvoeren
+  const handleManualRotation = () => {
+    const result = executeRotation()
+    console.log('Handmatige rotatie uitgevoerd:', result)
+  }
 
   // Zoekfunctie
   const performSearch = (query: string) => {
@@ -222,6 +230,14 @@ export default function Dashboard() {
                 Print
               </Button>
             </Link>
+            <Button 
+              variant="outline"
+              onClick={handleManualRotation}
+              className="px-4 py-2"
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              Rotatie Nu
+            </Button>
           </div>
 
           {/* Zoekresultaten */}
@@ -286,6 +302,30 @@ export default function Dashboard() {
         <Suspense fallback={<div>Laden...</div>}>
           <DashboardStats />
         </Suspense>
+
+        {/* Automatische Rotatie Notificatie */}
+        {rotationResult && rotationResult.totalChanges > 0 && (
+          <Card className="border-green-200 bg-green-50">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2 text-green-800">
+                <Calendar className="w-5 h-5" />
+                <span>Automatische Rotatie Uitgevoerd</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <p className="text-sm text-green-700">
+                  Vandaag zijn {rotationResult.totalChanges} automatische rotaties uitgevoerd.
+                </p>
+                {rotationResult.rotations.map((shipRotation, index) => (
+                  <div key={index} className="text-xs text-green-600">
+                    <strong>{shipRotation.shipName}:</strong> {shipRotation.rotations.length} wijzigingen
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Hoofdcontent */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

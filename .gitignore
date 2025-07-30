@@ -58,3 +58,4 @@ full-crew-database.json
 # OS files
 .DS_Store
 Thumbs.db
+.vercel

@@ -26,11 +26,15 @@ export function executeAutomaticRotations(
   const rotations: AutomaticRotation[] = []
   const today = new Date(targetDate)
 
+  // Haal crew data op uit localStorage
+  const crewData = localStorage.getItem('crewDatabase')
+  const currentCrew = crewData ? JSON.parse(crewData) : crewDatabase
+
   // Groepeer per schip
   const shipRotations: { [shipId: string]: AutomaticRotation } = {}
 
   // 1. Vind iedereen die vandaag van boord moet
-  Object.values(crewDatabase).forEach((crew: any) => {
+  Object.values(currentCrew).forEach((crew: any) => {
     if (crew.status === "aan-boord" && crew.onBoardSince && crew.status !== "ziek" && crew.status !== "uit-dienst") {
       const onBoardDate = new Date(crew.onBoardSince)
       const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
@@ -71,7 +75,7 @@ export function executeAutomaticRotations(
     shipRotation.rotations.forEach((rotation) => {
       if (rotation.action === "off-board") {
         // Zoek vervanging voor deze positie
-        const replacement = findReplacement(rotation.position, shipRotation.shipId, rotation.regime)
+        const replacement = findReplacement(rotation.position, shipRotation.shipId, rotation.regime, currentCrew)
 
         if (replacement) {
           shipRotation.rotations.push({
@@ -91,6 +95,12 @@ export function executeAutomaticRotations(
     })
   })
 
+  // 3. Update localStorage met de nieuwe data
+  if (Object.values(shipRotations).some(ship => ship.rotations.length > 0)) {
+    localStorage.setItem('crewDatabase', JSON.stringify(currentCrew))
+    console.log('💾 Crew database bijgewerkt na automatische rotatie')
+  }
+
   const finalRotations = Object.values(shipRotations)
   const totalChanges = finalRotations.reduce((sum, ship) => sum + ship.rotations.length, 0)
 
@@ -102,23 +112,23 @@ export function executeAutomaticRotations(
 }
 
 // Zoek geschikte vervanging
-function findReplacement(position: string, shipId: string, preferredRegime: string): any {
+function findReplacement(position: string, shipId: string, preferredRegime: string, crewData: any): any {
   // Zoek eerst iemand met dezelfde positie en regime die beschikbaar is
-  const exactMatch = Object.values(crewDatabase).find(
+  const exactMatch = Object.values(crewData).find(
     (crew: any) => crew.position === position && crew.regime === preferredRegime && crew.status === "beschikbaar",
   )
 
   if (exactMatch) return exactMatch
 
   // Zoek iemand met dezelfde positie maar ander regime
-  const positionMatch = Object.values(crewDatabase).find(
+  const positionMatch = Object.values(crewData).find(
     (crew: any) => crew.position === position && crew.status === "beschikbaar",
   )
 
   if (positionMatch) return positionMatch
 
   // Zoek compatible positie (Kapitein kan Stuurman zijn, etc.)
-  const compatibleMatch = Object.values(crewDatabase).find(
+  const compatibleMatch = Object.values(crewData).find(
     (crew: any) => isCompatiblePosition(crew.position, position) && crew.status === "beschikbaar",
   )
 
