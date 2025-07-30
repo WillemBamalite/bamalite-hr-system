@@ -45,6 +45,8 @@ export function executeAutomaticRotations(
 
       // Check of ze vandaag van boord moeten
       if (offBoardDate.toISOString().split("T")[0] === targetDate) {
+        console.log(`🔄 ${crew.firstName} ${crew.lastName} moet vandaag van boord (${crew.regime} regime, aan boord sinds ${crew.onBoardSince})`)
+        
         if (!shipRotations[crew.shipId]) {
           shipRotations[crew.shipId] = {
             date: targetDate,
@@ -66,6 +68,7 @@ export function executeAutomaticRotations(
         crew.status = "thuis"
         crew.shipId = null
         crew.onBoardSince = null
+        crew.thuisSinds = targetDate
       }
     }
   })
@@ -78,6 +81,8 @@ export function executeAutomaticRotations(
         const replacement = findReplacement(rotation.position, shipRotation.shipId, rotation.regime, currentCrew)
 
         if (replacement) {
+          console.log(`✅ Vervanging gevonden: ${replacement.firstName} ${replacement.lastName} voor ${rotation.crewMemberName}`)
+          
           shipRotation.rotations.push({
             crewMemberId: replacement.id,
             crewMemberName: `${replacement.firstName} ${replacement.lastName}`,
@@ -90,6 +95,9 @@ export function executeAutomaticRotations(
           replacement.status = "aan-boord"
           replacement.shipId = shipRotation.shipId
           replacement.onBoardSince = targetDate
+          replacement.thuisSinds = null
+        } else {
+          console.log(`⚠️ Geen vervanging gevonden voor ${rotation.crewMemberName} (${rotation.position})`)
         }
       }
     })
@@ -209,4 +217,34 @@ export function getSickCrewStatus(): Array<{
   })
 
   return sickCrew
+}
+
+// Debug functie om crew status te controleren
+export function debugCrewStatus(): void {
+  const crewData = localStorage.getItem('crewDatabase')
+  const currentCrew = crewData ? JSON.parse(crewData) : crewDatabase
+  const today = new Date().toISOString().split("T")[0]
+
+  console.log('🔍 Debug Crew Status voor', today)
+  
+  Object.values(currentCrew).forEach((crew: any) => {
+    if (crew.status === "aan-boord" && crew.onBoardSince) {
+      const onBoardDate = new Date(crew.onBoardSince)
+      const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
+      const regimeDays = regimeWeeks * 7
+
+      const offBoardDate = new Date(onBoardDate)
+      offBoardDate.setDate(offBoardDate.getDate() + regimeDays)
+
+      const daysUntilRotation = Math.floor((offBoardDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+
+      console.log(`${crew.firstName} ${crew.lastName}:`)
+      console.log(`  - Aan boord sinds: ${crew.onBoardSince}`)
+      console.log(`  - Regime: ${crew.regime} (${regimeDays} dagen)`)
+      console.log(`  - Van boord op: ${offBoardDate.toISOString().split('T')[0]}`)
+      console.log(`  - Dagen tot rotatie: ${daysUntilRotation}`)
+      console.log(`  - Moet vandaag wisselen: ${offBoardDate.toISOString().split("T")[0] === today}`)
+      console.log('')
+    }
+  })
 }
