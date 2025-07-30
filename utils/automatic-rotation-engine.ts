@@ -19,11 +19,26 @@ export interface DailyRotationSummary {
   totalChanges: number
 }
 
+// Initialize crew data in localStorage if not exists
+export function initializeCrewData(): void {
+  const existingData = localStorage.getItem('crewDatabase')
+  if (!existingData) {
+    console.log('📦 Initializing crew data in localStorage...')
+    localStorage.setItem('crewDatabase', JSON.stringify(crewDatabase))
+    console.log('✅ Crew data initialized')
+  } else {
+    console.log('ℹ️ Crew data already exists in localStorage')
+  }
+}
+
 // Automatische rotatie uitvoering
 export function executeAutomaticRotations(
   targetDate: string = new Date().toISOString().split("T")[0],
 ): DailyRotationSummary {
   console.log('🚀 STARTING AUTOMATIC ROTATION FOR:', targetDate)
+  
+  // Initialize crew data if needed
+  initializeCrewData()
   
   const rotations: AutomaticRotation[] = []
   const today = new Date(targetDate)
@@ -260,6 +275,9 @@ export function getSickCrewStatus(): Array<{
 
 // Debug functie om crew status te controleren
 export function debugCrewStatus(): void {
+  // Initialize crew data if needed
+  initializeCrewData()
+  
   const crewData = localStorage.getItem('crewDatabase')
   const currentCrew = crewData ? JSON.parse(crewData) : crewDatabase
   const today = new Date().toISOString().split("T")[0]
