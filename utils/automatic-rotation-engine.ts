@@ -23,12 +23,16 @@ export interface DailyRotationSummary {
 export function executeAutomaticRotations(
   targetDate: string = new Date().toISOString().split("T")[0],
 ): DailyRotationSummary {
+  console.log('🚀 STARTING AUTOMATIC ROTATION FOR:', targetDate)
+  
   const rotations: AutomaticRotation[] = []
   const today = new Date(targetDate)
 
   // Haal crew data op uit localStorage
   const crewData = localStorage.getItem('crewDatabase')
   const currentCrew = crewData ? JSON.parse(crewData) : crewDatabase
+
+  console.log('📊 Total crew members:', Object.keys(currentCrew).length)
 
   // Groepeer per schip
   const shipRotations: { [shipId: string]: AutomaticRotation } = {}
@@ -43,15 +47,22 @@ export function executeAutomaticRotations(
       const offBoardDate = new Date(onBoardDate)
       offBoardDate.setDate(offBoardDate.getDate() + regimeDays)
 
+      console.log(`🔍 Checking ${crew.firstName} ${crew.lastName}:`)
+      console.log(`   - On board since: ${crew.onBoardSince}`)
+      console.log(`   - Regime: ${crew.regime} (${regimeDays} days)`)
+      console.log(`   - Should be off board: ${offBoardDate.toISOString().split('T')[0]}`)
+      console.log(`   - Target date: ${targetDate}`)
+      console.log(`   - Should rotate today: ${offBoardDate.toISOString().split("T")[0] === targetDate}`)
+
       // Check of ze vandaag van boord moeten
       if (offBoardDate.toISOString().split("T")[0] === targetDate) {
-        console.log(`🔄 ${crew.firstName} ${crew.lastName} moet vandaag van boord (${crew.regime} regime, aan boord sinds ${crew.onBoardSince})`)
+        console.log(`🔄 ROTATION NEEDED: ${crew.firstName} ${crew.lastName} moet vandaag van boord!`)
         
         if (!shipRotations[crew.shipId]) {
           shipRotations[crew.shipId] = {
             date: targetDate,
             shipId: crew.shipId,
-            shipName: shipDatabase[crew.shipId]?.name || crew.shipId,
+            shipName: shipDatabase[crew.shipId as keyof typeof shipDatabase]?.name || crew.shipId,
             rotations: [],
           }
         }
@@ -69,14 +80,22 @@ export function executeAutomaticRotations(
         crew.shipId = null
         crew.onBoardSince = null
         crew.thuisSinds = targetDate
+        
+        console.log(`✅ Updated ${crew.firstName} ${crew.lastName} to "thuis"`)
       }
     }
   })
 
+  console.log('📋 Found rotations for ships:', Object.keys(shipRotations))
+
   // 2. Vind vervangingen voor elke positie die vrij komt
   Object.values(shipRotations).forEach((shipRotation) => {
+    console.log(`🛳️ Processing ship: ${shipRotation.shipName}`)
+    
     shipRotation.rotations.forEach((rotation) => {
       if (rotation.action === "off-board") {
+        console.log(`🔍 Looking for replacement for ${rotation.crewMemberName} (${rotation.position})`)
+        
         // Zoek vervanging voor deze positie
         const replacement = findReplacement(rotation.position, shipRotation.shipId, rotation.regime, currentCrew)
 
@@ -96,6 +115,8 @@ export function executeAutomaticRotations(
           replacement.shipId = shipRotation.shipId
           replacement.onBoardSince = targetDate
           replacement.thuisSinds = null
+          
+          console.log(`✅ Updated ${replacement.firstName} ${replacement.lastName} to "aan-boord"`)
         } else {
           console.log(`⚠️ Geen vervanging gevonden voor ${rotation.crewMemberName} (${rotation.position})`)
         }
@@ -107,10 +128,14 @@ export function executeAutomaticRotations(
   if (Object.values(shipRotations).some(ship => ship.rotations.length > 0)) {
     localStorage.setItem('crewDatabase', JSON.stringify(currentCrew))
     console.log('💾 Crew database bijgewerkt na automatische rotatie')
+  } else {
+    console.log('ℹ️ No rotations needed today')
   }
 
   const finalRotations = Object.values(shipRotations)
   const totalChanges = finalRotations.reduce((sum, ship) => sum + ship.rotations.length, 0)
+
+  console.log(`🎯 ROTATION COMPLETE: ${totalChanges} total changes`)
 
   return {
     date: targetDate,
@@ -121,26 +146,40 @@ export function executeAutomaticRotations(
 
 // Zoek geschikte vervanging
 function findReplacement(position: string, shipId: string, preferredRegime: string, crewData: any): any {
+  console.log(`🔍 Finding replacement for position: ${position}, regime: ${preferredRegime}`)
+  
   // Zoek eerst iemand met dezelfde positie en regime die beschikbaar is
   const exactMatch = Object.values(crewData).find(
     (crew: any) => crew.position === position && crew.regime === preferredRegime && crew.status === "beschikbaar",
   )
 
-  if (exactMatch) return exactMatch
+  if (exactMatch) {
+    console.log(`✅ Exact match found: ${exactMatch.firstName} ${exactMatch.lastName}`)
+    return exactMatch
+  }
 
   // Zoek iemand met dezelfde positie maar ander regime
   const positionMatch = Object.values(crewData).find(
     (crew: any) => crew.position === position && crew.status === "beschikbaar",
   )
 
-  if (positionMatch) return positionMatch
+  if (positionMatch) {
+    console.log(`✅ Position match found: ${positionMatch.firstName} ${positionMatch.lastName}`)
+    return positionMatch
+  }
 
   // Zoek compatible positie (Kapitein kan Stuurman zijn, etc.)
   const compatibleMatch = Object.values(crewData).find(
     (crew: any) => isCompatiblePosition(crew.position, position) && crew.status === "beschikbaar",
   )
 
-  return compatibleMatch || null
+  if (compatibleMatch) {
+    console.log(`✅ Compatible match found: ${compatibleMatch.firstName} ${compatibleMatch.lastName}`)
+    return compatibleMatch
+  }
+
+  console.log(`❌ No replacement found for position: ${position}`)
+  return null
 }
 
 function isCompatiblePosition(crewPosition: string, neededPosition: string): boolean {
@@ -225,7 +264,10 @@ export function debugCrewStatus(): void {
   const currentCrew = crewData ? JSON.parse(crewData) : crewDatabase
   const today = new Date().toISOString().split("T")[0]
 
-  console.log('🔍 Debug Crew Status voor', today)
+  console.log('🔍 DEBUG CREW STATUS FOR:', today)
+  console.log('📊 Total crew members:', Object.keys(currentCrew).length)
+  
+  let rotationCandidates = 0
   
   Object.values(currentCrew).forEach((crew: any) => {
     if (crew.status === "aan-boord" && crew.onBoardSince) {
@@ -237,14 +279,21 @@ export function debugCrewStatus(): void {
       offBoardDate.setDate(offBoardDate.getDate() + regimeDays)
 
       const daysUntilRotation = Math.floor((offBoardDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+      const shouldRotateToday = offBoardDate.toISOString().split("T")[0] === today
+
+      if (shouldRotateToday) {
+        rotationCandidates++
+      }
 
       console.log(`${crew.firstName} ${crew.lastName}:`)
       console.log(`  - Aan boord sinds: ${crew.onBoardSince}`)
       console.log(`  - Regime: ${crew.regime} (${regimeDays} dagen)`)
       console.log(`  - Van boord op: ${offBoardDate.toISOString().split('T')[0]}`)
       console.log(`  - Dagen tot rotatie: ${daysUntilRotation}`)
-      console.log(`  - Moet vandaag wisselen: ${offBoardDate.toISOString().split("T")[0] === today}`)
+      console.log(`  - Moet vandaag wisselen: ${shouldRotateToday}`)
       console.log('')
     }
   })
+  
+  console.log(`🎯 TOTAL ROTATION CANDIDATES TODAY: ${rotationCandidates}`)
 }
