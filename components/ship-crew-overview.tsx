@@ -7,13 +7,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, MapPin, Phone, AlertCircle, CheckCircle, Clock, Plus } from "lucide-react"
 import Link from "next/link"
 import { useCrewData } from "@/hooks/use-crew-data"
-import { shipDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
+import { calculateCurrentStatus } from "@/utils/regime-calculator"
 
 export function ShipCrewOverview() {
   // Gebruik echte data uit de database
   const { crewDatabase } = useCrewData();
   
-  const ships = Object.values(shipDatabase)
+  const ships = Object.values(getCombinedShipDatabase())
     .filter((ship: any) => ship.status === "Operationeel")
     .map((ship: any) => {
       const shipCrew = Object.values(crewDatabase).filter((crew: any) => 
@@ -31,13 +32,19 @@ export function ShipCrewOverview() {
           status: crew.status,
           onBoardSince: crew.onBoardSince,
           offBoardDate: crew.nextRotationDate,
+          terugkeerDatum: crew.terugkeerDatum,
           daysLeft: crew.nextRotationDate ? Math.ceil((new Date(crew.nextRotationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0,
           phone: crew.phone || "",
         }))
       };
     });
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, terugkeerDatum?: string) => {
+    // Als er een terugkeer datum is, toon dan een speciale status
+    if (terugkeerDatum && status === "thuis") {
+      return "bg-yellow-100 text-yellow-800"
+    }
+    
     switch (status) {
       case "aan-boord":
         return "bg-green-100 text-green-800"
@@ -50,7 +57,12 @@ export function ShipCrewOverview() {
     }
   }
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, terugkeerDatum?: string) => {
+    // Als er een terugkeer datum is, toon dan een speciale icon
+    if (terugkeerDatum && status === "thuis") {
+      return <CheckCircle className="w-3 h-3" />
+    }
+    
     switch (status) {
       case "aan-boord":
         return <CheckCircle className="w-3 h-3" />
@@ -157,25 +169,6 @@ export function ShipCrewOverview() {
 
                     <div className="flex items-center space-x-4">
                       <div className="text-right text-sm">
-                        {member.status === "aan-boord" && member.onBoardSince && (
-                          <>
-                            <div className="text-gray-500">Aan boord sinds</div>
-                            <div className="font-medium">
-                              {new Date(member.onBoardSince).toLocaleDateString("nl-NL")}
-                            </div>
-                            {member.daysLeft > 0 && (
-                              <div className="text-xs text-gray-400 mt-1">Nog {member.daysLeft} dagen</div>
-                            )}
-                          </>
-                        )}
-                        {member.status === "thuis" && member.offBoardDate && (
-                          <>
-                            <div className="text-gray-500">Terug aan boord</div>
-                            <div className="font-medium">
-                              {new Date(member.offBoardDate).toLocaleDateString("nl-NL")}
-                            </div>
-                          </>
-                        )}
                         {member.status === "ziek" && member.onBoardSince && (
                           <>
                             <div className="text-gray-500">Ziek sinds</div>
@@ -184,12 +177,27 @@ export function ShipCrewOverview() {
                             </div>
                           </>
                         )}
+                        {member.status !== "ziek" && (
+                          <>
+                            <div className="text-gray-500">Volgende Wissel</div>
+                            <div className="font-medium">
+                              {(() => {
+                                if (!member.regime) return "Niet ingesteld"
+                                
+                                const statusCalculation = calculateCurrentStatus(member.regime, member.thuisSinds, member.onBoardSince);
+                                return statusCalculation.nextRotationDate ? new Date(statusCalculation.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"
+                              })()}
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-2">
-                        <Badge className={getStatusColor(member.status)}>
-                          {getStatusIcon(member.status)}
-                          <span className="ml-1 capitalize">{member.status.replace("-", " ")}</span>
+                        <Badge className={getStatusColor(member.status, member.terugkeerDatum)}>
+                          {getStatusIcon(member.status, member.terugkeerDatum)}
+                          <span className="ml-1 capitalize">
+                            {member.terugkeerDatum && member.status === "thuis" ? "hersteld" : member.status.replace("-", " ")}
+                          </span>
                         </Badge>
                         <Link href={`/bemanning/${member.id}`}>
                           <Button variant="outline" size="sm">

@@ -59,10 +59,7 @@ export function StandBackDaysOverview() {
     const daysToComplete = Math.min(Number.parseInt(daysToAdd), selectedRecord.standBackDaysRemaining)
 
     // Hier zou je normaal de database updaten
-    console.log(
-      `Adding ${daysToComplete} stand-back days for ${selectedRecord.crewMember.firstName} ${selectedRecord.crewMember.lastName}`,
-    )
-    console.log(`Note: ${note}`)
+
 
     // Reset form
     setDaysToAdd("")

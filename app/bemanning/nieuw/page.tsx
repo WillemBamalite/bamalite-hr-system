@@ -11,10 +11,10 @@ export default function NewCrewPage() {
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center space-x-4">
-            <Link href="/bemanning">
+                          <Link href="/">
               <Button variant="ghost" size="sm" className="flex items-center space-x-2">
                 <ArrowLeft className="w-4 h-4" />
-                <span>Terug naar Bemanning</span>
+                <span>Terug naar Dashboard</span>
               </Button>
             </Link>
             <div>
@@ -41,9 +41,6 @@ export default function NewCrewPage() {
           </Link>
           <Link href="/bemanning/aflossers" className="bg-green-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-green-700 shadow">
             🔄 Aflossers
-          </Link>
-          <Link href="/schepen" className="bg-purple-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-purple-700 shadow">
-            🚢 Schepen
           </Link>
           <Link href="/bemanning/nog-in-te-delen" className="bg-orange-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-orange-700 shadow">
             ⏳ In te delen

@@ -13,7 +13,7 @@ export default function PrintPage() {
 
   const handleDownload = () => {
     // Hier zou je een PDF kunnen genereren
-    console.log("Download PDF functionality")
+
   }
 
   return (

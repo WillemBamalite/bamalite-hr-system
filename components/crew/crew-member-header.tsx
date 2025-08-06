@@ -1,19 +1,14 @@
 "use client"
 
-import { ArrowLeft, Edit, Ship, MoreHorizontal, UserX, RefreshCw } from "lucide-react"
+import { ArrowLeft, Edit, Ship } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { crewDatabase, shipDatabase } from "@/data/crew-database"
+import { crewDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
 import { useRouter } from "next/navigation"
+import { calculateCurrentStatus } from "@/utils/regime-calculator"
 
 interface Props {
   crewMemberId: string
@@ -41,7 +36,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
   }
 
   const isAflosser = crewMember.position?.toLowerCase().includes("aflos")
-  const shipName = crewMember.shipId ? (shipDatabase as any)[crewMember.shipId]?.name : crewMember.ship || "-"
+      const shipName = crewMember.shipId ? getCombinedShipDatabase()[crewMember.shipId]?.name : crewMember.ship || "-"
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -89,10 +84,22 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                       <span>{shipName}</span>
                     </div>
                   )}
-                  <Badge className={getStatusColor(crewMember.status)}>
-                    {crewMember.status === "aan-boord" ? "Aan boord" : 
-                     crewMember.status === "thuis" ? "Thuis" : 
-                     crewMember.status === "ziek" ? "Ziek" : crewMember.status}
+                  <Badge className={(() => {
+                    const statusCalculation = calculateCurrentStatus(
+                      crewMember.regime,
+                      crewMember.thuisSinds,
+                      crewMember.onBoardSince
+                    )
+                    return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                  })()}>
+                    {(() => {
+                      const statusCalculation = calculateCurrentStatus(
+                        crewMember.regime,
+                        crewMember.thuisSinds,
+                        crewMember.onBoardSince
+                      )
+                      return statusCalculation.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
+                    })()}
                   </Badge>
                 </div>
               </div>
@@ -104,26 +111,6 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
               <Edit className="w-4 h-4 mr-2" />
               Bewerken
             </Button>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Verplaats naar ander schip
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <UserX className="w-4 h-4 mr-2" />
-                  Ziekmelding registreren
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-red-600">Bemanningslid deactiveren</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
       </div>

@@ -5,15 +5,16 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, MapPin, Phone, CheckCircle, Clock, Plus, UserX, ArrowLeft } from "lucide-react"
-import { crewDatabase, shipDatabase } from "@/data/crew-database"
-import { calculateRegimeStatus } from "@/utils/regime-calculator"
+import { crewDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
+import { calculateRegimeStatus, calculateCurrentStatus } from "@/utils/regime-calculator"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export function AutomaticShipCrewOverview() {
   const router = useRouter()
   // Automatisch berekenen van alle bemanning per schip
-  const shipsWithCrew = Object.values(shipDatabase)
+  const shipsWithCrew = Object.values(getCombinedShipDatabase())
     .filter((ship) => ship.status === "Operationeel")
     .map((ship) => {
       const shipCrew = Object.values(crewDatabase)
@@ -37,25 +38,8 @@ export function AutomaticShipCrewOverview() {
     })
 
   function getShipLocation(shipId: string): string {
-    const locations: { [key: string]: string } = {
-      "ms-bellona": "Nederlandse wateren",
-      "ms-bacchus": "Duitse route",
-      "ms-pluto": "Tsjechische route",
-      "ms-apollo": "Poolse route",
-      "ms-jupiter": "Duitse wateren",
-      "ms-neptunus": "Slowaakse route",
-      "ms-libertas": "Belgische route",
-      "ms-realite": "Franse route",
-      "ms-harmonie": "Tsjechische wateren",
-      "ms-linde": "Duitse route",
-      "ms-primera": "Slowaakse route",
-      "ms-caritas": "Nederlandse route",
-      "ms-maike": "Belgische wateren",
-      "ms-egalite": "Franse wateren",
-      "ms-fidelitas": "Duitse route",
-      "ms-serenitas": "Tsjechische route",
-    }
-    return locations[shipId] || "Onbekende locatie"
+    const ship = getCombinedShipDatabase()[shipId]
+    return ship?.location || "Locatie onbekend"
   }
 
   const getStatusColor = (status: string) => {
@@ -200,24 +184,6 @@ export function AutomaticShipCrewOverview() {
 
                     <div className="flex items-center space-x-4">
                       <div className="text-right text-sm">
-                        {member.status === "aan-boord" && member.calculation && (
-                          <>
-                            <div className="text-gray-500">Aan boord sinds</div>
-                            <div className="font-medium">
-                              {new Date(member.onBoardSince!).toLocaleDateString("nl-NL")}
-                            </div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              Automatische wissel over {member.calculation.daysLeft} dagen
-                            </div>
-                          </>
-                        )}
-                        {member.status === "thuis" && (
-                          <>
-                            <div className="text-gray-500">Status</div>
-                            <div className="font-medium">Thuis</div>
-                            <div className="text-xs text-gray-400 mt-1">Wacht op rotatie</div>
-                          </>
-                        )}
                         {member.status === "ziek" && (
                           <>
                             <div className="text-gray-500">Ziek sinds</div>
@@ -229,12 +195,53 @@ export function AutomaticShipCrewOverview() {
                             <div className="text-xs text-red-600 mt-1">Geen regime tot herstel</div>
                           </>
                         )}
+                        {member.status !== "ziek" && (
+                          <>
+                            <div className="text-gray-500">Volgende Wissel</div>
+                            <div className="font-medium">
+                              {(() => {
+                                if (!member.regime) return "Niet ingesteld"
+                                
+                                const statusCalculation = calculateCurrentStatus(member.regime, member.thuisSinds, member.onBoardSince);
+                                return statusCalculation.nextRotationDate ? new Date(statusCalculation.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"
+                              })()}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              {(() => {
+                                if (!member.regime) return ""
+                                
+                                const statusCalculation = calculateCurrentStatus(member.regime, member.thuisSinds, member.onBoardSince);
+                                return `Over ${statusCalculation.daysUntilRotation} dagen`
+                              })()}
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-2">
-                        <Badge className={getStatusColor(member.status)}>
-                          {getStatusIcon(member.status)}
-                          <span className="ml-1 capitalize">{member.status.replace("-", " ")}</span>
+                        <Badge className={(() => {
+                          if (member.status === "ziek") return "bg-red-100 text-red-800"
+                          if (!member.regime) return member.status === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                          
+                          const statusCalculation = calculateCurrentStatus(member.regime, member.thuisSinds, member.onBoardSince)
+                          return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                        })()}>
+                          {(() => {
+                            if (member.status === "ziek") return <UserX className="w-3 h-3" />
+                            if (!member.regime) return member.status === "aan-boord" ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />
+                            
+                            const statusCalculation = calculateCurrentStatus(member.regime, member.thuisSinds, member.onBoardSince)
+                            return statusCalculation.currentStatus === "aan-boord" ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />
+                          })()}
+                          <span className="ml-1 capitalize">
+                            {(() => {
+                              if (member.status === "ziek") return "Ziek"
+                              if (!member.regime) return member.status === "aan-boord" ? "Aan boord" : "Thuis"
+                              
+                              const statusCalculation = calculateCurrentStatus(member.regime, member.thuisSinds, member.onBoardSince)
+                              return statusCalculation.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
+                            })()}
+                          </span>
                         </Badge>
                         <Link href={`/bemanning/${member.id}`}>
                           <Button variant="outline" size="sm">

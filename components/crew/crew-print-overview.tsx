@@ -13,7 +13,7 @@ export function CrewPrintOverview() {
 
   const handleDownload = () => {
     // Hier zou je een PDF kunnen genereren
-    console.log("Download PDF functionality")
+
   }
 
   // Groepeer bemanning per schip

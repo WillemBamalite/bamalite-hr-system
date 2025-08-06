@@ -8,6 +8,7 @@ import { Ship, Users, FileText, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { crewDatabase, shipDatabase } from "@/data/crew-database"
 import { getActiveCrewForShip, getAvailableCrew } from "@/utils/crew-filter"
+import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useRouter } from "next/navigation"
 
 export function ShipCrewOverview() {
@@ -17,8 +18,20 @@ export function ShipCrewOverview() {
     .filter((ship: any) => ship.status === "Operationeel")
     .map((ship: any) => {
       const shipCrew = getActiveCrewForShip(ship.id)
-      const onBoard = shipCrew.filter((crew: any) => crew.status === "aan-boord")
-      const atHome = shipCrew.filter((crew: any) => crew.status === "thuis")
+      const onBoard = shipCrew.filter((crew: any) => {
+        if (crew.status === "ziek") return false
+        if (!crew.regime) return crew.status === "aan-boord"
+        
+        const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
+        return statusCalculation.currentStatus === "aan-boord"
+      })
+      const atHome = shipCrew.filter((crew: any) => {
+        if (crew.status === "ziek") return false
+        if (!crew.regime) return crew.status === "thuis"
+        
+        const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
+        return statusCalculation.currentStatus === "thuis"
+      })
       const sick = shipCrew.filter((crew: any) => crew.status === "ziek")
 
       return {
@@ -150,7 +163,21 @@ export function ShipCrewOverview() {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Badge className={`${getStatusColor(crew.status)} text-xs`}>{getStatusText(crew.status)}</Badge>
+                        <Badge className={`${(() => {
+                          if (crew.status === "ziek") return "bg-red-100 text-red-800"
+                          if (!crew.regime) return getStatusColor(crew.status)
+                          
+                          const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
+                          return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                        })()} text-xs`}>
+                          {(() => {
+                            if (crew.status === "ziek") return "Ziek"
+                            if (!crew.regime) return getStatusText(crew.status)
+                            
+                            const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
+                            return statusCalculation.currentStatus === "aan-boord" ? "Aan Boord" : "Thuis"
+                          })()}
+                        </Badge>
                         <Link href={`/bemanning/${crew.id}`}>
                           <Button variant="ghost" size="sm">
                             <FileText className="w-3 h-3" />

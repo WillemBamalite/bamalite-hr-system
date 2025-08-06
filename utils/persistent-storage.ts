@@ -54,15 +54,19 @@ export function loadFromStorage(): PersistentStorage {
 export function saveToStorage(data: Partial<PersistentStorage>): void {
   if (typeof window === 'undefined') return;
 
+  console.log("🔧 saveToStorage aangeroepen:", data);
+
   try {
     Object.entries(data).forEach(([key, value]) => {
       if (value !== undefined) {
+        console.log("🔧 Saving to localStorage:", key, value);
         localStorage.setItem(STORAGE_KEYS[key as keyof typeof STORAGE_KEYS], JSON.stringify(value));
       }
     });
     
     // Trigger custom event voor real-time updates
     window.dispatchEvent(new CustomEvent('localStorageUpdate'));
+    console.log("🔧 localStorageUpdate event dispatched");
   } catch (error) {
     console.error('Error saving to localStorage:', error);
   }

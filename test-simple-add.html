@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Simple Add</title>
+</head>
+<body>
+    <h1>Test Simple Add</h1>
+    
+    <button onclick="addTestShip()">Add Test Ship</button>
+    <button onclick="addTestCrew()">Add Test Crew</button>
+    <button onclick="showData()">Show Data</button>
+    <button onclick="clearData()">Clear All Data</button>
+    
+    <div id="output"></div>
+    
+    <script>
+        function addTestShip() {
+            const ships = JSON.parse(localStorage.getItem('shipDatabase') || '{}');
+            ships['ms-test'] = {
+                id: 'ms-test',
+                name: 'MTS Test Ship',
+                status: 'Operationeel'
+            };
+            localStorage.setItem('shipDatabase', JSON.stringify(ships));
+            console.log('Test ship added');
+            showData();
+        }
+        
+        function addTestCrew() {
+            const crew = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
+            crew['test-crew-1'] = {
+                id: 'test-crew-1',
+                firstName: 'Test',
+                lastName: 'Crew',
+                position: 'Kapitein',
+                shipId: 'ms-test',
+                status: 'aan-boord'
+            };
+            localStorage.setItem('crewDatabase', JSON.stringify(crew));
+            console.log('Test crew added');
+            showData();
+        }
+        
+        function showData() {
+            const crewData = localStorage.getItem('crewDatabase');
+            const shipData = localStorage.getItem('shipDatabase');
+            
+            const output = document.getElementById('output');
+            output.innerHTML = `
+                <h2>Crew Database:</h2>
+                <pre>${crewData || 'Leeg'}</pre>
+                
+                <h2>Ship Database:</h2>
+                <pre>${shipData || 'Leeg'}</pre>
+            `;
+        }
+        
+        function clearData() {
+            localStorage.removeItem('crewDatabase');
+            localStorage.removeItem('shipDatabase');
+            console.log('All data cleared');
+            showData();
+        }
+        
+        // Show data on load
+        showData();
+    </script>
+</body>
+</html> 

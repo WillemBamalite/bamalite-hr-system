@@ -37,9 +37,6 @@ export default function NogInTeDelenBemanning() {
           <Link href="/bemanning/aflossers" className="bg-green-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-green-700 shadow">
             🔄 Aflossers
           </Link>
-          <Link href="/schepen" className="bg-purple-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-purple-700 shadow">
-            🚢 Schepen
-          </Link>
           <Link href="/bemanning/nieuw" className="bg-indigo-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-indigo-700 shadow">
             ➕ Nieuw lid
           </Link>

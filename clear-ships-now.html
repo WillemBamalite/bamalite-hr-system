@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Schepen Verwijderen</title>
+</head>
+<body>
+    <script>
+        // Direct alle schepen verwijderen
+        localStorage.removeItem('shipDatabase');
+        window.dispatchEvent(new Event('localStorageUpdate'));
+        window.dispatchEvent(new Event('forceRefresh'));
+        
+        // Toon bevestiging
+        document.body.innerHTML = `
+            <h1>✅ Alle schepen zijn verwijderd!</h1>
+            <p>Je kunt nu terug naar het dashboard gaan.</p>
+            <button onclick="window.location.href='http://localhost:3001'">Terug naar Dashboard</button>
+        `;
+    </script>
+</body>
+</html> 

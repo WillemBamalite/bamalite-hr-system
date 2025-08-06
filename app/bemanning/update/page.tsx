@@ -1,262 +1,271 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { crewDatabase } from "@/data/crew-database"
-import { useCrewData } from "@/hooks/use-crew-data";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useState, useEffect } from "react"
+import { useCrewData } from "@/hooks/use-crew-data"
+import { calculateCurrentStatus, autoAdvanceCrewDatabase, manuallyAdjustDates } from "@/utils/regime-calculator"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CheckCircle, Clock, AlertTriangle, RefreshCw } from "lucide-react"
 
 export default function UpdatePage() {
-  const { crewDatabase: allCrewData, updateData } = useCrewData()
-  const [updateStatus, setUpdateStatus] = useState<string>("");
+  const { crewDatabase: allCrewData, forceRefresh } = useCrewData()
+  const [isAdvancing, setIsAdvancing] = useState(false)
+  const [advanceResult, setAdvanceResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [selectedCrew, setSelectedCrew] = useState<any>(null)
+  const [newDate, setNewDate] = useState("")
+  const [dateType, setDateType] = useState<"thuisSinds" | "onBoardSince">("thuisSinds")
 
-  const crewUpdates = {
-    // MS Bellona - Allemaal 2/2 regime
-    "frank-hennekam": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "yovanni-smith": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "dominik-medulan": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "jakub-misar": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "jack-suiker": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "rob-van-etten": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "alexander-gyori": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "lucien-de-grauw": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "david-gyori": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
+  // Filter crew members met regime
+  const crewWithRegime = Object.values(allCrewData).filter((crew: any) => 
+    crew.regime && crew.regime !== "Altijd" && !crew.deleted
+  )
 
-    // MS Bacchus - Allemaal 2/2 regime
-    "koert-van-veen": { status: "thuis", thuisSinds: "2025-07-24", regime: "2/2" },
-    "joao-fonseca": { status: "thuis", thuisSinds: "2025-07-24", regime: "2/2" },
-    "roy-landsbergen": { status: "thuis", thuisSinds: "2025-07-24", regime: "2/2" },
-    "ernst-van-de-vlucht": { status: "thuis", thuisSinds: "2025-07-24", regime: "2/2" },
-    "alexander-specht": { status: "aan-boord", onBoardSince: "2025-07-24", regime: "2/2" },
-    "peter-gunter": { status: "aan-boord", onBoardSince: "2025-07-24", regime: "2/2" },
-    "mike-de-boer": { status: "aan-boord", onBoardSince: "2025-07-24", regime: "2/2" },
-    "casper-de-ruiter": { status: "aan-boord", onBoardSince: "2025-07-24", regime: "2/2" },
-
-    // MS Pluto - Allemaal 2/2 regime
-    "jaroslav-polak": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "pavel-krejci": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "michal-dudka": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "jan-svoboda-jr": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "radim-stastka": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "jan-svoboda-sr": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-
-    // MS Apollo - Gemengde regimes
-    "ed-eichhorn": { status: "thuis", thuisSinds: "2025-07-23", regime: "1/1" },
-    "thijs-creemers": { status: "thuis", thuisSinds: "2025-06-18", regime: "2/2" },
-    "thomas-kucera": { status: "thuis", thuisSinds: "2025-06-18", regime: "2/2" },
-    "martin-novak": { status: "thuis", thuisSinds: "2025-06-18", regime: "2/2" },
-    "max-wansink": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "1/1" },
-    "stanislaw-fus": { status: "aan-boord", onBoardSince: "2025-06-18", regime: "2/2" },
-    "slawomir-diodasz": { status: "aan-boord", onBoardSince: "2025-06-18", regime: "2/2" },
-    "mateusz-baryluk": { status: "aan-boord", onBoardSince: "2025-06-18", regime: "2/2" },
-
-    // MS Jupiter
-    "albert-bruinsma": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "dejan-popovic": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "milan-kabut": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "nikolai-djokic": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "helga-jordan": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "maurijn-klop": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "aliana-bruinsma": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "juraj-paal": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "jozef-tamas": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "martin-patzeld": { status: "nog-in-te-delen", regime: "2/2" },
-
-    // MS Neptunus
-    "erik-span": { status: "aan-boord", onBoardSince: "2025-07-17", regime: "2/2" },
-    "milan-szabo": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
-    "stefan-szabo": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
-    "roman-kesiar": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
-    "melvin-van-der-werf": { status: "thuis", thuisSinds: "2025-07-17", regime: "2/2" },
-    "jurena-dalibor": { status: "thuis", thuisSinds: "2025-07-17", regime: "3/3" },
-    "michael-bobaly": { status: "thuis", thuisSinds: "2025-07-17", regime: "3/3" },
-    "istvan-vockei": { status: "thuis", thuisSinds: "2025-07-17", regime: "3/3" },
-
-    // MS Realite - Altijd aan boord
-    "bart-bruinsma": { status: "aan-boord", onBoardSince: "2025-01-01", regime: "2/2" },
-    "jos-meijer": { status: "aan-boord", onBoardSince: "2025-01-01", regime: "2/2" },
-    "willem-van-der-bent": { status: "aan-boord", onBoardSince: "2025-01-01", regime: "2/2" },
-    "leo-godde": { status: "aan-boord", onBoardSince: "2025-01-01", regime: "2/2" },
-
-    // MS Harmonie - Allemaal 2/2 regime
-    "radek-polak": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "miroslav-polak": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "lukas-primus": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "christiaan-majsak": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "robert-pilar": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "tomas-trunecek": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "david-zbynek": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "pavel-hypsa": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-
-    // MS Linde - Allemaal 2/2 regime
-    "theodorus-van-hasselt": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "micky-stenczel": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "michal-ptacek": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "gina-bodrij": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "marcel-hoogakker": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "zsolt-radvansky": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "stefan-herdics": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "jan-wonar": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "rudolf-guban": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-
-    // MS Primera - Allemaal 2/2 regime
-    "anthonie-quist": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "ladislav-nemcek": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "marian-sramek": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "peter-jakus": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "peer-roosen": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "pavol-pastorek": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "v-danasz": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "jozef-nemcek": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "peter-mazereeuw": { status: "nog-in-te-delen", regime: "2/2" },
-
-    // MS Caritas - Allemaal 2/2 regime
-    "pierre-spronk": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "gene-waan": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "daniel-van-den-ende": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "ravi-van-logchem": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "arie-de-leeuw": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "michael-fateef": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "laurent-eberling": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "david-robert-tjalling": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-
-    // MS Maike - Allemaal 2/2 regime
-    "harry-braam": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "silvester-pols": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "danny-jacobse": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "glenn-claessens": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "2/2" },
-    "floris-suiker": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "roy-blijenberg": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "abdul-akra": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "devano-hultma": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-    "dirk-de-bruine": { status: "thuis", thuisSinds: "2025-07-16", regime: "2/2" },
-
-    // MS Libertas - Allemaal 2/2 regime
-    "huib-ten-hacken": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "tibor-makula": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "bedenek-zedenek": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "amin-hammouch": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "richard-zegers": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "ferry-groeneweg": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "arvid-van-zon": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "pavel-stary": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-
-    // MS Egalite - Allemaal 2/2 regime
-    "peter-bolle": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "joey-ramos": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "leroy-hoogakker": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "abul": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "xenja-didden": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "marek-uhrecky": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "henri-bruinsma": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "roy-tealman": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "obby-bernanbla": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-
-    // MS Fidelitas - Allemaal 2/2 regime
-    "hendrik-korsten": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "jessica-korsten": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "robin-vanicek": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "patrick-svoboda": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "harald-jorgensen": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "ladislav-mesarcik": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "jan-tokar": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "djovanni-de-graaf": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-
-    // MS Serenitas
-    "job-handgraaf": { status: "aan-boord", onBoardSince: "2025-07-23", regime: "2/2" },
-    "daniel-rakosie": { status: "thuis", thuisSinds: "2025-07-16", regime: "3/3" },
-    "david-paraska": { status: "thuis", thuisSinds: "2025-07-16", regime: "3/3" },
-    "vaclav-m-lady": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
-    "jakob-leunis": { status: "thuis", thuisSinds: "2025-07-23", regime: "2/2" },
-    "milos-jurica": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
-    "kirill-sevatstianov": { status: "nog-in-te-delen", regime: "3/3" },
-    "ladislav-mesarcik-ser": { status: "aan-boord", onBoardSince: "2025-07-16", regime: "3/3" },
-  };
-
-  const handleUpdate = () => {
-    try {
-      // Update localStorage met nieuwe data
-      const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
-      
-      Object.keys(crewUpdates).forEach(crewId => {
-        if (currentData[crewId]) {
-          currentData[crewId] = {
-            ...currentData[crewId],
-            ...crewUpdates[crewId as keyof typeof crewUpdates]
-          };
-        }
-      });
-
-      localStorage.setItem('crewDatabase', JSON.stringify(currentData));
-      setUpdateStatus("✅ Alle bemanningsleden succesvol geüpdatet!");
-      
-      // Reload de pagina om de wijzigingen te tonen
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
-      
-    } catch (error) {
-      setUpdateStatus("❌ Fout bij updaten: " + error);
+  // Bereken status voor elke crew member
+  const crewWithStatus = crewWithRegime.map((crew: any) => {
+    const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
+    return {
+      ...crew,
+      calculatedStatus: statusCalculation.currentStatus,
+      nextRotationDate: statusCalculation.nextRotationDate,
+      daysUntilRotation: statusCalculation.daysUntilRotation
     }
-  };
+  })
+
+  // Groepeer per status
+  const aanBoord = crewWithStatus.filter((c: any) => c.calculatedStatus === "aan-boord")
+  const thuis = crewWithStatus.filter((c: any) => c.calculatedStatus === "thuis")
+
+  const handleAdvanceDates = async () => {
+    setIsAdvancing(true)
+    setAdvanceResult(null)
+    
+    try {
+      const result = autoAdvanceCrewDatabase()
+      if (result) {
+        setAdvanceResult({ success: true, message: "Datums succesvol doorgelopen!" })
+        forceRefresh()
+      } else {
+        setAdvanceResult({ success: false, message: "Geen datums hoefden doorgelopen te worden." })
+      }
+    } catch (error) {
+      setAdvanceResult({ success: false, message: `Fout bij doordraaien datums: ${error}` })
+    } finally {
+      setIsAdvancing(false)
+    }
+  }
+
+  const handleManualAdjust = () => {
+    if (!selectedCrew || !newDate) return
+
+    try {
+      const crewData = localStorage.getItem('crewDatabase')
+      if (!crewData) return
+
+      const crew = JSON.parse(crewData)
+      const { hasChanges, updatedCrew } = manuallyAdjustDates(selectedCrew.id, newDate, dateType, crew)
+
+      if (hasChanges) {
+        localStorage.setItem('crewDatabase', JSON.stringify(updatedCrew))
+        window.dispatchEvent(new Event('localStorageUpdate'))
+        window.dispatchEvent(new Event('forceRefresh'))
+        
+        setAdvanceResult({ success: true, message: `Datum succesvol aangepast voor ${selectedCrew.firstName} ${selectedCrew.lastName}` })
+        setSelectedCrew(null)
+        setNewDate("")
+        forceRefresh()
+      }
+    } catch (error) {
+      setAdvanceResult({ success: false, message: `Fout bij aanpassen datum: ${error}` })
+    }
+  }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Bemanningslijst Update</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Deze pagina update alle bemanningsleden volgens de officiële lijst met correcte datums, regimes en statussen.
+    <div className="max-w-6xl mx-auto py-8 px-4">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Regime Update</h1>
+        <p className="text-gray-600 mb-6">
+          Hier kun je de datums automatisch doordraaien en handmatig aanpassen voor bemanningsleden.
+        </p>
+
+        {/* Automatische datum doorloop */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <RefreshCw className="w-5 h-5" />
+              Automatische Datum Doorloop
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600 mb-4">
+              Controleer en loop automatisch alle datums door op basis van het regime. 
+              Dit zorgt ervoor dat bemanningsleden automatisch van status wisselen wanneer hun periode voorbij is.
             </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Object.keys(crewUpdates).map((crewId) => {
-                const crew = crewDatabase[crewId as keyof typeof crewDatabase];
-                const update = crewUpdates[crewId as keyof typeof crewUpdates];
-                
-                if (!crew) return null;
-                
-                return (
-                  <div key={crewId} className="border rounded-lg p-3">
-                    <div className="font-medium">{crew.firstName} {crew.lastName}</div>
-                    <div className="text-sm text-gray-600">{crew.position}</div>
-                    <div className="flex gap-2 mt-2">
-                      <Badge variant={update.status === "aan-boord" ? "default" : "secondary"}>
-                        {update.status}
-                      </Badge>
-                      <Badge variant="outline">{update.regime}</Badge>
-                    </div>
-                    {update.onBoardSince && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Aan boord sinds: {update.onBoardSince}
-                      </div>
-                    )}
-                    {update.thuisSinds && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Thuis sinds: {update.thuisSinds}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            
-            <Button onClick={handleUpdate} className="w-full">
-              Update Alle Bemanningsleden
+            <Button 
+              onClick={handleAdvanceDates} 
+              disabled={isAdvancing}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isAdvancing ? "Bezig..." : "Datums Doordraaien"}
             </Button>
-            
-            {updateStatus && (
-              <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                {updateStatus}
+
+            {advanceResult && (
+              <Alert className={`mt-4 ${advanceResult.success ? "border-green-200 bg-green-50" : "border-yellow-200 bg-yellow-50"}`}>
+                <AlertDescription className={advanceResult.success ? "text-green-800" : "text-yellow-800"}>
+                  {advanceResult.message}
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Handmatige datum aanpassing */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Handmatige Datum Aanpassing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600 mb-4">
+              Pas handmatig een datum aan voor een specifiek bemanningslid. 
+              De andere datum wordt automatisch berekend op basis van het regime.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <Label htmlFor="crew-select">Bemanningslid</Label>
+                <select 
+                  id="crew-select"
+                  className="w-full border rounded-md px-3 py-2 mt-1"
+                  value={selectedCrew?.id || ""}
+                  onChange={(e) => {
+                    const crew = crewWithStatus.find((c: any) => c.id === e.target.value)
+                    setSelectedCrew(crew || null)
+                  }}
+                >
+                  <option value="">Selecteer bemanningslid</option>
+                  {crewWithStatus.map((crew: any) => (
+                    <option key={crew.id} value={crew.id}>
+                      {crew.firstName} {crew.lastName} ({crew.regime})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="date-type">Datum Type</Label>
+                <select 
+                  id="date-type"
+                  className="w-full border rounded-md px-3 py-2 mt-1"
+                  value={dateType}
+                  onChange={(e) => setDateType(e.target.value as "thuisSinds" | "onBoardSince")}
+                >
+                  <option value="thuisSinds">Thuis sinds</option>
+                  <option value="onBoardSince">Aan boord sinds</option>
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="new-date">Nieuwe Datum</Label>
+                <Input 
+                  id="new-date"
+                  type="date" 
+                  value={newDate}
+                  onChange={(e) => setNewDate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            {selectedCrew && (
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium mb-2">Huidige situatie voor {selectedCrew.firstName} {selectedCrew.lastName}:</h4>
+                <div className="text-sm space-y-1">
+                  <div>Regime: {selectedCrew.regime}</div>
+                  <div>Huidige status: {selectedCrew.calculatedStatus}</div>
+                  <div>Thuis sinds: {selectedCrew.thuisSinds ? new Date(selectedCrew.thuisSinds).toLocaleDateString("nl-NL") : "Niet ingesteld"}</div>
+                  <div>Aan boord sinds: {selectedCrew.onBoardSince ? new Date(selectedCrew.onBoardSince).toLocaleDateString("nl-NL") : "Niet ingesteld"}</div>
+                  <div>Volgende wissel: {selectedCrew.nextRotationDate ? new Date(selectedCrew.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"}</div>
+                </div>
               </div>
             )}
-          </div>
-        </CardContent>
-      </Card>
+
+            <Button 
+              onClick={handleManualAdjust}
+              disabled={!selectedCrew || !newDate}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Datum Aanpassen
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Overzicht */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Aan boord */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                Aan Boord ({aanBoord.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {aanBoord.map((crew: any) => (
+                  <div key={crew.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">{crew.firstName} {crew.lastName}</div>
+                      <div className="text-sm text-gray-600">{crew.regime} • {crew.shipId}</div>
+                      <div className="text-xs text-gray-500">
+                        Volgende wissel: {crew.nextRotationDate ? new Date(crew.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"}
+                        {crew.daysUntilRotation > 0 && ` (over ${crew.daysUntilRotation} dagen)`}
+                      </div>
+                    </div>
+                    <Badge className="bg-green-100 text-green-800">Aan boord</Badge>
+                  </div>
+                ))}
+                {aanBoord.length === 0 && (
+                  <p className="text-gray-500 text-center py-4">Geen bemanningsleden aan boord</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Thuis */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-blue-600" />
+                Thuis ({thuis.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {thuis.map((crew: any) => (
+                  <div key={crew.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">{crew.firstName} {crew.lastName}</div>
+                      <div className="text-sm text-gray-600">{crew.regime} • {crew.shipId}</div>
+                      <div className="text-xs text-gray-500">
+                        Volgende wissel: {crew.nextRotationDate ? new Date(crew.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"}
+                        {crew.daysUntilRotation > 0 && ` (over ${crew.daysUntilRotation} dagen)`}
+                      </div>
+                    </div>
+                    <Badge className="bg-blue-100 text-blue-800">Thuis</Badge>
+                  </div>
+                ))}
+                {thuis.length === 0 && (
+                  <p className="text-gray-500 text-center py-4">Geen bemanningsleden thuis</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
-  );
+  )
 } 

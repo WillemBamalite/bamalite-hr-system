@@ -3,8 +3,6 @@
 import { Suspense, useState, use } from "react"
 import { CrewMemberHeader } from "@/components/crew/crew-member-header"
 import { CrewMemberProfile } from "@/components/crew/crew-member-profile"
-import { CrewMemberDocuments } from "@/components/crew/crew-member-documents"
-import { CrewMemberHistory } from "@/components/crew/crew-member-history"
 import { CrewMemberNotes } from "@/components/crew/crew-member-notes"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
@@ -41,15 +39,14 @@ export default function BemanningslidPage({ params }: Props) {
                 />
               </Suspense>
 
-              <CrewMemberDocuments crewMemberId={resolvedParams.id} />
-
-              <CrewMemberHistory crewMemberId={resolvedParams.id} />
             </div>
 
             {/* Sidebar */}
             <div className="space-y-6">
               <CrewMemberNotes crewMemberId={resolvedParams.id} />
             </div>
+
+
           </div>
 
           {/* Mobiele actieknoppen */}
@@ -61,9 +58,6 @@ export default function BemanningslidPage({ params }: Props) {
               </Link>
               <Link href="/bemanning/aflossers" className="bg-green-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-green-700 shadow">
                 🔄 Aflossers
-              </Link>
-              <Link href="/schepen" className="bg-purple-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-purple-700 shadow">
-                🚢 Schepen
               </Link>
               <Link href="/documenten" className="bg-orange-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-orange-700 shadow">
                 📄 Documenten
@@ -87,6 +81,8 @@ export default function BemanningslidPage({ params }: Props) {
           </div>
         </main>
       </div>
+
+
     </div>
   )
 }

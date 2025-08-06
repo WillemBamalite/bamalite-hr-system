@@ -21,7 +21,7 @@ export function SickLeaveHistoryHeader() {
 
   const handleExportHistory = () => {
     // Hier zou je een CSV/Excel export kunnen implementeren
-    console.log("Export ziekte history")
+
     alert("Export functionaliteit wordt geïmplementeerd")
   }
 

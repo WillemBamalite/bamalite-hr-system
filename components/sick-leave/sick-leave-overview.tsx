@@ -30,6 +30,7 @@ export function SickLeaveOverview() {
       }
     })
     .filter((record) => record.crewMember && record.crewMember.status !== "uit-dienst") // Filter out records zonder crew member en uit dienst
+    .filter((record) => record.status !== "hersteld") // Filter out herstelde records
 
   const getStatusColor = (status: string) => {
     switch (status) {

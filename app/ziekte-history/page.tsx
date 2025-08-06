@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { sickLeaveHistoryDatabase, shipDatabase } from "@/data/crew-database"
+import { sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
 import { useCrewData } from "@/hooks/use-crew-data"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -31,7 +32,7 @@ export default function SickLeaveHistoryPage() {
   const historyRecords = Object.values(sickLeaveHistoryDatabase)
     .map((record: any) => {
       const crewMember = (allCrewData as any)[record.crewMemberId]
-      const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
+      const ship = crewMember?.shipId ? getCombinedShipDatabase()[crewMember.shipId] : null
       return {
         ...record,
         crewMember,
@@ -130,9 +131,9 @@ export default function SickLeaveHistoryPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-4">
-          <Link href="/ziekte" className="flex items-center text-sm text-gray-700 hover:text-blue-700">
+                      <Link href="/" className="flex items-center text-sm text-gray-700 hover:text-blue-700">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Terug naar Ziekte
+            Terug naar Dashboard
           </Link>
           <div>
             <h1 className="text-2xl font-bold">Terug Te Staan Overzicht</h1>
@@ -276,7 +277,7 @@ export default function SickLeaveHistoryPage() {
                               <SelectValue placeholder="Selecteer een schip" />
                             </SelectTrigger>
                             <SelectContent>
-                              {Object.values(shipDatabase).map((ship: any) => (
+                              {Object.values(getCombinedShipDatabase()).map((ship: any) => (
                                 <SelectItem key={ship.id} value={ship.name}>
                                   {ship.name}
                                 </SelectItem>
@@ -485,7 +486,7 @@ export default function SickLeaveHistoryPage() {
                             <SelectValue placeholder="Selecteer een schip" />
                           </SelectTrigger>
                           <SelectContent>
-                            {Object.values(shipDatabase).map((ship: any) => (
+                            {Object.values(getCombinedShipDatabase()).map((ship: any) => (
                               <SelectItem key={ship.id} value={ship.name}>
                                 {ship.name}
                               </SelectItem>

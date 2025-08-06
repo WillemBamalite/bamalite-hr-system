@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar, User } from "lucide-react"
-import { shipDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
 
 interface BackInServiceDialogProps {
   crewMemberId: string
@@ -87,7 +87,7 @@ export function BackInServiceDialog({ crewMemberId, crewMemberName, onBackInServ
                   <SelectValue placeholder="Selecteer schip" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(shipDatabase).map((ship: any) => (
+                  {Object.values(getCombinedShipDatabase()).map((ship: any) => (
                     <SelectItem key={ship.id} value={ship.id}>
                       {ship.name}
                     </SelectItem>

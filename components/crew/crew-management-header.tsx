@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input"
 import { ArrowLeft, Users, Search, Plus, Printer } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { crewDatabase, shipDatabase } from "@/data/crew-database"
+import { crewDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
 
 export function CrewManagementHeader() {
   const router = useRouter()
@@ -17,7 +18,7 @@ export function CrewManagementHeader() {
   const atHomeCrew = crew.filter((crew: any) => crew.status === "thuis").length
   const sickCrew = crew.filter((crew: any) => crew.status === "ziek").length
   const availableCrew = crew.filter((crew: any) => !crew.shipId).length
-  const operationalShips = Object.values(shipDatabase).filter((ship: any) => ship.status === "Operationeel").length
+  const operationalShips = Object.values(getCombinedShipDatabase()).filter((ship: any) => ship.status === "Operationeel").length
 
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm">

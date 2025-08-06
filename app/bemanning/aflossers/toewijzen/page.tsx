@@ -1,6 +1,9 @@
 "use client";
-import { useState } from "react";
-import { crewDatabase, shipDatabase } from "@/data/crew-database";
+
+import { useState, useEffect } from "react";
+import { shipDatabase } from "@/data/crew-database";
+import { useCrewData } from "@/hooks/use-crew-data";
+import { loadFromStorage } from "@/utils/persistent-storage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle, Trash2 } from "lucide-react";
+import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle, Trash2, AlertTriangle, XCircle, Plus, Edit } from "lucide-react";
 import Link from "next/link";
+import { MobileHeaderNav } from "@/components/ui/mobile-header-nav";
 
 interface AflosserAssignment {
   id: string;
@@ -18,8 +22,8 @@ interface AflosserAssignment {
   shipId: string;
   fromDate: string;
   toDate: string | null;
-
-  status: "active" | "completed";
+  route: string;
+  status: "active" | "completed" | "cancelled";
   hasFixedEndDate: boolean;
   completedAt: string | null;
   createdAt: string;
@@ -34,37 +38,71 @@ interface AflosserUnavailable {
   createdAt: string;
 }
 
+// Helper functie om te checken of aflosser momenteel afwezig is
+function isCurrentlyAbsent(aflosser: any) {
+  const today = new Date();
+  const absences = aflosser.aflosserAbsences || [];
+  return absences.some((absence: any) => 
+    new Date(absence.fromDate) <= today && new Date(absence.toDate) >= today
+  );
+}
+
+// Helper functie om te checken of aflosser binnenkort afwezig is (binnen week)
+function isSoonAbsent(aflosser: any) {
+  const today = new Date();
+  const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const absences = aflosser.aflosserAbsences || [];
+  return absences.some((absence: any) => 
+    new Date(absence.fromDate) > today && new Date(absence.fromDate) <= weekFromNow
+  );
+}
+
 export default function AflossersToewijzenPage() {
+
+  
+  const { crewDatabase, updateData } = useCrewData();
+  
   // Haal assignments en unavailable periods uit database
-  const [assignments, setAssignments] = useState<AflosserAssignment[]>(() => {
+  const [assignments, setAssignments] = useState<AflosserAssignment[]>([]);
+  const [unavailablePeriods, setUnavailablePeriods] = useState<AflosserUnavailable[]>([]);
+  
+  // Update assignments en unavailable periods wanneer crewDatabase verandert
+  useEffect(() => {
     const allAssignments: AflosserAssignment[] = [];
+    const allUnavailable: AflosserUnavailable[] = [];
+    
     Object.values(crewDatabase).forEach((crew: any) => {
       if (crew.aflosserAssignments) {
         allAssignments.push(...crew.aflosserAssignments);
       }
-    });
-    return allAssignments;
-  });
-  
-  const [unavailablePeriods, setUnavailablePeriods] = useState<AflosserUnavailable[]>(() => {
-    const allUnavailable: AflosserUnavailable[] = [];
-    Object.values(crewDatabase).forEach((crew: any) => {
-      if (crew.aflosserUnavailablePeriods) {
-        allUnavailable.push(...crew.aflosserUnavailablePeriods);
+      if (crew.aflosserAbsences) {
+        allUnavailable.push(...crew.aflosserAbsences);
       }
     });
-    return allUnavailable;
-  });
+    
+    setAssignments(allAssignments);
+    setUnavailablePeriods(allUnavailable);
+  }, [crewDatabase]);
+  
   const [selectedAflosser, setSelectedAflosser] = useState<any>(null);
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [showUnavailableDialog, setShowUnavailableDialog] = useState(false);
-  const [showAddAflosserDialog, setShowAddAflosserDialog] = useState(false);
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+  const [completionDate, setCompletionDate] = useState("");
+  const [editData, setEditData] = useState({
+    phone: "",
+    diplomas: "",
+    notes: ""
+  });
+  
   const [newAssignment, setNewAssignment] = useState({
     shipId: "",
     fromDate: "",
     toDate: "",
-
+    route: "",
     hasFixedEndDate: false
   });
   const [newUnavailable, setNewUnavailable] = useState({
@@ -72,93 +110,34 @@ export default function AflossersToewijzenPage() {
     toDate: "",
     reason: ""
   });
-  const [newAflosser, setNewAflosser] = useState({
-    firstName: "",
-    lastName: "",
-    birthDate: "",
-    birthPlace: "",
-    address: "",
-    phone: "",
-    email: "",
-    nationality: "",
-    smoking: false,
-    experience: "",
-    notes: "",
-    qualifications: [] as string[]
+
+  // Filter aflossers - zoek naar aflossers op basis van functie, specifieke aflosser functies, of isAflosser eigenschap
+  const aflossers = Object.values(crewDatabase).filter((c: any) => {
+    const position = c.position?.toLowerCase() || "";
+    return c.isAflosser === true ||
+      position.includes("aflos") ||
+      position.includes("relief");
   });
 
-  // Filter alle aflossers
-  const aflossers = Object.values(crewDatabase).filter((c: any) => 
-    c.position?.toLowerCase().includes("aflos") || c.position?.toLowerCase().includes("relief")
+  // Filter actieve aflossers (toegewezen aan schip)
+  const activeAflossers = aflossers.filter((aflosser: any) =>
+    aflosser.status === "aan-boord" && aflosser.shipId
   );
 
-  // Bepaal status van elke aflosser
-  const aflossersWithStatus = aflossers.map((aflosser: any) => {
-    const today = new Date();
-    const activeAssignment = assignments.find(a => 
-      a.aflosserId === aflosser.id && 
-      a.status === "active" &&
-      new Date(a.fromDate) <= today && 
-      (a.toDate ? new Date(a.toDate) >= today : true)
-    );
-
-    const unavailablePeriod = unavailablePeriods.find(u => 
-      u.aflosserId === aflosser.id &&
-      new Date(u.fromDate) <= today && 
-      new Date(u.toDate) >= today
-    );
-
-    const upcomingUnavailable = unavailablePeriods
-      .filter(u => u.aflosserId === aflosser.id)
-      .find(u => 
-        new Date(u.fromDate) > today && 
-        new Date(u.fromDate) <= new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000) // Binnen 7 dagen
-      );
-
-    let status = "beschikbaar";
-    let statusColor = "bg-green-100 text-green-800";
-    let statusIcon = <CheckCircle className="w-4 h-4" />;
-
-    if (activeAssignment) {
-      status = "actief";
-      statusColor = "bg-blue-100 text-blue-800";
-      statusIcon = <Clock className="w-4 h-4" />;
-    } else if (unavailablePeriod) {
-      status = "niet-beschikbaar";
-      statusColor = "bg-red-100 text-red-800";
-      statusIcon = <UserX className="w-4 h-4" />;
-    } else if (upcomingUnavailable) {
-      status = "binnenkort-niet-beschikbaar";
-      statusColor = "bg-orange-100 text-orange-800";
-      statusIcon = <AlertCircle className="w-4 h-4" />;
-    }
-
-
-
-    return {
-      ...aflosser,
-      status,
-      statusColor,
-      statusIcon,
-      activeAssignment,
-      unavailablePeriod,
-      upcomingUnavailable
-    };
+  // Filter beschikbare aflossers (niet toegewezen en niet afwezig)
+  const availableAflossers = aflossers.filter((aflosser: any) => {
+    const isAssigned = aflosser.status === "aan-boord" && aflosser.shipId;
+    const isAbsent = isCurrentlyAbsent(aflosser);
+    return !isAssigned && !isAbsent;
   });
 
-  const beschikbaar = aflossersWithStatus.filter((a: any) => a.status === "beschikbaar");
-  const actief = aflossersWithStatus.filter((a: any) => a.status === "actief");
-  const nietBeschikbaar = aflossersWithStatus.filter((a: any) => a.status === "niet-beschikbaar");
-  const binnenkortNietBeschikbaar = aflossersWithStatus.filter((a: any) => a.status === "binnenkort-niet-beschikbaar");
-  
-  // Toewijsbare aflossers (beschikbaar + binnenkort niet beschikbaar)
-  const toewijsbaar = aflossersWithStatus.filter((a: any) => 
-    a.status === "beschikbaar" || a.status === "binnenkort-niet-beschikbaar"
+  // Filter niet beschikbare aflossers (momenteel afwezig)
+  const unavailableAflossers = aflossers.filter((aflosser: any) =>
+    isCurrentlyAbsent(aflosser)
   );
-
-
 
   function handleAssignToShip(aflosser: any) {
+
     setSelectedAflosser(aflosser);
     setShowAssignmentDialog(true);
   }
@@ -173,13 +152,65 @@ export default function AflossersToewijzenPage() {
     setShowUnavailableDialog(true);
   }
 
+  function handleCompleteAssignment(aflosser: any, assignment: any) {
+    setSelectedAflosser(aflosser);
+    setSelectedAssignment(assignment);
+    setShowCompleteDialog(true);
+  }
+
+  function handleCancelAssignment(aflosser: any, assignment: any) {
+    if (confirm(`Weet je zeker dat je de reis van ${aflosser.firstName} ${aflosser.lastName} wilt annuleren?`)) {
+          // Update assignment status
+    const updatedAssignments = (crewDatabase as any)[aflosser.id]?.aflosserAssignments?.map((a: any) =>
+      a.id === assignment.id
+        ? { ...a, status: "cancelled" }
+        : a
+    ) || [];
+    // Update crew member
+    const updatedCrewMember = {
+      ...(crewDatabase as any)[aflosser.id],
+      status: "beschikbaar",
+      shipId: null,
+      aflosserAssignments: updatedAssignments
+    };
+    updateData('crewDatabase', { [aflosser.id]: updatedCrewMember });
+      alert(`❌ Reis van ${aflosser.firstName} ${aflosser.lastName} geannuleerd.`);
+    }
+  }
+
+  function handleEditAflosser(aflosser: any) {
+    setSelectedAflosser(aflosser);
+    setEditData({
+      phone: aflosser.phone || "",
+      diplomas: aflosser.diplomas || "",
+      notes: aflosser.notes || ""
+    });
+    setShowEditDialog(true);
+  }
+
+  function handleSaveEdit() {
+    if (!selectedAflosser) return;
+    const updatedAflosser = {
+      ...(crewDatabase as any)[selectedAflosser.id],
+      phone: editData.phone,
+      diplomas: editData.diplomas,
+      notes: editData.notes
+    };
+    updateData('crewDatabase', { [selectedAflosser.id]: updatedAflosser });
+    setShowEditDialog(false);
+  }
+
   function handleCreateAssignment() {
+
+    
     if (!selectedAflosser || !newAssignment.shipId || !newAssignment.fromDate || !newAssignment.route) {
+      alert("Vul alle verplichte velden in: schip, startdatum en route");
       return;
     }
     
     // Voor vaste einddatum moet toDate ook ingevuld zijn
     if (newAssignment.hasFixedEndDate && !newAssignment.toDate) {
+      alert("Vul een einddatum in voor vaste periodes");
       return;
     }
 
@@ -189,34 +220,87 @@ export default function AflossersToewijzenPage() {
       shipId: newAssignment.shipId,
       fromDate: newAssignment.fromDate,
       toDate: newAssignment.hasFixedEndDate ? newAssignment.toDate : null,
-      
+      route: newAssignment.route,
       status: "active",
       hasFixedEndDate: newAssignment.hasFixedEndDate,
       completedAt: null,
       createdAt: new Date().toISOString()
     };
 
-    // Voeg toe aan assignments state
-    setAssignments([...assignments, assignment]);
     
-    // Update aflosser status in database
-    if ((crewDatabase as any)[selectedAflosser.id]) {
-      (crewDatabase as any)[selectedAflosser.id].status = "aan-boord";
-      (crewDatabase as any)[selectedAflosser.id].shipId = newAssignment.shipId;
+
+    // Update crew member
+    const updatedCrewMember = {
+      ...(crewDatabase as any)[selectedAflosser.id],
+      status: "aan-boord",
+      shipId: newAssignment.shipId,
+      aflosserAssignments: [
+        ...((crewDatabase as any)[selectedAflosser.id]?.aflosserAssignments || []),
+        assignment
+      ]
+    };
+    
+    
+    
+    // Direct localStorage update
+    try {
+      const storedData = loadFromStorage();
+      const updatedCrewDatabase = {
+        ...storedData.crewDatabase,
+        [selectedAflosser.id]: updatedCrewMember
+      };
       
-      // Voeg assignment toe aan aflosser in database
-      if (!(crewDatabase as any)[selectedAflosser.id].aflosserAssignments) {
-        (crewDatabase as any)[selectedAflosser.id].aflosserAssignments = [];
-      }
-      (crewDatabase as any)[selectedAflosser.id].aflosserAssignments.push(assignment);
+      // Sla direct op in localStorage
+      localStorage.setItem('crewDatabase', JSON.stringify(updatedCrewDatabase));
+      
+
+        aflosserId: selectedAflosser.id,
+        updatedCrewMember: updatedCrewMember,
+        localStorageData: JSON.parse(localStorage.getItem('crewDatabase') || '{}')[selectedAflosser.id]
+      });
+      
+      // Force update van de hook state
+      updateData("crewDatabase", { [selectedAflosser.id]: updatedCrewMember });
+      
+    } catch (error) {
+      console.error("🔧 Error bij localStorage update:", error);
+      alert("❌ Fout bij opslaan van data: " + error);
     }
     
-          setNewAssignment({ shipId: "", fromDate: "", toDate: "", hasFixedEndDate: false });
+    // Toon een duidelijke melding
+    const shipName = (shipDatabase as any)[newAssignment.shipId]?.name || "Onbekend schip";
+    alert(`✅ Aflosser ${selectedAflosser.firstName} ${selectedAflosser.lastName} succesvol toegewezen aan ${shipName}`);
+    
+    setNewAssignment({ shipId: "", fromDate: "", toDate: "", route: "", hasFixedEndDate: false });
     setShowAssignmentDialog(false);
+  }
+
+  function handleCompleteAssignmentConfirm() {
+    if (!completionDate) {
+      alert("Vul een voltooiingsdatum in!");
+      return;
+    }
+    // Update assignment status
+    const updatedAssignments = (crewDatabase as any)[selectedAflosser.id]?.aflosserAssignments?.map((a: any) =>
+      a.id === selectedAssignment.id
+        ? { ...a, status: "completed", completedAt: completionDate }
+        : a
+    ) || [];
+    // Update crew member
+    const updatedCrewMember = {
+      ...(crewDatabase as any)[selectedAflosser.id],
+      status: "beschikbaar",
+      shipId: null,
+      aflosserAssignments: updatedAssignments
+    };
+    updateData('crewDatabase', { [selectedAflosser.id]: updatedCrewMember });
+    alert(`✅ Reis van ${selectedAflosser.firstName} ${selectedAflosser.lastName} voltooid op ${completionDate}`);
+    setShowCompleteDialog(false);
   }
 
   function handleCreateUnavailable() {
     if (!selectedAflosser || !newUnavailable.fromDate || !newUnavailable.toDate || !newUnavailable.reason) {
+      alert("Vul alle velden in: startdatum, einddatum en reden");
       return;
     }
 
@@ -229,231 +313,236 @@ export default function AflossersToewijzenPage() {
       createdAt: new Date().toISOString()
     };
 
-    setUnavailablePeriods([...unavailablePeriods, unavailable]);
+    // Update aflosser met nieuwe unavailable period
+    const updatedAflosser = {
+      ...(crewDatabase as any)[selectedAflosser.id],
+      aflosserAbsences: [
+        ...((crewDatabase as any)[selectedAflosser.id]?.aflosserAbsences || []),
+        unavailable
+      ]
+    };
+    updateData("crewDatabase", { [selectedAflosser.id]: updatedAflosser });
     
-    // Voeg unavailable period toe aan aflosser in database
-    if ((crewDatabase as any)[selectedAflosser.id]) {
-      if (!(crewDatabase as any)[selectedAflosser.id].aflosserUnavailablePeriods) {
-        (crewDatabase as any)[selectedAflosser.id].aflosserUnavailablePeriods = [];
-      }
-      (crewDatabase as any)[selectedAflosser.id].aflosserUnavailablePeriods.push(unavailable);
-    }
-    
+    alert(`Afwezigheid succesvol toegevoegd voor ${selectedAflosser.firstName} ${selectedAflosser.lastName}`);
     setNewUnavailable({ fromDate: "", toDate: "", reason: "" });
     setShowUnavailableDialog(false);
-  }
-
-  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>("");
-  const [completionDate, setCompletionDate] = useState("");
-
-  function handleCompleteAssignment(assignmentId: string) {
-    setSelectedAssignmentId(assignmentId);
-    setCompletionDate(new Date().toISOString().split('T')[0]); // Default naar vandaag
-    setShowCompleteDialog(true);
-  }
-
-  function handleConfirmCompleteAssignment() {
-    const assignment = assignments.find(a => a.id === selectedAssignmentId);
-    if (!assignment || !completionDate) return;
-
-    const updatedAssignments = assignments.map(a => 
-      a.id === selectedAssignmentId ? { 
-        ...a, 
-        status: "completed" as const,
-        completedAt: completionDate,
-        toDate: a.toDate || completionDate // Gebruik de ingevoerde datum als einddatum
-      } : a
-    );
-    
-    setAssignments(updatedAssignments);
-    
-    // Update aflosser status in database
-    if ((crewDatabase as any)[assignment.aflosserId]) {
-      (crewDatabase as any)[assignment.aflosserId].status = "thuis";
-      (crewDatabase as any)[assignment.aflosserId].shipId = "";
-      
-      // Update assignment in database
-      if ((crewDatabase as any)[assignment.aflosserId].aflosserAssignments) {
-        const assignmentIndex = (crewDatabase as any)[assignment.aflosserId].aflosserAssignments.findIndex((a: any) => a.id === selectedAssignmentId);
-        if (assignmentIndex !== -1) {
-          (crewDatabase as any)[assignment.aflosserId].aflosserAssignments[assignmentIndex] = updatedAssignments.find(a => a.id === selectedAssignmentId)!;
-        }
-      }
-    }
-
-    setShowCompleteDialog(false);
-    setSelectedAssignmentId("");
-    setCompletionDate("");
-  }
-
-  function getAflosserHistory(aflosserId: string) {
-    return assignments.filter(a => a.aflosserId === aflosserId);
-  }
-
-  function getAflosserUnavailableHistory(aflosserId: string) {
-    return unavailablePeriods.filter(u => u.aflosserId === aflosserId);
   }
 
   function formatDate(dateString: string) {
     return new Date(dateString).toLocaleDateString("nl-NL");
   }
 
-  function getNationalityFlag(nationality: string) {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
+  function getAflosserHistory(aflosserId: string) {
+    return (crewDatabase as any)[aflosserId]?.aflosserAssignments || [];
   }
 
-  function handleAddAflosser() {
-    // Genereer een unieke ID
-    const newId = `aflosser-${Date.now()}`
-    
-    // Maak nieuwe aflosser aan
-    const newAflosserData = {
-      id: newId,
-      firstName: newAflosser.firstName,
-      lastName: newAflosser.lastName,
-      birthDate: newAflosser.birthDate,
-      birthPlace: newAflosser.birthPlace,
-      address: newAflosser.address,
-      phone: newAflosser.phone,
-      email: newAflosser.email,
-      nationality: newAflosser.nationality,
-      position: "Aflosser",
-      smoking: newAflosser.smoking,
-      experience: newAflosser.experience,
-      notes: newAflosser.notes,
-      qualifications: newAflosser.qualifications,
-      status: "thuis",
-      regime: "1/1",
-      shipId: "",
-      ship: "",
-      company: "",
-      matricule: "",
-      entryDate: "",
-      onBoardSince: "",
-      assignmentHistory: [],
-      changeHistory: [],
-      vasteDienst: false,
-      inDienstVanaf: "",
-      diplomaFiles: {},
-      documentFiles: {}
-    }
-
-    // Voeg toe aan database (in een echte app zou dit naar een API gaan)
-    ;(crewDatabase as any)[newId] = newAflosserData
-
-    // Reset form
-    setNewAflosser({
-      firstName: "",
-      lastName: "",
-      birthDate: "",
-      birthPlace: "",
-      address: "",
-      phone: "",
-      email: "",
-      nationality: "",
-      smoking: false,
-      experience: "",
-      notes: "",
-      qualifications: []
-    })
-
-    // Sluit dialog
-    setShowAddAflosserDialog(false)
+  function getAflosserAbsences(aflosserId: string) {
+    return (crewDatabase as any)[aflosserId]?.aflosserAbsences || [];
   }
 
-  function handleDeleteAflosser(aflosserId: string) {
-    if (confirm("Weet je zeker dat je deze aflosser wilt verwijderen? Dit kan niet ongedaan worden gemaakt.")) {
-      // Verwijder uit database
-      delete (crewDatabase as any)[aflosserId]
-      
-      // Verwijder gerelateerde assignments en unavailable periods
-      setAssignments(prev => prev.filter(a => a.aflosserId !== aflosserId))
-      setUnavailablePeriods(prev => prev.filter(u => u.aflosserId !== aflosserId))
+  function createTestAflossers() {
+    const testAflossers = {
+      "aflosser1": {
+        id: "aflosser1",
+        firstName: "Jan",
+        lastName: "Aflosser",
+        position: "Aflosser",
+        nationality: "Nederlands",
+        phone: "0612345678",
+        status: "beschikbaar",
+        qualifications: ["Varen"],
+        smoking: false
+      },
+      "aflosser2": {
+        id: "aflosser2", 
+        firstName: "Piet",
+        lastName: "Relief",
+        position: "Relief Crew",
+        nationality: "Nederlands",
+        phone: "0687654321",
+        status: "beschikbaar",
+        qualifications: ["Varen", "Machinist"],
+        smoking: true
+      }
+    };
+
+    localStorage.setItem('crewDatabase', JSON.stringify(testAflossers));
+    updateData('crewDatabase', testAflossers);
+    alert("✅ Test aflossers aangemaakt!");
+  }
+
+  function showLocalStorageData() {
+    const data = localStorage.getItem('crewDatabase');
+    if (data) {
+      const parsed = JSON.parse(data);
+      alert(`📊 localStorage data:\n\n${JSON.stringify(parsed, null, 2)}`);
+    } else {
+      alert("❌ Geen data in localStorage!");
     }
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-green-800">Aflosser Management</h1>
-        <Button 
-          onClick={() => setShowAddAflosserDialog(true)}
-          className="bg-green-600 hover:bg-green-700"
-        >
-          + Aflosser toevoegen
-        </Button>
-      </div>
+    <div className="max-w-6xl mx-auto py-8 px-2">
+      <MobileHeaderNav />
       
-      {/* Toewijsbare aflossers */}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Aflosser Toewijzing</h1>
+          <p className="text-gray-600 mt-1">Beheer en toewijzen van relief crew</p>
+        </div>
+        <div className="flex items-center space-x-3">
+          <Button onClick={() => {
+            const aflossersList = aflossers.map((a: any) => `${a.firstName} ${a.lastName} (${a.position}) - isAflosser: ${a.isAflosser}`).join('\n');
+            alert(`🔍 Huidige Aflossers:\n\nTotaal: ${aflossers.length}\n\nLijst:\n${aflossersList}`);
+          }} variant="outline">
+            Toon aflossers
+          </Button>
+          <Button onClick={showLocalStorageData} variant="outline">
+            Toon localStorage data
+          </Button>
+          <Button onClick={createTestAflossers} variant="outline">
+            Maak test aflossers
+          </Button>
+          <Link href="/bemanning/aflossers/nieuw">
+            <Button className="bg-green-600 hover:bg-green-700">
+              ➕ Nieuwe Aflosser
+            </Button>
+          </Link>
+                      <Link href="/" className="text-blue-600 hover:text-blue-800">
+            ← Terug naar Dashboard
+          </Link>
+        </div>
+      </div>
+
+      {/* Actieve Aflossers */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 text-blue-700 flex items-center gap-2">
+          <Clock className="w-5 h-5" />
+          Actieve Aflossers ({activeAflossers.length})
+        </h2>
+        {activeAflossers.length === 0 ? (
+          <div className="text-gray-500">Geen actieve aflossers.</div>
+        ) : (
+          <div className="grid gap-4">
+            {activeAflossers.map((aflosser: any) => {
+              const activeAssignment = aflosser.aflosserAssignments?.find((a: any) => a.status === "active");
+              return (
+                <Card key={aflosser.id} className="border-blue-200 bg-blue-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span>{aflosser.firstName} {aflosser.lastName}</span>
+                      <Badge className="bg-blue-100 text-blue-800">
+                        <Clock className="w-4 h-4 mr-1" />
+                        Actief
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <div><strong>Schip:</strong> {aflosser.shipId}</div>
+                      <div><strong>Route:</strong> {activeAssignment?.route || "Onbekend"}</div>
+                      <div><strong>Aan boord vanaf:</strong> {activeAssignment?.fromDate ? formatDate(activeAssignment.fromDate) : "Onbekend"}</div>
+                      {activeAssignment?.hasFixedEndDate && activeAssignment?.toDate && (
+                        <div><strong>Aan boord tot:</strong> {formatDate(activeAssignment.toDate)}</div>
+                      )}
+                      {!activeAssignment?.hasFixedEndDate && (
+                        <div><strong>Type:</strong> <span className="text-orange-600">Reis (handmatig voltooien)</span></div>
+                      )}
+                      {activeAssignment?.hasFixedEndDate && (
+                        <div><strong>Type:</strong> <span className="text-blue-600">Vaste periode</span></div>
+                      )}
+                      <div><strong>Functie:</strong> {aflosser.position}</div>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <Button 
+                        onClick={() => handleCompleteAssignment(aflosser, activeAssignment)}
+                        className="flex-1"
+                        size="sm"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Reis voltooien
+                      </Button>
+                      <Button 
+                        onClick={() => handleCancelAssignment(aflosser, activeAssignment)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <XCircle className="w-4 h-4 mr-1" />
+                        Annuleren
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Beschikbare Aflossers */}
       <div className="mb-8">
         <h2 className="text-lg font-semibold mb-4 text-green-700 flex items-center gap-2">
           <CheckCircle className="w-5 h-5" />
-          Toewijsbare aflossers ({toewijsbaar.length})
+          Beschikbare Aflossers ({availableAflossers.length})
         </h2>
-        {toewijsbaar.length === 0 ? (
-          <div className="text-gray-500">Geen toewijsbare aflossers.</div>
+        {availableAflossers.length === 0 ? (
+          <div className="text-gray-500">Geen beschikbare aflossers.</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {toewijsbaar.map((aflosser: any) => (
-              <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
+          <div className="grid gap-4">
+            {availableAflossers.map((aflosser: any) => (
+              <Card 
+                key={aflosser.id} 
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onDoubleClick={() => handleEditAflosser(aflosser)}
+              >
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Link href={`/bemanning/${aflosser.id}`} className="hover:underline">
-                        <CardTitle className="text-lg cursor-pointer">
-                          {aflosser.firstName} {aflosser.lastName} <span className="text-sm text-gray-500">({aflosser.nationality})</span>
-                        </CardTitle>
-                      </Link>
-                    </div>
-                    <Badge className={aflosser.statusColor}>
-                      {aflosser.statusIcon}
-                      <span className="ml-1">
-                        {aflosser.status === "beschikbaar" ? "Beschikbaar" : "Binnenkort niet beschikbaar"}
-                      </span>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{aflosser.firstName} {aflosser.lastName}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      Aflosser
                     </Badge>
-                  </div>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm text-gray-700">
-                    <div><strong>Functie:</strong> {aflosser.position}</div>
-                    <div><strong>Telefoon:</strong> {aflosser.phone}</div>
-                    <div><strong>Diploma's:</strong> {aflosser.qualifications?.join(", ") || "Geen diploma's"}</div>
-                    <div><strong>Roken:</strong> {aflosser.smoking ? "Ja" : "Nee"}</div>
-                    {aflosser.status === "binnenkort-niet-beschikbaar" && (
-                      <div className="text-orange-600 text-xs">
-                        <strong>Toekomstige afwezigheden:</strong>
-                        {getAflosserUnavailableHistory(aflosser.id)
-                          .filter(p => new Date(p.fromDate) > new Date())
-                          .sort((a, b) => new Date(a.fromDate).getTime() - new Date(b.fromDate).getTime())
-                          .map((period, index) => (
-                            <div key={period.id} className="mt-1">
-                              {index + 1}. {formatDate(period.fromDate)} - {formatDate(period.toDate)} ({period.reason})
+                    <div><strong>Telefoon:</strong> {aflosser.phone || "niet ingevuld"}</div>
+                    <div><strong>Diploma's:</strong> {aflosser.diplomas || "niet ingevuld"}</div>
+                    <div><strong>Status:</strong> {aflosser.status || "onbekend"}</div>
+                    {aflosser.shipId && <div><strong>Schip:</strong> {aflosser.shipId}</div>}
+                    <div><strong>Functie:</strong> {aflosser.position || "onbekend"}</div>
+                    
+                    {aflosser.notes && (
+                      <div className="mt-2 p-2 bg-blue-50 rounded">
+                        <strong>Opmerkingen:</strong>
+                        <div className="text-xs mt-1">{aflosser.notes}</div>
+                      </div>
+                    )}
+                    
+                    {/* Afwezigheid informatie */}
+                    {isSoonAbsent(aflosser) && (
+                      <div className="text-orange-600 text-xs mt-2 p-2 bg-orange-50 rounded">
+                        <strong>⚠️ Binnenkort afwezig:</strong>
+                        {getAflosserAbsences(aflosser.id)
+                          .filter((a: any) => new Date(a.fromDate) > new Date())
+                          .sort((a: any, b: any) => new Date(a.fromDate).getTime() - new Date(b.fromDate).getTime())
+                          .map((absence: any, index: number) => (
+                            <div key={absence.id} className="mt-1">
+                              {index + 1}. {formatDate(absence.fromDate)} - {formatDate(absence.toDate)} ({absence.reason})
                             </div>
                           ))}
                       </div>
                     )}
                   </div>
                   <div className="flex gap-2 mt-4">
+                    <Button onClick={() => handleAssignToShip(aflosser)} className="flex-1">
+                      Toewijzen
+                    </Button>
                     <Button 
-                      onClick={() => handleAssignToShip(aflosser)}
-                      className="flex-1"
+                      onClick={() => handleSetUnavailable(aflosser)}
+                      variant="outline"
                       size="sm"
                     >
-                      Toewijzen aan schip
+                      Afwezigheid
                     </Button>
                     <Button 
                       onClick={() => handleShowHistory(aflosser)}
@@ -461,13 +550,6 @@ export default function AflossersToewijzenPage() {
                       size="sm"
                     >
                       History
-                    </Button>
-                    <Button 
-                      onClick={() => handleSetUnavailable(aflosser)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      Afwezigheid toevoegen
                     </Button>
                   </div>
                 </CardContent>
@@ -477,95 +559,67 @@ export default function AflossersToewijzenPage() {
         )}
       </div>
 
-      {/* Actieve aflossers */}
-      {actief.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-4 text-blue-700 flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Actieve aflossers ({actief.length})
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {actief.map((aflosser: any) => (
-              <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
+      {/* Niet Beschikbare Aflossers */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 text-red-700 flex items-center gap-2">
+          <UserX className="w-5 h-5" />
+          Niet Beschikbare Aflossers ({unavailableAflossers.length})
+        </h2>
+        {unavailableAflossers.length === 0 ? (
+          <div className="text-gray-500">Geen niet beschikbare aflossers.</div>
+        ) : (
+          <div className="grid gap-4">
+            {unavailableAflossers.map((aflosser: any) => (
+              <Card 
+                key={aflosser.id} 
+                className="border-red-200 bg-red-50 cursor-pointer hover:shadow-md transition-shadow"
+                onDoubleClick={() => handleEditAflosser(aflosser)}
+              >
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Link href={`/bemanning/${aflosser.id}`} className="hover:underline">
-                        <CardTitle className="text-lg cursor-pointer">
-                          {aflosser.firstName} {aflosser.lastName} <span className="text-sm text-gray-500">({aflosser.nationality})</span>
-                        </CardTitle>
-                      </Link>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{aflosser.firstName} {aflosser.lastName}</span>
+                    <div className="flex gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        Aflosser
+                      </Badge>
+                      <Badge className="bg-red-100 text-red-800">
+                        <UserX className="w-4 h-4 mr-1" />
+                        Afwezig
+                      </Badge>
                     </div>
-                    <Badge className={aflosser.statusColor}>
-                      {aflosser.statusIcon}
-                      <span className="ml-1">Actief</span>
-                    </Badge>
-                  </div>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm text-gray-700">
-                    <div><strong>Schip:</strong> {shipDatabase[aflosser.activeAssignment.shipId]?.name}</div>
-    
-                    <div><strong>Van:</strong> {formatDate(aflosser.activeAssignment.fromDate)}</div>
-                    <div><strong>Tot:</strong> {aflosser.activeAssignment.hasFixedEndDate ? formatDate(aflosser.activeAssignment.toDate || "") : "Flexibel (voltooi handmatig)"}</div>
-                    <div><strong>Type:</strong> {aflosser.activeAssignment.hasFixedEndDate ? "Vaste periode" : "Flexibele periode"}</div>
-                  </div>
-                  <div className="flex gap-2 mt-4">
-                    <Button 
-                      onClick={() => handleCompleteAssignment(aflosser.activeAssignment.id)}
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                    >
-                      Reis voltooien
-                    </Button>
-                    <Button 
-                      onClick={() => handleShowHistory(aflosser)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      History
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-
-
-      {/* Niet beschikbare aflossers */}
-      {nietBeschikbaar.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-4 text-red-700 flex items-center gap-2">
-            <UserX className="w-5 h-5" />
-            Niet beschikbare aflossers ({nietBeschikbaar.length})
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {nietBeschikbaar.map((aflosser: any) => (
-              <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Link href={`/bemanning/${aflosser.id}`} className="hover:underline">
-                        <CardTitle className="text-lg cursor-pointer">
-                          {aflosser.firstName} {aflosser.lastName} <span className="text-sm text-gray-500">({aflosser.nationality})</span>
-                        </CardTitle>
-                      </Link>
-                    </div>
-                    <Badge className={aflosser.statusColor}>
-                      {aflosser.statusIcon}
-                      <span className="ml-1">Niet beschikbaar</span>
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm text-gray-700">
-                    <div><strong>Van:</strong> {formatDate(aflosser.unavailablePeriod.fromDate)}</div>
-                    <div><strong>Tot:</strong> {formatDate(aflosser.unavailablePeriod.toDate)}</div>
-                    <div><strong>Reden:</strong> {aflosser.unavailablePeriod.reason}</div>
+                    <div><strong>Telefoon:</strong> {aflosser.phone || "niet ingevuld"}</div>
+                    <div><strong>Diploma's:</strong> {aflosser.diplomas || "niet ingevuld"}</div>
+                    <div><strong>Status:</strong> {aflosser.status || "onbekend"}</div>
+                    {aflosser.shipId && <div><strong>Schip:</strong> {aflosser.shipId}</div>}
+                    <div><strong>Functie:</strong> {aflosser.position || "onbekend"}</div>
+                    
+                    {aflosser.notes && (
+                      <div className="mt-2 p-2 bg-blue-50 rounded">
+                        <strong>Opmerkingen:</strong>
+                        <div className="text-xs mt-1">{aflosser.notes}</div>
+                      </div>
+                    )}
+                    
+                    {/* Huidige afwezigheid */}
+                    {isCurrentlyAbsent(aflosser) && (
+                      <div className="text-red-600 text-xs mt-2 p-2 bg-red-50 rounded">
+                        <strong>🚫 Momenteel afwezig:</strong>
+                        {getAflosserAbsences(aflosser.id)
+                          .filter((a: any) => {
+                            const today = new Date();
+                            return new Date(a.fromDate) <= today && new Date(a.toDate) >= today;
+                          })
+                          .map((absence: any) => (
+                            <div key={absence.id} className="mt-1">
+                              {formatDate(absence.fromDate)} - {formatDate(absence.toDate)} ({absence.reason})
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2 mt-4">
                     <Button 
@@ -580,33 +634,32 @@ export default function AflossersToewijzenPage() {
               </Card>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Toewijzen aan schip dialog */}
+      {/* Toewijzen Dialog */}
       <Dialog open={showAssignmentDialog} onOpenChange={setShowAssignmentDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Toewijzen aan schip - {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
+            <DialogTitle>Toewijzen: {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="ship">Schip</Label>
+              <Label>Schip</Label>
               <Select value={newAssignment.shipId} onValueChange={(value) => setNewAssignment({...newAssignment, shipId: value})}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecteer een schip" />
+                  <SelectValue placeholder="Kies schip" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(shipDatabase).map((ship: any) => (
-                    <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
-                  ))}
+                  <SelectItem value="ship1">Schip 1</SelectItem>
+                  <SelectItem value="ship2">Schip 2</SelectItem>
+                  <SelectItem value="ship3">Schip 3</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="fromDate">Aan boord vanaf</Label>
+              <Label>Startdatum</Label>
               <Input
-                id="fromDate"
                 type="date"
                 value={newAssignment.fromDate}
                 onChange={(e) => setNewAssignment({...newAssignment, fromDate: e.target.value})}
@@ -624,9 +677,8 @@ export default function AflossersToewijzenPage() {
             </div>
             {newAssignment.hasFixedEndDate && (
               <div>
-                <Label htmlFor="toDate">Aan boord tot</Label>
+                <Label>Einddatum</Label>
                 <Input
-                  id="toDate"
                   type="date"
                   value={newAssignment.toDate}
                   onChange={(e) => setNewAssignment({...newAssignment, toDate: e.target.value})}
@@ -639,148 +691,202 @@ export default function AflossersToewijzenPage() {
               </div>
             )}
             <div>
-              <Label htmlFor="route">Route</Label>
+              <Label>Route</Label>
               <Input
-                id="route"
-                placeholder="bijv. Amsterdam naar Speyer"
+                placeholder="Amsterdam - Speyer"
                 value={newAssignment.route}
-
+                onChange={(e) => setNewAssignment({...newAssignment, route: e.target.value})}
               />
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleCreateAssignment} className="flex-1">Toewijzen</Button>
-              <Button variant="outline" onClick={() => setShowAssignmentDialog(false)}>Annuleren</Button>
+              <Button onClick={handleCreateAssignment} className="flex-1">
+                Toewijzen
+              </Button>
+              <Button variant="outline" onClick={() => setShowAssignmentDialog(false)}>
+                Annuleren
+              </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Niet beschikbaar dialog */}
-      <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
-        <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-          <DialogTitle>Afwezigheid instellen - {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
-        </DialogHeader>
+      {/* Voltooien Dialog */}
+      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reis voltooien: {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="unavailableFromDate">Afwezig van</Label>
+              <Label>Voltooiingsdatum</Label>
               <Input
-                id="unavailableFromDate"
+                type="date"
+                value={completionDate}
+                onChange={(e) => setCompletionDate(e.target.value)}
+              />
+            </div>
+            <div className="text-sm text-gray-600">
+              <strong>Reis details:</strong>
+              <br />
+              Schip: {selectedAssignment?.shipId}
+              <br />
+              Route: {selectedAssignment?.route}
+              <br />
+              Startdatum: {selectedAssignment?.fromDate ? formatDate(selectedAssignment.fromDate) : "Onbekend"}
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleCompleteAssignmentConfirm} className="flex-1">
+                <CheckCircle className="w-4 h-4 mr-1" />
+                Voltooien
+              </Button>
+              <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Afwezigheid Dialog */}
+      <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Afwezigheid instellen: {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Afwezig van</Label>
+              <Input
                 type="date"
                 value={newUnavailable.fromDate}
                 onChange={(e) => setNewUnavailable({...newUnavailable, fromDate: e.target.value})}
               />
             </div>
             <div>
-              <Label htmlFor="unavailableToDate">Afwezig tot</Label>
+              <Label>Afwezig tot</Label>
               <Input
-                id="unavailableToDate"
                 type="date"
                 value={newUnavailable.toDate}
                 onChange={(e) => setNewUnavailable({...newUnavailable, toDate: e.target.value})}
               />
             </div>
             <div>
-              <Label htmlFor="reason">Reden</Label>
-              <Textarea
-                id="reason"
-                placeholder="Reden van niet beschikbaarheid"
+              <Label>Reden</Label>
+              <Input
+                placeholder="bijv. vakantie, ziekte, privé"
                 value={newUnavailable.reason}
                 onChange={(e) => setNewUnavailable({...newUnavailable, reason: e.target.value})}
               />
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleCreateUnavailable} className="flex-1">Instellen</Button>
-              <Button variant="outline" onClick={() => setShowUnavailableDialog(false)}>Annuleren</Button>
+              <Button onClick={handleCreateUnavailable} className="flex-1">
+                Instellen
+              </Button>
+              <Button variant="outline" onClick={() => setShowUnavailableDialog(false)}>
+                Annuleren
+              </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* History dialog */}
+      {/* History Dialog */}
       <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Geschiedenis - {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
+            <DialogTitle>Geschiedenis: {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
           </DialogHeader>
           <div className="space-y-6">
             {/* Reis geschiedenis */}
             <div>
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <MapPin className="w-4 h-4" />
-                Reis geschiedenis
+                Reis geschiedenis ({getAflosserHistory(selectedAflosser?.id).length} reizen)
               </h3>
               {getAflosserHistory(selectedAflosser?.id).length === 0 ? (
                 <p className="text-gray-500">Geen reis geschiedenis.</p>
               ) : (
                 <div className="space-y-2">
-                  {getAflosserHistory(selectedAflosser?.id).map((assignment) => (
-                    <Card key={assignment.id}>
-                      <CardContent className="pt-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">{shipDatabase[assignment.shipId]?.name}</div>
-                            <div className="text-sm text-gray-600">{assignment.route}</div>
-                                              <div className="text-sm text-gray-500">
-                    {formatDate(assignment.fromDate)} - {assignment.status === "completed" && assignment.completedAt
-                      ? formatDate(assignment.completedAt)
-                      : assignment.hasFixedEndDate
-                        ? formatDate(assignment.toDate || "")
-                        : assignment.status === "active"
-                          ? "Actief (geen einddatum)"
-                          : "Geen einddatum"}
-                  </div>
-                                              <div className="text-xs text-gray-400">
-                    {assignment.status === "completed"
-                      ? `Voltooid op ${formatDate(assignment.completedAt || "")}`
-                      : assignment.status === "active"
-                        ? "Actief - klik 'Reis voltooien' om te beëindigen"
-                        : assignment.hasFixedEndDate
-                          ? "Vaste periode"
-                          : "Geen vaste einddatum"}
-                  </div>
+                  {getAflosserHistory(selectedAflosser?.id)
+                    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map((assignment: any) => (
+                      <Card key={assignment.id}>
+                        <CardContent className="pt-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">Schip: {assignment.shipId}</div>
+                              <div className="text-sm text-gray-600">Route: {assignment.route}</div>
+                              <div className="text-sm text-gray-500">
+                                {formatDate(assignment.fromDate)} - {
+                                  assignment.status === "completed" && assignment.completedAt
+                                    ? formatDate(assignment.completedAt)
+                                    : assignment.hasFixedEndDate && assignment.toDate
+                                      ? formatDate(assignment.toDate)
+                                      : assignment.status === "active"
+                                        ? "Actief"
+                                        : "Geen einddatum"
+                                }
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {assignment.hasFixedEndDate ? "Vaste periode" : "Reis (handmatig voltooien)"}
+                              </div>
+                            </div>
+                            <Badge variant={
+                              assignment.status === "active" ? "default" : 
+                              assignment.status === "completed" ? "secondary" : 
+                              "destructive"
+                            }>
+                              {assignment.status === "active" ? "Actief" : 
+                               assignment.status === "completed" ? "Voltooid" : 
+                               "Geannuleerd"}
+                            </Badge>
                           </div>
-                          <Badge variant={assignment.status === "active" ? "default" : "secondary"}>
-                            {assignment.status === "active" ? "Actief" : "Voltooid"}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    ))}
                 </div>
               )}
             </div>
 
-            {/* Niet beschikbaar geschiedenis */}
+            {/* Afwezigheid geschiedenis */}
             <div>
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <UserX className="w-4 h-4" />
-                Niet beschikbaar geschiedenis ({getAflosserUnavailableHistory(selectedAflosser?.id).length} periodes)
+                Afwezigheid geschiedenis ({getAflosserAbsences(selectedAflosser?.id).length} periodes)
               </h3>
-              {getAflosserUnavailableHistory(selectedAflosser?.id).length === 0 ? (
-                <p className="text-gray-500">Geen niet beschikbaar geschiedenis.</p>
+              {getAflosserAbsences(selectedAflosser?.id).length === 0 ? (
+                <p className="text-gray-500">Geen afwezigheid geschiedenis.</p>
               ) : (
                 <div className="space-y-2">
-                  {getAflosserUnavailableHistory(selectedAflosser?.id)
-                    .sort((a, b) => new Date(b.fromDate).getTime() - new Date(a.fromDate).getTime())
-                    .map((period) => {
+                  {getAflosserAbsences(selectedAflosser?.id)
+                    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map((absence: any) => {
                       const today = new Date();
-                      const isPast = new Date(period.toDate) < today;
-                      const isCurrent = new Date(period.fromDate) <= today && new Date(period.toDate) >= today;
-                      const isFuture = new Date(period.fromDate) > today;
+                      const isPast = new Date(absence.toDate) < today;
+                      const isCurrent = new Date(absence.fromDate) <= today && new Date(absence.toDate) >= today;
+                      const isFuture = new Date(absence.fromDate) > today;
                       
                       return (
-                        <Card key={period.id} className={isCurrent ? "border-orange-200 bg-orange-50" : isFuture ? "border-blue-200 bg-blue-50" : ""}>
+                        <Card key={absence.id} className={
+                          isCurrent ? "border-orange-200 bg-orange-50" : 
+                          isFuture ? "border-blue-200 bg-blue-50" : ""
+                        }>
                           <CardContent className="pt-4">
                             <div className="flex items-center justify-between">
                               <div>
                                 <div className="text-sm text-gray-500">
-                                  {formatDate(period.fromDate)} - {formatDate(period.toDate)}
+                                  {formatDate(absence.fromDate)} - {formatDate(absence.toDate)}
                                 </div>
-                                <div className="text-sm text-gray-600">{period.reason}</div>
+                                <div className="text-sm text-gray-600">{absence.reason}</div>
                               </div>
-                              <Badge variant={isPast ? "secondary" : isCurrent ? "default" : "outline"}>
-                                {isPast ? "Verlopen" : isCurrent ? "Huidig" : "Toekomstig"}
+                              <Badge variant={
+                                isPast ? "secondary" : 
+                                isCurrent ? "default" : 
+                                "outline"
+                              }>
+                                {isPast ? "Verlopen" : 
+                                 isCurrent ? "Huidig" : 
+                                 "Toekomstig"}
                               </Badge>
                             </div>
                           </CardContent>
@@ -794,238 +900,46 @@ export default function AflossersToewijzenPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Aflosser toevoegen dialog */}
-      <Dialog open={showAddAflosserDialog} onOpenChange={setShowAddAflosserDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      {/* Edit Aflosser Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nieuwe Aflosser Toevoegen</DialogTitle>
+            <DialogTitle>Bewerken: {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Persoonlijke gegevens */}
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="firstName">Voornaam *</Label>
-                  <Input
-                    id="firstName"
-                    value={newAflosser.firstName}
-                    onChange={(e) => setNewAflosser({...newAflosser, firstName: e.target.value})}
-                    placeholder="Voornaam"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="lastName">Achternaam *</Label>
-                  <Input
-                    id="lastName"
-                    value={newAflosser.lastName}
-                    onChange={(e) => setNewAflosser({...newAflosser, lastName: e.target.value})}
-                    placeholder="Achternaam"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="birthDate">Geboortedatum</Label>
-                  <Input
-                    id="birthDate"
-                    type="date"
-                    value={newAflosser.birthDate}
-                    onChange={(e) => setNewAflosser({...newAflosser, birthDate: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="birthPlace">Geboorteplaats</Label>
-                  <Input
-                    id="birthPlace"
-                    value={newAflosser.birthPlace}
-                    onChange={(e) => setNewAflosser({...newAflosser, birthPlace: e.target.value})}
-                    placeholder="Geboorteplaats"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="nationality">Nationaliteit *</Label>
-                  <Select
-                    value={newAflosser.nationality}
-                    onValueChange={(value) => setNewAflosser({...newAflosser, nationality: value})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Kies nationaliteit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NL">🇳🇱 Nederland</SelectItem>
-                      <SelectItem value="DE">🇩🇪 Duitsland</SelectItem>
-                      <SelectItem value="BE">🇧🇪 België</SelectItem>
-                      <SelectItem value="FR">🇫🇷 Frankrijk</SelectItem>
-                      <SelectItem value="CZ">🇨🇿 Tsjechië</SelectItem>
-                      <SelectItem value="PO">🇵🇱 Polen</SelectItem>
-                      <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
-                      <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
-                      <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
-                      <SelectItem value="EG">🇪🇬 Egypte</SelectItem>
-                      <SelectItem value="LUX">🇱🇺 Luxemburg</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="phone">Telefoonnummer *</Label>
-                  <Input
-                    id="phone"
-                    value={newAflosser.phone}
-                    onChange={(e) => setNewAflosser({...newAflosser, phone: e.target.value})}
-                    placeholder="+31 6 12345678"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">E-mailadres</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={newAflosser.email}
-                    onChange={(e) => setNewAflosser({...newAflosser, email: e.target.value})}
-                    placeholder="naam@email.com"
-                  />
-                </div>
-              </div>
-
-              {/* Adres en overige gegevens */}
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="address">Volledig adres</Label>
-                  <Textarea
-                    id="address"
-                    value={newAflosser.address}
-                    onChange={(e) => setNewAflosser({...newAflosser, address: e.target.value})}
-                    placeholder="Straat, postcode, plaats, land"
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="experience">Ervaring</Label>
-                  <Textarea
-                    id="experience"
-                    value={newAflosser.experience}
-                    onChange={(e) => setNewAflosser({...newAflosser, experience: e.target.value})}
-                    placeholder="Beschrijf relevante ervaring..."
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="smoking">Roken</Label>
-                  <Select
-                    value={newAflosser.smoking ? "ja" : "nee"}
-                    onValueChange={(value) => setNewAflosser({...newAflosser, smoking: value === "ja"})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Kies optie" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nee">Nee</SelectItem>
-                      <SelectItem value="ja">Ja</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="diplomas">Diploma's</Label>
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-2">
-                      {newAflosser.qualifications.map((diploma, index) => (
-                        <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                          {diploma}
-                          <button
-                            type="button"
-                            onClick={() => setNewAflosser({
-                              ...newAflosser,
-                              qualifications: newAflosser.qualifications.filter((_, i) => i !== index)
-                            })}
-                            className="ml-1 text-red-500 hover:text-red-700"
-                          >
-                            ×
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                    <Select
-                      onValueChange={(value) => {
-                        if (value && !newAflosser.qualifications.includes(value)) {
-                          setNewAflosser({
-                            ...newAflosser,
-                            qualifications: [...newAflosser.qualifications, value]
-                          })
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Diploma toevoegen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Vaarbewijs">Vaarbewijs</SelectItem>
-                        <SelectItem value="Rijnpatent tot Wesel">Rijnpatent tot Wesel</SelectItem>
-                        <SelectItem value="Rijnpatent tot Koblenz">Rijnpatent tot Koblenz</SelectItem>
-                        <SelectItem value="Rijnpatent tot Mannheim">Rijnpatent tot Mannheim</SelectItem>
-                        <SelectItem value="Rijnpatent tot Iffezheim">Rijnpatent tot Iffezheim</SelectItem>
-                        <SelectItem value="Elbepatent">Elbepatent</SelectItem>
-                        <SelectItem value="Donaupatent">Donaupatent</SelectItem>
-                        <SelectItem value="ADN">ADN</SelectItem>
-                        <SelectItem value="ADN C">ADN C</SelectItem>
-                        <SelectItem value="Radar">Radar</SelectItem>
-                        <SelectItem value="Marifoon">Marifoon</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="notes">Opmerkingen</Label>
-                  <Textarea
-                    id="notes"
-                    value={newAflosser.notes}
-                    onChange={(e) => setNewAflosser({...newAflosser, notes: e.target.value})}
-                    placeholder="Optionele opmerkingen..."
-                    rows={2}
-                  />
-                </div>
-              </div>
+            <div>
+              <Label>Telefoonnummer</Label>
+              <Input
+                placeholder="+31 6 12345678"
+                value={editData.phone}
+                onChange={(e) => setEditData({...editData, phone: e.target.value})}
+              />
             </div>
-
-            <div className="flex gap-2 pt-4">
-              <Button onClick={handleAddAflosser} className="flex-1" disabled={!newAflosser.firstName || !newAflosser.lastName || !newAflosser.nationality || !newAflosser.phone}>
-                Aflosser toevoegen
+            <div>
+              <Label>Diploma's</Label>
+              <Input
+                placeholder="bv. STCW, VHF, etc."
+                value={editData.diplomas}
+                onChange={(e) => setEditData({...editData, diplomas: e.target.value})}
+              />
+            </div>
+            <div>
+              <Label>Opmerkingen</Label>
+              <Textarea
+                placeholder="Extra informatie over de aflosser..."
+                value={editData.notes}
+                onChange={(e) => setEditData({...editData, notes: e.target.value})}
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSaveEdit} className="flex-1">
+                Opslaan
               </Button>
-              <Button variant="outline" onClick={() => setShowAddAflosserDialog(false)}>
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
                 Annuleren
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog voor voltooiingsdatum */}
-      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reis voltooien</DialogTitle>
-            <DialogDescription>
-              Voer de datum in waarop de aflosser van boord is gegaan.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="completionDate">Datum van boord gegaan</Label>
-              <Input
-                id="completionDate"
-                type="date"
-                value={completionDate}
-                onChange={(e) => setCompletionDate(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-4">
-            <Button onClick={handleConfirmCompleteAssignment} className="flex-1" disabled={!completionDate}>
-              Reis voltooien
-            </Button>
-            <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
-              Annuleren
-            </Button>
           </div>
         </DialogContent>
       </Dialog>

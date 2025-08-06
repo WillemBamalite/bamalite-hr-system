@@ -1,8 +1,9 @@
 "use client"
 
-import { shipDatabase } from "@/data/crew-database"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
+import { useLocalStorageData } from "@/hooks/use-localStorage-data"
 import { isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
+import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,9 +22,11 @@ const RANK_ORDER = [
 ];
 
 export default function CrewOverviewPage() {
-  const { crewDatabase: allCrewData } = useCrewData()
+  const { crewDatabase: allCrewData } = useLocalStorageData()
   const [filteredCrew, setFilteredCrew] = useState<any[]>([])
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
+
+
 
   useEffect(() => {
     // Combineer alle databases
@@ -38,6 +41,8 @@ export default function CrewOverviewPage() {
       const crew = Object.values(allCrewData).filter((c: any) => !isCrewMemberOutOfService(c.id))
       setFilteredCrew(crew)
       
+
+      
     // Groepeer per rang op basis van exacte dropdownwaarde
       const groupedData: { [rank: string]: any[] } = {}
     crew.forEach((c) => {
@@ -46,7 +51,7 @@ export default function CrewOverviewPage() {
         groupedData[rank].push(c)
     })
       setGrouped(groupedData)
-  }, [])
+  }, [allCrewData])
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
@@ -113,18 +118,32 @@ export default function CrewOverviewPage() {
                           <p className="text-sm text-gray-600">{c.position}</p>
                         </div>
                       </div>
-                      <Badge className={
-                        c.status === "aan-boord" ? "bg-green-100 text-green-800" :
-                        c.status === "thuis" ? "bg-blue-100 text-blue-800" :
-                        c.status === "ziek" ? "bg-red-100 text-red-800" :
-                        "bg-gray-100 text-gray-800"
-                      }>
-                        {c.status}
+                      <Badge className={(() => {
+                        if (c.status === "ziek") return "bg-red-100 text-red-800"
+                        if (!c.regime) return c.status === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                        
+                        const statusCalculation = calculateCurrentStatus(c.regime, c.thuisSinds, c.onBoardSince)
+                        return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                      })()}>
+                        {(() => {
+                          if (c.status === "ziek") return "Ziek"
+                          if (!c.regime) return c.status === "aan-boord" ? "Aan boord" : "Thuis"
+                          
+                          const statusCalculation = calculateCurrentStatus(c.regime, c.thuisSinds, c.onBoardSince)
+                          return statusCalculation.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
+                        })()}
                       </Badge>
                     </div>
 
                     <div className="space-y-2 text-sm text-gray-700">
-                      <div><strong>Schip:</strong> {c.shipId ? (shipDatabase as any)[c.shipId]?.name || c.shipId : '-'}</div>
+                      <div><strong>Schip:</strong> {c.shipId ? getCombinedShipDatabase()[c.shipId]?.name || c.shipId : '-'}</div>
+                      <div><strong>Volgende Wissel:</strong> {(() => {
+                        if (c.status === "ziek") return "Niet van toepassing"
+                        if (!c.regime) return "Niet ingesteld"
+                        
+                        const statusCalculation = calculateCurrentStatus(c.regime, c.thuisSinds, c.onBoardSince)
+                        return statusCalculation.nextRotationDate ? new Date(statusCalculation.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"
+                      })()}</div>
                       <div><strong>Diploma's:</strong></div>
                       <div className="flex flex-wrap gap-1">
                         {c.qualifications && c.qualifications.length > 0 ? c.qualifications.map((d: string, idx: number) => (
@@ -167,18 +186,32 @@ export default function CrewOverviewPage() {
                             <p className="text-xs text-gray-600">{c.position}</p>
                           </div>
                         </div>
-                        <Badge className={
-                          c.status === "aan-boord" ? "bg-green-100 text-green-800 text-xs" :
-                          c.status === "thuis" ? "bg-blue-100 text-blue-800 text-xs" :
-                          c.status === "ziek" ? "bg-red-100 text-red-800 text-xs" :
-                          "bg-gray-100 text-gray-800 text-xs"
-                        }>
-                          {c.status}
+                        <Badge className={(() => {
+                          if (c.status === "ziek") return "bg-red-100 text-red-800 text-xs"
+                          if (!c.regime) return c.status === "aan-boord" ? "bg-green-100 text-green-800 text-xs" : "bg-blue-100 text-blue-800 text-xs"
+                          
+                          const statusCalculation = calculateCurrentStatus(c.regime, c.thuisSinds, c.onBoardSince)
+                          return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800 text-xs" : "bg-blue-100 text-blue-800 text-xs"
+                        })()}>
+                          {(() => {
+                            if (c.status === "ziek") return "Ziek"
+                            if (!c.regime) return c.status === "aan-boord" ? "Aan boord" : "Thuis"
+                            
+                            const statusCalculation = calculateCurrentStatus(c.regime, c.thuisSinds, c.onBoardSince)
+                            return statusCalculation.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
+                          })()}
                         </Badge>
                       </div>
 
                       <div className="space-y-1 text-xs text-gray-700">
-                        <div><strong>Schip:</strong> {c.shipId ? (shipDatabase as any)[c.shipId]?.name || c.shipId : '-'}</div>
+                        <div><strong>Schip:</strong> {c.shipId ? getCombinedShipDatabase()[c.shipId]?.name || c.shipId : '-'}</div>
+                        <div><strong>Volgende Wissel:</strong> {(() => {
+                          if (c.status === "ziek") return "Niet van toepassing"
+                          if (!c.regime) return "Niet ingesteld"
+                          
+                          const statusCalculation = calculateCurrentStatus(c.regime, c.thuisSinds, c.onBoardSince)
+                          return statusCalculation.nextRotationDate ? new Date(statusCalculation.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"
+                        })()}</div>
                         <div><strong>Diploma's:</strong></div>
                         <div className="flex flex-wrap gap-1">
                           {c.qualifications && c.qualifications.length > 0 ? c.qualifications.map((d: string, idx: number) => (
@@ -186,8 +219,8 @@ export default function CrewOverviewPage() {
                               {d}
                             </Badge>
                           )) : <span className="text-xs text-gray-400 italic">Geen diploma's</span>}
-                </div>
-                </div>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

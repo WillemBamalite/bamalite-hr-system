@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { shipDatabase } from "@/data/crew-database"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
+import { useLocalStorageData } from "@/hooks/use-localStorage-data"
 
 export function AISearchBar() {
-  const { crewDatabase, documentDatabase, sickLeaveDatabase } = useCrewData()
+  const { crewDatabase, documentDatabase, sickLeaveDatabase } = useLocalStorageData()
   const [query, setQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<any>(null)
@@ -70,7 +70,7 @@ export function AISearchBar() {
     })
 
     // Zoek in schepen
-    Object.values(shipDatabase as any).forEach((ship: any) => {
+    Object.values(getCombinedShipDatabase()).forEach((ship: any) => {
       if (
         ship.name.toLowerCase().includes(searchQuery) ||
         ship.location.toLowerCase().includes(searchQuery) ||
@@ -121,7 +121,7 @@ export function AISearchBar() {
 
     if (results.crew.length > 0) {
       const crew = results.crew[0]
-      const ship = crew.shipId ? shipDatabase[crew.shipId] : null
+      const ship = crew.shipId ? getCombinedShipDatabase()[crew.shipId] : null
       return `${crew.firstName} ${crew.lastName} is ${crew.position} ${ship ? `op ${ship.name}` : "en is beschikbaar"}. Status: ${crew.status}.`
     }
 

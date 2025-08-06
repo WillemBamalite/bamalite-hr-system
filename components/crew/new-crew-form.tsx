@@ -15,7 +15,9 @@ import { Badge } from "@/components/ui/badge"
 import { CalendarIcon, UserPlus, Save, X } from "lucide-react"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
-import { shipDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
+import { useLocalStorageData } from "@/hooks/use-localStorage-data"
+import { calculateCurrentStatus } from "@/utils/regime-calculator"
 
 const diplomaOptions = [
   "Vaarbewijs",
@@ -45,10 +47,11 @@ interface NewCrewFormData {
   position: string
   shipId: string
   regime: "1/1" | "2/2" | "3/3"
+  startDate: string // Nieuwe veld voor startdatum
   phone: string
   email: string
-  birthDate: Date | undefined
-  entryDate: Date | undefined
+  birthDate: string
+  entryDate: string
   birthPlace: string
   smoking: boolean
   experience: string
@@ -74,6 +77,7 @@ interface NewCrewFormData {
 }
 
 export function NewCrewForm() {
+  const { addItem } = useLocalStorageData()
   const [formData, setFormData] = useState<NewCrewFormData>({
     firstName: "",
     lastName: "",
@@ -81,10 +85,11 @@ export function NewCrewForm() {
     position: "Kapitein",
     shipId: "",
     regime: "2/2",
+    startDate: "", // Nieuwe veld voor startdatum
     phone: "",
     email: "",
-    birthDate: undefined,
-    entryDate: new Date(),
+    birthDate: "",
+    entryDate: "",
     birthPlace: "",
     smoking: false,
     experience: "",
@@ -127,11 +132,16 @@ export function NewCrewForm() {
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {}
 
-    // Alleen de verplichte velden volgens jouw specificatie
+    // Vereenvoudigde validatie - alleen de meest essentiële velden
     if (!formData.firstName.trim()) newErrors.firstName = "Voornaam is verplicht"
     if (!formData.lastName.trim()) newErrors.lastName = "Achternaam is verplicht"
     if (!formData.nationality) newErrors.nationality = "Nationaliteit is verplicht"
     if (!formData.phone.trim()) newErrors.phone = "Telefoonnummer is verplicht"
+
+    // Startdatum validatie - alleen als een schip is geselecteerd
+    if (formData.shipId && formData.shipId !== "nog-in-te-delen" && !formData.startDate) {
+      newErrors.startDate = "Startdatum is verplicht als een schip is geselecteerd"
+    }
 
     // Email validatie (alleen als email is ingevuld)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -146,17 +156,26 @@ export function NewCrewForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm()) return
+    // Debug info verwijderd
+
+    if (!validateForm()) {
+              // Debug info verwijderd
+      return
+    }
+
+            // Debug info verwijderd
 
     setIsSubmitting(true)
 
     try {
-      // Genereer nieuwe ID
-      const newId = `crew-${Date.now()}`
+      // Genereer unieke ID zoals aflossers doen
+      const id = `${formData.firstName.toLowerCase()}-${formData.lastName.toLowerCase()}`
+
+
 
       // Maak nieuwe bemanningslid object
       const newCrewMember: any = {
-        id: newId,
+        id: id,
         firstName: formData.firstName,
         lastName: formData.lastName,
         nationality: formData.nationality,
@@ -165,8 +184,8 @@ export function NewCrewForm() {
         regime: formData.regime,
         phone: formData.phone,
         email: formData.email,
-        birthDate: formData.birthDate?.toISOString().split('T')[0],
-        entryDate: formData.entryDate?.toISOString().split('T')[0],
+        birthDate: formData.birthDate,
+        entryDate: formData.entryDate,
         birthPlace: formData.birthPlace,
         smoking: formData.smoking,
         experience: formData.experience,
@@ -175,8 +194,29 @@ export function NewCrewForm() {
         matricule: formData.matricule,
         address: formData.address,
         notes: formData.notes,
-        status: formData.shipId ? "aan-boord" : "nog-in-te-delen",
-        onBoardSince: formData.shipId ? new Date().toISOString().split('T')[0] : null,
+        // Bereken status op basis van startdatum en regime
+        ...(() => {
+          if (!formData.startDate || !formData.shipId) {
+            return {
+              status: "nog-in-te-delen",
+              onBoardSince: null,
+              thuisSinds: null
+            }
+          }
+
+          // Bereken status op basis van startdatum en regime
+          const statusCalculation = calculateCurrentStatus(
+            formData.regime,
+            null, // thuisSinds - wordt berekend
+            formData.startDate // onBoardSince - startdatum
+          )
+
+          return {
+            status: statusCalculation.currentStatus,
+            onBoardSince: statusCalculation.currentStatus === "aan-boord" ? formData.startDate : null,
+            thuisSinds: statusCalculation.currentStatus === "thuis" ? formData.startDate : null
+          }
+        })(),
         documents: {
           vaarbewijs: { valid: false, expiryDate: null },
           medisch: { valid: false, expiryDate: null },
@@ -187,14 +227,58 @@ export function NewCrewForm() {
         educationType: formData.educationType,
         schoolPeriods: formData.schoolPeriods,
         educationEndDate: formData.educationEndDate,
+        // Aflosser velden (leeg voor normale bemanningsleden)
+        aflosserAssignments: [],
+        vasteDienst: true,
+        inDienstVanaf: formData.entryDate || null,
+        assignmentHistory: [],
+        // Expliciet markeren als GEEN aflosser
+        isAflosser: false
       }
 
-      // Voeg toe aan de database
-      const { crewDatabase } = await import("@/data/crew-database");
-      (crewDatabase as any)[newId] = newCrewMember;
+              // Debug info verwijderd
+
+      // Direct localStorage updaten zoals aflossers doen
+      if (typeof window !== 'undefined') {
+        const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+        currentData[id] = newCrewMember
+        localStorage.setItem('crewDatabase', JSON.stringify(currentData))
+        
+
+        
+        // Trigger events
+        window.dispatchEvent(new Event('localStorageUpdate'))
+        window.dispatchEvent(new Event('forceRefresh'))
+      }
+
+      // Voeg ook diploma's toe aan document database zoals aflossers doen
+      formData.diplomas.forEach((diploma, index) => {
+        const docId = `${id}-${diploma.toLowerCase().replace(/\s+/g, '-')}`
+        const newDoc = {
+          id: docId,
+          crewMemberId: id,
+          type: "diploma",
+          name: diploma,
+          fileName: `${diploma.toLowerCase().replace(/\s+/g, '_')}_${id}.pdf`,
+          uploadDate: new Date().toISOString().split('T')[0],
+          expiryDate: null, // Kan later worden ingevuld
+          isValid: true,
+        }
+        
+        // Direct document database updaten
+        if (typeof window !== 'undefined') {
+          const currentDocData = JSON.parse(localStorage.getItem('documentDatabase') || '{}')
+          currentDocData[docId] = newDoc
+          localStorage.setItem('documentDatabase', JSON.stringify(currentDocData))
+        }
+      })
+
+              // Debug info verwijderd
 
       // Simuleer API call
       await new Promise<void>((resolve) => setTimeout(resolve, 1000))
+
+              // Debug info verwijderd
 
       alert(`${formData.firstName} ${formData.lastName} is succesvol toegevoegd!`)
 
@@ -206,9 +290,10 @@ export function NewCrewForm() {
         position: "Kapitein",
         shipId: "",
         regime: "2/2",
+        startDate: "", // Reset startdatum
         phone: "",
         email: "",
-        birthDate: undefined,
+        birthDate: "",
         entryDate: new Date(),
         birthPlace: "",
         smoking: false,
@@ -230,7 +315,7 @@ export function NewCrewForm() {
         educationEndDate: undefined,
       })
     } catch (error) {
-      console.error("Error adding crew member:", error)
+      console.error("❌ Error adding crew member:", error)
       console.error("Error details:", error instanceof Error ? error.message : error)
       alert(`Er is een fout opgetreden bij het toevoegen van het bemanningslid: ${error instanceof Error ? error.message : 'Onbekende fout'}`)
     } finally {
@@ -246,10 +331,11 @@ export function NewCrewForm() {
       position: "Kapitein",
       shipId: "",
       regime: "2/2",
+      startDate: "", // Reset startdatum
       phone: "",
       email: "",
-      birthDate: undefined,
-      entryDate: new Date(),
+      birthDate: "",
+      entryDate: "",
       birthPlace: "",
       smoking: false,
       experience: "",
@@ -366,7 +452,7 @@ export function NewCrewForm() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="nog-in-te-delen">Nog in te delen</SelectItem>
-                  {Object.values(shipDatabase)
+                  {Object.values(getCombinedShipDatabase())
                     .filter((ship: any) => ship.status === "Operationeel")
                     .map((ship: any) => (
                       <SelectItem key={ship.id} value={ship.id}>
@@ -396,6 +482,26 @@ export function NewCrewForm() {
               {errors.regime && <p className="text-sm text-red-500 mt-1">{errors.regime}</p>}
             </div>
           </div>
+
+          {/* Startdatum voor regime berekening */}
+          {formData.shipId && formData.shipId !== "nog-in-te-delen" && (
+            <div>
+              <Label htmlFor="startDate">Startdatum Regime *</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                className={errors.startDate ? "border-red-500" : ""}
+                placeholder="Selecteer startdatum"
+              />
+              <p className="text-sm text-gray-600 mt-1">
+                Wanneer gaat {formData.firstName || "het bemanningslid"} aan boord? 
+                Het systeem berekent automatisch de status op basis van het {formData.regime} regime.
+              </p>
+              {errors.startDate && <p className="text-sm text-red-500 mt-1">{errors.startDate}</p>}
+            </div>
+          )}
 
           {/* Contact gegevens */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -428,60 +534,28 @@ export function NewCrewForm() {
           {/* Datums */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label>Geboortedatum *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={`w-full justify-start text-left font-normal ${errors.birthDate ? "border-red-500" : ""}`}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.birthDate ? (
-                      format(formData.birthDate, "PPP", { locale: nl })
-                    ) : (
-                      <span>Selecteer datum</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={formData.birthDate}
-                    onSelect={(date) => setFormData({ ...formData, birthDate: date })}
-                    disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Label htmlFor="birthDate">Geboortedatum *</Label>
+              <Input
+                id="birthDate"
+                type="text"
+                placeholder="DD-MM-YYYY"
+                value={formData.birthDate}
+                onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
+                className={errors.birthDate ? "border-red-500" : ""}
+              />
               {errors.birthDate && <p className="text-sm text-red-500 mt-1">{errors.birthDate}</p>}
             </div>
 
             <div>
-              <Label>Intrededatum *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={`w-full justify-start text-left font-normal ${errors.entryDate ? "border-red-500" : ""}`}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.entryDate ? (
-                      format(formData.entryDate, "PPP", { locale: nl })
-                    ) : (
-                      <span>Selecteer datum</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={formData.entryDate}
-                    onSelect={(date) => setFormData({ ...formData, entryDate: date })}
-                    disabled={(date) => date > new Date("2030-01-01") || date < new Date("2020-01-01")}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Label htmlFor="entryDate">Intrededatum *</Label>
+              <Input
+                id="entryDate"
+                type="text"
+                placeholder="DD-MM-YYYY"
+                value={formData.entryDate}
+                onChange={(e) => setFormData({ ...formData, entryDate: e.target.value })}
+                className={errors.entryDate ? "border-red-500" : ""}
+              />
               {errors.entryDate && <p className="text-sm text-red-500 mt-1">{errors.entryDate}</p>}
             </div>
           </div>

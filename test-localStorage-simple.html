@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test localStorage Simple</title>
+</head>
+<body>
+    <h1>Test localStorage Simple</h1>
+    
+    <button onclick="setData()">Set Data</button>
+    <button onclick="getData()">Get Data</button>
+    <button onclick="clearData()">Clear Data</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        function setData() {
+            try {
+                localStorage.setItem('test-ship', 'MTS Test Ship');
+                localStorage.setItem('test-crew', 'Test Crew Member');
+                document.getElementById('result').innerHTML = 'Data set successfully!';
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+        
+        function getData() {
+            try {
+                const ship = localStorage.getItem('test-ship');
+                const crew = localStorage.getItem('test-crew');
+                document.getElementById('result').innerHTML = `
+                    Ship: ${ship || 'Not found'}<br>
+                    Crew: ${crew || 'Not found'}
+                `;
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+        
+        function clearData() {
+            try {
+                localStorage.removeItem('test-ship');
+                localStorage.removeItem('test-crew');
+                document.getElementById('result').innerHTML = 'Data cleared!';
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+        
+        // Test on load
+        getData();
+    </script>
+</body>
+</html> 

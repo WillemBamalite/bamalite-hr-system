@@ -126,8 +126,7 @@ export default function StudentenManagementPage() {
     if ((crewDatabase as any)[selectedStudent.id]) {
       const currentSchoolPeriods = (crewDatabase as any)[selectedStudent.id].schoolPeriods || [];
       (crewDatabase as any)[selectedStudent.id].schoolPeriods = [...currentSchoolPeriods, newSchoolPeriodData];
-      console.log("Schoolperiode toegevoegd:", newSchoolPeriodData);
-      console.log("Alle schoolperiodes voor student:", (crewDatabase as any)[selectedStudent.id].schoolPeriods);
+
     }
 
     // Update via de nieuwe hook

@@ -30,9 +30,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
   const crewMember = (crewDatabase as any)[crewMemberId]
   
   // Gebruik echte notities uit database of fallback naar lege array
-  console.log("Crew member:", crewMember);
-  console.log("Notes from database:", crewMember?.notes);
-  console.log("Notes type:", typeof crewMember?.notes);
+  // Debug info verwijderd
   const notes: Note[] = Array.isArray(crewMember?.notes) ? crewMember.notes : []
 
   const getTypeColor = (type: string) => {
@@ -66,15 +64,24 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
         const currentNotes = Array.isArray(crewMember.notes) ? crewMember.notes : []
         const updatedNotes = [...currentNotes, newNoteObj]
         crewMember.notes = updatedNotes
-        console.log("Notitie opgeslagen:", newNoteObj)
-        console.log("Alle notities na opslag:", crewMember.notes)
+        
+        // Update localStorage
+        try {
+          const crewData = localStorage.getItem('crewDatabase')
+          const crew = crewData ? JSON.parse(crewData) : {}
+          crew[crewMemberId] = crewMember
+          localStorage.setItem('crewDatabase', JSON.stringify(crew))
+          
+          // Trigger events voor UI update
+          window.dispatchEvent(new Event('localStorageUpdate'))
+          window.dispatchEvent(new Event('forceRefresh'))
+        } catch (error) {
+          console.error('Error updating crew database:', error)
+        }
       }
       
-              setNewNote("")
-        setIsAddingNote(false)
-      
-      // Force page refresh om wijzigingen te tonen
-      window.location.reload()
+      setNewNote("")
+      setIsAddingNote(false)
     }
   }
 

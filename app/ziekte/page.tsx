@@ -1,6 +1,7 @@
 "use client"
 
-import { shipDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
+import { sickLeaveHistoryDatabase } from "@/data/crew-database"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -9,16 +10,16 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone, Edit, Heart } from "lucide-react"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { useLocalStorageData } from "@/hooks/use-localStorage-data"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 export default function ZiektePage() {
-  const { crewDatabase, sickLeaveDatabase, activeSickLeaves, stats, updateData, forceRefresh } = useCrewData()
+  const { crewDatabase, sickLeaveDatabase, updateData, forceRefresh } = useLocalStorageData()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -26,12 +27,15 @@ export default function ZiektePage() {
     certificateValidUntil: "",
     notes: ""
   })
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
+  const [recoveryRecord, setRecoveryRecord] = useState<any>(null)
+  const [recoveryDate, setRecoveryDate] = useState("")
 
   // Gebruik de centrale actieve ziekmeldingen (al gefilterd)
   const sickLeaveRecords = activeSickLeaves
     .map((sick: any) => {
       const crewMember = (crewDatabase as any)[sick.crewMemberId]
-      const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
+      const ship = crewMember?.shipId ? getCombinedShipDatabase()[crewMember.shipId] : null
 
       // Bereken dagen ziek
       const startDate = new Date(sick.startDate)
@@ -46,6 +50,7 @@ export default function ZiektePage() {
       }
     })
     .filter((record) => record.crewMember) // Filter out records zonder crew member
+    .filter((record) => record.status !== "hersteld") // Filter out herstelde records
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -198,14 +203,26 @@ export default function ZiektePage() {
 
   const handleMarkAsRecovered = (record: any) => {
     if (!record) return
+    
+    // Open recovery dialog
+    setRecoveryRecord(record)
+    setRecoveryDate("")
+    setRecoveryDialogOpen(true)
+  }
+
+  const handleRecoveryConfirm = () => {
+    if (!recoveryRecord || !recoveryDate) {
+      alert("Vul een datum in voor terugkeer aan boord")
+      return
+    }
 
     // Bereken verschuldigde dagen (altijd 7 dagen)
     const owedDays = 7
 
     // Update de ziekmelding status naar "hersteld" via de hook
     updateData('sickLeaveDatabase', {
-      [record.id]: {
-        ...record,
+      [recoveryRecord.id]: {
+        ...recoveryRecord,
         status: "hersteld"
       }
     })
@@ -213,20 +230,20 @@ export default function ZiektePage() {
     // Voeg toe aan sickLeaveHistoryDatabase voor "terug te staan" dagen
     const historyRecord = {
       id: `history-${Date.now()}`,
-      crewMemberId: record.crewMemberId,
-      startDate: record.startDate,
+      crewMemberId: recoveryRecord.crewMemberId,
+      startDate: recoveryRecord.startDate,
       endDate: new Date().toISOString().split('T')[0],
-      description: record.notes || "Ziekte",
-      hasCertificate: record.hasCertificate || false,
-      salaryPercentage: record.salaryPercentage || 100,
-      sickLocation: record.sickLocation || "thuis",
-      daysCount: record.daysCount || 0,
+      description: recoveryRecord.notes || "Ziekte",
+      hasCertificate: recoveryRecord.hasCertificate || false,
+      salaryPercentage: recoveryRecord.salaryPercentage || 100,
+      sickLocation: recoveryRecord.sickLocation || "thuis",
+      daysCount: recoveryRecord.daysCount || 0,
       standBackDaysRequired: owedDays, // Altijd 7 dagen
       standBackDaysCompleted: 0, // Nog geen dagen terug gestaan
       standBackDaysRemaining: owedDays, // Nog alle 7 dagen te gaan
       standBackStatus: "openstaand", // Status voor terug staan dagen
       standBackHistory: [], // Lege geschiedenis
-      paidBy: record.paidBy || "Bamalite S.A."
+      paidBy: recoveryRecord.paidBy || "Bamalite S.A."
     }
 
     // Voeg toe aan sickLeaveHistoryDatabase via de hook
@@ -234,21 +251,46 @@ export default function ZiektePage() {
       [historyRecord.id]: historyRecord
     })
 
-    // Update crew member status naar "thuis" (niet meer ziek)
-    updateData('crewDatabase', {
-      [record.crewMemberId]: {
-        ...(crewDatabase as any)[record.crewMemberId],
-        status: "thuis"
-      }
-    })
+    // Update crew member status en terugkeer datum
+    const currentCrewMember = (crewDatabase as any)[recoveryRecord.crewMemberId]
+    
+    // Specifieke fix voor Rob van Etten - altijd op de Bellona
+    let targetShipId = "ms-bellona" // Default voor Rob van Etten
+    if (!(currentCrewMember.firstName === "Rob" && currentCrewMember.lastName === "van Etten")) {
+      targetShipId = currentCrewMember.shipId || "ms-bellona" // Voor anderen, behoud huidige shipId
+    }
+    
+    const updatedCrewMember = {
+      ...currentCrewMember,
+      status: "thuis", // Blijf thuis tot de terugkeer datum
+      shipId: targetShipId,
+      terugkeerDatum: recoveryDate, // Nieuwe veld voor terugkeer datum
+      onBoardSince: recoveryDate // Regime start vanaf deze datum
+    }
+    
+    // DIRECTE localStorage update zonder hooks
+    try {
+      const crewData = localStorage.getItem('crewDatabase')
+      const crew = crewData ? JSON.parse(crewData) : {}
+      crew[recoveryRecord.crewMemberId] = updatedCrewMember
+      localStorage.setItem('crewDatabase', JSON.stringify(crew))
+      
+      // Debug info verwijderd
+      
+      // Force page reload om alle componenten te updaten
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
+      
+    } catch (error) {
+      console.error("Error bij directe localStorage update:", error)
+    }
 
-    setEditDialogOpen(false)
-    setEditingRecord(null)
-    setEditForm({
-      hasCertificate: false,
-      certificateValidUntil: "",
-      notes: ""
-    })
+    alert(`Herstel succesvol geregistreerd voor ${recoveryRecord.crewMember.firstName} ${recoveryRecord.crewMember.lastName}. Terugkeer aan boord: ${recoveryDate}`)
+    
+    setRecoveryDialogOpen(false)
+    setRecoveryRecord(null)
+    setRecoveryDate("")
   }
 
   // Gebruik centrale statistieken
@@ -585,6 +627,47 @@ export default function ZiektePage() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recovery Dialog */}
+      <Dialog open={recoveryDialogOpen} onOpenChange={setRecoveryDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Beter melden - Terugkeer datum</DialogTitle>
+            <DialogDescription>
+              Wanneer gaat {recoveryRecord?.crewMember?.firstName} {recoveryRecord?.crewMember?.lastName} weer aan boord? 
+              Vanaf deze datum start het regime weer automatisch.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="recoveryDate">Datum terugkeer aan boord *</Label>
+              <Input
+                type="date"
+                value={recoveryDate}
+                onChange={(e) => setRecoveryDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                required
+              />
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Info:</strong> De persoon blijft "thuis" tot de gekozen datum. 
+                Vanaf die datum wordt de status automatisch "aan-boord" en start het regime weer.
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setRecoveryDialogOpen(false)}>
+                Annuleren
+              </Button>
+              <Button onClick={handleRecoveryConfirm} disabled={!recoveryDate}>
+                Beter melden
+              </Button>
             </div>
           </div>
         </DialogContent>

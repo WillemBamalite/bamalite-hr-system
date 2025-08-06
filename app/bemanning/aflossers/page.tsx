@@ -1,20 +1,21 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { UserPlus, Edit, Phone, Mail, MapPin, Ship, Calendar, Clock, AlertTriangle, CheckCircle, X, Plus, Trash2 } from "lucide-react"
+import { UserPlus, Edit, Phone, Mail, MapPin, Ship, Calendar, Clock, AlertTriangle, CheckCircle, X, Plus, Trash2, AlertCircle, UserX } from "lucide-react"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { useLocalStorageData } from "@/hooks/use-localStorage-data"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { shipDatabase } from "@/data/crew-database"
+import { crewDatabase } from "@/data/crew-database"
+import { getCombinedShipDatabase } from "@/utils/ship-utils"
 
 interface AflosserAssignment {
   id: string;
@@ -22,7 +23,8 @@ interface AflosserAssignment {
   shipId: string;
   fromDate: string;
   toDate: string | null;
-  status: "active" | "completed";
+  route: string;
+  status: "active" | "completed" | "cancelled";
   hasFixedEndDate: boolean;
   completedAt: string | null;
   createdAt: string;
@@ -35,6 +37,25 @@ interface AflosserUnavailable {
   toDate: string;
   reason: string;
   createdAt: string;
+}
+
+// Helper functie om te checken of aflosser momenteel afwezig is
+function isCurrentlyAbsent(aflosser: any) {
+  const today = new Date();
+  const absences = aflosser.aflosserAbsences || [];
+  return absences.some((absence: any) => 
+    new Date(absence.fromDate) <= today && new Date(absence.toDate) >= today
+  );
+}
+
+// Helper functie om te checken of aflosser binnenkort afwezig is (binnen week)
+function isSoonAbsent(aflosser: any) {
+  const today = new Date();
+  const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const absences = aflosser.aflosserAbsences || [];
+  return absences.some((absence: any) => 
+    new Date(absence.fromDate) > today && new Date(absence.fromDate) <= weekFromNow
+  );
 }
 
 // Helper functions
@@ -86,15 +107,70 @@ const getStatusText = (status: string) => {
 }
 
 export default function AflossersOverzicht() {
-  const { crewDatabase: allCrewData, stats, updateData } = useCrewData()
+  const { crewDatabase: allCrewData, stats, updateData, forceRefresh, resetLocalStorage } = useLocalStorageData()
+  
+  // Force refresh bij component mount en wanneer de pagina focus krijgt
+  useEffect(() => {
+    forceRefresh();
+    
+    // Force refresh van dashboard
+    setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('forceRefresh'));
+      }
+    }, 1000)
+  }, []);
+
+  // State voor het forceren van re-renders
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Luister naar localStorage updates
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      setRefreshKey(prev => prev + 1);
+    };
+
+    const handleForceRefresh = () => {
+      setRefreshKey(prev => prev + 1);
+    };
+
+    // Ook luisteren naar storage events van andere tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'crewDatabase') {
+        setRefreshKey(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('localStorageUpdate', handleStorageUpdate);
+    window.addEventListener('forceRefresh', handleForceRefresh);
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('localStorageUpdate', handleStorageUpdate);
+      window.removeEventListener('forceRefresh', handleForceRefresh);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
   const [selectedAflosser, setSelectedAflosser] = useState<any>(null)
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false)
   const [showUnavailableDialog, setShowUnavailableDialog] = useState(false)
   const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [selectedAssignment, setSelectedAssignment] = useState<any>(null)
+  const [completionDate, setCompletionDate] = useState("")
+  const [editData, setEditData] = useState({
+    phone: "",
+    diplomas: "",
+    notes: ""
+  })
+  
   const [newAssignment, setNewAssignment] = useState({
     shipId: "",
     fromDate: "",
     toDate: "",
+    route: "",
     hasFixedEndDate: false
   })
   const [newUnavailable, setNewUnavailable] = useState({
@@ -103,11 +179,48 @@ export default function AflossersOverzicht() {
     reason: ""
   })
 
-  // Filter aflossers (relief crew)
-  const aflossers = Object.values(allCrewData).filter((member: any) => 
-    member.position?.toLowerCase().includes("aflos") || 
-    member.position?.toLowerCase().includes("relief")
-  )
+  // Haal alleen aflossers op uit de hook data EN localStorage
+  const getAflossers = () => {
+    // Filter alleen echte aflossers uit de hook data (exclude deleted)
+    const hookAflossers = Object.values(allCrewData).filter((crew: any) => 
+      !crew.deleted && (
+        crew.isAflosser === true || 
+        crew.position === "Aflosser" ||
+        crew.function === "Aflosser"
+      )
+    );
+    
+    // Ook check localStorage voor extra aflossers (exclude deleted)
+    let localStorageAflossers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const storedData = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
+        localStorageAflossers = Object.values(storedData).filter((crew: any) => 
+          !crew.deleted && (
+            crew.isAflosser === true || 
+            crew.position === "Aflosser" ||
+            crew.function === "Aflosser"
+          )
+        );
+      } catch (e) {
+        console.error('Error reading localStorage:', e);
+      }
+    }
+    
+    // Combineer beide bronnen en verwijder duplicaten
+    const allAflossers = [...hookAflossers, ...localStorageAflossers];
+    const uniqueAflossers = allAflossers.filter((aflosser, index, self) => 
+      index === self.findIndex(a => a.id === aflosser.id)
+    );
+    
+    return uniqueAflossers;
+  };
+  
+  const aflossers = getAflossers();
+  
+
+
+
 
   // Haal assignments en unavailable periods uit database
   const assignments: AflosserAssignment[] = []
@@ -117,24 +230,25 @@ export default function AflossersOverzicht() {
     if (crew.aflosserAssignments) {
       assignments.push(...crew.aflosserAssignments)
     }
-    if (crew.aflosserUnavailablePeriods) {
-      unavailablePeriods.push(...crew.aflosserUnavailablePeriods)
+    if (crew.aflosserAbsences) {
+      unavailablePeriods.push(...crew.aflosserAbsences)
     }
   })
 
   // Bepaal status van elke aflosser
   const aflossersWithStatus = aflossers.map((aflosser: any) => {
     const today = new Date()
-    const activeAssignment = assignments.find(a => 
-      a.aflosserId === aflosser.id && 
+    
+    // Check voor actieve toewijzingen in de aflosser zelf
+    const activeAssignment = aflosser.aflosserAssignments?.find((a: any) => 
       a.status === "active" &&
       new Date(a.fromDate) <= today &&
       (!a.toDate || new Date(a.toDate) >= today)
     )
     
-    const activeUnavailable = unavailablePeriods.find(u => 
-      u.aflosserId === aflosser.id &&
-      new Date(u.fromDate) <= today &&
+    // Check voor actieve afwezigheden in de aflosser zelf
+    const activeUnavailable = aflosser.aflosserAbsences?.find((u: any) => 
+      new Date(u.fromDate) <= today && 
       new Date(u.toDate) >= today
     )
 
@@ -162,6 +276,21 @@ export default function AflossersOverzicht() {
     }
   })
 
+  // Categoriseer aflossers
+  const activeAflossers = aflossersWithStatus.filter((a: any) => 
+    a.activeAssignment && a.activeAssignment.status === "active"
+  )
+  const unavailableAflossers = aflossersWithStatus.filter((a: any) => 
+    a.status === "afwezig" || 
+    a.status === "ziek" || 
+    a.status === "uit-dienst" ||
+    a.activeUnavailable
+  )
+  // Alle overige aflossers zijn beschikbaar (inclusief die met voltooide/geannuleerde toewijzingen)
+  const availableAflossers = aflossersWithStatus.filter((a: any) => 
+    !activeAflossers.includes(a) && !unavailableAflossers.includes(a)
+  )
+
   const handleAssignToShip = (aflosser: any) => {
     setSelectedAflosser(aflosser)
     setShowAssignmentDialog(true)
@@ -177,6 +306,103 @@ export default function AflossersOverzicht() {
     setShowHistoryDialog(true)
   }
 
+  const handleCompleteAssignment = (aflosser: any, assignment: any) => {
+    // Vraag om voltooiingsdatum
+    const completionDate = prompt(
+      `Voer de datum in waarop ${aflosser.firstName} ${aflosser.lastName} van boord is gegaan (YYYY-MM-DD):`,
+      new Date().toISOString().split('T')[0]
+    )
+    
+    if (!completionDate) {
+      alert("Voltooiing geannuleerd - geen datum ingevoerd")
+      return
+    }
+    
+    // Valideer datum formaat
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(completionDate)) {
+      alert("Ongeldige datum formaat. Gebruik YYYY-MM-DD (bijv. 2024-01-15)")
+      return
+    }
+    
+    // Update assignment status to completed with specified date
+    const updatedAssignment = { 
+      ...assignment, 
+      status: "completed",
+      completedAt: completionDate
+    }
+    const updatedAssignments = aflosser.aflosserAssignments?.map((a: any) => 
+      a.id === assignment.id ? updatedAssignment : a
+    ) || []
+    
+    // Update localStorage direct
+    const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+    currentData[aflosser.id] = {
+      ...aflosser,
+      aflosserAssignments: updatedAssignments
+    }
+    localStorage.setItem('crewDatabase', JSON.stringify(currentData))
+    
+    // Update state via hook
+    updateData('crewDatabase', {
+      [aflosser.id]: {
+        ...aflosser,
+        aflosserAssignments: updatedAssignments
+      }
+    })
+
+    alert(`✅ Toewijzing voltooid voor ${aflosser.firstName} ${aflosser.lastName} op ${completionDate}`)
+  }
+
+  const handleCancelAssignment = (aflosser: any, assignment: any) => {
+    // Update assignment status to cancelled
+    const updatedAssignment = { ...assignment, status: "cancelled" }
+    const updatedAssignments = aflosser.aflosserAssignments?.map((a: any) => 
+      a.id === assignment.id ? updatedAssignment : a
+    ) || []
+    
+    // Update localStorage direct
+    const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+    currentData[aflosser.id] = {
+      ...aflosser,
+      aflosserAssignments: updatedAssignments
+    }
+    localStorage.setItem('crewDatabase', JSON.stringify(currentData))
+    
+    // Update state via hook
+    updateData('crewDatabase', {
+      [aflosser.id]: {
+        ...aflosser,
+        aflosserAssignments: updatedAssignments
+      }
+    })
+
+    alert(`❌ Toewijzing geannuleerd voor ${aflosser.firstName} ${aflosser.lastName}`)
+  }
+
+  const handleEditAflosser = (aflosser: any) => {
+    setSelectedAflosser(aflosser)
+    setEditData({
+      phone: aflosser.phone || "",
+      diplomas: aflosser.diplomas?.join(", ") || "",
+      notes: aflosser.notes || ""
+    })
+    setShowEditDialog(true)
+  }
+
+  const handleSaveEdit = () => {
+    if (selectedAflosser) {
+      updateData('crewDatabase', {
+        [selectedAflosser.id]: {
+          ...selectedAflosser,
+          phone: editData.phone,
+          diplomas: editData.diplomas.split(", ").filter(d => d.trim()),
+          notes: editData.notes
+        }
+      })
+      setShowEditDialog(false)
+    }
+  }
+
   const handleCreateAssignment = () => {
     if (!selectedAflosser || !newAssignment.shipId || !newAssignment.fromDate) {
       alert("Vul alle verplichte velden in")
@@ -188,29 +414,69 @@ export default function AflossersOverzicht() {
       aflosserId: selectedAflosser.id,
       shipId: newAssignment.shipId,
       fromDate: newAssignment.fromDate,
-      toDate: newAssignment.hasFixedEndDate ? newAssignment.toDate : null,
+      toDate: newAssignment.toDate || null,
+      route: newAssignment.route,
       status: "active",
-      hasFixedEndDate: newAssignment.hasFixedEndDate,
+      hasFixedEndDate: !!newAssignment.toDate,
       completedAt: null,
       createdAt: new Date().toISOString()
     }
 
-    // Update aflosser met nieuwe assignment
+    
+
+    const currentAssignments = selectedAflosser.aflosserAssignments || []
     const updatedAflosser = {
       ...selectedAflosser,
-      aflosserAssignments: [
-        ...(selectedAflosser.aflosserAssignments || []),
-        assignment
-      ]
+      aflosserAssignments: [...currentAssignments, assignment]
     }
 
+    // Update localStorage direct
+    const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+    currentData[selectedAflosser.id] = updatedAflosser
+    localStorage.setItem('crewDatabase', JSON.stringify(currentData))
+
+    // Update state via hook
     updateData('crewDatabase', {
       [selectedAflosser.id]: updatedAflosser
     })
 
+    alert(`✅ ${selectedAflosser.firstName} ${selectedAflosser.lastName} toegewezen aan ${(shipDatabase as any)[newAssignment.shipId]?.name || newAssignment.shipId}`)
+
     setShowAssignmentDialog(false)
-    setNewAssignment({ shipId: "", fromDate: "", toDate: "", hasFixedEndDate: false })
-    setSelectedAflosser(null)
+    setNewAssignment({
+      shipId: "",
+      fromDate: "",
+      toDate: "",
+      route: "",
+      hasFixedEndDate: false
+    })
+  }
+
+  const handleCompleteAssignmentConfirm = () => {
+    if (!selectedAssignment || !completionDate) {
+      alert("Vul een voltooiingsdatum in")
+      return
+    }
+
+    const updatedAssignment = { 
+      ...selectedAssignment, 
+      status: "completed",
+      completedAt: completionDate
+    }
+
+    const updatedAssignments = selectedAflosser.aflosserAssignments?.map((a: any) => 
+      a.id === selectedAssignment.id ? updatedAssignment : a
+    ) || []
+
+    updateData('crewDatabase', {
+      [selectedAflosser.id]: {
+        ...selectedAflosser,
+        aflosserAssignments: updatedAssignments
+      }
+    })
+
+    setShowCompleteDialog(false)
+    setCompletionDate("")
   }
 
   const handleCreateUnavailable = () => {
@@ -228,30 +494,39 @@ export default function AflossersOverzicht() {
       createdAt: new Date().toISOString()
     }
 
-    // Update aflosser met nieuwe unavailable period
+
+
+    const currentAbsences = selectedAflosser.aflosserAbsences || []
     const updatedAflosser = {
       ...selectedAflosser,
-      aflosserUnavailablePeriods: [
-        ...(selectedAflosser.aflosserUnavailablePeriods || []),
-        unavailable
-      ]
+      aflosserAbsences: [...currentAbsences, unavailable]
     }
+
+    // Update localStorage direct
+    const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+    currentData[selectedAflosser.id] = updatedAflosser
+    localStorage.setItem('crewDatabase', JSON.stringify(currentData))
 
     updateData('crewDatabase', {
       [selectedAflosser.id]: updatedAflosser
     })
 
+    alert(`✅ ${selectedAflosser.firstName} ${selectedAflosser.lastName} afwezig ingesteld: ${newUnavailable.reason}`)
+
     setShowUnavailableDialog(false)
-    setNewUnavailable({ fromDate: "", toDate: "", reason: "" })
-    setSelectedAflosser(null)
+    setNewUnavailable({
+      fromDate: "",
+      toDate: "",
+      reason: ""
+    })
   }
 
   const getAflosserHistory = (aflosserId: string) => {
-    return assignments.filter(a => a.aflosserId === aflosserId)
+    return allCrewData[aflosserId]?.aflosserAssignments || []
   }
 
-  const getAflosserUnavailableHistory = (aflosserId: string) => {
-    return unavailablePeriods.filter(u => u.aflosserId === aflosserId)
+  const getAflosserAbsences = (aflosserId: string) => {
+    return allCrewData[aflosserId]?.aflosserAbsences || []
   }
 
   const formatDate = (dateString: string) => {
@@ -265,7 +540,7 @@ export default function AflossersOverzicht() {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Aflossers Overzicht</h1>
-          <p className="text-gray-600 mt-1">Relief crew management en overzicht</p>
+          <p className="text-gray-600 mt-1">Alle aflossers en hun beschikbaarheid</p>
         </div>
         <div className="flex items-center space-x-3">
           <Link href="/bemanning/aflossers/nieuw">
@@ -280,8 +555,9 @@ export default function AflossersOverzicht() {
               Toewijzen
             </Button>
           </Link>
-          <Link href="/bemanning" className="text-blue-600 hover:text-blue-800">
-            ← Terug naar bemanning
+
+                      <Link href="/" className="text-blue-600 hover:text-blue-800">
+            ← Terug naar Dashboard
           </Link>
         </div>
       </div>
@@ -294,7 +570,7 @@ export default function AflossersOverzicht() {
               <UserPlus className="w-5 h-5 text-green-600" />
               <div>
                 <p className="text-sm text-gray-600">Totaal Aflossers</p>
-                <p className="text-2xl font-bold text-green-600">{stats.aflossers}</p>
+                <p className="text-2xl font-bold text-green-600">{aflossers.length}</p>
               </div>
             </div>
           </CardContent>
@@ -306,7 +582,7 @@ export default function AflossersOverzicht() {
               <div>
                 <p className="text-sm text-gray-600">Beschikbaar</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {aflossersWithStatus.filter((a: any) => a.status === "thuis").length}
+                  {availableAflossers.length}
                 </p>
               </div>
             </div>
@@ -319,7 +595,7 @@ export default function AflossersOverzicht() {
               <div>
                 <p className="text-sm text-gray-600">Toegewezen</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  {aflossersWithStatus.filter((a: any) => a.status === "toegewezen").length}
+                  {activeAflossers.length}
                 </p>
               </div>
             </div>
@@ -332,7 +608,7 @@ export default function AflossersOverzicht() {
               <div>
                 <p className="text-sm text-gray-600">Afwezig</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {aflossersWithStatus.filter((a: any) => a.status === "afwezig").length}
+                  {unavailableAflossers.length}
                 </p>
               </div>
             </div>
@@ -353,119 +629,322 @@ export default function AflossersOverzicht() {
         </Card>
       </div>
 
-      {/* Aflossers Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {aflossersWithStatus.map((aflosser: any) => (
-          <Card key={aflosser.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="w-12 h-12">
-                    <AvatarFallback className="bg-blue-100 text-blue-700">
-                      {aflosser.firstName[0]}{aflosser.lastName[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <Link 
-                        href={`/bemanning/${aflosser.id}`}
-                        className="font-semibold text-gray-900 hover:text-blue-700"
-                      >
-                        {aflosser.firstName} {aflosser.lastName}
-                      </Link>
-                      <span className="text-lg">{getNationalityFlag(aflosser.nationality)}</span>
+      {/* Aflossers in drie kolommen */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Actieve Aflossers */}
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+            <h2 className="text-xl font-semibold text-gray-900">Actieve Aflossers</h2>
+            <Badge variant="secondary" className="ml-auto">{activeAflossers.length}</Badge>
+          </div>
+          
+          {activeAflossers.length > 0 ? (
+            <div className="space-y-4">
+              {activeAflossers.map((aflosser: any) => (
+                <Card 
+                  key={aflosser.id} 
+                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  onDoubleClick={() => {
+                    if (aflosser.notes && aflosser.notes.trim() !== "") {
+                      alert(`📝 Opmerkingen voor ${aflosser.firstName} ${aflosser.lastName}:\n\n"${aflosser.notes}"`);
+                    } else {
+                      alert(`ℹ️ Geen opmerkingen voor ${aflosser.firstName} ${aflosser.lastName}`);
+                    }
+                  }}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-purple-100 text-purple-700">
+                            {aflosser.firstName[0]}{aflosser.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <Link 
+                              href={`/bemanning/${aflosser.id}`}
+                              className="font-semibold text-gray-900 hover:text-blue-700"
+                            >
+                              {aflosser.firstName} {aflosser.lastName}
+                            </Link>
+                            <span className="text-lg">{getNationalityFlag(aflosser.nationality)}</span>
+                          </div>
+                          <p className="text-sm text-gray-500">{aflosser.position}</p>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-500">{aflosser.position}</p>
-                  </div>
-                </div>
-                <Badge className={aflosser.statusColor}>
-                  {aflosser.statusText}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {/* Contact informatie */}
-              {aflosser.phone && (
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <Phone className="w-4 h-4" />
-                  <span>{aflosser.phone}</span>
-                </div>
-              )}
-              {aflosser.email && (
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <Mail className="w-4 h-4" />
-                  <span>{aflosser.email}</span>
-                </div>
-              )}
-              {aflosser.address && (
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <MapPin className="w-4 h-4" />
-                  <span>
-                    {aflosser.address.street && `${aflosser.address.street}, `}
-                    {aflosser.address.city && `${aflosser.address.city} `}
-                    {aflosser.address.postalCode && `${aflosser.address.postalCode}`}
-                    {aflosser.address.country && `, ${aflosser.address.country}`}
-                  </span>
-                </div>
-              )}
-              
-              {/* Actieve toewijzing of afwezigheid */}
-              {aflosser.activeAssignment && (
-                <div className="pt-2 border-t border-gray-100">
-                  <div className="flex items-center space-x-2 text-sm text-purple-600">
-                    <Ship className="w-4 h-4" />
-                    <span>Toegewezen aan: {(shipDatabase as any)[aflosser.activeAssignment.shipId]?.name || aflosser.activeAssignment.shipId}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Van: {formatDate(aflosser.activeAssignment.fromDate)}
-                    {aflosser.activeAssignment.toDate && ` - Tot: ${formatDate(aflosser.activeAssignment.toDate)}`}
-                  </div>
-                </div>
-              )}
-              
-              {aflosser.activeUnavailable && (
-                <div className="pt-2 border-t border-gray-100">
-                  <div className="flex items-center space-x-2 text-sm text-orange-600">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span>Afwezig: {aflosser.activeUnavailable.reason}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Van: {formatDate(aflosser.activeUnavailable.fromDate)} - Tot: {formatDate(aflosser.activeUnavailable.toDate)}
-                  </div>
-                </div>
-              )}
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {/* Actieve toewijzing */}
+                    {aflosser.activeAssignment && (
+                      <div className="pt-2 border-t border-gray-100">
+                        <div className="flex items-center space-x-2 text-sm text-purple-600">
+                          <Ship className="w-4 h-4" />
+                          <span>{(shipDatabase as any)[aflosser.activeAssignment.shipId]?.name || aflosser.activeAssignment.shipId}</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Van: {formatDate(aflosser.activeAssignment.fromDate)}
+                          {aflosser.activeAssignment.toDate && ` - Tot: ${formatDate(aflosser.activeAssignment.toDate)}`}
+                        </div>
+                      </div>
+                    )}
 
-              {/* Acties */}
-              <div className="flex items-center space-x-2 pt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handleAssignToShip(aflosser)}
-                  className="flex-1"
+                    {/* Acties */}
+                    <div className="flex items-center space-x-2 pt-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleShowHistory(aflosser)}
+                        className="text-gray-600"
+                      >
+                        <Clock className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleCompleteAssignment(aflosser, aflosser.activeAssignment)}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Voltooien
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleCancelAssignment(aflosser, aflosser.activeAssignment)}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Annuleren
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 bg-gray-50 rounded-lg">
+              <Ship className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">Geen actieve aflossers</p>
+            </div>
+          )}
+        </div>
+
+        {/* Beschikbare Aflossers */}
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <h2 className="text-xl font-semibold text-gray-900">Beschikbare Aflossers</h2>
+            <Badge variant="secondary" className="ml-auto">{availableAflossers.length}</Badge>
+          </div>
+          
+          {availableAflossers.length > 0 ? (
+            <div className="space-y-4">
+              {availableAflossers.map((aflosser: any) => (
+                <Card 
+                  key={aflosser.id} 
+                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  onDoubleClick={() => {
+                    if (aflosser.notes && aflosser.notes.trim() !== "") {
+                      alert(`📝 Opmerkingen voor ${aflosser.firstName} ${aflosser.lastName}:\n\n"${aflosser.notes}"`);
+                    } else {
+                      alert(`ℹ️ Geen opmerkingen voor ${aflosser.firstName} ${aflosser.lastName}`);
+                    }
+                  }}
                 >
-                  <Ship className="w-4 h-4 mr-1" />
-                  Toewijzen
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handleSetUnavailable(aflosser)}
-                  className="flex-1"
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-green-100 text-green-700">
+                            {aflosser.firstName[0]}{aflosser.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <Link 
+                              href={`/bemanning/${aflosser.id}`}
+                              className="font-semibold text-gray-900 hover:text-blue-700"
+                            >
+                              {aflosser.firstName} {aflosser.lastName}
+                            </Link>
+                            <span className="text-lg">{getNationalityFlag(aflosser.nationality)}</span>
+                          </div>
+                          <p className="text-sm text-gray-500">{aflosser.position}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {/* Telefoonnummer */}
+                    {aflosser.phone && (
+                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                        <Phone className="w-4 h-4" />
+                        <span>{aflosser.phone}</span>
+                      </div>
+                    )}
+                    
+                    {/* Diploma's */}
+                    {aflosser.diplomas && aflosser.diplomas.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {aflosser.diplomas.map((diploma: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {diploma}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Opmerkingen (alleen tonen als er zijn) */}
+                    {aflosser.notes && aflosser.notes.trim() !== "" && (
+                      <div className="text-xs text-gray-500 italic">
+                        "{aflosser.notes}"
+                      </div>
+                    )}
+
+                    {/* Afwezigheid informatie */}
+                    {isSoonAbsent(aflosser) && (
+                      <div className="text-orange-600 text-xs mt-2 p-2 bg-orange-50 rounded">
+                        <strong>⚠️ Binnenkort afwezig:</strong>
+                        {getAflosserAbsences(aflosser.id)
+                          .filter((a: any) => new Date(a.fromDate) > new Date())
+                          .sort((a: any, b: any) => new Date(a.fromDate).getTime() - new Date(b.fromDate).getTime())
+                          .map((absence: any, index: number) => (
+                            <div key={absence.id} className="mt-1">
+                              {index + 1}. {formatDate(absence.fromDate)} - {formatDate(absence.toDate)} ({absence.reason})
+                            </div>
+                          ))}
+                      </div>
+                    )}
+
+                    {/* Acties */}
+                    <div className="flex items-center space-x-2 pt-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleAssignToShip(aflosser)}
+                        className="flex-1"
+                      >
+                        <Ship className="w-4 h-4 mr-1" />
+                        Toewijzen
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleSetUnavailable(aflosser)}
+                        className="flex-1"
+                      >
+                        <Calendar className="w-4 h-4 mr-1" />
+                        Afwezig
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleShowHistory(aflosser)}
+                        className="text-gray-600"
+                      >
+                        <Clock className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 bg-gray-50 rounded-lg">
+              <UserPlus className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">Geen beschikbare aflossers</p>
+            </div>
+          )}
+        </div>
+
+        {/* Niet Beschikbare Aflossers */}
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+            <h2 className="text-xl font-semibold text-gray-900">Niet Beschikbaar</h2>
+            <Badge variant="secondary" className="ml-auto">{unavailableAflossers.length}</Badge>
+          </div>
+          
+          {unavailableAflossers.length > 0 ? (
+            <div className="space-y-4">
+              {unavailableAflossers.map((aflosser: any) => (
+                <Card 
+                  key={aflosser.id} 
+                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  onDoubleClick={() => {
+                    if (aflosser.notes && aflosser.notes.trim() !== "") {
+                      alert(`📝 Opmerkingen voor ${aflosser.firstName} ${aflosser.lastName}:\n\n"${aflosser.notes}"`);
+                    } else {
+                      alert(`ℹ️ Geen opmerkingen voor ${aflosser.firstName} ${aflosser.lastName}`);
+                    }
+                  }}
                 >
-                  <Calendar className="w-4 h-4 mr-1" />
-                  Afwezig
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handleShowHistory(aflosser)}
-                >
-                  <Clock className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-orange-100 text-orange-700">
+                            {aflosser.firstName[0]}{aflosser.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <Link 
+                              href={`/bemanning/${aflosser.id}`}
+                              className="font-semibold text-gray-900 hover:text-blue-700"
+                            >
+                              {aflosser.firstName} {aflosser.lastName}
+                            </Link>
+                            <span className="text-lg">{getNationalityFlag(aflosser.nationality)}</span>
+                          </div>
+                          <p className="text-sm text-gray-500">{aflosser.position}</p>
+                        </div>
+                      </div>
+                      <Badge className={aflosser.statusColor}>
+                        {aflosser.statusText}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {/* Actieve afwezigheid */}
+                    {aflosser.activeUnavailable && (
+                      <div className="pt-2 border-t border-gray-100">
+                        <div className="flex items-center space-x-2 text-sm text-orange-600">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>{aflosser.activeUnavailable.reason}</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Van: {formatDate(aflosser.activeUnavailable.fromDate)} - Tot: {formatDate(aflosser.activeUnavailable.toDate)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Acties */}
+                    <div className="flex items-center space-x-2 pt-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleShowHistory(aflosser)}
+                        className="flex-1"
+                      >
+                        <Clock className="w-4 h-4 mr-1" />
+                        Geschiedenis
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 bg-gray-50 rounded-lg">
+              <UserX className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">Geen afwezige aflossers</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Lege staat */}
@@ -497,11 +976,11 @@ export default function AflossersOverzicht() {
                   <SelectValue placeholder="Selecteer schip" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(shipDatabase).map((ship: any) => (
-                    <SelectItem key={ship.id} value={ship.id}>
-                      {ship.name}
-                    </SelectItem>
-                  ))}
+                                              {Object.values(getCombinedShipDatabase()).map((ship: any) => (
+                              <SelectItem key={ship.id} value={ship.id}>
+                                {ship.name}
+                              </SelectItem>
+                            ))}
                 </SelectContent>
               </Select>
             </div>
@@ -513,25 +992,22 @@ export default function AflossersOverzicht() {
                 onChange={(e) => setNewAssignment({...newAssignment, fromDate: e.target.value})}
               />
             </div>
-            <div className="flex items-center space-x-2">
-              <input 
-                type="checkbox" 
-                id="hasFixedEndDate"
-                checked={newAssignment.hasFixedEndDate}
-                onChange={(e) => setNewAssignment({...newAssignment, hasFixedEndDate: e.target.checked})}
+            <div>
+              <Label htmlFor="toDate">Tot datum (optioneel)</Label>
+              <Input 
+                type="date" 
+                value={newAssignment.toDate}
+                onChange={(e) => setNewAssignment({...newAssignment, toDate: e.target.value})}
               />
-              <Label htmlFor="hasFixedEndDate">Vaste einddatum</Label>
             </div>
-            {newAssignment.hasFixedEndDate && (
-              <div>
-                <Label htmlFor="toDate">Tot datum</Label>
-                <Input 
-                  type="date" 
-                  value={newAssignment.toDate}
-                  onChange={(e) => setNewAssignment({...newAssignment, toDate: e.target.value})}
-                />
-              </div>
-            )}
+            <div>
+              <Label htmlFor="route">Route</Label>
+              <Input 
+                value={newAssignment.route}
+                onChange={(e) => setNewAssignment({...newAssignment, route: e.target.value})}
+                placeholder="Bijv. Rotterdam - Antwerpen"
+              />
+            </div>
             <div className="flex space-x-2">
               <Button onClick={handleCreateAssignment} className="flex-1">
                 Toewijzen
@@ -544,7 +1020,7 @@ export default function AflossersOverzicht() {
         </DialogContent>
       </Dialog>
 
-      {/* Afwezigheid Dialog */}
+      {/* Afwezig Dialog */}
       <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -552,7 +1028,7 @@ export default function AflossersOverzicht() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="unavailableFromDate">Van datum</Label>
+              <Label htmlFor="fromDate">Van datum</Label>
               <Input 
                 type="date" 
                 value={newUnavailable.fromDate}
@@ -560,7 +1036,7 @@ export default function AflossersOverzicht() {
               />
             </div>
             <div>
-              <Label htmlFor="unavailableToDate">Tot datum</Label>
+              <Label htmlFor="toDate">Tot datum</Label>
               <Input 
                 type="date" 
                 value={newUnavailable.toDate}
@@ -572,7 +1048,7 @@ export default function AflossersOverzicht() {
               <Textarea 
                 value={newUnavailable.reason}
                 onChange={(e) => setNewUnavailable({...newUnavailable, reason: e.target.value})}
-                placeholder="Bijv. vakantie, ziekte, persoonlijke redenen..."
+                placeholder="Bijv. Vakantie, Ziek, Persoonlijke redenen"
               />
             </div>
             <div className="flex space-x-2">
@@ -598,18 +1074,38 @@ export default function AflossersOverzicht() {
               <h4 className="font-semibold mb-2">Toewijzingen</h4>
               {getAflosserHistory(selectedAflosser?.id).length > 0 ? (
                 <div className="space-y-2">
-                  {getAflosserHistory(selectedAflosser?.id).map((assignment) => (
+                  {getAflosserHistory(selectedAflosser?.id).map((assignment: any) => (
                     <div key={assignment.id} className="p-3 border rounded-lg">
-                      <div className="flex items-center justify-between">
+                      <div className="flex justify-between items-start">
                         <div>
-                          <div className="font-medium">{(shipDatabase as any)[assignment.shipId]?.name || assignment.shipId}</div>
-                          <div className="text-sm text-gray-600">
-                            {formatDate(assignment.fromDate)} - {assignment.toDate ? formatDate(assignment.toDate) : 'Ongedefinieerd'}
-                          </div>
+                          <p className="font-medium">{(shipDatabase as any)[assignment.shipId]?.name || assignment.shipId}</p>
+                          <p className="text-sm text-gray-600">
+                            {formatDate(assignment.fromDate)} - {assignment.toDate ? formatDate(assignment.toDate) : 'Open einde'}
+                          </p>
+                          <p className="text-sm text-gray-500">{assignment.route}</p>
                         </div>
-                        <Badge className={assignment.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                          {assignment.status === "active" ? "Actief" : "Voltooid"}
-                        </Badge>
+                        <div className="flex space-x-2">
+                          <Badge variant={assignment.status === 'active' ? 'default' : 'secondary'}>
+                            {assignment.status === 'active' ? 'Actief' : assignment.status === 'completed' ? 'Voltooid' : 'Geannuleerd'}
+                          </Badge>
+                          {assignment.status === 'active' && (
+                            <>
+                              <Button 
+                                size="sm" 
+                                onClick={() => handleCompleteAssignment(selectedAflosser, assignment)}
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleCancelAssignment(selectedAflosser, assignment)}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -620,21 +1116,90 @@ export default function AflossersOverzicht() {
             </div>
             
             <div>
-              <h4 className="font-semibold mb-2">Afwezigheid periodes</h4>
-              {getAflosserUnavailableHistory(selectedAflosser?.id).length > 0 ? (
+              <h4 className="font-semibold mb-2">Afwezigheden</h4>
+              {getAflosserAbsences(selectedAflosser?.id).length > 0 ? (
                 <div className="space-y-2">
-                  {getAflosserUnavailableHistory(selectedAflosser?.id).map((unavailable) => (
-                    <div key={unavailable.id} className="p-3 border rounded-lg">
-                      <div className="font-medium">{unavailable.reason}</div>
-                      <div className="text-sm text-gray-600">
-                        {formatDate(unavailable.fromDate)} - {formatDate(unavailable.toDate)}
-                      </div>
+                  {getAflosserAbsences(selectedAflosser?.id).map((absence: any) => (
+                    <div key={absence.id} className="p-3 border rounded-lg">
+                      <p className="font-medium">{absence.reason}</p>
+                      <p className="text-sm text-gray-600">
+                        {formatDate(absence.fromDate)} - {formatDate(absence.toDate)}
+                      </p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">Geen afwezigheid periodes gevonden</p>
+                <p className="text-gray-500">Geen afwezigheden gevonden</p>
               )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Voltooien Dialog */}
+      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Toewijzing voltooien</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="completionDate">Voltooiingsdatum</Label>
+              <Input 
+                type="date" 
+                value={completionDate}
+                onChange={(e) => setCompletionDate(e.target.value)}
+              />
+            </div>
+            <div className="flex space-x-2">
+              <Button onClick={handleCompleteAssignmentConfirm} className="flex-1">
+                Voltooien
+              </Button>
+              <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Aflosser Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bewerk aflosser</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="phone">Telefoonnummer</Label>
+              <Input 
+                value={editData.phone}
+                onChange={(e) => setEditData({...editData, phone: e.target.value})}
+              />
+            </div>
+            <div>
+              <Label htmlFor="diplomas">Diploma's (komma-gescheiden)</Label>
+              <Input 
+                value={editData.diplomas}
+                onChange={(e) => setEditData({...editData, diplomas: e.target.value})}
+                placeholder="Vaarbewijs, ADN, Radar"
+              />
+            </div>
+            <div>
+              <Label htmlFor="notes">Opmerkingen</Label>
+              <Textarea 
+                value={editData.notes}
+                onChange={(e) => setEditData({...editData, notes: e.target.value})}
+                placeholder="Extra informatie..."
+              />
+            </div>
+            <div className="flex space-x-2">
+              <Button onClick={handleSaveEdit} className="flex-1">
+                Opslaan
+              </Button>
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                Annuleren
+              </Button>
             </div>
           </div>
         </DialogContent>
