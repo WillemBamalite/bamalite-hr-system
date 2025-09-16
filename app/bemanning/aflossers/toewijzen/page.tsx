@@ -253,7 +253,7 @@ export default function AflossersToewijzenPage() {
       // Sla direct op in localStorage
       localStorage.setItem('crewDatabase', JSON.stringify(updatedCrewDatabase));
       
-
+      console.log("🔧 Debug info:", {
         aflosserId: selectedAflosser.id,
         updatedCrewMember: updatedCrewMember,
         localStorageData: JSON.parse(localStorage.getItem('crewDatabase') || '{}')[selectedAflosser.id]

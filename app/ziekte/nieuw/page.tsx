@@ -1,6 +1,5 @@
 "use client"
 
-import { crewDatabase, shipDatabase, sickLeaveDatabase } from "@/data/crew-database"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,13 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { UserX, ArrowLeft, Search } from "lucide-react"
 import { useState } from "react"
-import { useCrewData, useCrewMember } from "@/hooks/use-crew-data"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { BackButton } from "@/components/ui/back-button"
 
 export default function NieuwZiektePage() {
-  const { crewDatabase, addItem, updateData } = useCrewData()
+  const { crew, sickLeave, updateCrew, addSickLeave } = useSupabaseData()
   const router = useRouter()
   const [formData, setFormData] = useState({
     crewMemberId: "",
@@ -32,13 +32,13 @@ export default function NieuwZiektePage() {
   const [showSearchResults, setShowSearchResults] = useState(false)
 
   // Haal alle crew members op
-  const crewMembers = Object.values(crewDatabase).filter((member: any) => 
-    member.id !== "ziek" && member.status !== "uit-dienst" // Filter alleen de "ziek" placeholder en uit-dienst uit
+  const crewMembers = crew.filter((member: any) => 
+    member.status !== "uit-dienst" // Filter alleen uit-dienst uit
   )
 
   // Filter crew members op basis van zoekopdracht
   const filteredCrewMembers = crewMembers.filter((member: any) => {
-    const fullName = `${member.firstName} ${member.lastName}`.toLowerCase()
+    const fullName = `${member.first_name} ${member.last_name}`.toLowerCase()
     const searchLower = searchQuery.toLowerCase()
     return fullName.includes(searchLower) || member.position.toLowerCase().includes(searchLower)
   })
@@ -47,13 +47,13 @@ export default function NieuwZiektePage() {
     setFormData({
       ...formData,
       crewMemberId: member.id,
-      crewMemberName: `${member.firstName} ${member.lastName}`
+      crewMemberName: `${member.first_name} ${member.last_name}`
     })
-    setSearchQuery(`${member.firstName} ${member.lastName}`)
+    setSearchQuery(`${member.first_name} ${member.last_name}`)
     setShowSearchResults(false)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!formData.crewMemberId || !formData.startDate) {
@@ -62,48 +62,51 @@ export default function NieuwZiektePage() {
     }
 
     // PREVENTIEVE FIX: Controleer of er al een actieve ziekmelding is voor deze crew member
-    const existingSickLeaves = Object.values(sickLeaveDatabase as Record<string, any>).filter((sick: any) => 
-      sick.crewMemberId === formData.crewMemberId && 
+    const existingSickLeaves = sickLeave.filter((sick: any) => 
+      sick.crew_member_id === formData.crewMemberId && 
       (sick.status === "actief" || sick.status === "wacht-op-briefje")
     );
 
     if (existingSickLeaves.length > 0) {
-      const crewMember = (crewDatabase as any)[formData.crewMemberId];
-      const crewName = crewMember ? `${crewMember.firstName} ${crewMember.lastName}` : formData.crewMemberId;
+      const crewMember = crew.find((c: any) => c.id === formData.crewMemberId);
+      const crewName = crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : formData.crewMemberId;
       
-      alert(`⚠️ ${crewName} heeft al een actieve ziekmelding!\n\nStartdatum: ${existingSickLeaves[0].startDate}\nStatus: ${existingSickLeaves[0].status}\n\nGa eerst naar het ziekte overzicht om de bestaande ziekmelding te beheren.`);
+      alert(`⚠️ ${crewName} heeft al een actieve ziekmelding!\n\nStartdatum: ${existingSickLeaves[0].start_date}\nStatus: ${existingSickLeaves[0].status}\n\nGa eerst naar het ziekte overzicht om de bestaande ziekmelding te beheren.`);
       return;
     }
 
-    // Maak nieuwe ziekmelding
-    const newSickLeave = {
-      id: `sick-${Date.now()}`,
-      crewMemberId: formData.crewMemberId,
-      startDate: formData.startDate,
-      sickLocation: formData.sickLocation,
-      salaryPercentage: parseInt(formData.salaryPercentage),
-      hasCertificate: formData.hasCertificate,
-      certificateValidUntil: formData.certificateValidUntil || null,
-      paidBy: formData.paidBy,
-      notes: formData.notes,
-      status: formData.hasCertificate ? "actief" : "wacht-op-briefje"
-    }
-
-    // Voeg ziekmelding toe via de hook
-    addItem('sickLeaveDatabase', newSickLeave.id, newSickLeave)
-
-    // Update crew member status naar ziek (behoud shipId)
-    const currentCrewMember = (crewDatabase as any)[formData.crewMemberId]
-    updateData('crewDatabase', {
-      [formData.crewMemberId]: {
-        ...currentCrewMember,
-        status: "ziek",
-        shipId: currentCrewMember.shipId // Expliciet behouden
+    try {
+      // Maak nieuwe ziekmelding
+      const newSickLeave = {
+        id: `sick-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        crew_member_id: formData.crewMemberId,
+        start_date: formData.startDate,
+        salary_percentage: parseInt(formData.salaryPercentage),
+        certificate_valid_until: formData.certificateValidUntil || undefined,
+        paid_by: formData.paidBy,
+        notes: formData.notes,
+        status: (formData.hasCertificate && formData.certificateValidUntil) ? "actief" as const : "wacht-op-briefje" as const
       }
-    })
 
-    // Redirect naar dashboard
-    router.push("/")
+      // Voeg ziekmelding toe via Supabase
+      await addSickLeave(newSickLeave)
+
+      // Update crew member status naar ziek
+      const currentCrewMember = crew.find((c: any) => c.id === formData.crewMemberId)
+      if (currentCrewMember) {
+        await updateCrew(formData.crewMemberId, {
+          ...currentCrewMember,
+          status: "ziek"
+        })
+      }
+
+      alert("Ziekmelding succesvol geregistreerd!")
+      router.push("/ziekte")
+    } catch (error) {
+      console.error("Error creating sick leave:", error)
+      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error, null, 2)
+      alert("Fout bij het registreren van de ziekmelding: " + errorMessage)
+    }
   }
 
   return (
@@ -113,9 +116,7 @@ export default function NieuwZiektePage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
-          <Link href="/ziekte" className="text-gray-600 hover:text-gray-800">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
+          <BackButton href="/ziekte" />
           <div>
             <h1 className="text-2xl font-bold">Nieuwe ziekmelding</h1>
             <p className="text-sm text-gray-600">Registreer een nieuwe ziekmelding</p>
@@ -161,7 +162,7 @@ export default function NieuwZiektePage() {
                           onClick={() => handleCrewMemberSelect(member)}
                           className="w-full text-left px-4 py-2 hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
                         >
-                          <div className="font-medium">{member.firstName} {member.lastName}</div>
+                          <div className="font-medium">{member.first_name} {member.last_name}</div>
                           <div className="text-sm text-gray-500">{member.position}</div>
                         </button>
                       ))

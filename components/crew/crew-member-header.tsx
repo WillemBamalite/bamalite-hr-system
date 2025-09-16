@@ -9,6 +9,7 @@ import { crewDatabase } from "@/data/crew-database"
 import { getCombinedShipDatabase } from "@/utils/ship-utils"
 import { useRouter } from "next/navigation"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
+import { BackButton } from "@/components/ui/back-button"
 
 interface Props {
   crewMemberId: string
@@ -24,10 +25,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
       <header className="border-b bg-white shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <button onClick={() => router.back()} className="flex items-center text-sm text-gray-700 hover:text-blue-700">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Terug
-            </button>
+            <BackButton />
             <div className="text-red-600">Bemanningslid niet gevonden</div>
           </div>
         </div>
@@ -56,10 +54,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <button onClick={() => router.back()} className="flex items-center text-sm text-gray-700 hover:text-blue-700">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Terug
-            </button>
+            <BackButton />
 
             <div className="flex items-center space-x-4">
               <Avatar className="w-12 h-12">

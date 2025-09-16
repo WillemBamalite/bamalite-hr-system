@@ -54,7 +54,7 @@ export default function RotationSettingsPage() {
 
   const saveSettings = () => {
     // Hier zou je de instellingen opslaan in een database of config file
-
+    console.log("Saving settings:", {
       pattern: rotationPattern,
       weeks: selectedWeeks,
       wednesdayShips,

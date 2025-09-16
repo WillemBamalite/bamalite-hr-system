@@ -4,8 +4,10 @@ import { Suspense, useState, use } from "react"
 import { CrewMemberHeader } from "@/components/crew/crew-member-header"
 import { CrewMemberProfile } from "@/components/crew/crew-member-profile"
 import { CrewMemberNotes } from "@/components/crew/crew-member-notes"
+import { CrewMemberStatusChanges } from "@/components/crew/crew-member-status-changes"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
+import { BackButton } from "@/components/ui/back-button"
 
 interface Props {
   params: Promise<{
@@ -38,15 +40,13 @@ export default function BemanningslidPage({ params }: Props) {
                   onProfileUpdate={handleProfileUpdate}
                 />
               </Suspense>
-
             </div>
 
             {/* Sidebar */}
             <div className="space-y-6">
+              <CrewMemberStatusChanges crewMemberId={resolvedParams.id} />
               <CrewMemberNotes crewMemberId={resolvedParams.id} />
             </div>
-
-
           </div>
 
           {/* Mobiele actieknoppen */}
@@ -59,30 +59,16 @@ export default function BemanningslidPage({ params }: Props) {
               <Link href="/bemanning/aflossers" className="bg-green-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-green-700 shadow">
                 🔄 Aflossers
               </Link>
-              <Link href="/documenten" className="bg-orange-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-orange-700 shadow">
-                📄 Documenten
-              </Link>
-              <button className="bg-indigo-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-indigo-700 shadow">
-                ✏️ Bewerken
-              </button>
-              <button className="bg-teal-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-teal-700 shadow">
-                📤 Document
-              </button>
-              <button className="bg-gray-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-gray-700 shadow">
-                📊 Geschiedenis
-              </button>
-              <button className="bg-red-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-red-700 shadow">
+              <Link href="/ziekte" className="bg-red-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-red-700 shadow">
                 🏥 Ziekte
-              </button>
-              <button className="bg-gray-800 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-gray-900 shadow">
-                🚪 Uit dienst
-              </button>
+              </Link>
+              <Link href="/bemanning/nieuw" className="bg-indigo-600 text-white text-sm py-3 px-4 rounded-lg text-center hover:bg-indigo-700 shadow">
+                ✏️ Nieuw Lid
+              </Link>
             </div>
           </div>
         </main>
       </div>
-
-
     </div>
   )
 }

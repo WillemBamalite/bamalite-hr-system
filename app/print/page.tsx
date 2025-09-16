@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Printer, Download, ArrowLeft, FileText } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { BackButton } from "@/components/ui/back-button"
 
 export default function PrintPage() {
   const handlePrint = () => {
@@ -23,10 +24,7 @@ export default function PrintPage() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
-              <Link href="/" className="flex items-center text-sm text-gray-700 hover:text-blue-700 transition-colors">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Terug naar Dashboard
-              </Link>
+              <BackButton href="/" />
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Print Overzicht</h1>
                 <p className="text-sm text-gray-600">Professioneel schepen en bemanning overzicht</p>

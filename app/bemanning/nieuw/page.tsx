@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
+import { BackButton } from "@/components/ui/back-button"
 
 export default function NewCrewPage() {
   return (
@@ -11,12 +12,7 @@ export default function NewCrewPage() {
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center space-x-4">
-                          <Link href="/">
-              <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                <ArrowLeft className="w-4 h-4" />
-                <span>Terug naar Dashboard</span>
-              </Button>
-            </Link>
+            <BackButton href="/" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Nieuw Bemanningslid</h1>
               <p className="text-sm text-gray-600">Voeg een nieuw bemanningslid toe aan het systeem</p>

@@ -7,6 +7,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: "🏠" },
   { href: "/bemanning/overzicht", label: "Bemanning", icon: "👥" },
   { href: "/bemanning/aflossers", label: "Aflossers", icon: "🔄" },
+  { href: "/bemanning/leningen", label: "Leningen", icon: "💰" },
   { href: "/documenten", label: "Documenten", icon: "📄" },
   { href: "/ziekte", label: "Ziekte", icon: "🏥" },
 ];

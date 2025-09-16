@@ -8,6 +8,7 @@ import { Printer, Download, FileText, Users, Ship, UserPlus, Clock, AlertTriangl
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { useCrewData } from "@/hooks/use-crew-data"
+import { BackButton } from "@/components/ui/back-button"
 
 export default function CrewPrintPage() {
   const { crewDatabase: allCrewData, stats } = useCrewData()
@@ -78,18 +79,18 @@ export default function CrewPrintPage() {
       <MobileHeaderNav />
       
       <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Print & Export</h1>
-          <p className="text-gray-600 mt-1">Bemanning overzichten en export functionaliteit</p>
+        <div className="flex items-center gap-4">
+          <BackButton href="/" />
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Print & Export</h1>
+            <p className="text-gray-600 mt-1">Bemanning overzichten en export functionaliteit</p>
+          </div>
         </div>
         <div className="flex items-center space-x-3">
           <Button onClick={handlePrintAll} className="bg-blue-600 hover:bg-blue-700">
             <Printer className="w-4 h-4 mr-2" />
             Print Alles
           </Button>
-                      <Link href="/" className="text-blue-600 hover:text-blue-800">
-            ← Terug naar Dashboard
-          </Link>
         </div>
       </div>
 

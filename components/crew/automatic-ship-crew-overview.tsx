@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Ship, MapPin, Phone, CheckCircle, Clock, Plus, UserX, ArrowLeft } from "lucide-react"
+import { Ship, Phone, CheckCircle, Clock, Plus, UserX, ArrowLeft } from "lucide-react"
 import { crewDatabase } from "@/data/crew-database"
 import { getCombinedShipDatabase } from "@/utils/ship-utils"
 import { calculateRegimeStatus, calculateCurrentStatus } from "@/utils/regime-calculator"
@@ -15,7 +15,6 @@ export function AutomaticShipCrewOverview() {
   const router = useRouter()
   // Automatisch berekenen van alle bemanning per schip
   const shipsWithCrew = Object.values(getCombinedShipDatabase())
-    .filter((ship) => ship.status === "Operationeel")
     .map((ship) => {
       const shipCrew = Object.values(crewDatabase)
         .filter((crew) => crew.shipId === ship.id && crew.status !== "uit-dienst")
@@ -33,14 +32,10 @@ export function AutomaticShipCrewOverview() {
       return {
         ...ship,
         crew: shipCrew,
-        location: getShipLocation(ship.id),
       }
     })
 
-  function getShipLocation(shipId: string): string {
-    const ship = getCombinedShipDatabase()[shipId]
-    return ship?.location || "Locatie onbekend"
-  }
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -117,15 +112,6 @@ export function AutomaticShipCrewOverview() {
                 </div>
                 <div>
                   <CardTitle className="text-lg">{ship.name}</CardTitle>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
-                    <div className="flex items-center space-x-1">
-                      <MapPin className="w-3 h-3" />
-                      <span>{ship.location}</span>
-                    </div>
-                    <Badge variant="outline" className="bg-green-50 text-green-700">
-                      {ship.status}
-                    </Badge>
-                  </div>
                 </div>
               </div>
               <div className="text-right">

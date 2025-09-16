@@ -15,9 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { CalendarIcon, UserPlus, Save, X } from "lucide-react"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
-import { getCombinedShipDatabase } from "@/utils/ship-utils"
-import { useLocalStorageData } from "@/hooks/use-localStorage-data"
-import { calculateCurrentStatus } from "@/utils/regime-calculator"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 
 const diplomaOptions = [
   "Vaarbewijs",
@@ -77,13 +75,13 @@ interface NewCrewFormData {
 }
 
 export function NewCrewForm() {
-  const { addItem } = useLocalStorageData()
+  const { addCrew, ships, loading, error } = useSupabaseData()
   const [formData, setFormData] = useState<NewCrewFormData>({
     firstName: "",
     lastName: "",
     nationality: "NL",
     position: "Kapitein",
-    shipId: "",
+    shipId: "none",
     regime: "2/2",
     startDate: "", // Nieuwe veld voor startdatum
     phone: "",
@@ -100,187 +98,86 @@ export function NewCrewForm() {
       street: "",
       city: "",
       postalCode: "",
-      country: "",
+      country: ""
     },
     notes: "",
-    // Student velden
     isStudent: false,
-    educationType: undefined,
+    educationType: "BBL",
     schoolPeriods: [],
-    educationEndDate: undefined,
+    educationEndDate: ""
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [errors, setErrors] = useState<{ [key: string]: string }>({})
-
-  const nationalities = [
-    { code: "NL", name: "Nederland", flag: "🇳🇱" },
-    { code: "CZ", name: "Tsjechië", flag: "🇨🇿" },
-    { code: "SLK", name: "Slowakije", flag: "🇸🇰" },
-    { code: "PO", name: "Polen", flag: "🇵🇱" },
-    { code: "SERV", name: "Servië", flag: "🇷🇸" },
-    { code: "HUN", name: "Hongarije", flag: "🇭🇺" },
-    { code: "BE", name: "België", flag: "🇧🇪" },
-    { code: "FR", name: "Frankrijk", flag: "🇫🇷" },
-    { code: "DE", name: "Duitsland", flag: "🇩🇪" },
-    { code: "LUX", name: "Luxemburg", flag: "🇱🇺" },
-    { code: "EG", name: "Egypte", flag: "🇪🇬" },
-  ]
-
-  const positions = ["Kapitein", "Stuurman", "Machinist", "Matroos", "Deksman", "Lichtmatroos", "Kok", "Scheepsjongen"]
+  const [isSuccess, setIsSuccess] = useState(false)
 
   const validateForm = () => {
-    const newErrors: { [key: string]: string } = {}
+    const errors: string[] = []
 
-    // Vereenvoudigde validatie - alleen de meest essentiële velden
-    if (!formData.firstName.trim()) newErrors.firstName = "Voornaam is verplicht"
-    if (!formData.lastName.trim()) newErrors.lastName = "Achternaam is verplicht"
-    if (!formData.nationality) newErrors.nationality = "Nationaliteit is verplicht"
-    if (!formData.phone.trim()) newErrors.phone = "Telefoonnummer is verplicht"
+    if (!formData.firstName.trim()) errors.push("Voornaam is verplicht")
+    if (!formData.lastName.trim()) errors.push("Achternaam is verplicht")
+    if (!formData.nationality) errors.push("Nationaliteit is verplicht")
+    if (!formData.position) errors.push("Functie is verplicht")
+    if (!formData.phone.trim()) errors.push("Telefoonnummer is verplicht")
+    if (!formData.birthDate) errors.push("Geboortedatum is verplicht")
 
-    // Startdatum validatie - alleen als een schip is geselecteerd
-    if (formData.shipId && formData.shipId !== "nog-in-te-delen" && !formData.startDate) {
-      newErrors.startDate = "Startdatum is verplicht als een schip is geselecteerd"
+    // Validatie voor startdatum als er een schip is geselecteerd
+    if (formData.shipId && formData.shipId !== "none" && !formData.startDate) {
+      errors.push("Startdatum is verplicht als er een schip is geselecteerd")
     }
 
-    // Email validatie (alleen als email is ingevuld)
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (formData.email && !emailRegex.test(formData.email)) {
-      newErrors.email = "Ongeldig e-mailadres"
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    return errors
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    // Debug info verwijderd
-
-    if (!validateForm()) {
-              // Debug info verwijderd
+    
+    const errors = validateForm()
+    if (errors.length > 0) {
+      alert("Vul de volgende velden in:\n" + errors.join("\n"))
       return
     }
-
-            // Debug info verwijderd
 
     setIsSubmitting(true)
 
     try {
-      // Genereer unieke ID zoals aflossers doen
-      const id = `${formData.firstName.toLowerCase()}-${formData.lastName.toLowerCase()}`
+      // Bereken status op basis van startdatum en regime
+      let status = "nog-in-te-delen"
+      let onBoardSince = null
+      let thuisSinds = null
 
+      if (formData.shipId && formData.shipId !== "none" && formData.startDate) {
+        const calculatedStatus = calculateCurrentStatus(formData.startDate, formData.regime)
+        status = calculatedStatus.status
+        onBoardSince = calculatedStatus.onBoardSince
+        thuisSinds = calculatedStatus.thuisSinds
+      }
 
-
-      // Maak nieuwe bemanningslid object
-      const newCrewMember: any = {
-        id: id,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
+      // Maak crew member object voor Supabase (laat Supabase de UUID id genereren)
+      const crewMember = {
+        first_name: formData.firstName,
+        last_name: formData.lastName,
         nationality: formData.nationality,
         position: formData.position,
-        shipId: formData.shipId || "",
+        // Gebruik null als er geen schip is gekozen; lege string breekt UUID kolom
+        ship_id: formData.shipId === "none" ? null : formData.shipId,
         regime: formData.regime,
+        status: status as "aan-boord" | "thuis" | "ziek" | "uit-dienst" | "nog-in-te-delen",
+        on_board_since: onBoardSince || undefined,
+        thuis_sinds: thuisSinds || undefined,
         phone: formData.phone,
         email: formData.email,
-        birthDate: formData.birthDate,
-        entryDate: formData.entryDate,
-        birthPlace: formData.birthPlace,
-        smoking: formData.smoking,
-        experience: formData.experience,
-        diplomas: formData.diplomas,
-        company: formData.company,
-        matricule: formData.matricule,
+        birth_date: formData.birthDate,
         address: formData.address,
-        notes: formData.notes,
-        // Bereken status op basis van startdatum en regime
-        ...(() => {
-          if (!formData.startDate || !formData.shipId) {
-            return {
-              status: "nog-in-te-delen",
-              onBoardSince: null,
-              thuisSinds: null
-            }
-          }
-
-          // Bereken status op basis van startdatum en regime
-          const statusCalculation = calculateCurrentStatus(
-            formData.regime,
-            null, // thuisSinds - wordt berekend
-            formData.startDate // onBoardSince - startdatum
-          )
-
-          return {
-            status: statusCalculation.currentStatus,
-            onBoardSince: statusCalculation.currentStatus === "aan-boord" ? formData.startDate : null,
-            thuisSinds: statusCalculation.currentStatus === "thuis" ? formData.startDate : null
-          }
-        })(),
-        documents: {
-          vaarbewijs: { valid: false, expiryDate: null },
-          medisch: { valid: false, expiryDate: null },
-          certificaat: { valid: false, expiryDate: null },
-        },
-        // Student velden
-        isStudent: formData.isStudent,
-        educationType: formData.educationType,
-        schoolPeriods: formData.schoolPeriods,
-        educationEndDate: formData.educationEndDate,
-        // Aflosser velden (leeg voor normale bemanningsleden)
-        aflosserAssignments: [],
-        vasteDienst: true,
-        inDienstVanaf: formData.entryDate || null,
-        assignmentHistory: [],
-        // Expliciet markeren als GEEN aflosser
-        isAflosser: false
+        assignment_history: [],
+        diplomas: formData.diplomas,
+        notes: [formData.notes],
+        matricule: formData.matricule || undefined
       }
 
-              // Debug info verwijderd
+      const created = await addCrew(crewMember as any)
 
-      // Direct localStorage updaten zoals aflossers doen
-      if (typeof window !== 'undefined') {
-        const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        currentData[id] = newCrewMember
-        localStorage.setItem('crewDatabase', JSON.stringify(currentData))
-        
-
-        
-        // Trigger events
-        window.dispatchEvent(new Event('localStorageUpdate'))
-        window.dispatchEvent(new Event('forceRefresh'))
-      }
-
-      // Voeg ook diploma's toe aan document database zoals aflossers doen
-      formData.diplomas.forEach((diploma, index) => {
-        const docId = `${id}-${diploma.toLowerCase().replace(/\s+/g, '-')}`
-        const newDoc = {
-          id: docId,
-          crewMemberId: id,
-          type: "diploma",
-          name: diploma,
-          fileName: `${diploma.toLowerCase().replace(/\s+/g, '_')}_${id}.pdf`,
-          uploadDate: new Date().toISOString().split('T')[0],
-          expiryDate: null, // Kan later worden ingevuld
-          isValid: true,
-        }
-        
-        // Direct document database updaten
-        if (typeof window !== 'undefined') {
-          const currentDocData = JSON.parse(localStorage.getItem('documentDatabase') || '{}')
-          currentDocData[docId] = newDoc
-          localStorage.setItem('documentDatabase', JSON.stringify(currentDocData))
-        }
-      })
-
-              // Debug info verwijderd
-
-      // Simuleer API call
-      await new Promise<void>((resolve) => setTimeout(resolve, 1000))
-
-              // Debug info verwijderd
-
-      alert(`${formData.firstName} ${formData.lastName} is succesvol toegevoegd!`)
+      // Succes: meteen door naar overzicht (hook heeft state + localStorage al bijgewerkt)
+      setIsSuccess(true)
 
       // Reset form
       setFormData({
@@ -288,13 +185,13 @@ export function NewCrewForm() {
         lastName: "",
         nationality: "NL",
         position: "Kapitein",
-        shipId: "",
+        shipId: "none",
         regime: "2/2",
-        startDate: "", // Reset startdatum
+        startDate: "",
         phone: "",
         email: "",
         birthDate: "",
-        entryDate: new Date(),
+        entryDate: "",
         birthPlace: "",
         smoking: false,
         experience: "",
@@ -305,19 +202,24 @@ export function NewCrewForm() {
           street: "",
           city: "",
           postalCode: "",
-          country: "",
+          country: ""
         },
         notes: "",
-        // Student velden
         isStudent: false,
-        educationType: undefined,
+        educationType: "BBL",
         schoolPeriods: [],
-        educationEndDate: undefined,
+        educationEndDate: ""
       })
+
+      // Ga direct naar bemanningsoverzicht
+      setTimeout(() => {
+        window.location.href = '/bemanning/overzicht'
+      }, 500)
+      
     } catch (error) {
-      console.error("❌ Error adding crew member:", error)
-      console.error("Error details:", error instanceof Error ? error.message : error)
-      alert(`Er is een fout opgetreden bij het toevoegen van het bemanningslid: ${error instanceof Error ? error.message : 'Onbekende fout'}`)
+      console.error('Error adding crew member:', error)
+      const message = error instanceof Error ? error.message : 'Er is een fout opgetreden bij het toevoegen van het bemanningslid.'
+      alert(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -329,9 +231,9 @@ export function NewCrewForm() {
       lastName: "",
       nationality: "NL",
       position: "Kapitein",
-      shipId: "",
+      shipId: "none",
       regime: "2/2",
-      startDate: "", // Reset startdatum
+      startDate: "",
       phone: "",
       email: "",
       birthDate: "",
@@ -346,393 +248,446 @@ export function NewCrewForm() {
         street: "",
         city: "",
         postalCode: "",
-        country: "",
+        country: ""
       },
       notes: "",
-      // Student velden
       isStudent: false,
-      educationType: undefined,
+      educationType: "BBL",
       schoolPeriods: [],
-      educationEndDate: undefined,
+      educationEndDate: ""
     })
-    setErrors({})
+  }
+
+  // Helper functie voor status berekening
+  const calculateCurrentStatus = (startDate: string, regime: string) => {
+    const start = new Date(startDate)
+    const today = new Date()
+    const daysSinceStart = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+    
+    let status = "nog-in-te-delen"
+    let onBoardSince = null
+    let thuisSinds = null
+    
+    if (regime === "1/1") {
+      const cycle = 2 // 1 dag aan boord + 1 dag thuis
+      const dayInCycle = daysSinceStart % cycle
+      
+      if (dayInCycle === 0) {
+        status = "aan-boord"
+        onBoardSince = startDate
+      } else {
+        status = "thuis"
+        thuisSinds = new Date(start.getTime() + (1 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
+      }
+    } else if (regime === "2/2") {
+      const cycle = 4 // 2 dagen aan boord + 2 dagen thuis
+      const dayInCycle = daysSinceStart % cycle
+      
+      if (dayInCycle < 2) {
+        status = "aan-boord"
+        onBoardSince = startDate
+      } else {
+        status = "thuis"
+        thuisSinds = new Date(start.getTime() + (2 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
+      }
+    } else if (regime === "3/3") {
+      const cycle = 6 // 3 dagen aan boord + 3 dagen thuis
+      const dayInCycle = daysSinceStart % cycle
+      
+      if (dayInCycle < 3) {
+        status = "aan-boord"
+        onBoardSince = startDate
+      } else {
+        status = "thuis"
+        thuisSinds = new Date(start.getTime() + (3 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
+      }
+    }
+    
+    return { status, onBoardSince, thuisSinds }
+  }
+
+  if (isSuccess) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="p-6 text-center">
+            <UserPlus className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-green-900 mb-2">Bemanningslid Toegevoegd!</h2>
+            <p className="text-green-700 mb-4">
+              Het bemanningslid is succesvol toegevoegd aan het systeem.
+            </p>
+            <p className="text-sm text-green-600">
+              Je wordt automatisch doorgestuurd naar het dashboard...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
-    <Card className="max-w-4xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <UserPlus className="w-5 h-5" />
-          <span>Nieuw Bemanningslid Toevoegen</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Persoonlijke gegevens */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="firstName">Voornaam *</Label>
-              <Input
-                id="firstName"
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className={errors.firstName ? "border-red-500" : ""}
-              />
-              {errors.firstName && <p className="text-sm text-red-500 mt-1">{errors.firstName}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="lastName">Achternaam *</Label>
-              <Input
-                id="lastName"
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className={errors.lastName ? "border-red-500" : ""}
-              />
-              {errors.lastName && <p className="text-sm text-red-500 mt-1">{errors.lastName}</p>}
-            </div>
-          </div>
-
-          {/* Nationaliteit en functie */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="nationality">Nationaliteit *</Label>
-              <Select
-                value={formData.nationality}
-                onValueChange={(value) => setFormData({ ...formData, nationality: value })}
-              >
-                <SelectTrigger className={errors.nationality ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Selecteer nationaliteit" />
-                </SelectTrigger>
-                <SelectContent>
-                  {nationalities.map((nat) => (
-                    <SelectItem key={nat.code} value={nat.code}>
-                      <div className="flex items-center space-x-2">
-                        <span>{nat.flag}</span>
-                        <span>{nat.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.nationality && <p className="text-sm text-red-500 mt-1">{errors.nationality}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="position">Functie *</Label>
-              <Select
-                value={formData.position}
-                onValueChange={(value) => setFormData({ ...formData, position: value })}
-              >
-                <SelectTrigger className={errors.position ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Selecteer functie" />
-                </SelectTrigger>
-                <SelectContent>
-                  {positions.map((position) => (
-                    <SelectItem key={position} value={position}>
-                      {position}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.position && <p className="text-sm text-red-500 mt-1">{errors.position}</p>}
-            </div>
-          </div>
-
-          {/* Schip en regime */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="shipId">Schip *</Label>
-              <Select 
-                value={formData.shipId} 
-                onValueChange={(value) => setFormData({ ...formData, shipId: value })}
-              >
-                <SelectTrigger className={errors.shipId ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Selecteer schip" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nog-in-te-delen">Nog in te delen</SelectItem>
-                  {Object.values(getCombinedShipDatabase())
-                    .filter((ship: any) => ship.status === "Operationeel")
-                    .map((ship: any) => (
-                      <SelectItem key={ship.id} value={ship.id}>
-                        {ship.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {errors.shipId && <p className="text-sm text-red-500 mt-1">{errors.shipId}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="regime">Regime *</Label>
-              <Select
-                value={formData.regime}
-                onValueChange={(value: "1/1" | "2/2" | "3/3") => setFormData({ ...formData, regime: value })}
-              >
-                <SelectTrigger className={errors.regime ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Selecteer regime" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1/1">1/1 (1 week aan boord, 1 week thuis)</SelectItem>
-                  <SelectItem value="2/2">2/2 (2 weken aan boord, 2 weken thuis)</SelectItem>
-                  <SelectItem value="3/3">3/3 (3 weken aan boord, 3 weken thuis)</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.regime && <p className="text-sm text-red-500 mt-1">{errors.regime}</p>}
-            </div>
-          </div>
-
-          {/* Startdatum voor regime berekening */}
-          {formData.shipId && formData.shipId !== "nog-in-te-delen" && (
-            <div>
-              <Label htmlFor="startDate">Startdatum Regime *</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={formData.startDate}
-                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                className={errors.startDate ? "border-red-500" : ""}
-                placeholder="Selecteer startdatum"
-              />
-              <p className="text-sm text-gray-600 mt-1">
-                Wanneer gaat {formData.firstName || "het bemanningslid"} aan boord? 
-                Het systeem berekent automatisch de status op basis van het {formData.regime} regime.
-              </p>
-              {errors.startDate && <p className="text-sm text-red-500 mt-1">{errors.startDate}</p>}
-            </div>
-          )}
-
-          {/* Contact gegevens */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="phone">Telefoonnummer *</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+31 6 12345678"
-                className={errors.phone ? "border-red-500" : ""}
-              />
-              {errors.phone && <p className="text-sm text-red-500 mt-1">{errors.phone}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="email">E-mail *</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="naam@bamalite.com"
-                className={errors.email ? "border-red-500" : ""}
-              />
-              {errors.email && <p className="text-sm text-red-500 mt-1">{errors.email}</p>}
-            </div>
-          </div>
-
-          {/* Datums */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="birthDate">Geboortedatum *</Label>
-              <Input
-                id="birthDate"
-                type="text"
-                placeholder="DD-MM-YYYY"
-                value={formData.birthDate}
-                onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                className={errors.birthDate ? "border-red-500" : ""}
-              />
-              {errors.birthDate && <p className="text-sm text-red-500 mt-1">{errors.birthDate}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="entryDate">Intrededatum *</Label>
-              <Input
-                id="entryDate"
-                type="text"
-                placeholder="DD-MM-YYYY"
-                value={formData.entryDate}
-                onChange={(e) => setFormData({ ...formData, entryDate: e.target.value })}
-                className={errors.entryDate ? "border-red-500" : ""}
-              />
-              {errors.entryDate && <p className="text-sm text-red-500 mt-1">{errors.entryDate}</p>}
-            </div>
-          </div>
-
-          {/* Geboorteplaats */}
-          <div>
-            <Label htmlFor="birthPlace">Geboorteplaats *</Label>
-            <Input
-              id="birthPlace"
-              value={formData.birthPlace}
-              onChange={(e) => setFormData({ ...formData, birthPlace: e.target.value })}
-              className={errors.birthPlace ? "border-red-500" : ""}
-            />
-            {errors.birthPlace && <p className="text-sm text-red-500 mt-1">{errors.birthPlace}</p>}
-          </div>
-
-          {/* Ervaring */}
-          <div>
-            <Label htmlFor="experience">Ervaring *</Label>
-            <Input
-              id="experience"
-              value={formData.experience}
-              onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
-              className={errors.experience ? "border-red-500" : ""}
-            />
-            {errors.experience && <p className="text-sm text-red-500 mt-1">{errors.experience}</p>}
-          </div>
-
-          {/* Adres */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Adresgegevens *</h3>
+    <div className="max-w-4xl mx-auto">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Persoonlijke Informatie */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <UserPlus className="w-5 h-5" />
+              <span>Persoonlijke Informatie</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <Label htmlFor="street">Straat en huisnummer *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="firstName">Voornaam *</Label>
                 <Input
-                  id="street"
-                  value={formData.address.street}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      address: { ...formData.address, street: e.target.value },
-                    })
-                  }
-                  placeholder="Hoofdstraat 123"
-                  className={errors.street ? "border-red-500" : ""}
+                  id="firstName"
+                  value={formData.firstName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                  placeholder="Voornaam"
+                  required
                 />
-                {errors.street && <p className="text-sm text-red-500 mt-1">{errors.street}</p>}
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Achternaam *</Label>
+                <Input
+                  id="lastName"
+                  value={formData.lastName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                  placeholder="Achternaam"
+                  required
+                />
+              </div>
+            </div>
 
-              <div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="nationality">Nationaliteit *</Label>
+                <Select value={formData.nationality} onValueChange={(value) => setFormData(prev => ({ ...prev, nationality: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer nationaliteit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NL">🇳🇱 Nederlands</SelectItem>
+                    <SelectItem value="CZ">🇨🇿 Tsjechisch</SelectItem>
+                    <SelectItem value="SLK">🇸🇰 Slowaaks</SelectItem>
+                    <SelectItem value="EG">🇪🇬 Egyptisch</SelectItem>
+                    <SelectItem value="PO">🇵🇱 Pools</SelectItem>
+                    <SelectItem value="SERV">🇷🇸 Servisch</SelectItem>
+                    <SelectItem value="HUN">🇭🇺 Hongaars</SelectItem>
+                    <SelectItem value="BE">🇧🇪 Belgisch</SelectItem>
+                    <SelectItem value="FR">🇫🇷 Frans</SelectItem>
+                    <SelectItem value="DE">🇩🇪 Duits</SelectItem>
+                    <SelectItem value="LUX">🇱🇺 Luxemburgs</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="position">Functie *</Label>
+                <Select value={formData.position} onValueChange={(value) => setFormData(prev => ({ ...prev, position: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer functie" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Kapitein">Kapitein</SelectItem>
+                    <SelectItem value="Stuurman">Stuurman</SelectItem>
+                    <SelectItem value="Machinist">Machinist</SelectItem>
+                    <SelectItem value="Matroos">Matroos</SelectItem>
+                    <SelectItem value="Aflosser">Aflosser</SelectItem>
+                    <SelectItem value="Student">Student</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="company">Bedrijf</Label>
+                <Select value={formData.company} onValueChange={(value) => setFormData(prev => ({ ...prev, company: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer bedrijf" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companyOptions.map((company) => (
+                      <SelectItem key={company} value={company}>{company}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Telefoonnummer *</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="+31 6 12345678"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">E-mail</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="naam@email.com"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Schip en Regime */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Schip en Regime</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="shipId">Schip</Label>
+                <Select value={formData.shipId} onValueChange={(value) => setFormData(prev => ({ ...prev, shipId: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer schip" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Geen schip</SelectItem>
+                    {ships.map((ship) => (
+                      <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="regime">Regime *</Label>
+                <Select value={formData.regime} onValueChange={(value: "1/1" | "2/2" | "3/3") => setFormData(prev => ({ ...prev, regime: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer regime" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1/1">1/1 (1 dag aan boord, 1 dag thuis)</SelectItem>
+                    <SelectItem value="2/2">2/2 (2 dagen aan boord, 2 dagen thuis)</SelectItem>
+                    <SelectItem value="3/3">3/3 (3 dagen aan boord, 3 dagen thuis)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="startDate">Startdatum *</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={formData.startDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                  required={!!formData.shipId}
+                />
+                {formData.shipId && (
+                  <p className="text-xs text-gray-500">Verplicht als er een schip is geselecteerd</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Datums */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Datums</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="birthDate">Geboortedatum *</Label>
+                <Input
+                  id="birthDate"
+                  type="date"
+                  value={formData.birthDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, birthDate: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="entryDate">Indiensttreding *</Label>
+                <Input
+                  id="entryDate"
+                  type="date"
+                  value={formData.entryDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, entryDate: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="birthPlace">Geboorteplaats *</Label>
+                <Input
+                  id="birthPlace"
+                  value={formData.birthPlace}
+                  onChange={(e) => setFormData(prev => ({ ...prev, birthPlace: e.target.value }))}
+                  placeholder="Geboorteplaats"
+                  required
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Adres */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Adres</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="street">Straat *</Label>
+              <Input
+                id="street"
+                value={formData.address.street}
+                onChange={(e) => setFormData(prev => ({ 
+                  ...prev, 
+                  address: { ...prev.address, street: e.target.value }
+                }))}
+                placeholder="Straatnaam en huisnummer"
+                required
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
                 <Label htmlFor="city">Plaats *</Label>
                 <Input
                   id="city"
                   value={formData.address.city}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      address: { ...formData.address, city: e.target.value },
-                    })
-                  }
-                  placeholder="Amsterdam"
-                  className={errors.city ? "border-red-500" : ""}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    address: { ...prev.address, city: e.target.value }
+                  }))}
+                  placeholder="Plaats"
+                  required
                 />
-                {errors.city && <p className="text-sm text-red-500 mt-1">{errors.city}</p>}
               </div>
-
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="postalCode">Postcode *</Label>
                 <Input
                   id="postalCode"
                   value={formData.address.postalCode}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      address: { ...formData.address, postalCode: e.target.value },
-                    })
-                  }
-                  placeholder="1012 AB"
-                  className={errors.postalCode ? "border-red-500" : ""}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    address: { ...prev.address, postalCode: e.target.value }
+                  }))}
+                  placeholder="1234 AB"
+                  required
                 />
-                {errors.postalCode && <p className="text-sm text-red-500 mt-1">{errors.postalCode}</p>}
               </div>
-
-              <div className="md:col-span-2">
+              <div className="space-y-2">
                 <Label htmlFor="country">Land *</Label>
                 <Input
                   id="country"
                   value={formData.address.country}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      address: { ...formData.address, country: e.target.value },
-                    })
-                  }
-                  placeholder="Nederland"
-                  className={errors.country ? "border-red-500" : ""}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    address: { ...prev.address, country: e.target.value }
+                  }))}
+                  placeholder="Land"
+                  required
                 />
-                {errors.country && <p className="text-sm text-red-500 mt-1">{errors.country}</p>}
               </div>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Optionele velden */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Optionele gegevens</h3>
-            
-            {/* Roken */}
-            <div>
-              <Label>Roken</Label>
-              <div className="flex items-center gap-4 mt-1">
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="smoking"
-                    checked={formData.smoking === true}
-                    onChange={() => setFormData({ ...formData, smoking: true })}
-                  />
-                  Ja
-                </label>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="smoking"
-                    checked={formData.smoking === false}
-                    onChange={() => setFormData({ ...formData, smoking: false })}
-                  />
-                  Nee
-                </label>
+        {/* Overige Informatie */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Overige Informatie</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="matricule">Matricule</Label>
+                <Input
+                  id="matricule"
+                  value={formData.matricule}
+                  onChange={(e) => setFormData(prev => ({ ...prev, matricule: e.target.value }))}
+                  placeholder="Matricule nummer"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="experience">Ervaring</Label>
+                <Input
+                  id="experience"
+                  value={formData.experience}
+                  onChange={(e) => setFormData(prev => ({ ...prev, experience: e.target.value }))}
+                  placeholder="Jaren ervaring"
+                />
               </div>
             </div>
 
-            {/* Diploma's */}
-            <div>
+            <div className="space-y-2">
               <Label>Diploma's</Label>
-              <div className="flex flex-wrap gap-2 mt-1">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {diplomaOptions.map((diploma) => (
-                  <label key={diploma} className="flex items-center gap-1">
+                  <div key={diploma} className="flex items-center space-x-2">
                     <input
                       type="checkbox"
+                      id={diploma}
                       checked={formData.diplomas.includes(diploma)}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setFormData({ ...formData, diplomas: [...formData.diplomas, diploma] })
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            diplomas: [...prev.diplomas, diploma]
+                          }))
                         } else {
-                          setFormData({ ...formData, diplomas: formData.diplomas.filter((d) => d !== diploma) })
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            diplomas: prev.diplomas.filter(d => d !== diploma)
+                          }))
                         }
                       }}
+                      className="rounded"
                     />
-                    {diploma}
-                  </label>
+                    <Label htmlFor={diploma} className="text-sm">{diploma}</Label>
+                  </div>
                 ))}
               </div>
             </div>
 
-            {/* Student opleiding */}
-            <div className="border-t pt-4">
-              <div className="flex items-center space-x-2 mb-4">
-                <input
-                  type="checkbox"
-                  id="isStudent"
-                  checked={formData.isStudent}
-                  onChange={(e) => setFormData({ ...formData, isStudent: e.target.checked })}
-                  className="rounded"
-                />
-                <Label htmlFor="isStudent" className="font-medium">Volgt bemanningslid een opleiding?</Label>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notities</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Optionele notities..."
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-              {formData.isStudent && (
-                <div className="space-y-4 pl-6">
-                  <div>
-                    <Label htmlFor="educationType">Type opleiding</Label>
-                    <Select
-                      value={formData.educationType || ""}
-                      onValueChange={(value) => setFormData({ ...formData, educationType: value as "BBL" | "BOL" })}
-                    >
+        {/* Student Informatie */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Student Informatie</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="isStudent"
+                checked={formData.isStudent}
+                onChange={(e) => setFormData(prev => ({ ...prev, isStudent: e.target.checked }))}
+                className="rounded"
+              />
+              <Label htmlFor="isStudent">Is student</Label>
+            </div>
+
+            {formData.isStudent && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="educationType">Opleidingstype *</Label>
+                    <Select value={formData.educationType} onValueChange={(value: "BBL" | "BOL") => setFormData(prev => ({ ...prev, educationType: value }))}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecteer type opleiding" />
+                        <SelectValue placeholder="Selecteer opleidingstype" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="BBL">BBL (Beroepsbegeleidende Leerweg)</SelectItem>
@@ -740,155 +695,49 @@ export function NewCrewForm() {
                       </SelectContent>
                     </Select>
                   </div>
-
-                  {formData.educationType === "BBL" && (
-                    <div>
-                      <Label>Schoolperiodes</Label>
-                      <div className="space-y-2">
-                        {formData.schoolPeriods.map((period, index) => (
-                          <div key={index} className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
-                            <Input
-                              type="date"
-                              value={period.fromDate}
-                              onChange={(e) => {
-                                const newPeriods = [...formData.schoolPeriods]
-                                newPeriods[index].fromDate = e.target.value
-                                setFormData({ ...formData, schoolPeriods: newPeriods })
-                              }}
-                              placeholder="Van datum"
-                            />
-                            <Input
-                              type="date"
-                              value={period.toDate}
-                              onChange={(e) => {
-                                const newPeriods = [...formData.schoolPeriods]
-                                newPeriods[index].toDate = e.target.value
-                                setFormData({ ...formData, schoolPeriods: newPeriods })
-                              }}
-                              placeholder="Tot datum"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const newPeriods = formData.schoolPeriods.filter((_, i) => i !== index)
-                                setFormData({ ...formData, schoolPeriods: newPeriods })
-                              }}
-                            >
-                              Verwijderen
-                            </Button>
-                          </div>
-                        ))}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setFormData({
-                              ...formData,
-                              schoolPeriods: [...formData.schoolPeriods, { fromDate: "", toDate: "", reason: "School" }]
-                            })
-                          }}
-                        >
-                          Schoolperiode toevoegen
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
                   {formData.educationType === "BOL" && (
-                    <div>
-                      <Label htmlFor="educationEndDate">Opleidingsperiode tot</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="educationEndDate">Einddatum opleiding *</Label>
                       <Input
                         id="educationEndDate"
                         type="date"
-                        value={formData.educationEndDate || ""}
-                        onChange={(e) => setFormData({ ...formData, educationEndDate: e.target.value })}
-                        placeholder="Tot wanneer duurt de opleiding?"
+                        value={formData.educationEndDate}
+                        onChange={(e) => setFormData(prev => ({ ...prev, educationEndDate: e.target.value }))}
+                        required={formData.educationType === "BOL"}
                       />
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-
-            {/* Firma */}
-            <div>
-              <Label htmlFor="company">Firma</Label>
-              <Select
-                value={formData.company}
-                onValueChange={(value) => setFormData({ ...formData, company: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecteer firma" />
-                </SelectTrigger>
-                <SelectContent>
-                  {companyOptions.map((company) => (
-                    <SelectItem key={company} value={company}>
-                      {company}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Matricule nummer */}
-            <div>
-              <Label htmlFor="matricule">Matricule nummer</Label>
-              <Input
-                id="matricule"
-                value={formData.matricule}
-                onChange={(e) => setFormData({ ...formData, matricule: e.target.value })}
-                placeholder="123456789"
-              />
-            </div>
-
-            {/* Notities */}
-            <div>
-              <Label htmlFor="notes">Notities</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Aanvullende informatie..."
-                rows={3}
-              />
-            </div>
-          </div>
-
-          {/* Preview */}
-          {(formData.firstName || formData.lastName) && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium mb-2">Preview:</h3>
-              <div className="flex items-center space-x-2">
-                <Badge variant="outline">
-                  {formData.firstName} {formData.lastName}
-                </Badge>
-                {formData.nationality && (
-                  <Badge variant="outline">
-                    {nationalities.find((n) => n.code === formData.nationality)?.flag} {formData.nationality}
-                  </Badge>
-                )}
-                {formData.position && <Badge variant="outline">{formData.position}</Badge>}
-                <Badge variant="outline">{formData.regime}</Badge>
               </div>
-            </div>
-          )}
+            )}
+          </CardContent>
+        </Card>
 
-          {/* Buttons */}
-          <div className="flex justify-end space-x-2 pt-4 border-t">
-            <Button type="button" variant="outline" onClick={handleReset}>
-              <X className="w-4 h-4 mr-2" />
-              Reset
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              <Save className="w-4 h-4 mr-2" />
-              {isSubmitting ? "Bezig met opslaan..." : "Bemanningslid Toevoegen"}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        {/* Submit Buttons */}
+        <div className="flex justify-end space-x-4">
+          <Button type="button" variant="outline" onClick={handleReset}>
+            <X className="w-4 h-4 mr-2" />
+            Reset
+          </Button>
+          <Button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {isSubmitting ? (
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Toevoegen...</span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <UserPlus className="w-4 h-4" />
+                <span>Bemanningslid Toevoegen</span>
+              </div>
+            )}
+          </Button>
+        </div>
+      </form>
+    </div>
   )
 }

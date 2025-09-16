@@ -1,573 +1,476 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { sickLeaveHistoryDatabase } from "@/data/crew-database"
-import { getCombinedShipDatabase } from "@/utils/ship-utils"
-import { useCrewData } from "@/hooks/use-crew-data"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { History, Calendar, CheckCircle, AlertTriangle, Ship, ArrowLeft, Plus } from "lucide-react"
-import Link from "next/link"
-import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import React, { useState, useEffect } from 'react'
+import { useSupabaseData } from '@/hooks/use-supabase-data'
+import { supabase } from '@/lib/supabase'
+import { getCombinedShipDatabase } from '@/utils/ship-utils'
+import { format } from 'date-fns'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { AlertTriangle, CheckCircle, UserX, Calendar, Ship, Clock } from 'lucide-react'
+import Link from 'next/link'
+import { MobileHeaderNav } from '@/components/ui/mobile-header-nav'
+import { BackButton } from '@/components/ui/back-button'
+import { DashboardButton } from '@/components/ui/dashboard-button'
 
 export default function SickLeaveHistoryPage() {
-  const { crewDatabase: allCrewData } = useCrewData()
-  const [afboekenDialog, setAfboekenDialog] = useState<string | null>(null);
+  const { crew: allCrewData, loading } = useSupabaseData()
+  const [afboekenDialog, setAfboekenDialog] = useState<string | null>(null)
   const [afboekenData, setAfboekenData] = useState({
     daysCompleted: 1,
     note: "",
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     ship: ""
-  });
+  })
+  const [historyRecords, setHistoryRecords] = useState<any[]>([])
 
-  // Combineer history data met bemanning data
-  const historyRecords = Object.values(sickLeaveHistoryDatabase)
-    .map((record: any) => {
-      const crewMember = (allCrewData as any)[record.crewMemberId]
-      const ship = crewMember?.shipId ? getCombinedShipDatabase()[crewMember.shipId] : null
-      return {
-        ...record,
-        crewMember,
-        ship,
+  // Laad data direct uit localStorage (zoals ziekte pagina maar dan direct)
+  useEffect(() => {
+    const loadData = () => {
+      if (typeof window !== 'undefined' && allCrewData.length > 0) {
+        const localStorageData = JSON.parse(localStorage.getItem('sickLeaveHistoryDatabase') || '{}')
+        const records = Object.values(localStorageData)
+        
+        console.log('Loading from localStorage:', records.length, 'records')
+        
+        if (records.length > 0) {
+          const processedRecords = records
+            .map((record: any) => {
+              const crewMember = allCrewData.find((c: any) => c.id === record.crewMemberId)
+              const ship = crewMember?.ship_id ? getCombinedShipDatabase()[crewMember.ship_id] : null
+              
+              return {
+                ...record,
+                crewMember,
+                ship,
+                crew_member_id: record.crewMemberId,
+                start_date: record.startDate,
+                end_date: record.endDate,
+                days_count: record.daysCount,
+                stand_back_days_required: record.standBackDaysRequired,
+                stand_back_days_completed: record.standBackDaysCompleted,
+                stand_back_days_remaining: record.standBackDaysRemaining,
+                stand_back_status: record.standBackStatus,
+                stand_back_history: record.standBackHistory || []
+              }
+            })
+            .filter((record) => record.standBackDaysRemaining > 0)
+            .sort((a, b) => {
+              try {
+                const dateA = new Date(a.startDate || 0).getTime()
+                const dateB = new Date(b.startDate || 0).getTime()
+                return dateB - dateA
+              } catch (error) {
+                return 0
+              }
+            })
+
+          setHistoryRecords(processedRecords)
+          console.log('Processed records:', processedRecords.length)
+        } else {
+          setHistoryRecords([])
+        }
       }
-    })
-    .filter((record) => record.crewMember && record.crewMember.status !== "uit-dienst")
-    .filter((record) => record.standBackStatus !== "voltooid") // Alleen openstaande records
-    .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+    }
+
+    loadData()
+  }, [allCrewData])
 
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
+      NL: "🇳🇱", CZ: "🇨🇿", SLK: "🇸🇰", EG: "🇪🇬", PO: "🇵🇱", 
+      SERV: "🇷🇸", HUN: "🇭🇺", BE: "🇧🇪", FR: "🇫🇷", DE: "🇩🇪", LUX: "🇱🇺"
     }
     return flags[nationality] || "🌍"
   }
 
-  const getStandBackStatusColor = (status: string) => {
+  const getStandBackStatusColor = (status: string, remainingDays: number) => {
+    if (remainingDays === 0) return "bg-green-100 text-green-800"
     switch (status) {
-      case "voltooid":
-        return "bg-green-100 text-green-800"
-      case "openstaand":
-        return "bg-red-100 text-red-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+      case "voltooid": return "bg-green-100 text-green-800"
+      case "openstaand": return "bg-red-100 text-red-800"
+      default: return "bg-gray-100 text-gray-800"
     }
   }
 
   const getStandBackStatusIcon = (status: string) => {
     switch (status) {
-      case "voltooid":
-        return <CheckCircle className="w-3 h-3" />
-      case "openstaand":
-        return <AlertTriangle className="w-3 h-3" />
-      default:
-        return null
+      case "voltooid": return <CheckCircle className="w-3 h-3" />
+      case "openstaand": return <AlertTriangle className="w-3 h-3" />
+      default: return null
     }
   }
 
-  const getStandBackStatusText = (status: string) => {
+  const getStandBackStatusText = (status: string, remainingDays: number) => {
+    if (remainingDays === 0) return "Volledig afgeboekt"
     switch (status) {
-      case "voltooid":
-        return "Voltooid"
-      case "openstaand":
-        return "Openstaand"
-      default:
-        return status
+      case "voltooid": return "Voltooid"
+      case "openstaand": return "Openstaand"
+      default: return status
     }
   }
 
   // Afboeken functionaliteit
-  const handleAfboeken = (recordId: string) => {
-    const record = historyRecords.find(r => r.id === recordId);
-    if (!record) return;
+  const handleAfboeken = async (recordId: string) => {
+    const record = historyRecords.find(r => r.id === recordId)
+    if (!record) return
 
-    // Update de record in de database
-    const updatedRecord = {
-      ...record,
-      standBackDaysCompleted: record.standBackDaysCompleted + afboekenData.daysCompleted,
-      standBackDaysRemaining: Math.max(0, record.standBackDaysRemaining - afboekenData.daysCompleted),
-      standBackStatus: record.standBackDaysCompleted + afboekenData.daysCompleted >= record.standBackDaysRequired ? "voltooid" : "openstaand",
-      standBackHistory: [
-        ...record.standBackHistory,
-        {
-          daysCompleted: afboekenData.daysCompleted,
-          startDate: afboekenData.startDate,
-          endDate: afboekenData.endDate,
-          note: afboekenData.note || "Afgeboekt",
-          ship: afboekenData.ship
+    try {
+      console.log('Starting afboeken for record:', recordId)
+      console.log('Current record:', record)
+      console.log('Afboeken data:', afboekenData)
+
+      // DIRECT localStorage updaten
+      if (typeof window !== 'undefined') {
+        const currentStandBack = JSON.parse(localStorage.getItem('sickLeaveHistoryDatabase') || '{}')
+        
+        // Zoek het record
+        const recordToUpdate = currentStandBack[recordId]
+        if (!recordToUpdate) {
+          throw new Error(`Record met ID ${recordId} niet gevonden in localStorage`)
         }
-      ]
-    };
 
-    // Update in database
-    (sickLeaveHistoryDatabase as any)[recordId] = updatedRecord;
+        // Bereken nieuwe waarden
+        const newCompleted = (recordToUpdate.standBackDaysCompleted || 0) + afboekenData.daysCompleted
+        const newRemaining = Math.max(0, (recordToUpdate.standBackDaysRemaining || 0) - afboekenData.daysCompleted)
+        const newStatus = newCompleted >= recordToUpdate.standBackDaysRequired ? "voltooid" : "openstaand"
+        
+        console.log('Berekening:', {
+          huidigCompleted: recordToUpdate.standBackDaysCompleted,
+          huidigRemaining: recordToUpdate.standBackDaysRemaining,
+          afboeken: afboekenData.daysCompleted,
+          nieuwCompleted: newCompleted,
+          nieuwRemaining: newRemaining,
+          nieuwStatus: newStatus
+        })
 
-    // Reset form
-    setAfboekenData({ daysCompleted: 1, note: "", startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], ship: "" });
-    setAfboekenDialog(null);
-  };
+        // Update het record
+        const updatedRecord = {
+          ...recordToUpdate,
+          standBackDaysCompleted: newCompleted,
+          standBackDaysRemaining: newRemaining,
+          standBackStatus: newStatus,
+          standBackHistory: [
+            ...(recordToUpdate.standBackHistory || []),
+            {
+              daysCompleted: afboekenData.daysCompleted,
+              startDate: afboekenData.startDate,
+              endDate: afboekenData.endDate,
+              note: afboekenData.note || "Afgeboekt",
+              ship: afboekenData.ship
+            }
+          ]
+        }
+
+        // Sla op in localStorage
+        currentStandBack[recordId] = updatedRecord
+        localStorage.setItem('sickLeaveHistoryDatabase', JSON.stringify(currentStandBack))
+        
+        console.log('Updated record in localStorage:', updatedRecord)
+
+        // Update de state direct
+        const updatedRecordsArray = Object.values(currentStandBack)
+          .map((record: any) => {
+            const crewMember = allCrewData.find((c: any) => c.id === record.crewMemberId)
+            const ship = crewMember?.ship_id ? getCombinedShipDatabase()[crewMember.ship_id] : null
+            
+            return {
+              ...record,
+              crewMember,
+              ship,
+              crew_member_id: record.crewMemberId,
+              start_date: record.startDate,
+              end_date: record.endDate,
+              days_count: record.daysCount,
+              stand_back_days_required: record.standBackDaysRequired,
+              stand_back_days_completed: record.standBackDaysCompleted,
+              stand_back_days_remaining: record.standBackDaysRemaining,
+              stand_back_status: record.standBackStatus,
+              stand_back_history: record.standBackHistory || []
+            }
+          })
+          .filter((record) => record.standBackDaysRemaining > 0)
+          .sort((a, b) => {
+            try {
+              const dateA = new Date(a.startDate || 0).getTime()
+              const dateB = new Date(b.startDate || 0).getTime()
+              return dateB - dateA
+            } catch (error) {
+              return 0
+            }
+          })
+
+        setHistoryRecords(updatedRecordsArray)
+        console.log('State updated with:', updatedRecordsArray.length, 'records')
+
+        // Toon succes bericht
+        alert(`Succesvol ${afboekenData.daysCompleted} dag(en) afgeboekt voor ${record.crewMember?.first_name} ${record.crewMember?.last_name}`)
+      }
+
+      // Reset form
+      setAfboekenData({ 
+        daysCompleted: 1, 
+        note: "", 
+        startDate: new Date().toISOString().split('T')[0], 
+        endDate: new Date().toISOString().split('T')[0], 
+        ship: "" 
+      })
+      setAfboekenDialog(null)
+    } catch (error) {
+      console.error('Error updating stand back record:', error)
+      const errorMessage = error instanceof Error ? error.message : 
+                          typeof error === 'string' ? error : 
+                          'Onbekende fout opgetreden'
+      alert('Fout bij het afboeken van dagen: ' + errorMessage)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-2">
+        <MobileHeaderNav />
+        <div className="text-center py-8 text-gray-500">Data laden...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
       <MobileHeaderNav />
+      <DashboardButton />
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-                      <Link href="/" className="flex items-center text-sm text-gray-700 hover:text-blue-700">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Terug naar Dashboard
-          </Link>
+        <div className="flex items-center gap-4">
+          <BackButton href="/" />
           <div>
-            <h1 className="text-2xl font-bold">Terug Te Staan Overzicht</h1>
-            <p className="text-sm text-gray-600">Openstaande terug staan dagen management</p>
+            <h1 className="text-2xl font-bold">Terug Te Staan Dagen</h1>
+            <p className="text-sm text-gray-600">Overzicht van openstaande terug te staan dagen</p>
           </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <Link href="/ziekte" className="bg-blue-600 text-white text-sm py-2 px-4 rounded-lg hover:bg-blue-700 shadow flex items-center gap-2">
+            <UserX className="w-4 h-4" />
+            Ziekte Overzicht
+          </Link>
         </div>
       </div>
 
-      {/* Desktop weergave */}
-      <div className="hidden md:block">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Records */}
+      {historyRecords.length > 0 ? (
+        <div className="space-y-6">
           {historyRecords.map((record) => (
-            <Card key={record.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-blue-100 text-blue-700">
-                        {record.crewMember.firstName[0]}{record.crewMember.lastName[0]}
+            <Card key={record.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-4 flex-1">
+                    <Avatar className="w-14 h-14 border-2 border-blue-100">
+                      <AvatarFallback className="bg-blue-100 text-blue-700 text-lg font-semibold">
+                        {record.crewMember?.first_name?.[0] || '?'}{record.crewMember?.last_name?.[0] || '?'}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h3 className="font-medium text-gray-900">
-                          {record.crewMember.firstName} {record.crewMember.lastName}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <h3 className="text-xl font-bold text-gray-900">
+                          {record.crewMember?.first_name && record.crewMember?.last_name 
+                            ? `${record.crewMember.first_name} ${record.crewMember.last_name}`
+                            : `Crew Member ID: ${record.crew_member_id}`
+                          }
                         </h3>
-                        <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
+                        {record.crewMember?.position && (
+                          <Badge variant="outline" className="text-sm font-medium">
+                            {record.crewMember.position}
+                          </Badge>
+                        )}
+                        {record.crewMember?.nationality && (
+                          <span className="text-lg">
+                            {getNationalityFlag(record.crewMember.nationality)}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-sm text-gray-500">{record.crewMember.position}</p>
-                    </div>
-                  </div>
-                  <Badge className={getStandBackStatusColor(record.standBackStatus)}>
-                    {getStandBackStatusIcon(record.standBackStatus)}
-                    <span className="ml-1">{getStandBackStatusText(record.standBackStatus)}</span>
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Ziekte periode */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-500">Periode:</span>
-                    <div className="flex items-center space-x-1 mt-1">
-                      <Calendar className="w-3 h-3 text-gray-400" />
-                      <span className="font-medium">
-                        {new Date(record.startDate).toLocaleDateString("nl-NL")} - {new Date(record.endDate).toLocaleDateString("nl-NL")}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Duur:</span>
-                    <p className="font-medium mt-1">{record.daysCount} dagen</p>
-                  </div>
-                </div>
-
-                {/* Reden van ziekte */}
-                <div>
-                  <span className="text-gray-500 text-sm">Reden van ziekte:</span>
-                  <p className="text-sm text-gray-700 mt-1 font-medium">{record.description}</p>
-                </div>
-
-                {/* Terug staan dagen */}
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <div className="grid grid-cols-3 gap-4 text-sm mb-3">
-                    <div>
-                      <span className="text-gray-500">Vereist:</span>
-                      <p className="font-medium mt-1">{record.standBackDaysRequired} dagen</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Voltooid:</span>
-                      <p className="font-medium mt-1">{record.standBackDaysCompleted} dagen</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Resterend:</span>
-                      <p className="font-medium mt-1 text-red-600">{record.standBackDaysRemaining} dagen</p>
-                    </div>
-                  </div>
-                  
-                  {/* Voortgangsbalk */}
-                  <div>
-                    <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                      <span>Voortgang</span>
-                      <span>{record.standBackDaysCompleted}/{record.standBackDaysRequired} dagen</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full ${record.standBackStatus === "voltooid" ? "bg-green-500" : "bg-orange-500"}`}
-                        style={{ width: `${(record.standBackDaysCompleted / record.standBackDaysRequired) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Afboeken knop */}
-                {record.standBackStatus !== "voltooid" && (
-                  <Dialog open={afboekenDialog === record.id} onOpenChange={(open) => setAfboekenDialog(open ? record.id : null)}>
-                    <DialogTrigger asChild>
-                      <Button className="w-full" variant="outline" size="sm">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Afboeken
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Dagen afboeken voor {record.crewMember.firstName} {record.crewMember.lastName}</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div>
-                          <Label htmlFor="daysCompleted">Aantal dagen afboeken</Label>
-                          <Input
-                            id="daysCompleted"
-                            type="number"
-                            min="1"
-                            max={record.standBackDaysRemaining}
-                            value={afboekenData.daysCompleted}
-                            onChange={(e) => setAfboekenData({...afboekenData, daysCompleted: parseInt(e.target.value) || 1})}
-                          />
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                        <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                          <Ship className="w-5 h-5 text-blue-600" />
+                          <div>
+                            <div className="text-xs text-gray-500 font-medium">Schip</div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {record.ship?.name || "Geen schip"}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <Label htmlFor="startDate">Start datum</Label>
-                          <Input
-                            id="startDate"
-                            type="date"
-                            value={afboekenData.startDate}
-                            onChange={(e) => setAfboekenData({...afboekenData, startDate: e.target.value})}
-                          />
+                        <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                          <Calendar className="w-5 h-5 text-green-600" />
+                          <div>
+                            <div className="text-xs text-gray-500 font-medium">Start Datum</div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {(() => {
+                                try {
+                                  const dateValue = record.start_date || record.startDate
+                                  if (!dateValue) return 'Geen datum'
+                                  return format(new Date(dateValue), 'dd-MM-yyyy')
+                                } catch (error) {
+                                  console.warn('Invalid date:', record.start_date || record.startDate)
+                                  return 'Ongeldige datum'
+                                }
+                              })()}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <Label htmlFor="endDate">Eind datum</Label>
-                          <Input
-                            id="endDate"
-                            type="date"
-                            value={afboekenData.endDate}
-                            onChange={(e) => setAfboekenData({...afboekenData, endDate: e.target.value})}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="ship">Schip</Label>
-                          <Select value={afboekenData.ship} onValueChange={(value) => setAfboekenData({...afboekenData, ship: value})}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecteer een schip" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.values(getCombinedShipDatabase()).map((ship: any) => (
-                                <SelectItem key={ship.id} value={ship.name}>
-                                  {ship.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label htmlFor="note">Notitie (optioneel)</Label>
-                          <Textarea
-                            id="note"
-                            placeholder="Reden van afboeken..."
-                            value={afboekenData.note}
-                            onChange={(e) => setAfboekenData({...afboekenData, note: e.target.value})}
-                          />
-                        </div>
-                        <div className="flex space-x-2">
-                          <Button 
-                            onClick={() => handleAfboeken(record.id)}
-                            className="flex-1"
-                          >
-                            Afboeken
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            onClick={() => setAfboekenDialog(null)}
-                            className="flex-1"
-                          >
-                            Annuleren
-                          </Button>
+                        <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                          <Clock className="w-5 h-5 text-orange-600" />
+                          <div>
+                            <div className="text-xs text-gray-500 font-medium">Openstaande Dagen</div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {record.standBackDaysRemaining || record.stand_back_days_remaining} van {record.standBackDaysRequired || record.stand_back_days_required}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
 
-                {/* Afboek history */}
-                {record.standBackHistory && record.standBackHistory.length > 0 && (
-                  <div className="border-t pt-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-700">Afboek History</span>
-                      <span className="text-xs text-gray-500">{record.standBackHistory.length} entries</span>
-                    </div>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {record.standBackHistory.map((entry: any, index: number) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between text-xs bg-green-50 p-2 rounded border border-green-200"
+                      <div className="flex items-center space-x-3 mb-4">
+                        {getStandBackStatusIcon(record.standBackStatus || record.stand_back_status)}
+                        <Badge 
+                          className={`text-sm font-medium px-3 py-1 ${getStandBackStatusColor(record.standBackStatus || record.stand_back_status, record.standBackDaysRemaining || record.stand_back_days_remaining)}`}
                         >
-                          <div className="flex items-center space-x-2">
-                            <CheckCircle className="w-3 h-3 text-green-600" />
-                            <span className="font-medium text-green-700">{entry.daysCompleted} dagen afgeboekt</span>
-                          </div>
-                          <div className="text-gray-600">
-                            {new Date(entry.startDate).toLocaleDateString("nl-NL")} - {new Date(entry.endDate).toLocaleDateString("nl-NL")}
-                            {entry.ship && (
-                              <span className="ml-2 text-gray-500">• {entry.ship}</span>
-                            )}
+                          {getStandBackStatusText(record.standBackStatus || record.stand_back_status, record.standBackDaysRemaining || record.stand_back_days_remaining)}
+                        </Badge>
+                      </div>
+
+                      {record.description && (
+                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 mb-4">
+                          <p className="text-sm text-blue-800 font-medium">{record.description}</p>
+                        </div>
+                      )}
+
+                      {/* History */}
+                      {record.stand_back_history && record.stand_back_history.length > 0 && (
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-3">Geschiedenis:</h4>
+                          <div className="space-y-2">
+                            {record.stand_back_history.map((history: any, index: number) => (
+                              <div key={index} className="text-xs text-gray-600 bg-white border border-gray-200 p-3 rounded-lg">
+                                {(() => {
+                                  try {
+                                    if (history.start_date && history.end_date) {
+                                      return <div className="font-medium">{format(new Date(history.start_date), 'dd-MM-yyyy')} - {format(new Date(history.end_date), 'dd-MM-yyyy')}</div>
+                                    }
+                                    if (history.startDate && history.endDate) {
+                                      return <div className="font-medium">{format(new Date(history.startDate), 'dd-MM-yyyy')} - {format(new Date(history.endDate), 'dd-MM-yyyy')}</div>
+                                    }
+                                    return null
+                                  } catch (error) {
+                                    console.warn('Invalid history date:', history)
+                                    return <div>Ongeldige datum</div>
+                                  }
+                                })()}
+                                {history.description && <div className="text-gray-500 mt-1">{history.description}</div>}
+                                {history.days_count && <div className="text-gray-500">Dagen: {history.days_count}</div>}
+                                {history.daysCount && <div className="text-gray-500">Dagen: {history.daysCount}</div>}
+                                {history.added_days && <div className="text-gray-500">Toegevoegd: {history.added_days} dagen</div>}
+                                {history.addedDays && <div className="text-gray-500">Toegevoegd: {history.addedDays} dagen</div>}
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
-                )}
 
-                {/* Schip info */}
-                {record.ship && (
-                  <div className="flex items-center space-x-2 text-sm text-gray-600">
-                    <Ship className="w-4 h-4" />
-                    <span>{record.ship.name}</span>
+                  <div className="flex flex-col space-y-3 ml-6">
+                    <Dialog open={afboekenDialog === record.id} onOpenChange={(open) => setAfboekenDialog(open ? record.id : null)}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                          Dagen Afboeken
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Dagen Afboeken</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="daysCompleted">Aantal dagen</Label>
+                            <Input
+                              id="daysCompleted"
+                              type="number"
+                              min="1"
+                              max={record.stand_back_days_remaining}
+                              value={afboekenData.daysCompleted}
+                              onChange={(e) => setAfboekenData(prev => ({ ...prev, daysCompleted: parseInt(e.target.value) || 1 }))}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="startDate">Start datum</Label>
+                            <Input
+                              id="startDate"
+                              type="date"
+                              value={afboekenData.startDate}
+                              onChange={(e) => setAfboekenData(prev => ({ ...prev, startDate: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="endDate">Eind datum</Label>
+                            <Input
+                              id="endDate"
+                              type="date"
+                              value={afboekenData.endDate}
+                              onChange={(e) => setAfboekenData(prev => ({ ...prev, endDate: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="ship">Schip</Label>
+                            <Input
+                              id="ship"
+                              value={afboekenData.ship}
+                              onChange={(e) => setAfboekenData(prev => ({ ...prev, ship: e.target.value }))}
+                              placeholder="Optioneel"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="note">Opmerking</Label>
+                            <Textarea
+                              id="note"
+                              value={afboekenData.note}
+                              onChange={(e) => setAfboekenData(prev => ({ ...prev, note: e.target.value }))}
+                              placeholder="Optioneel"
+                            />
+                          </div>
+                          <div className="flex space-x-2">
+                            <Button 
+                              onClick={() => handleAfboeken(record.id)}
+                              disabled={afboekenData.daysCompleted > record.stand_back_days_remaining}
+                            >
+                              Afboeken
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              onClick={() => setAfboekenDialog(null)}
+                            >
+                              Annuleren
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
-                )}
+                </div>
               </CardContent>
             </Card>
           ))}
         </div>
-      </div>
-
-      {/* Mobiele weergave */}
-      <div className="block md:hidden space-y-4">
-        {historyRecords.map((record) => (
-          <Card key={record.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback className="bg-blue-100 text-blue-700 text-xs">
-                      {record.crewMember.firstName[0]}{record.crewMember.lastName[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <h3 className="font-medium text-sm">
-                        {record.crewMember.firstName} {record.crewMember.lastName}
-                      </h3>
-                      <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
-                    </div>
-                    <p className="text-xs text-gray-500">{record.crewMember.position}</p>
-                  </div>
-                </div>
-                <Badge className={`${getStandBackStatusColor(record.standBackStatus)} text-xs`}>
-                  {getStandBackStatusText(record.standBackStatus)}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {/* Ziekte periode */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-gray-500">Periode:</span>
-                  <p className="font-medium mt-1">
-                    {new Date(record.startDate).toLocaleDateString("nl-NL")} - {new Date(record.endDate).toLocaleDateString("nl-NL")}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Duur:</span>
-                  <p className="font-medium mt-1">{record.daysCount} dagen</p>
-                </div>
-              </div>
-
-              {/* Reden van ziekte */}
-              <div>
-                <span className="text-gray-500 text-xs">Reden van ziekte:</span>
-                <p className="text-xs text-gray-700 mt-1 font-medium">{record.description}</p>
-              </div>
-
-              {/* Terug staan dagen */}
-              <div className="bg-gray-50 p-2 rounded-lg">
-                <div className="grid grid-cols-3 gap-2 text-xs mb-2">
-                  <div>
-                    <span className="text-gray-500">Vereist:</span>
-                    <p className="font-medium mt-1">{record.standBackDaysRequired}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Voltooid:</span>
-                    <p className="font-medium mt-1">{record.standBackDaysCompleted}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Resterend:</span>
-                    <p className="font-medium mt-1 text-red-600">{record.standBackDaysRemaining}</p>
-                  </div>
-                </div>
-                
-                {/* Voortgangsbalk */}
-                <div>
-                  <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                    <span>Voortgang</span>
-                    <span>{record.standBackDaysCompleted}/{record.standBackDaysRequired}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div
-                      className={`h-1.5 rounded-full ${record.standBackStatus === "voltooid" ? "bg-green-500" : "bg-orange-500"}`}
-                      style={{ width: `${(record.standBackDaysCompleted / record.standBackDaysRequired) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Afboeken knop */}
-              {record.standBackStatus !== "voltooid" && (
-                <Dialog open={afboekenDialog === record.id} onOpenChange={(open) => setAfboekenDialog(open ? record.id : null)}>
-                  <DialogTrigger asChild>
-                    <Button className="w-full" variant="outline" size="sm">
-                      <Plus className="w-3 h-3 mr-1" />
-                      Afboeken
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Dagen afboeken voor {record.crewMember.firstName} {record.crewMember.lastName}</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="daysCompleted">Aantal dagen afboeken</Label>
-                        <Input
-                          id="daysCompleted"
-                          type="number"
-                          min="1"
-                          max={record.standBackDaysRemaining}
-                          value={afboekenData.daysCompleted}
-                          onChange={(e) => setAfboekenData({...afboekenData, daysCompleted: parseInt(e.target.value) || 1})}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="startDate">Start datum</Label>
-                        <Input
-                          id="startDate"
-                          type="date"
-                          value={afboekenData.startDate}
-                          onChange={(e) => setAfboekenData({...afboekenData, startDate: e.target.value})}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="endDate">Eind datum</Label>
-                        <Input
-                          id="endDate"
-                          type="date"
-                          value={afboekenData.endDate}
-                          onChange={(e) => setAfboekenData({...afboekenData, endDate: e.target.value})}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="ship">Schip</Label>
-                        <Select value={afboekenData.ship} onValueChange={(value) => setAfboekenData({...afboekenData, ship: value})}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecteer een schip" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.values(getCombinedShipDatabase()).map((ship: any) => (
-                              <SelectItem key={ship.id} value={ship.name}>
-                                {ship.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="note">Notitie (optioneel)</Label>
-                        <Textarea
-                          id="note"
-                          placeholder="Reden van afboeken..."
-                          value={afboekenData.note}
-                          onChange={(e) => setAfboekenData({...afboekenData, note: e.target.value})}
-                        />
-                      </div>
-                      <div className="flex space-x-2">
-                        <Button 
-                          onClick={() => handleAfboeken(record.id)}
-                          className="flex-1"
-                        >
-                          Afboeken
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          onClick={() => setAfboekenDialog(null)}
-                          className="flex-1"
-                        >
-                          Annuleren
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-
-              {/* Afboek history */}
-              {record.standBackHistory && record.standBackHistory.length > 0 && (
-                <div className="border-t pt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Afboek History</span>
-                    <span className="text-xs text-gray-500">{record.standBackHistory.length} entries</span>
-                  </div>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {record.standBackHistory.map((entry: any, index: number) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between text-xs bg-green-50 p-2 rounded border border-green-200"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <CheckCircle className="w-3 h-3 text-green-600" />
-                          <span className="font-medium text-green-700">{entry.daysCompleted} dagen afgeboekt</span>
-                        </div>
-                        <div className="text-gray-600">
-                          {new Date(entry.startDate).toLocaleDateString("nl-NL")} - {new Date(entry.endDate).toLocaleDateString("nl-NL")}
-                          {entry.ship && (
-                            <span className="ml-2 text-gray-500">• {entry.ship}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Schip info */}
-              {record.ship && (
-                <div className="flex items-center space-x-2 text-xs text-gray-600">
-                  <Ship className="w-3 h-3" />
-                  <span>{record.ship.name}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {historyRecords.length === 0 && (
+      ) : (
         <div className="text-center py-8">
-          <History className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">Geen ziekte history gevonden</p>
+          <UserX className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Geen openstaande terug staan dagen</h3>
+          <p className="text-gray-600">Er zijn momenteel geen openstaande terug staan dagen.</p>
         </div>
       )}
     </div>

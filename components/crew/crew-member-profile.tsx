@@ -6,32 +6,33 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCircle, Edit, Save, X, Trash2 } from "lucide-react"
-import { OutOfServiceDialog } from "./out-of-service-dialog"
-import { BackInServiceDialog, BackInServiceData } from "./back-in-service-dialog"
-import { getCombinedShipDatabase } from "@/utils/ship-utils"
-import { useLocalStorageData } from "@/hooks/use-localStorage-data"
-import { addOutOfServiceCrew, removeOutOfServiceCrew, isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
+import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCircle, Edit, Save, X, Trash2, Ship, Clock, ArrowRight, ArrowLeft } from "lucide-react"
+import { calculateCurrentStatus } from "@/utils/regime-calculator"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
-import { calculateRegimeStatus, calculateCurrentStatus } from "@/utils/regime-calculator"
-
 
 const POSITION_OPTIONS = [
-  "Schipper",
+  "Kapitein",
   "Stuurman",
-  "Vol Matroos",
+  "Machinist",
   "Matroos",
-  "Lichtmatroos",
-  "Deksmann"
+  "Aflosser",
+  "Student"
 ]
 
-const FIRMA_OPTIONS = [
-  "Bamalite S.A.",
-  "Alcina S.A.",
-  "Devel Shipping S.A.",
-  "Europe Shipping AG.",
-  "Brugo Shipping SARL"
+const NATIONALITY_OPTIONS = [
+  { value: "NL", label: "🇳🇱 Nederlands" },
+  { value: "CZ", label: "🇨🇿 Tsjechisch" },
+  { value: "SLK", label: "🇸🇰 Slowaaks" },
+  { value: "EG", label: "🇪🇬 Egyptisch" },
+  { value: "PO", label: "🇵🇱 Pools" },
+  { value: "SERV", label: "🇷🇸 Servisch" },
+  { value: "HUN", label: "🇭🇺 Hongaars" },
+  { value: "BE", label: "🇧🇪 Belgisch" },
+  { value: "FR", label: "🇫🇷 Frans" },
+  { value: "DE", label: "🇩🇪 Duits" },
+  { value: "LUX", label: "🇱🇺 Luxemburgs" }
 ]
 
 const REGIME_OPTIONS = ["1/1", "2/2", "3/3"]
@@ -40,6 +41,7 @@ const STATUS_OPTIONS = [
   { value: "aan-boord", label: "Aan boord" },
   { value: "thuis", label: "Thuis" },
   { value: "ziek", label: "Ziek" },
+  { value: "nog-in-te-delen", label: "Nog in te delen" },
 ]
 
 const DIPLOMA_OPTIONS = [
@@ -56,1280 +58,664 @@ const DIPLOMA_OPTIONS = [
   "Marifoon"
 ]
 
-const DOCUMENT_OPTIONS = [
-  "Dienstboek",
-  "Legitimatie",
-  "Medische keuring",
-  "Overig document"
-]
-
-type AssignmentEntry = {
-  date?: string;
-  from?: string;
-  to?: string;
-  shipId: string;
-  action: string;
-  note: string;
-}
-
-type ChangeEntry = {
-  date: string;
-  field: string;
-  oldValue: any;
-  newValue: any;
-};
-
 interface Props {
   crewMemberId: string
   onProfileUpdate?: () => void
 }
 
 export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
-  // Gebruik de nieuwe hook voor crew data
-  const { crewDatabase, updateData, removeItem } = useLocalStorageData()
-  
-  // Direct localStorage check als fallback
-  const getCrewData = () => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedData = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
-        return storedData[crewMemberId] || null;
-      } catch (error) {
-        return null;
-      }
-    }
-    return null;
-  };
-  
-  const crewData = (crewDatabase as any)[crewMemberId] || getCrewData();
-  
-  const [edit, setEdit] = useState(false)
-  const [profile, setProfile] = useState(() => {
-    if (!crewData) {
-      return {
-        id: crewMemberId,
-        firstName: "Onbekend",
-        lastName: "Bemanningslid",
-        birthDate: "",
-        birthPlace: "",
-        address: "",
-        phone: "",
-        email: "",
-        position: "",
-        smoking: false,
-        experience: "",
-        qualifications: [],
-        shipId: "",
-        ship: "",
-        regime: "2/2",
-        company: "",
-        matricule: "",
-        entryDate: "",
-        notes: "",
-        onBoardSince: "",
-        status: "aan-boord",
-        assignmentHistory: [] as AssignmentEntry[],
-        vasteDienst: false,
-        inDienstVanaf: "",
-        // Student velden
-        isStudent: false,
-        educationType: "",
-        schoolPeriods: [],
-        educationEndDate: "",
-      };
-    }
-    
-    return {
-      ...crewData,
-      // fallback voor velden die mogelijk ontbreken in oude data
-      qualifications: crewData.qualifications || [],
-      notes: crewData.notes || "",
-      assignmentHistory: crewData.assignmentHistory || [],
-      vasteDienst: crewData.vasteDienst || false,
-      inDienstVanaf: crewData.inDienstVanaf || "",
-      // Student velden
-      isStudent: crewData.isStudent || false,
-      educationType: crewData.educationType || "",
-      schoolPeriods: crewData.schoolPeriods || [],
-      educationEndDate: crewData.educationEndDate || "",
-    };
-  })
+  const { crew, ships, loading, error, updateCrew } = useSupabaseData()
+  const [isEditing, setIsEditing] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [editData, setEditData] = useState<Record<string, any>>({})
 
-  // Update profile wanneer crewData verandert
+  // Prevent hydration errors
   useEffect(() => {
-    if (crewData) {
-      setProfile({
-        ...crewData,
-        // fallback voor velden die mogelijk ontbreken in oude data
-        qualifications: crewData.qualifications || [],
-        notes: crewData.notes || "",
-        assignmentHistory: crewData.assignmentHistory || [],
-        vasteDienst: crewData.vasteDienst || false,
-        inDienstVanaf: crewData.inDienstVanaf || "",
-        // Student velden
-        isStudent: crewData.isStudent || false,
-        educationType: crewData.educationType || "",
-        schoolPeriods: crewData.schoolPeriods || [],
-        educationEndDate: crewData.educationEndDate || "",
-      });
-    } else {
-      // Als geen crewData gevonden, probeer direct uit localStorage
-      const directData = getCrewData();
-      if (directData) {
-        setProfile({
-          ...directData,
-          // fallback voor velden die mogelijk ontbreken in oude data
-          qualifications: directData.qualifications || [],
-          notes: directData.notes || "",
-          assignmentHistory: directData.assignmentHistory || [],
-          vasteDienst: directData.vasteDienst || false,
-          inDienstVanaf: directData.inDienstVanaf || "",
-          // Student velden
-          isStudent: directData.isStudent || false,
-          educationType: directData.educationType || "",
-          schoolPeriods: directData.schoolPeriods || [],
-          educationEndDate: directData.educationEndDate || "",
-        });
-      }
-    }
-  }, [crewData, crewMemberId]);
+    setMounted(true)
+  }, [])
 
-  // Force refresh wanneer component mount
+  // Find the crew member
+  const crewMember = crew.find((member: any) => member.id === crewMemberId)
+
+  // Initialize edit data when crew member is found
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('forceRefresh'));
-    }
-  }, [crewMemberId]);
-
-  const [newDiploma, setNewDiploma] = useState("")
-  const [newNote, setNewNote] = useState("")
-  const [error, setError] = useState("")
-  const [statusChangeDialog, setStatusChangeDialog] = useState<{
-    isOpen: boolean;
-    crewMember: any;
-  }>({
-    isOpen: false,
-    crewMember: null
-  })
-  
-  // Debug: Monitor status changes
-  useEffect(() => {
-    const monitorStatus = () => {
-      const storedData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-      const currentStatus = storedData[crewMemberId]?.status
-      if (currentStatus && profile && currentStatus !== profile.status) {
-
-        console.trace('Status change stack trace')
-      }
-    }
-    
-    const interval = setInterval(monitorStatus, 500)
-    return () => clearInterval(interval)
-  }, [crewMemberId, profile?.status])
-
-  // Houd het vorige profiel bij om te detecteren of het schip is gewijzigd
-  const prevProfileRef = useRef<typeof profile | null>(null)
-  useEffect(() => { prevProfileRef.current = profile }, [edit])
-
-  // Update profile state wanneer crewData verandert
-  useEffect(() => {
-    if (crewData) {
-      // Auto-fix ontbrekende datums
-      let updatedCrewData = { ...crewData };
-      let needsUpdate = false;
-      
-      // Check of we al eerder deze crew member hebben gefixed
-      const hasBeenFixed = localStorage.getItem(`crew_${crewMemberId}_dates_fixed`);
-      if (hasBeenFixed) {
-        return;
-      }
-
-      // Fix entryDate (intrededatum)
-      if (!crewData.entryDate || crewData.entryDate === '') {
-        if (crewData.birthDate && crewData.birthDate !== '') {
-          // Gebruik geboortedatum + 18 jaar als intrededatum
-          const birthDate = new Date(crewData.birthDate);
-          const entryDate = new Date(birthDate.getFullYear() + 18, birthDate.getMonth(), birthDate.getDate());
-          updatedCrewData.entryDate = entryDate.toISOString().split('T')[0];
-        } else {
-          // Fallback: 5 jaar geleden
-          const fiveYearsAgo = new Date();
-          fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
-          updatedCrewData.entryDate = fiveYearsAgo.toISOString().split('T')[0];
-        }
-        needsUpdate = true;
-      }
-
-      // Fix birthDate als deze ontbreekt
-      if (!crewData.birthDate || crewData.birthDate === '') {
-        // Fallback: 30 jaar geleden
-        const thirtyYearsAgo = new Date();
-        thirtyYearsAgo.setFullYear(thirtyYearsAgo.getFullYear() - 30);
-        updatedCrewData.birthDate = thirtyYearsAgo.toISOString().split('T')[0];
-        needsUpdate = true;
-      }
-
-      // Bereken automatisch de huidige status op basis van datums en regime
-      if (crewData.regime && (crewData.thuisSinds || crewData.onBoardSince)) {
-        const statusCalculation = calculateCurrentStatus(
-          crewData.regime,
-          crewData.thuisSinds,
-          crewData.onBoardSince
-        );
-        
-        // Update status en nextRotationDate
-        updatedCrewData.status = statusCalculation.currentStatus;
-        updatedCrewData.nextRotationDate = statusCalculation.nextRotationDate;
-        
-        // Update onBoardSince als ze aan boord zijn maar geen datum hebben
-        if (statusCalculation.isOnBoard && !crewData.onBoardSince) {
-          // Bereken wanneer ze aan boord zijn gekomen
-          if (crewData.thuisSinds) {
-            const thuisDate = new Date(crewData.thuisSinds);
-            const regimeWeeks = Number.parseInt(crewData.regime.split("/")[0]);
-            const regimeDays = regimeWeeks * 7;
-            const onBoardDate = new Date(thuisDate);
-            onBoardDate.setDate(onBoardDate.getDate() + regimeDays);
-            updatedCrewData.onBoardSince = onBoardDate.toISOString().split('T')[0];
-          }
-        }
-        
-        needsUpdate = true;
-      }
-
-      // Sla updates op als er wijzigingen zijn
-      if (needsUpdate) {
-        // Update localStorage
-        const crewData = localStorage.getItem('crewDatabase');
-        if (crewData) {
-          const crew = JSON.parse(crewData);
-          crew[crewMemberId] = updatedCrewData;
-          localStorage.setItem('crewDatabase', JSON.stringify(crew));
-          
-          // Trigger events voor real-time updates
-          window.dispatchEvent(new Event('localStorageUpdate'));
-          window.dispatchEvent(new Event('forceRefresh'));
-          
-          // Markeer dat deze crew member is gefixed
-          localStorage.setItem(`crew_${crewMemberId}_dates_fixed`, 'true');
-          
-          // Notify parent component van wijzigingen
-          if (onProfileUpdate) {
-            onProfileUpdate();
-          }
-        }
-      }
-
-      setProfile({
-        ...updatedCrewData,
-        // fallback voor velden die mogelijk ontbreken in oude data
-        qualifications: updatedCrewData.qualifications || [],
-        notes: updatedCrewData.notes || "",
-        assignmentHistory: updatedCrewData.assignmentHistory || [],
-        vasteDienst: updatedCrewData.vasteDienst || false,
-        inDienstVanaf: updatedCrewData.inDienstVanaf || "",
-        // Student velden
-        isStudent: updatedCrewData.isStudent || false,
-        educationType: updatedCrewData.educationType || "",
-        schoolPeriods: updatedCrewData.schoolPeriods || [],
-        educationEndDate: updatedCrewData.educationEndDate || "",
-      });
-      
-      // Update ook de aflosser states
-      setVasteDienst(updatedCrewData.vasteDienst || false);
-      setInDienstVanaf(updatedCrewData.inDienstVanaf || "");
-    }
-  }, [crewMemberId]); // Alleen crewMemberId als dependency, niet crewData
-
-  useEffect(() => {
-    if (profile.position === "Kapitein") {
-      setProfile((prev: typeof profile) => ({ ...prev, position: "Schipper" }));
-    }
-    // eslint-disable-next-line
-  }, []);
-
-  const isAflosser = profile.position?.toLowerCase().includes("aflos") || profile.position?.toLowerCase().includes("relief")
-  const isOutOfService = isCrewMemberOutOfService(crewMemberId)
-  const [vasteDienst, setVasteDienst] = useState(profile.vasteDienst || false)
-  const [inDienstVanaf, setInDienstVanaf] = useState(profile.inDienstVanaf || "")
-  // Voor nieuwe periode-toewijzing
-  const [newPeriod, setNewPeriod] = useState({
-    from: "",
-    to: "",
-    shipId: "",
-    note: ""
-  })
-
-  // Huidige actieve periode voor aflosser bepalen
-  const huidigePeriode = useMemo(() => {
-    if (!isAflosser) return null
-    const today = new Date()
-    const sorted = [...(profile.assignmentHistory || [])]
-      .filter(entry => entry.from && entry.to)
-      .sort((a, b) => new Date(b.from).getTime() - new Date(a.from).getTime())
-    return sorted.find(entry => new Date(entry.from) <= today && new Date(entry.to) >= today) || null
-  }, [profile.assignmentHistory, isAflosser])
-
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
-    setProfile({ ...profile, [e.target.name]: e.target.value })
-    if (e.target.name === "onBoardSince" && error) setError("")
-  }
-  function handleDiplomaRemove(idx: number) {
-    setProfile({ ...profile, diplomas: (profile.diplomas || []).filter((_: string, i: number) => i !== idx) })
-  }
-  function handleDiplomaAdd() {
-    if (newDiploma.trim()) {
-      setProfile({ ...profile, diplomas: [...(profile.diplomas || []), newDiploma.trim()] })
-      setNewDiploma("")
-    }
-  }
-  function handleSave() {
-    let updatedProfile = { ...profile };
-    
-    // Als er een nieuwe notitie is toegevoegd, voeg deze toe aan de notities array
-    if (newNote.trim()) {
-      const newNoteObj = {
-        id: `note-${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        author: "HR Manager",
-        type: "neutraal",
-        content: newNote.trim()
-      };
-      
-      const currentNotes = Array.isArray(profile.notes) ? profile.notes : [];
-      updatedProfile.notes = [...currentNotes, newNoteObj];
-    }
-    const now = new Date().toISOString();
-    const changeHistory: ChangeEntry[] = [...(profile.changeHistory || [])];
-    // Vergelijk alle relevante velden en log wijzigingen
-    const fieldsToCheck = [
-      "firstName", "lastName", "birthDate", "birthPlace", "address", "phone", "email", "position", "smoking", "experience", "diplomas", "ship", "regime", "company", "matricule", "entryDate", "notes", "onBoardSince", "status", "vasteDienst", "inDienstVanaf", "isStudent", "educationType", "schoolPeriods", "educationEndDate"
-    ];
-    fieldsToCheck.forEach(field => {
-      if (JSON.stringify((profile as any)[field]) !== JSON.stringify((crewDatabase as any)[profile.id]?.[field])) {
-        changeHistory.push({
-          date: now,
-          field,
-          oldValue: (crewDatabase as any)[profile.id]?.[field],
-          newValue: (profile as any)[field]
-        });
-      }
-    });
-    updatedProfile.changeHistory = changeHistory;
-    // Automatisch vandaag invullen als geen datum is opgegeven bij statuswissel
-    if ((profile.status === "aan-boord" || profile.status === "thuis") && !profile.onBoardSince) {
-      updatedProfile = { ...updatedProfile, onBoardSince: new Date().toISOString().split("T")[0] };
-    }
-    if (edit && profile.shipId !== prevProfileRef.current?.shipId) {
-      const shipName = profile.shipId === "nog-in-te-delen" ? "Nog in te delen" : profile.ship;
-      const newHistory = [
-        ...(profile.assignmentHistory || []),
-        {
-          date: new Date().toISOString().split("T")[0],
-          shipId: profile.shipId,
-          action: "verplaatst",
-          note: `Handmatige wissel naar ${shipName}`,
+    if (crewMember && !isEditing) {
+      setEditData({
+        first_name: crewMember.first_name || "",
+        last_name: crewMember.last_name || "",
+        nationality: crewMember.nationality || "NL",
+        position: crewMember.position || "Kapitein",
+        ship_id: crewMember.ship_id || "none",
+        regime: crewMember.regime || "2/2",
+        status: crewMember.status || "nog-in-te-delen",
+        phone: crewMember.phone || "",
+        email: crewMember.email || "",
+        birth_date: crewMember.birth_date || "",
+        birth_place: (crewMember as any).birth_place || "", // UI only field
+        matricule: (crewMember as any).matricule || "",
+        address: crewMember.address || {
+          street: "",
+          city: "",
+          postalCode: "",
+          country: ""
         },
-      ];
-      updatedProfile = { 
-        ...updatedProfile, 
-        assignmentHistory: newHistory,
-        shipId: profile.shipId // Update de shipId zodat het bemanningslid echt verplaatst wordt
-      };
+        diplomas: crewMember.diplomas || [],
+        notes: crewMember.notes || []
+      })
     }
-    if (isAflosser) {
-      updatedProfile = { ...updatedProfile, vasteDienst, inDienstVanaf };
+  }, [crewMember, isEditing])
+
+  // Don't render until mounted
+  if (!mounted) {
+    return (
+      <Card>
+        <CardContent className="p-8">
+          <div className="text-center text-gray-500">Laden...</div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-8">
+          <div className="text-center text-gray-500">Data laden...</div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-8">
+          <div className="text-center text-red-500">Fout: {error}</div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Not found
+  if (!crewMember) {
+    return (
+      <Card>
+        <CardContent className="p-8">
+          <div className="text-center text-gray-500">Bemanningslid niet gevonden</div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const getShipName = (shipId: string) => {
+    if (!shipId || shipId === "none") return "Geen schip"
+    const ship = ships.find(s => s.id === shipId)
+    return ship ? ship.name : "Geen schip"
+  }
+
+  const getNationalityFlag = (nationality: string) => {
+    const flags: { [key: string]: string } = {
+      NL: "🇳🇱",
+      CZ: "🇨🇿",
+      SLK: "🇸🇰",
+      EG: "🇪🇬",
+      PO: "🇵🇱",
+      SERV: "🇷🇸",
+      HUN: "🇭🇺",
+      BE: "🇧🇪",
+      FR: "🇫🇷",
+      DE: "🇩🇪",
+      LUX: "🇱🇺",
     }
-    setProfile(updatedProfile);
-    
-    // Direct localStorage updaten
-    if (typeof window !== 'undefined') {
-      const currentData = JSON.parse(localStorage.getItem('crewDatabase') || '{}');
-      currentData[profile.id] = updatedProfile;
-      localStorage.setItem('crewDatabase', JSON.stringify(currentData));
-      
-      // Trigger events voor real-time updates
-      window.dispatchEvent(new Event('localStorageUpdate'));
-      window.dispatchEvent(new Event('forceRefresh'));
-    }
-    
-    setEdit(false);
-    
-    // Notify parent component van wijzigingen
-    if (onProfileUpdate) {
-      onProfileUpdate();
-    }
-  }
-  function handleCancel() {
-    setEdit(false)
-    setNewNote("")
+    return flags[nationality] || "🌍"
   }
 
-  function handleAddPeriod() {
-    if (!newPeriod.from || !newPeriod.to || !newPeriod.shipId) return setError("Vul alle velden in voor de periode-toewijzing.")
-    const newHistory = [
-      ...(profile.assignmentHistory || []),
-      {
-        ...newPeriod,
-        action: "aflos-periode",
-        note: newPeriod.note || "Aflos-periode"
-      }
-    ]
-    setProfile({ ...profile, assignmentHistory: newHistory })
-    setNewPeriod({ from: "", to: "", shipId: "", note: "" })
-    setError("")
-  }
-
-  function formatAddress(address: any) {
-    if (!address) return "";
-    if (typeof address === "string") return address;
-    // Object: combineer velden
-    const { street = "", postalCode = "", city = "", country = "" } = address;
-    return [street, postalCode, city, country].filter(Boolean).join(", ");
-  }
-
-  function handleDiplomaFileUpload(e: React.ChangeEvent<HTMLInputElement>, diploma: string) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // Simuleer upload: in echte app uploaden naar server en url opslaan
-    const url = URL.createObjectURL(file);
-    setProfile((prev: typeof profile) => ({
-      ...prev,
-      diplomaFiles: {
-        ...(prev.diplomaFiles || {}),
-        [diploma]: url
-      }
-    }));
-  }
-
-  function handleDocumentFileUpload(e: React.ChangeEvent<HTMLInputElement>, docType: string, expiry?: string) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setProfile((prev: typeof profile) => ({
-      ...prev,
-      documentFiles: {
-        ...(prev.documentFiles || {}),
-        [docType]: { url, expiry: expiry || '' }
-      }
-    }));
-  }
-
-  function handleDocumentRemove(docType: string) {
-    setProfile((prev: typeof profile) => {
-      const newFiles = { ...(prev.documentFiles || {}) };
-      delete newFiles[docType];
-      return { ...prev, documentFiles: newFiles };
-    });
-  }
-
-  function handleDeleteAflosser() {
-    if (isAflosser && confirm("Weet je zeker dat je deze aflosser wilt verwijderen? Dit kan niet ongedaan worden gemaakt.")) {
-      // Verwijder via de nieuwe hook
-      removeItem('crewDatabase', crewMemberId)
-      
-      // Redirect naar aflosser overzicht
-      window.location.href = "/bemanning/aflossers"
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "aan-boord":
+        return "bg-green-100 text-green-800"
+      case "thuis":
+        return "bg-blue-100 text-blue-800"
+      case "ziek":
+        return "bg-red-100 text-red-800"
+      case "nog-in-te-delen":
+        return "bg-orange-100 text-orange-800"
+      default:
+        return "bg-gray-100 text-gray-800"
     }
   }
 
-  function handleOutOfService(date: Date, reason: string) {
-    // Save to localStorage
-    addOutOfServiceCrew({
-      crewMemberId,
-      outOfServiceDate: date.toISOString().split('T')[0],
-      outOfServiceReason: reason
-    })
-    
-    // Update local state
-    const updatedProfile = {
-      ...profile,
-      status: "uit-dienst" as const,
-      outOfServiceDate: date.toISOString().split('T')[0],
-      outOfServiceReason: reason
-    }
-    setProfile(updatedProfile)
-    
-    // Update crew database in localStorage
+    const handleSave = async () => {
+    setIsSaving(true)
     try {
-      const crewData = localStorage.getItem('crewDatabase')
-      const crew = crewData ? JSON.parse(crewData) : {}
-      crew[crewMemberId] = updatedProfile
-      localStorage.setItem('crewDatabase', JSON.stringify(crew))
+      // Validate required fields
+      const errors = []
+      if (!editData.first_name?.trim()) errors.push("Voornaam is verplicht")
+      if (!editData.last_name?.trim()) errors.push("Achternaam is verplicht")
+      if (!editData.nationality) errors.push("Nationaliteit is verplicht")
+      if (!editData.position) errors.push("Functie is verplicht")
+      if (!editData.regime) errors.push("Regime is verplicht")
+      if (!editData.status) errors.push("Status is verplicht")
+      if (!editData.phone?.trim()) errors.push("Telefoonnummer is verplicht")
+      if (!editData.birth_date) errors.push("Geboortedatum is verplicht")
       
-      // Trigger events voor UI update
-      window.dispatchEvent(new Event('localStorageUpdate'))
-    } catch (error) {
-      console.error('Error updating crew database:', error)
-    }
-    
-    // Show success message
-    alert(`${profile.firstName} ${profile.lastName} is succesvol uit dienst gezet`)
-    
-    // Trigger profile update callback
-    if (onProfileUpdate) {
-      onProfileUpdate()
-    }
-    
-    // Force page refresh to update all overviews
-    setTimeout(() => {
-      window.location.reload()
-    }, 1000)
-  }
-
-  function handleDefinitiveDelete() {
-    if (confirm(`Weet je zeker dat je ${profile.firstName} ${profile.lastName} definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
-      // Remove from out-of-service list
-      removeOutOfServiceCrew(crewMemberId)
+      if (errors.length > 0) {
+        alert("Vul de volgende verplichte velden in:\n" + errors.join("\n"))
+        setIsSaving(false)
+        return
+      }
       
-      // Show success message
-      alert(`${profile.firstName} ${profile.lastName} is definitief verwijderd`)
+      console.log('Updating crew member with data:', editData)
       
-      // Redirect to former crew members page
-      window.location.href = "/bemanning/oude-bemanningsleden"
-    }
-  }
-
-  function handleBackInService(data: BackInServiceData) {
-    // Remove from out-of-service list
-    removeOutOfServiceCrew(crewMemberId)
-    
-    // Update local state with new data
-    const updatedProfile = {
-      ...profile,
-      shipId: data.shipId,
-      position: data.position,
-      regime: data.regime,
-      onBoardSince: data.startDate,
-      // Add assignment history entry
-      assignmentHistory: [
-        ...(profile.assignmentHistory || []),
-        {
-          date: data.startDate,
-          shipId: data.shipId,
-          action: "Terug in dienst",
-          note: data.notes || `Terug in dienst gezet op ${data.startDate}`
+      // Prepare data for Supabase (only include fields that exist in the database)
+      const supabaseData = {
+        first_name: editData.first_name,
+        last_name: editData.last_name,
+        nationality: editData.nationality,
+        position: editData.position,
+        ship_id: editData.ship_id === "none" ? "" : editData.ship_id,
+        regime: editData.regime,
+        status: editData.status,
+        phone: editData.phone,
+        email: editData.email,
+        birth_date: editData.birth_date,
+        address: editData.address,
+        diplomas: editData.diplomas,
+        notes: editData.notes
+      }
+      
+      console.log('Sending to Supabase:', supabaseData)
+      
+      const result = await updateCrew(crewMemberId, supabaseData)
+      console.log('Update result:', result)
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        const currentCrew = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+        if (currentCrew[crewMemberId]) {
+          currentCrew[crewMemberId] = {
+            ...currentCrew[crewMemberId],
+            firstName: editData.first_name,
+            lastName: editData.last_name,
+            nationality: editData.nationality,
+            position: editData.position,
+            shipId: editData.ship_id === "none" ? "" : editData.ship_id,
+            regime: editData.regime,
+            status: editData.status,
+            phone: editData.phone,
+            email: editData.email,
+            birthDate: editData.birth_date,
+            birthPlace: editData.birth_place || "",
+            matricule: editData.matricule,
+            address: editData.address,
+            diplomas: editData.diplomas,
+            notes: editData.notes
+          }
+          localStorage.setItem('crewDatabase', JSON.stringify(currentCrew))
+          window.dispatchEvent(new Event('localStorageUpdate'))
+          window.dispatchEvent(new Event('forceRefresh'))
         }
-      ]
+      }
+      
+      setIsEditing(false)
+      if (onProfileUpdate) {
+        onProfileUpdate()
+      }
+      alert("Profiel succesvol bijgewerkt!")
+    } catch (error) {
+      console.error('Error updating crew member:', error)
+      console.error('Error details:', JSON.stringify(error, null, 2))
+      alert("Fout bij het bijwerken van het profiel: " + (error instanceof Error ? error.message : String(error)))
+    } finally {
+      setIsSaving(false)
     }
-    setProfile(updatedProfile)
-    
-    // Show success message
-    alert(`${profile.firstName} ${profile.lastName} is weer in dienst gezet op ${data.shipId}`)
-    
-    // Trigger profile update callback
-    if (onProfileUpdate) {
-      onProfileUpdate()
-    }
-    
-    // Force page refresh to update all overviews
-    setTimeout(() => {
-      window.location.reload()
-    }, 1000)
   }
 
+  const handleCancel = () => {
+    setIsEditing(false)
+    // Reset edit data to original values
+    if (crewMember) {
+      setEditData({
+        first_name: crewMember.first_name || "",
+        last_name: crewMember.last_name || "",
+        nationality: crewMember.nationality || "NL",
+        position: crewMember.position || "Kapitein",
+        ship_id: crewMember.ship_id || "none",
+        regime: crewMember.regime || "2/2",
+        status: crewMember.status || "nog-in-te-delen",
+        phone: crewMember.phone || "",
+        email: crewMember.email || "",
+        birth_date: crewMember.birth_date || "",
+        birth_place: (crewMember as any).birth_place || "",
+        matricule: (crewMember as any).matricule || "",
+        address: crewMember.address || {
+          street: "",
+          city: "",
+          postalCode: "",
+          country: ""
+        },
+        diplomas: crewMember.diplomas || [],
+        notes: crewMember.notes || []
+      })
+    }
+  }
 
+  // Genereer scheepshistorie op basis van assignment_history
+  const shipHistory = crewMember.assignment_history || []
+  
+  // Genereer status wijzigingen
+  const statusChanges = []
+  
+  if (crewMember.on_board_since) {
+    statusChanges.push({
+      date: crewMember.on_board_since,
+      action: "Aan boord gegaan",
+      ship: getShipName(crewMember.ship_id),
+      type: "aan-boord"
+    })
+  }
+  
+  if (crewMember.thuis_sinds) {
+    statusChanges.push({
+      date: crewMember.thuis_sinds,
+      action: "Naar huis gegaan",
+      ship: getShipName(crewMember.ship_id),
+      type: "thuis"
+    })
+  }
+
+  // Sorteer op datum (nieuwste eerst)
+  statusChanges.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const renderField = (label: string, value: any, field: string, type: string = "text") => {
+    if (isEditing) {
+      switch (type) {
+        case "select":
+          return (
+            <Select 
+              value={editData[field] || ""} 
+                             onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={`Selecteer ${label.toLowerCase()}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {field === "nationality" && NATIONALITY_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+                {field === "position" && POSITION_OPTIONS.map(option => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+                {field === "regime" && REGIME_OPTIONS.map(option => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+                {field === "status" && STATUS_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+                {field === "ship_id" && (
+                  <>
+                    <SelectItem value="none">Geen schip</SelectItem>
+                    {ships.map((ship) => (
+                      <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
+                    ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          )
+        case "textarea":
+          return (
+                         <Textarea
+               value={editData[field] || ""}
+               onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
+               placeholder={`Voer ${label.toLowerCase()} in`}
+             />
+          )
+        default:
+          return (
+                         <Input
+               type={type}
+               value={editData[field] || ""}
+               onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
+               placeholder={`Voer ${label.toLowerCase()} in`}
+             />
+          )
+      }
+    } else {
+      return <p className="mt-1">{value || "Niet ingevuld"}</p>
+    }
+  }
 
   return (
-    <>
+    <div className="space-y-6">
+      {/* Hoofdprofiel */}
       <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center space-x-2">
+          <CardTitle className="flex items-center space-x-3">
             <User className="w-5 h-5" />
-            <span>Persoonlijk Profiel</span>
+            <span>Profiel</span>
           </CardTitle>
-          {edit ? (
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleSave}>
-                <Save className="w-4 h-4 mr-2" />Opslaan
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleCancel}>
-                <X className="w-4 h-4 mr-2" />Annuleren
-              </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setEdit(true)}>
-                <Edit className="w-4 h-4 mr-2" />Bewerken
-              </Button>
-              {isAflosser && (
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  onClick={handleDeleteAflosser}
-                  title="Aflosser verwijderen"
+          <div className="flex items-center space-x-2">
+              {!isEditing ? (
+                <Button
+                  onClick={() => setIsEditing(true)}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center space-x-2"
                 >
-                  <Trash2 className="w-4 h-4 mr-2" />Verwijderen
+                  <Edit className="w-4 h-4" />
+                  <span>Bewerken</span>
                 </Button>
-              )}
-              {!isAflosser && !isOutOfService && (
-                <OutOfServiceDialog
-                  crewMemberId={crewMemberId}
-                  crewMemberName={`${profile.firstName} ${profile.lastName}`}
-                  onOutOfService={handleOutOfService}
-                />
-              )}
-              {!isAflosser && isOutOfService && (
-                <div className="flex gap-2">
-                  <BackInServiceDialog
-                    crewMemberId={crewMemberId}
-                    crewMemberName={`${profile.firstName} ${profile.lastName}`}
-                    onBackInService={handleBackInService}
-                  />
-                  <Button 
-                    variant="destructive" 
-                    size="sm" 
-                    onClick={handleDefinitiveDelete}
-                    title="Definitief verwijderen"
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    size="sm"
+                    className="flex items-center space-x-2"
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />Definitief verwijderen
+                    <Save className="w-4 h-4" />
+                    <span>{isSaving ? "Opslaan..." : "Opslaan"}</span>
+                  </Button>
+                  <Button
+                    onClick={handleCancel}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center space-x-2"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Annuleren</span>
                   </Button>
                 </div>
               )}
+              <Badge className={(() => {
+                if (crewMember.status === "ziek") return "bg-red-100 text-red-800"
+                if (!crewMember.regime) return getStatusColor(crewMember.status)
+                
+                const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
+                return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+              })()}>
+                {(() => {
+                  if (crewMember.status === "ziek") return "Ziek"
+                  if (!crewMember.regime) return crewMember.status === "aan-boord" ? "Aan boord" : "Thuis"
+                  
+                  const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
+                  return statusCalculation.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
+                })()}
+            </Badge>
+              {(crewMember as any).is_student && (
+              <Badge variant="outline" className="text-purple-600">
+                Student
+              </Badge>
+            )}
+              {(crewMember as any).is_aflosser && (
+              <Badge variant="outline" className="text-orange-600">
+                Aflosser
+              </Badge>
+              )}
             </div>
-          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {error && <div className="text-red-600 text-sm mb-2">{error}</div>}
-        
-        {/* Status indicator voor uit dienst bemanningsleden */}
-        {isOutOfService && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="w-5 h-5 text-red-600" />
-              <span className="text-red-800 font-medium">Uit dienst bemanningslid</span>
-            </div>
-            <p className="text-red-600 text-sm mt-1">
-              Dit bemanningslid is uit dienst gezet en verschijnt niet meer in actieve overzichten.
-              Je kunt deze persoon weer in dienst zetten of definitief verwijderen.
-            </p>
-          </div>
-        )}
-        
+        {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-500">Naam</label>
-              {edit ? (
-                <div className="flex gap-2">
-                  <Input name="firstName" value={profile.firstName} onChange={handleChange} className="w-1/2" />
-                  <Input name="lastName" value={profile.lastName} onChange={handleChange} className="w-1/2" />
-                </div>
-              ) : (
-                <p className="text-gray-900 font-medium">
-                  {profile.firstName && profile.lastName ? 
-                    `${profile.firstName} ${profile.lastName}` : 
-                    "Naam niet ingevuld"
-                  }
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Geboortedatum</label>
-              {edit ? (
-                <Input name="birthDate" type="date" value={profile.birthDate} onChange={handleChange} />
-              ) : (
-                <p className="text-gray-900">
-                  {profile.birthDate ? 
-                    (() => {
-                      try {
-                        return new Date(profile.birthDate).toLocaleDateString("nl-NL");
-                      } catch (error) {
-                        return profile.birthDate || "Niet ingevuld";
-                      }
-                    })() 
-                    : "Niet ingevuld"
-                  }
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Geboorteplaats</label>
-              {edit ? (
-                <Input name="birthPlace" value={profile.birthPlace} onChange={handleChange} />
-              ) : (
-                <p className="text-gray-900">{profile.birthPlace}</p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Adres</label>
-              {edit ? (
-                <Input name="address" value={typeof profile.address === "string" ? profile.address : formatAddress(profile.address)} onChange={handleChange} />
-              ) : (
-                <p className="text-gray-900">{formatAddress(profile.address)}</p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Telefoonnummer</label>
-              {edit ? (
-                <Input name="phone" value={profile.phone} onChange={handleChange} />
-              ) : (
-                <p className="text-gray-900">{profile.phone}</p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Mailadres</label>
-              {edit ? (
-                <Input name="email" value={profile.email} onChange={handleChange} />
-              ) : (
-                <p className="text-gray-900">{profile.email}</p>
-              )}
-            </div>
-            {!isAflosser && (
+                <label className="text-sm font-medium text-gray-700">Voornaam *</label>
+                {renderField("Voornaam", crewMember.first_name, "first_name")}
+              </div>
+
               <div>
-                <label className="text-sm font-medium text-gray-500">Functie</label>
-                {edit ? (
-                  <select name="position" value={profile.position} onChange={handleChange} className="border rounded px-2 py-1">
-                    <option value="">Kies functie</option>
-                    {POSITION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                ) : (
-                  <p className="text-gray-900">{profile.position || "Niet ingevuld"}</p>
+                <label className="text-sm font-medium text-gray-700">Achternaam *</label>
+                {renderField("Achternaam", crewMember.last_name, "last_name")}
+                </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700">Nationaliteit *</label>
+                {renderField("Nationaliteit", crewMember.nationality, "nationality", "select")}
+            </div>
+
+            <div>
+                <label className="text-sm font-medium text-gray-700">Functie *</label>
+                {renderField("Functie", crewMember.position, "position", "select")}
+            </div>
+
+            <div>
+                <label className="text-sm font-medium text-gray-700">Regime *</label>
+                {renderField("Regime", crewMember.regime, "regime", "select")}
+            </div>
+
+            <div>
+                <label className="text-sm font-medium text-gray-700">Status *</label>
+                {renderField("Status", crewMember.status, "status", "select")}
+                {crewMember.regime && crewMember.regime !== "Altijd" && (
+                  <div className="mt-1 text-xs text-gray-500">
+                    {(() => {
+                      const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
+                      return `Volgende wijziging: ${statusCalculation.daysUntilRotation} dagen`
+                    })()}
+                  </div>
                 )}
               </div>
-            )}
-            <div>
-              <label className="text-sm font-medium text-gray-500">Roken</label>
-              {edit ? (
-                <select name="smoking" value={profile.smoking ? "ja" : "nee"} onChange={e => setProfile({ ...profile, smoking: e.target.value === "ja" })} className="border rounded px-2 py-1">
-                  <option value="nee">Nee</option>
-                  <option value="ja">Ja</option>
-                </select>
-              ) : (
-                <Badge variant={profile.smoking ? "destructive" : "secondary"}>{profile.smoking ? "Ja" : "Nee"}</Badge>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Ervaring</label>
-              {edit ? (
-                <Input name="experience" value={profile.experience} onChange={handleChange} />
-              ) : (
-                <p className="text-gray-900">{profile.experience}</p>
-              )}
-            </div>
-
-            {/* Student sectie */}
-            <div className="border-t pt-4">
-              <div className="flex items-center space-x-2 mb-4">
-                <input
-                  type="checkbox"
-                  id="isStudent"
-                  checked={profile.isStudent}
-                  onChange={(e) => setProfile({ ...profile, isStudent: e.target.checked })}
-                  className="rounded"
-                />
-                <label htmlFor="isStudent" className="text-sm font-medium text-gray-500">Volgt bemanningslid een opleiding?</label>
-              </div>
-
-              {profile.isStudent && (
-                <div className="space-y-4 pl-6">
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Type opleiding</label>
-                    {edit ? (
-                      <select
-                        name="educationType"
-                        value={profile.educationType}
-                        onChange={(e) => setProfile({ ...profile, educationType: e.target.value })}
-                        className="border rounded px-2 py-1 w-full"
-                      >
-                        <option value="">Selecteer type opleiding</option>
-                        <option value="BBL">BBL (Beroepsbegeleidende Leerweg)</option>
-                        <option value="BOL">BOL (Beroepsopleidende Leerweg)</option>
-                      </select>
-                    ) : (
-                      <p className="text-gray-900">{profile.educationType || "Niet gespecificeerd"}</p>
-                    )}
-                  </div>
-
-                  {profile.educationType === "BBL" && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Schoolperiodes</label>
-                      {edit ? (
-                        <div className="space-y-2">
-                          {profile.schoolPeriods && profile.schoolPeriods.map((period: any, index: number) => (
-                            <div key={index} className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
-                              <Input
-                                type="date"
-                                value={period.fromDate || ""}
-                                onChange={(e) => {
-                                  const newPeriods = [...(profile.schoolPeriods || [])];
-                                  newPeriods[index] = { ...period, fromDate: e.target.value };
-                                  setProfile({ ...profile, schoolPeriods: newPeriods });
-                                }}
-                                placeholder="Van datum"
-                                className="text-xs"
-                              />
-                              <Input
-                                type="date"
-                                value={period.toDate || ""}
-                                onChange={(e) => {
-                                  const newPeriods = [...(profile.schoolPeriods || [])];
-                                  newPeriods[index] = { ...period, toDate: e.target.value };
-                                  setProfile({ ...profile, schoolPeriods: newPeriods });
-                                }}
-                                placeholder="Tot datum"
-                                className="text-xs"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const newPeriods = (profile.schoolPeriods || []).filter((_: any, i: number) => i !== index);
-                                  setProfile({ ...profile, schoolPeriods: newPeriods });
-                                }}
-                                className="text-xs"
-                              >
-                                Verwijderen
-                              </Button>
-                            </div>
-                          ))}
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const newPeriods = [...(profile.schoolPeriods || []), { fromDate: "", toDate: "", reason: "School" }];
-                              setProfile({ ...profile, schoolPeriods: newPeriods });
-                            }}
-                          >
-                            Schoolperiode toevoegen
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          {profile.schoolPeriods && profile.schoolPeriods.length > 0 ? (
-                            // Sorteer periodes op datum
-                            [...profile.schoolPeriods]
-                              .sort((a, b) => new Date(a.fromDate || 0).getTime() - new Date(b.fromDate || 0).getTime())
-                              .map((period: any, index: number) => (
-                                <div key={index} className="text-sm text-gray-700 flex items-center gap-2">
-                                  <span className="text-xs text-gray-500">#{index + 1}</span>
-                                  {period.fromDate && period.toDate ? (
-                                    <span>
-                                      {new Date(period.fromDate).toLocaleDateString("nl-NL")} t/m {new Date(period.toDate).toLocaleDateString("nl-NL")}
-                                    </span>
-                                  ) : (
-                                    <span className="text-red-500">Onvolledige periode</span>
-                                  )}
-                                </div>
-                              ))
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">Geen schoolperiodes ingevoerd</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {profile.educationType === "BOL" && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Opleidingsperiode tot</label>
-                      {edit ? (
-                        <Input
-                          type="date"
-                          value={profile.educationEndDate || ""}
-                          onChange={(e) => setProfile({ ...profile, educationEndDate: e.target.value })}
-                          placeholder="Tot wanneer duurt de opleiding?"
-                        />
-                      ) : (
-                        <p className="text-gray-900">
-                          {profile.educationEndDate ? new Date(profile.educationEndDate).toLocaleDateString("nl-NL") : "Niet gespecificeerd"}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
+
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-500">Diploma's</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {(profile.diplomas || []) && (profile.diplomas || []).length > 0 ? (
-                  (profile.diplomas || []).map((diploma: string, idx: number) => (
-                    <span key={idx} className="flex items-center bg-green-50 border border-green-200 rounded px-2 py-0.5 text-xs text-green-800">
+                <label className="text-sm font-medium text-gray-700">Huidig Schip</label>
+                {renderField("Schip", crewMember.ship_id, "ship_id", "select")}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700">Matricule Nummer</label>
+                                 {renderField("Matricule", (crewMember as any).matricule, "matricule")}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700">Telefoon *</label>
+                {renderField("Telefoon", crewMember.phone, "phone")}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700">Email</label>
+                {renderField("Email", crewMember.email, "email", "email")}
+            </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700">Geboortedatum *</label>
+                {renderField("Geboortedatum", crewMember.birth_date, "birth_date", "date")}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700">Geboorteplaats</label>
+                {renderField("Geboorteplaats", (crewMember as any).birth_place, "birth_place")}
+              </div>
+              </div>
+                  </div>
+
+        {/* Address */}
+                    <div>
+            <label className="text-sm font-medium text-gray-700">Adres</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              <div>
+                <label className="text-xs text-gray-500">Straat</label>
+                {isEditing ? (
+                  <Input
+                    value={editData.address?.street || ""}
+                                         onChange={(e) => setEditData((prev: Record<string, any>) => ({ 
+                       ...prev, 
+                       address: { ...prev.address, street: e.target.value }
+                     }))}
+                    placeholder="Straatnaam"
+                  />
+                ) : (
+                  <p className="mt-1">{crewMember.address?.street || "Niet ingevuld"}</p>
+                )}
+          </div>
+              <div>
+                <label className="text-xs text-gray-500">Plaats</label>
+                {isEditing ? (
+                  <Input
+                    value={editData.address?.city || ""}
+                                         onChange={(e) => setEditData((prev: Record<string, any>) => ({ 
+                       ...prev, 
+                       address: { ...prev.address, city: e.target.value }
+                     }))}
+                    placeholder="Plaats"
+                  />
+                ) : (
+                  <p className="mt-1">{crewMember.address?.city || "Niet ingevuld"}</p>
+                )}
+              </div>
+                <div>
+                <label className="text-xs text-gray-500">Postcode</label>
+                {isEditing ? (
+                  <Input
+                    value={editData.address?.postalCode || ""}
+                                         onChange={(e) => setEditData((prev: Record<string, any>) => ({ 
+                       ...prev, 
+                       address: { ...prev.address, postalCode: e.target.value }
+                     }))}
+                    placeholder="Postcode"
+                  />
+                ) : (
+                  <p className="mt-1">{crewMember.address?.postalCode || "Niet ingevuld"}</p>
+              )}
+            </div>
+              <div>
+                <label className="text-xs text-gray-500">Land</label>
+                {isEditing ? (
+                  <Input
+                    value={editData.address?.country || ""}
+                                         onChange={(e) => setEditData((prev: Record<string, any>) => ({ 
+                       ...prev, 
+                       address: { ...prev.address, country: e.target.value }
+                     }))}
+                    placeholder="Land"
+                  />
+                ) : (
+                  <p className="mt-1">{crewMember.address?.country || "Niet ingevuld"}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+        {/* Diplomas */}
+          <div>
+            <label className="text-sm font-medium text-gray-700">Diploma's</label>
+            {isEditing ? (
+              <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {DIPLOMA_OPTIONS.map((diploma) => (
+                    <Button
+                      key={diploma}
+                      variant={editData.diplomas?.includes(diploma) ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        const currentDiplomas = editData.diplomas || []
+                        const newDiplomas = currentDiplomas.includes(diploma)
+                          ? currentDiplomas.filter((d: string) => d !== diploma)
+                          : [...currentDiplomas, diploma]
+                                                 setEditData((prev: Record<string, any>) => ({ ...prev, diplomas: newDiplomas }))
+                      }}
+                    >
                       {diploma}
-                      {/* Toon link naar upload als aanwezig */}
-                      {profile.diplomaFiles && profile.diplomaFiles[diploma] && (
-                        <a href={profile.diplomaFiles[diploma]} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-600 underline">Bekijk</a>
-                      )}
-                      {edit && (
-                        <button onClick={() => handleDiplomaRemove(idx)} className="ml-1 text-red-500 hover:underline" title="Verwijder diploma">×</button>
-                      )}
-                    </span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+            <div className="flex flex-wrap gap-2 mt-2">
+                {crewMember.diplomas && crewMember.diplomas.length > 0 ? (
+                  crewMember.diplomas.map((diploma: string, index: number) => (
+                <Badge key={index} variant="outline">
+                  {diploma}
+                </Badge>
                   ))
                 ) : (
-                  <span className="text-xs text-gray-400 italic">Geen diploma's geregistreerd</span>
+                  <p className="text-gray-500">Geen diploma's toegevoegd</p>
                 )}
-                {edit && (
-                  <span className="flex items-center gap-2">
-                    <select
-                      value={newDiploma}
-                      onChange={e => setNewDiploma(e.target.value)}
-                      className="h-7 text-xs px-2 py-1"
-                    >
-                      <option value="">Kies diploma</option>
-                      {DIPLOMA_OPTIONS.filter(opt => !(profile.diplomas || []).includes(opt)).map(opt => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                    <Button size="sm" className="ml-1 px-2 py-1 h-7" onClick={handleDiplomaAdd} type="button">Toevoegen</Button>
-                  </span>
-                )}
-              </div>
-              {/* Upload voor elk diploma */}
-              {edit && (profile.diplomas || []).map((diploma: string, idx: number) => (
-                <div key={diploma} className="flex items-center gap-2 mt-1">
-                  <label className="text-xs text-gray-500">Upload {diploma}:</label>
-                  <input type="file" accept="application/pdf,image/*" onChange={e => handleDiplomaFileUpload(e, diploma)} />
-                  {profile.diplomaFiles && profile.diplomaFiles[diploma] && (
-                    <a href={profile.diplomaFiles[diploma]} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Bekijk</a>
-                  )}
-                </div>
-              ))}
             </div>
-            {!isAflosser && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Schip</label>
-                {edit ? (
-                  <Select
-                    value={profile.shipId || ""}
-                    onValueChange={(val: keyof typeof shipDatabase) => {
-                      const ship = shipDatabase[val]
-                      setProfile({ ...profile, shipId: val, ship: ship?.name || "" })
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Kies een schip" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nog-in-te-delen">⏳ Nog in te delen</SelectItem>
-                      {Object.values(getCombinedShipDatabase()).map(ship => (
-                        <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="text-gray-900">
-                    {profile.shipId === "nog-in-te-delen" ? (
-                      <span className="text-orange-600 font-medium">⏳ Nog in te delen</span>
-                    ) : profile.shipId ? (
-                      (getCombinedShipDatabase() as any)[profile.shipId]?.name || profile.shipId
-                    ) : (
-                      profile.ship
-                    )}
-                  </p>
-                )}
-              </div>
-            )}
-            {isAflosser && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Huidige toewijzing</label>
-                <div>
-                  <p className="text-gray-900 font-medium">
-                    {profile.shipId === "nog-in-te-delen" ? (
-                      <span className="text-orange-600">⏳ Nog in te delen</span>
-                    ) : profile.status === "aan-boord" && profile.shipId && (getCombinedShipDatabase() as any)[profile.shipId]?.name ? (
-                      (getCombinedShipDatabase() as any)[profile.shipId]?.name
-                    ) : (
-                      "Geen actieve toewijzing"
-                    )}
-                  </p>
-                  {huidigePeriode && (
-                    <div className="text-xs text-blue-700">
-                      Periode: {huidigePeriode.from && format(new Date(huidigePeriode.from), "dd-MM-yyyy")} t/m {huidigePeriode.to && format(new Date(huidigePeriode.to), "dd-MM-yyyy")}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            {(!isAflosser || vasteDienst) && (
-              <>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Firma</label>
-                  {edit ? (
-                    <select name="company" value={profile.company} onChange={handleChange} className="border rounded px-2 py-1">
-                      {FIRMA_OPTIONS.map(opt => <option key={opt}>{opt}</option>)}
-                    </select>
-                  ) : (
-                    <p className="text-gray-900">{profile.company}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Matricule nummer</label>
-                  {edit ? (
-                    <Input name="matricule" value={profile.matricule} onChange={handleChange} />
-                  ) : (
-                    <p className="text-gray-900">{profile.matricule}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">In dienst per</label>
-                  {edit ? (
-                    <Input name="entryDate" type="date" value={profile.entryDate} onChange={handleChange} />
-                  ) : (
-                    <p className="text-gray-900">
-                {profile.entryDate ? 
-                  (() => {
-                    try {
-                      return new Date(profile.entryDate).toLocaleDateString("nl-NL");
-                    } catch (error) {
-                      return profile.entryDate || "Niet ingevuld";
-                    }
-                  })() 
-                  : "Niet ingevuld"
-                }
-              </p>
-                  )}
-                </div>
-              </>
-            )}
-            {/* Vaarregime alleen tonen als geen aflosser */}
-            {!isAflosser && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Vaarregime</label>
-                {edit ? (
-                  <select name="regime" value={profile.regime} onChange={handleChange} className="border rounded px-2 py-1">
-                    {REGIME_OPTIONS.map(opt => <option key={opt}>{opt}</option>)}
-                  </select>
-                ) : (
-                  <Badge className="bg-blue-100 text-blue-800">{profile.regime} weken</Badge>
-                )}
-              </div>
-            )}
-            {(!isAflosser || vasteDienst) && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Status</label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge className={
-                    profile.status === "aan-boord" ? "bg-green-100 text-green-800" :
-                    profile.status === "thuis" ? "bg-blue-100 text-blue-800" :
-                    "bg-gray-100 text-gray-800"
-                  }>
-                    {profile.status === "aan-boord" ? "Aan boord" : "Thuis"}
-                  </Badge>
-                  <span className="text-xs text-gray-500">(Status: {profile.status})</span>
-
-                </div>
-              </div>
-            )}
-            {/* Status-info: voor aflosser een aangepaste tekst, anders de standaard */}
-            {isAflosser ? (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Actief</label>
-                <p className="text-gray-900">
-                  {profile.shipId === "nog-in-te-delen" ? (
-                    <span className="text-orange-600">⏳ Nog in te delen</span>
-                  ) : profile.status === "aan-boord" && profile.ship ? (
-                    <>Momenteel actief op de {profile.ship}</>
-                  ) : (
-                    <>Momenteel niet actief</>
-                  )}
-                </p>
-              </div>
-            ) : (
-                              <div>
-                  <label className="text-sm font-medium text-gray-500">Volgende Wissel</label>
-                  <p className="text-gray-900">
-                    {profile.nextRotationDate ? new Date(profile.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"}
-                  </p>
-                </div>
-            )}
-          </div>
-        </div>
-        {isAflosser && (
-          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center gap-4">
-              <label className="text-sm font-medium text-gray-700">
-                <input 
-                  type="checkbox" 
-                  checked={vasteDienst} 
-                  onChange={e => setVasteDienst(e.target.checked)} 
-                  className="mr-2"
-                />
-                Vaste dienst?
-              </label>
-              {vasteDienst && (
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-500">In dienst vanaf:</label>
-                  <input 
-                    type="date" 
-                    value={inDienstVanaf || ""} 
-                    onChange={e => setInDienstVanaf(e.target.value)} 
-                    className="border rounded px-2 py-1 text-sm"
-                  />
-                </div>
-              )}
-            </div>
-            {vasteDienst && (
-              <div className="mt-3 text-xs text-blue-700">
-                <p>✅ Vaste dienst velden zijn nu beschikbaar (Firma, Matricule, Status, etc.)</p>
-              </div>
-            )}
-          </div>
         )}
+          </div>
 
-        {/* Status Informatie */}
-        {profile.regime && (profile.thuisSinds || profile.onBoardSince) && (
-          <div className="mb-6">
-            <label className="text-sm font-bold text-gray-700 mb-2 block">📊 Status Informatie</label>
-            <div className="border rounded-lg bg-blue-50 p-4">
-              {(() => {
-                const statusCalculation = calculateCurrentStatus(
-                  profile.regime,
-                  profile.thuisSinds,
-                  profile.onBoardSince
-                )
-                
-                return (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Dagen tot wissel:</span>
-                      <span className={`text-sm font-bold ${statusCalculation.daysUntilRotation <= 3 ? "text-red-600" : statusCalculation.daysUntilRotation <= 7 ? "text-orange-600" : "text-gray-700"}`}>
-                        {statusCalculation.daysUntilRotation} dagen
-                      </span>
+        {/* Notes */}
+          <div>
+            <label className="text-sm font-medium text-gray-700">Notities</label>
+            {isEditing ? (
+              <Textarea
+                value={editData.notes?.join('\n') || ""}
+                                 onChange={(e) => setEditData((prev: Record<string, any>) => ({ 
+                   ...prev, 
+                   notes: e.target.value ? [e.target.value] : []
+                 }))}
+                placeholder="Voeg notities toe..."
+                className="mt-2"
+              />
+            ) : (
+            <div className="mt-2 space-y-2">
+                {crewMember.notes && crewMember.notes.length > 0 ? (
+                  crewMember.notes.map((note: any, index: number) => (
+                <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-700">
+                    {typeof note === 'string' ? note : note?.text || 'Geen notitie'}
+                  </p>
                     </div>
-                    
-                    <div className="text-xs text-gray-500 mt-2 p-2 bg-white rounded border">
-                      <strong>Status informatie:</strong><br/>
-                      • Regime: {profile.regime} weken<br/>
-                      • Huidige status: {profile.status}<br/>
-                      • Volgende wissel: {profile.nextRotationDate ? new Date(profile.nextRotationDate).toLocaleDateString("nl-NL") : "Niet berekend"}
-                    </div>
+                  ))
+                ) : (
+                  <p className="text-gray-500">Geen notities</p>
+                )}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Scheepshistorie */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-3">
+            <Ship className="w-5 h-5" />
+            <span>Scheepshistorie</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {shipHistory.length > 0 ? (
+            <div className="space-y-4">
+              {shipHistory.map((assignment: any, index: number) => (
+                <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-shrink-0">
+                    <Ship className="w-4 h-4 text-gray-400" />
                   </div>
-                )
-              })()}
-            </div>
-          </div>
-        )}
-
-        {/* Toewijzingshistorie */}
-        <div className="mb-6">
-          <label className="text-sm font-bold text-gray-700 mb-2 block">Toewijzingshistorie</label>
-          <div className="border rounded-lg bg-gray-50 p-3">
-            {(profile.assignmentHistory || []).length === 0 ? (
-              <div className="text-gray-500 text-sm">Geen historie beschikbaar</div>
-            ) : (
-              <ul className="divide-y divide-gray-200">
-                {profile.assignmentHistory.map((entry: any, idx: number) => (
-                  <li key={idx} className="py-2 flex flex-col md:flex-row md:items-center md:space-x-4">
-                    {entry.from && entry.to ? (
-                      <span className="text-xs text-gray-500 w-32">{format(new Date(entry.from), "dd-MM-yyyy")} t/m {format(new Date(entry.to), "dd-MM-yyyy")}</span>
-                    ) : (
-                      <span className="text-xs text-gray-500 w-24">{entry.date}</span>
+                  <div className="flex-1">
+                    <div className="font-medium">{getShipName(assignment.ship_id)}</div>
+                    <div className="text-sm text-gray-600">
+                      {assignment.position} • {assignment.regime}
+                    </div>
+                    {assignment.start_date && (
+                      <div className="text-xs text-gray-500">
+                        {format(new Date(assignment.start_date), 'dd-MM-yyyy')}
+                        {assignment.end_date && ` - ${format(new Date(assignment.end_date), 'dd-MM-yyyy')}`}
+                      </div>
                     )}
-                    <span className="text-sm font-medium text-gray-900 flex-1">{shipDatabase[entry.shipId as keyof typeof shipDatabase]?.name || entry.shipId}</span>
-                    <span className="text-xs text-blue-700 w-24">{entry.action}</span>
-                    <span className="text-xs text-gray-500 flex-1">{entry.note}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-        {/* Alleen voor aflossers: nieuw van-tot formulier */}
-        {isAflosser && edit && (
-          <div className="mb-6 border rounded-lg bg-blue-50 p-4">
-            <div className="font-semibold mb-2">Nieuwe aflos-periode toevoegen</div>
-            <div className="flex flex-col md:flex-row md:items-center md:space-x-4 gap-2">
-              <span>
-                <label className="text-xs text-gray-500">Schip</label>
-                <select value={newPeriod.shipId} onChange={e => setNewPeriod({ ...newPeriod, shipId: e.target.value })} className="border rounded px-2 py-1">
-                  <option value="">Kies schip</option>
-                  {Object.values(getCombinedShipDatabase()).map(ship => (
-                    <option key={ship.id} value={ship.id}>{ship.name}</option>
-                  ))}
-                </select>
-              </span>
-              <span>
-                <label className="text-xs text-gray-500">Van</label>
-                <input type="date" value={newPeriod.from} onChange={e => setNewPeriod({ ...newPeriod, from: e.target.value })} className="border rounded px-2 py-1" />
-              </span>
-              <span>
-                <label className="text-xs text-gray-500">Tot</label>
-                <input type="date" value={newPeriod.to} onChange={e => setNewPeriod({ ...newPeriod, to: e.target.value })} className="border rounded px-2 py-1" />
-              </span>
-              <span className="flex-1">
-                <label className="text-xs text-gray-500">Notitie</label>
-                <input type="text" value={newPeriod.note} onChange={e => setNewPeriod({ ...newPeriod, note: e.target.value })} className="border rounded px-2 py-1 w-full" />
-              </span>
-              <Button size="sm" className="h-8" onClick={handleAddPeriod} type="button">Toevoegen</Button>
-            </div>
-            {error && <div className="text-red-600 text-xs mt-2">{error}</div>}
-          </div>
-        )}
-        <div className="mt-8">
-          <label className="text-sm font-bold text-gray-700 mb-2 block">Documenten & Certificaten</label>
-          {DOCUMENT_OPTIONS.map((docType) => (
-            <div key={docType} className="flex items-center gap-2 mt-1">
-              <label className="text-xs text-gray-500 w-32">{docType}:</label>
-              {edit ? (
-                <>
-                  <input type="file" accept="application/pdf,image/*" onChange={e => handleDocumentFileUpload(e, docType, (document.getElementById(`expiry-${docType}`) as HTMLInputElement)?.value)} />
-                  <input type="date" id={`expiry-${docType}`} className="ml-2 text-xs border rounded px-2 py-1" placeholder="Verloopdatum" />
-                  {profile.documentFiles && profile.documentFiles[docType]?.url && (
-                    <>
-                      <a href={profile.documentFiles[docType].url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Bekijk</a>
-                      <button type="button" className="ml-2 text-red-500 text-xs underline" onClick={() => handleDocumentRemove(docType)}>Verwijder</button>
-                    </>
-                  )}
-                </>
-              ) : (
-                profile.documentFiles && profile.documentFiles[docType]?.url ? (
-                  <>
-                    <a href={profile.documentFiles[docType].url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Bekijk</a>
-                    {profile.documentFiles[docType].expiry && (
-                      <span className="ml-2 text-xs text-gray-500">(geldig t/m {new Date(profile.documentFiles[docType].expiry).toLocaleDateString('nl-NL')})</span>
-                    )}
-                    {profile.documentFiles[docType].expiry && new Date(profile.documentFiles[docType].expiry) < new Date() && (
-                      <span className="ml-2 text-xs text-red-600 font-bold">Verlopen!</span>
-                    )}
-                    {profile.documentFiles[docType].expiry && new Date(profile.documentFiles[docType].expiry) >= new Date() && (new Date(profile.documentFiles[docType].expiry).getTime() - new Date().getTime())/(1000*60*60*24) < 30 && (
-                      <span className="ml-2 text-xs text-orange-600 font-bold">Bijna verlopen!</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-xs text-gray-400 italic">Niet geüpload</span>
-                )
-              )}
+                  </div>
             </div>
           ))}
-        </div>
-        {profile.changeHistory && profile.changeHistory.length > 0 && (
-          <div className="mt-8">
-            <label className="text-sm font-bold text-gray-700 mb-2 block">Wijzigingshistorie</label>
-            <div className="border rounded-lg bg-gray-50 p-3">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-gray-600">
-                    <th>Datum</th>
-                    <th>Veld</th>
-                    <th>Oud</th>
-                    <th>Nieuw</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {profile.changeHistory.map((entry: any, idx: number) => (
-                    <tr key={idx}>
-                      <td>{new Date(entry.date).toLocaleString("nl-NL")}</td>
-                      <td>{entry.field}</td>
-                      <td>{typeof entry.oldValue === "object" ? JSON.stringify(entry.oldValue) : String(entry.oldValue ?? "")}</td>
-                      <td>{typeof entry.newValue === "object" ? JSON.stringify(entry.newValue) : String(entry.newValue ?? "")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
+          ) : (
+            <div className="text-center text-gray-500 py-4">
+              Nog geen scheepshistorie beschikbaar
           </div>
         )}
       </CardContent>
     </Card>
 
 
-  </>
+    </div>
   )
 }

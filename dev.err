@@ -1,0 +1,155 @@
+ ⨯ SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>) {
+  page: '/'
+}
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ ./app/bemanning/aflossers/page.tsx
+Error:   [31mx[0m Unexpected token `Card`. Expected jsx identifier
+     ,-[[36;1;4mC:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\aflossers\page.tsx[0m:310:1]
+ [2m307[0m |     const isAssignedToShip = aflosser.status === "aan-boord"
+ [2m308[0m |     
+ [2m309[0m |     return (
+ [2m310[0m |       <Card className="hover:shadow-lg transition-shadow">
+     : [35;1m       ^^^^[0m
+ [2m311[0m |         <CardHeader className="pb-3">
+ [2m312[0m |           <div className="flex items-center justify-between">
+ [2m313[0m |             <div className="flex items-center space-x-3">
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/bemanning/aflossers/page.tsx
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.

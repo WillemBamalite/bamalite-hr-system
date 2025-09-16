@@ -15,7 +15,6 @@ export function ShipCrewOverview() {
   const router = useRouter()
   // Groepeer bemanning per schip
   const shipCrewData = Object.values(shipDatabase)
-    .filter((ship: any) => ship.status === "Operationeel")
     .map((ship: any) => {
       const shipCrew = getActiveCrewForShip(ship.id)
       const onBoard = shipCrew.filter((crew: any) => {
@@ -105,9 +104,6 @@ export function ShipCrewOverview() {
                   <Ship className="w-5 h-5" />
                   <span>{shipData.ship.name}</span>
                 </CardTitle>
-                <Badge variant="outline" className="bg-green-50 text-green-700">
-                  {shipData.ship.status}
-                </Badge>
               </div>
               <div className="text-sm text-gray-600">
                 <p>
@@ -121,21 +117,7 @@ export function ShipCrewOverview() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {/* Statistieken */}
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-green-50 p-2 rounded">
-                    <div className="text-lg font-bold text-green-700">{shipData.onBoard.length}</div>
-                    <div className="text-xs text-green-600">Aan Boord</div>
-                  </div>
-                  <div className="bg-blue-50 p-2 rounded">
-                    <div className="text-lg font-bold text-blue-700">{shipData.atHome.length}</div>
-                    <div className="text-xs text-blue-600">Thuis</div>
-                  </div>
-                  <div className="bg-red-50 p-2 rounded">
-                    <div className="text-lg font-bold text-red-700">{shipData.sick.length}</div>
-                    <div className="text-xs text-red-600">Ziek</div>
-                  </div>
-                </div>
+
 
                 {/* Bemanning lijst */}
                 <div className="space-y-2 max-h-60 overflow-y-auto">

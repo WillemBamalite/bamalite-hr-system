@@ -14,9 +14,10 @@ export function calculateCurrentStatus(
   regime: "1/1" | "2/2" | "3/3" | "Altijd",
   thuisSinds: string | null,
   onBoardSince: string | null,
+  isSick: boolean = false,
 ): {
   currentStatus: "aan-boord" | "thuis"
-  nextRotationDate: string
+  nextRotationDate: string | null
   daysUntilRotation: number
   isOnBoard: boolean
 } {
@@ -25,7 +26,17 @@ export function calculateCurrentStatus(
   if (!regime) {
     return {
       currentStatus: "thuis",
-      nextRotationDate: "",
+      nextRotationDate: null,
+      daysUntilRotation: 0,
+      isOnBoard: false
+    }
+  }
+
+  // Als iemand ziek is, stop de rotatie
+  if (isSick) {
+    return {
+      currentStatus: "thuis", // Default status voor zieke bemanningsleden
+      nextRotationDate: null,
       daysUntilRotation: 0,
       isOnBoard: false
     }
@@ -35,7 +46,7 @@ export function calculateCurrentStatus(
   if (regime === "Altijd") {
     return {
       currentStatus: "aan-boord",
-      nextRotationDate: "",
+      nextRotationDate: null,
       daysUntilRotation: 0,
       isOnBoard: true
     }

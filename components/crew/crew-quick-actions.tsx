@@ -88,6 +88,21 @@ export function CrewQuickActions() {
             </Button>
           </Link>
           
+          <Link href="/bemanning/leningen">
+            <Button
+              variant="ghost"
+              className="bg-blue-500 hover:bg-blue-600 text-white h-12 p-3 w-full justify-start relative"
+            >
+              <div className="flex items-center space-x-3 w-full">
+                <div className="w-6 h-6 flex-shrink-0">💰</div>
+                <div className="text-left flex-1">
+                  <div className="font-medium">Leningen</div>
+                  <div className="text-sm opacity-90">Beheer leningen & opleidingen</div>
+                </div>
+              </div>
+            </Button>
+          </Link>
+          
           <Link href="/bemanning/nog-in-te-delen">
             <Button
               variant="ghost"

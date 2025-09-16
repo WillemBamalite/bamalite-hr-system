@@ -72,9 +72,7 @@ export function AISearchBar() {
     // Zoek in schepen
     Object.values(getCombinedShipDatabase()).forEach((ship: any) => {
       if (
-        ship.name.toLowerCase().includes(searchQuery) ||
-        ship.location.toLowerCase().includes(searchQuery) ||
-        ship.route.toLowerCase().includes(searchQuery)
+        ship.name.toLowerCase().includes(searchQuery)
       ) {
         results.ships.push(ship)
       }
@@ -128,7 +126,7 @@ export function AISearchBar() {
     if (results.ships.length > 0) {
       const ship = results.ships[0]
       const crewCount = Object.values(crewDatabase).filter((c: any) => c.shipId === ship.id).length
-              return `${ship.name} is ${ship.status.toLowerCase()} met ${crewCount}/${ship.maxCrew} bemanningsleden.`
+              return `${ship.name} heeft ${crewCount}/${ship.maxCrew} bemanningsleden.`
     }
 
     return `Gevonden: ${results.crew.length} bemanningsleden, ${results.ships.length} schepen, ${results.documents.length} documenten.`
@@ -249,9 +247,7 @@ export function AISearchBar() {
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="font-medium">{ship.name}</span>
-                        <span className="text-sm text-gray-600 ml-2">{ship.location}</span>
                       </div>
-                      <Badge className="bg-green-100 text-green-800">{ship.status}</Badge>
                     </div>
                   </div>
                 ))}

@@ -9,37 +9,33 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Ship, Plus, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
-import { getCombinedShipDatabase, addShipToDatabase } from '@/utils/ship-utils';
+import { useSupabaseData } from '@/hooks/use-supabase-data';
+import { BackButton } from '@/components/ui/back-button';
+import { DashboardButton } from '@/components/ui/dashboard-button';
 
 export default function NewShipPage() {
   const router = useRouter();
+  const { ships, addShip, loading, error } = useSupabaseData();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [currentShips, setCurrentShips] = useState<any>({});
   const [formData, setFormData] = useState({
     shipId: '',
     shipName: ''
   });
-
-  // Load current ships from localStorage
-  useEffect(() => {
-    const ships = getCombinedShipDatabase();
-    setCurrentShips(ships);
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // Voeg het schip toe aan localStorage via de utility functie
+      // Voeg het schip toe aan Supabase
       const newShip = {
         id: formData.shipId,
         name: formData.shipName,
-        status: 'Operationeel'
+        max_crew: 8
       };
       
-      addShipToDatabase(newShip);
+      await addShip(newShip);
       
       setIsSuccess(true);
       
@@ -98,115 +94,122 @@ export default function NewShipPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Link href="/">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Terug
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Nieuw Schip Toevoegen</h1>
-            <p className="text-gray-600">Voeg een nieuw schip toe aan het systeem</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center space-x-4">
+            <BackButton href="/" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Nieuw Schip</h1>
+              <p className="text-sm text-gray-600">Voeg een nieuw schip toe aan het systeem</p>
+            </div>
           </div>
         </div>
+      </header>
+      <DashboardButton />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Ship className="w-5 h-5" />
-              Schip Informatie
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Schip Naam */}
-              <div className="space-y-2">
-                <Label htmlFor="shipName">Schip Naam *</Label>
-                <Input
-                  id="shipName"
-                  type="text"
-                  placeholder="Bijv. MTS Nieuw Schip"
-                  value={formData.shipName}
-                  onChange={(e) => handleShipNameChange(e.target.value)}
-                  required
-                />
-                <p className="text-sm text-gray-500">
-                  Voer de volledige naam in (bijv. "MTS Nieuw Schip")
-                </p>
-              </div>
+      {/* Main content */}
+      <main className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          {/* Form */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Ship className="w-5 h-5" />
+                <span>Schip Informatie</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="shipName">Schip Naam *</Label>
+                  <Input
+                    id="shipName"
+                    type="text"
+                    value={formData.shipName}
+                    onChange={(e) => handleShipNameChange(e.target.value)}
+                    placeholder="Bijv. Bellona, Fraternite, etc."
+                    required
+                    className="w-full"
+                  />
+                </div>
 
-              {/* Schip ID */}
-              <div className="space-y-2">
-                <Label htmlFor="shipId">Schip ID</Label>
-                <Input
-                  id="shipId"
-                  type="text"
-                  value={formData.shipId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, shipId: e.target.value }))}
-                  placeholder="ms-nieuw-schip"
-                />
-                <p className="text-sm text-gray-500">
-                  Automatisch gegenereerd op basis van de naam. Kan handmatig aangepast worden.
-                </p>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="shipId">Schip ID</Label>
+                  <Input
+                    id="shipId"
+                    type="text"
+                    value={formData.shipId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, shipId: e.target.value }))}
+                    placeholder="Automatisch gegenereerd"
+                    className="w-full bg-gray-50"
+                    readOnly
+                  />
+                  <p className="text-xs text-gray-500">
+                    Dit ID wordt automatisch gegenereerd op basis van de schip naam
+                  </p>
+                </div>
 
-
-
-
-
-              {/* Voorbeeld */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2">Voorbeeld:</h4>
-                                 <div className="text-sm text-blue-800 space-y-1">
-                   <p><strong>Naam:</strong> MTS Nieuw Schip</p>
-                   <p><strong>ID:</strong> ms-nieuw-schip</p>
-                 </div>
-              </div>
-
-              {/* Submit Button */}
-              <div className="flex gap-4 pt-4">
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || !formData.shipName}
-                  className="flex-1"
-                >
-                  {isSubmitting ? (
-                    'Bezig met toevoegen...'
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Schip Toevoegen
-                    </>
-                  )}
-                </Button>
-                <Link href="/">
-                  <Button variant="outline" type="button">
-                    Annuleren
+                <div className="flex justify-end space-x-4 pt-6">
+                  <Link href="/">
+                    <Button type="button" variant="outline">
+                      Annuleren
+                    </Button>
+                  </Link>
+                  <Button 
+                    type="submit" 
+                    disabled={isSubmitting || !formData.shipName}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isSubmitting ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Toevoegen...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <Plus className="w-4 h-4" />
+                        <span>Schip Toevoegen</span>
+                      </div>
+                    )}
                   </Button>
-                </Link>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
 
-        {/* Info */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Huidige Schepen</CardTitle>
-          </CardHeader>
-          <CardContent>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
-                {Object.entries(currentShips).map(([id, ship]: [string, any]) => (
-                  <div key={id}>• {ship.name}</div>
-                ))}
-              </div>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Huidige Schepen */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Huidige Schepen ({ships.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="text-center py-4 text-gray-500">Schepen laden...</div>
+              ) : error ? (
+                <div className="text-center py-4 text-red-500">Fout: {error}</div>
+              ) : ships.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Ship className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>Nog geen schepen toegevoegd</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {ships.map((ship) => (
+                    <div key={ship.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <Ship className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <p className="font-medium text-gray-900">{ship.name}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   );
 } 

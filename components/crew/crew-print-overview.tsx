@@ -109,8 +109,7 @@ export function CrewPrintOverview() {
             <div className="mb-4">
               <h2 className="text-xl font-bold text-blue-800 border-b-2 border-blue-200 pb-2">{shipData.ship.name}</h2>
               <div className="text-sm text-gray-600 mt-1">
-                Status: {shipData.ship.status} | Bemanning: {shipData.total}/
-                {shipData.ship.maxCrew}
+                Bemanning: {shipData.total}/{shipData.ship.maxCrew}
               </div>
             </div>
 
@@ -345,9 +344,9 @@ export function CrewPrintOverview() {
                 </span>
               </div>
               <div>
-                <span className="font-medium">Operationele Schepen:</span>
+                <span className="font-medium">Totaal Schepen:</span>
                 <span className="ml-2">
-                  {Object.values(shipDatabase).filter((ship: any) => ship.status === "Operationeel").length}
+                  {Object.values(shipDatabase).length}
                 </span>
               </div>
             </div>

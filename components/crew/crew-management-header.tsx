@@ -18,7 +18,7 @@ export function CrewManagementHeader() {
   const atHomeCrew = crew.filter((crew: any) => crew.status === "thuis").length
   const sickCrew = crew.filter((crew: any) => crew.status === "ziek").length
   const availableCrew = crew.filter((crew: any) => !crew.shipId).length
-  const operationalShips = Object.values(getCombinedShipDatabase()).filter((ship: any) => ship.status === "Operationeel").length
+  const totalShips = Object.values(getCombinedShipDatabase()).length
 
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm">
@@ -81,7 +81,7 @@ export function CrewManagementHeader() {
         </div>
 
         {/* Statistics */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-blue-50 p-3 rounded-lg text-center">
             <div className="text-2xl font-bold text-blue-900">{totalCrew}</div>
             <div className="text-xs font-medium text-blue-600">Totaal Bemanning</div>
@@ -94,17 +94,13 @@ export function CrewManagementHeader() {
             <div className="text-2xl font-bold text-orange-900">{atHomeCrew}</div>
             <div className="text-xs font-medium text-orange-600">Thuis</div>
           </div>
-          <div className="bg-red-50 p-3 rounded-lg text-center">
-            <div className="text-2xl font-bold text-red-900">{sickCrew}</div>
-            <div className="text-xs font-medium text-red-600">Ziek</div>
-          </div>
           <div className="bg-purple-50 p-3 rounded-lg text-center">
             <div className="text-2xl font-bold text-purple-900">{availableCrew}</div>
             <div className="text-xs font-medium text-purple-600">Beschikbaar</div>
           </div>
           <div className="bg-gray-50 p-3 rounded-lg text-center">
-            <div className="text-2xl font-bold text-gray-900">{operationalShips}</div>
-            <div className="text-xs font-medium text-gray-600">Actieve Schepen</div>
+            <div className="text-2xl font-bold text-gray-900">{totalShips}</div>
+            <div className="text-xs font-medium text-gray-600">Totaal Schepen</div>
           </div>
         </div>
       </div>

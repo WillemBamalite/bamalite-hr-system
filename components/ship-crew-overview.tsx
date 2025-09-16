@@ -15,7 +15,6 @@ export function ShipCrewOverview() {
   const { crewDatabase } = useCrewData();
   
   const ships = Object.values(getCombinedShipDatabase())
-    .filter((ship: any) => ship.status === "Operationeel")
     .map((ship: any) => {
       const shipCrew = Object.values(crewDatabase).filter((crew: any) => 
         crew.shipId === ship.id && crew.status !== "uit-dienst"
@@ -116,11 +115,6 @@ export function ShipCrewOverview() {
                 </div>
                 <div>
                   <CardTitle className="text-lg">{ship.name}</CardTitle>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
-                    <Badge variant="outline" className="bg-green-50 text-green-700">
-                      {ship.status}
-                    </Badge>
-                  </div>
                 </div>
               </div>
               <div className="text-right">

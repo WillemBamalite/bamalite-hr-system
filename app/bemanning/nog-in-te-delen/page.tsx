@@ -1,195 +1,64 @@
 "use client";
 import { useState, useEffect } from "react";
-import { getCombinedShipDatabase } from "@/utils/ship-utils";
+import { useSupabaseData } from "@/hooks/use-supabase-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useLocalStorageData } from "@/hooks/use-localStorage-data";
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav";
 import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { format } from "date-fns";
+import { BackButton } from "@/components/ui/back-button";
 
 export default function NogInTeDelenPage() {
+  const { crew, ships, loading, error, updateCrew } = useSupabaseData();
+  const [mounted, setMounted] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [selectedShip, setSelectedShip] = useState<string>("");
   const [onBoardDate, setOnBoardDate] = useState<string>("");
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
-  
-  // Gebruik de hook voor gecombineerde crew data
-  const { crewDatabase: allCrewData, forceRefresh } = useLocalStorageData()
-  
-  // Veilige check voor allCrewData
-  if (!allCrewData) {
+
+  // Prevent hydration errors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Don't render until mounted
+  if (!mounted) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-2">
-        <MobileHeaderNav />
-        <div className="text-center py-12">
-          <div className="text-gray-500 text-lg">Laden van bemanningsdata...</div>
-        </div>
+        <div className="text-center py-8 text-gray-500">Laden...</div>
       </div>
     );
   }
-  
-  // Directe cleanup van bemanningsleden met "Onbekend" namen
-  useEffect(() => {
-    const cleanupUnknownCrew = () => {
-      try {
-        const crewData = localStorage.getItem('crewDatabase');
-        if (!crewData) {
-          return;
-        }
-        
-        const crew = JSON.parse(crewData);
-        if (!crew || typeof crew !== 'object') {
-          return;
-        }
-        
-        let hasChanges = false;
-        
-        Object.keys(crew).forEach((memberId) => {
-          const member = crew[memberId];
-          if (!member || typeof member !== 'object') {
-            return;
-          }
-          
-          // Verwijder ALLE bemanningsleden met "Onbekend" in de naam
-          if (member.firstName === "Onbekend" || member.lastName === "Onbekend" || 
-              !member.firstName || !member.lastName || 
-              member.firstName === "" || member.lastName === "") {
-            delete crew[memberId];
-            hasChanges = true;
-          }
-        });
-        
-        if (hasChanges) {
-          localStorage.setItem('crewDatabase', JSON.stringify(crew));
-          window.dispatchEvent(new Event('localStorageUpdate'));
-          forceRefresh();
-        }
-      } catch (error) {
-        console.error('Error in cleanup:', error);
-      }
-    };
-    
-    // Voer cleanup direct uit
-    cleanupUnknownCrew();
-    
-    // En ook elke 5 seconden (minder frequent)
-    const interval = setInterval(cleanupUnknownCrew, 5000);
-    
-    return () => clearInterval(interval);
-  }, [forceRefresh]);
-  
-  // Debug: Check out-of-service storage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const outOfServiceData = localStorage.getItem('bamalite-out-of-service-crew');
-    
-      } catch (error) {
-        console.error('Error reading out-of-service data:', error);
-      }
-    }
-  }, []);
-  
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-2">
+        <div className="text-center py-8 text-gray-500">Data laden...</div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-2">
+        <div className="text-center py-8 text-red-500">Fout: {error}</div>
+      </div>
+    );
+  }
+
   // Filter bemanningsleden zonder schip (exclude aflossers en uit dienst)
-  const crew = Object.values(allCrewData || {}).filter((c: any) => {
-
-    
-    // Check if crew member is in out-of-service storage
-    let isOutOfService = false;
-    if (typeof window !== 'undefined') {
-      try {
-        const outOfServiceData = localStorage.getItem('bamalite-out-of-service-crew');
-        const outOfServiceList = outOfServiceData ? JSON.parse(outOfServiceData) : [];
-        isOutOfService = outOfServiceList.some((record: any) => record.crewMemberId === c.id);
-      } catch (error) {
-        console.error('Error checking out-of-service status:', error);
-      }
-    }
-    
-    return c && (c.shipId === "nog-in-te-delen" || !c.shipId || c.shipId === null) &&
-    c.status !== "uit-dienst" &&
-    c.status !== "ziek" &&
-    c.isAflosser !== true &&
-    c.position !== "Aflosser" &&
-    c.function !== "Aflosser" &&
-    !isOutOfService
-  });
-
-  // Haal operationele schepen op
-  const operationalShips = Object.values(getCombinedShipDatabase()).filter((ship: any) => ship.status === "Operationeel");
-
-  // Functie om bemanningslid in te delen aan schip
-  const assignToShip = () => {
-    if (!selectedMember || !selectedShip || !onBoardDate) return;
-
-    try {
-      // Update crew database in localStorage
-      const crewData = localStorage.getItem('crewDatabase');
-      const crew = crewData ? JSON.parse(crewData) : {};
-      
-      // Haal het volledige profiel op uit de database
-      const fullProfile = crew[selectedMember.id] || selectedMember;
-      
-      // Bepaal de juiste status op basis van de startdatum
-      const today = new Date();
-      const startDate = new Date(onBoardDate);
-      const initialStatus = today >= startDate ? "aan-boord" : "thuis";
-      
-      // Behoud het volledige profiel en voeg alleen de nieuwe velden toe
-      const updatedMember = {
-        ...fullProfile, // Behoud ALLE bestaande profiel data
-        shipId: selectedShip,
-        status: initialStatus,
-        onBoardSince: onBoardDate,
-        // Voeg toe aan assignment history
-        assignmentHistory: [
-          ...(fullProfile.assignmentHistory || []),
-          {
-            date: new Date().toISOString().split("T")[0],
-            shipId: selectedShip,
-            action: "toegewezen",
-            note: `Toegewezen aan ${getCombinedShipDatabase()[selectedShip]?.name || "Onbekend schip"} met status: ${initialStatus}`,
-          }
-        ]
-      };
-      
-      // Update het bemanningslid
-      crew[selectedMember.id] = updatedMember;
-
-      // Sla op in localStorage
-      localStorage.setItem('crewDatabase', JSON.stringify(crew));
-      
-      // Trigger events voor UI update
-      window.dispatchEvent(new Event('localStorageUpdate'));
-      forceRefresh();
-      
-      // Reset dialog
-      setShowAssignmentDialog(false);
-      setSelectedMember(null);
-      setSelectedShip("");
-      setOnBoardDate("");
-      
-      // Toon success message
-      const shipName = getCombinedShipDatabase()[selectedShip]?.name || "Onbekend schip";
-      const statusText = initialStatus === "aan-boord" ? "aan boord" : `thuis tot ${new Date(onBoardDate).toLocaleDateString("nl-NL")}`;
-      alert(`${fullProfile.firstName} ${fullProfile.lastName} is succesvol toegewezen aan ${shipName}. Status: ${statusText}.`);
-      
-      // Forceer een volledige refresh van de pagina om ervoor te zorgen dat alles wordt bijgewerkt
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
-      
-    } catch (error) {
-      console.error('Error assigning crew member to ship:', error);
-      alert('Er is een fout opgetreden bij het toewijzen van het bemanningslid aan het schip.');
-    }
-  };
+  const unassignedCrew = crew.filter((member: any) => 
+    member.status === "nog-in-te-delen" && 
+    !member.is_aflosser
+  );
 
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
@@ -204,86 +73,216 @@ export default function NogInTeDelenPage() {
       FR: "🇫🇷",
       DE: "🇩🇪",
       LUX: "🇱🇺",
+    };
+    return flags[nationality] || "🌍";
+  };
+
+  const assignToShip = async () => {
+    if (!selectedMember || !selectedShip || !onBoardDate) {
+      alert("Vul alle velden in");
+      return;
     }
-    return flags[nationality] || "🌍"
-  }
+
+    try {
+      // Update de bemanningslid met schip toewijzing
+      await updateCrew(selectedMember.id, {
+        ship_id: selectedShip,
+        status: "thuis", // Start met thuis status
+        on_board_since: onBoardDate,
+        thuis_sinds: new Date().toISOString().split('T')[0] // Vandaag als thuis sinds
+      });
+
+      alert(`${selectedMember.first_name} ${selectedMember.last_name} is succesvol toegewezen aan het schip!`);
+      
+      setShowAssignmentDialog(false);
+      setSelectedMember(null);
+      setSelectedShip("");
+      setOnBoardDate("");
+    } catch (error) {
+      console.error("Fout bij toewijzen aan schip:", error);
+      alert("Er is een fout opgetreden bij het toewijzen aan schip. Probeer het opnieuw.");
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
       <MobileHeaderNav />
+      <BackButton />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-purple-800">Bemanning nog in te delen</h1>
-          <p className="text-sm text-gray-600">Bemanningsleden die nog toegewezen moeten worden aan een schip</p>
+          <h1 className="text-3xl font-bold text-gray-900">Nog In Te Delen</h1>
+          <p className="text-gray-600">Bemanningsleden die nog geen schip hebben toegewezen</p>
         </div>
-        <div className="flex items-center space-x-4">
-          <Badge variant="outline" className="text-purple-600">
-            {crew.length} leden
-          </Badge>
+        <div className="flex gap-2">
+          <Link href="/bemanning/nieuw">
+            <Button className="bg-green-600 hover:bg-green-700">
+              <span className="mr-2">➕</span>
+              Nieuw Bemanningslid
+            </Button>
+          </Link>
         </div>
       </div>
 
-      {crew.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-gray-500 text-lg">Er zijn momenteel geen bemanningsleden die nog ingedeeld moeten worden.</div>
-        </div>
+      {/* Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-orange-500 rounded-full"></div>
+              <div>
+                <p className="text-sm text-gray-600">Nog in te delen</p>
+                <p className="text-2xl font-bold text-orange-600">{unassignedCrew.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-green-500 rounded-full"></div>
+              <div>
+                <p className="text-sm text-gray-600">Toegewezen</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {crew.filter((c: any) => c.ship_id && c.status !== "nog-in-te-delen").length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-blue-500 rounded-full"></div>
+              <div>
+                <p className="text-sm text-gray-600">Totaal bemanning</p>
+                <p className="text-2xl font-bold text-blue-600">{crew.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Unassigned Crew List */}
+      {unassignedCrew.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-8 h-8 bg-green-500 rounded-full"></div>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Alle bemanning toegewezen!</h3>
+            <p className="text-gray-500 mb-4">Alle bemanningsleden hebben een schip toegewezen gekregen.</p>
+            <Link href="/bemanning/nieuw">
+              <Button className="bg-green-600 hover:bg-green-700">
+                <span className="mr-2">➕</span>
+                Nieuw Bemanningslid Toevoegen
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {crew.map((member: any) => (
+          {unassignedCrew.map((member: any) => (
             <Card key={member.id} className="hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-purple-100 text-purple-700">
-                        {member.firstName?.[0] || '?'}{member.lastName?.[0] || '?'}
+                      <AvatarFallback className="bg-orange-100 text-orange-700">
+                        {member.first_name[0]}{member.last_name[0]}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <div className="flex items-center space-x-2">
-                        <Link href={`/bemanning/${member.id}`} className="font-medium text-gray-900 hover:text-purple-700">
-                          {member.firstName || 'Onbekend'} {member.lastName || 'Onbekend'}
-                        </Link>
-                        <span className="text-lg">{getNationalityFlag(member.nationality)}</span>
+                      <Link 
+                        href={`/bemanning/${member.id}`}
+                        className="font-medium text-gray-900 hover:text-blue-700"
+                      >
+                        {member.first_name} {member.last_name}
+                      </Link>
+                      <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <span>{getNationalityFlag(member.nationality)}</span>
+                        <span>•</span>
+                        <span>{member.nationality}</span>
                       </div>
-                      <p className="text-sm text-gray-500">{member.position}</p>
                     </div>
                   </div>
+                  <Badge className="bg-orange-100 text-orange-800">
+                    Nog in te delen
+                  </Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm text-gray-700">
-                  <div><strong>Regime:</strong> {member.regime || "Niet gespecificeerd"}</div>
-                  <div><strong>Telefoon:</strong> {member.phone || "Niet bekend"}</div>
-                  <div><strong>Email:</strong> {member.email || "Niet bekend"}</div>
-                  <div><strong>In dienst per:</strong> {member.entryDate ? new Date(member.entryDate).toLocaleDateString("nl-NL") : "Niet bekend"}</div>
-                  <div><strong>Diploma's:</strong> {member.qualifications?.join(", ") || "Geen diploma's"}</div>
-                  <div><strong>Roken:</strong> {member.smoking ? "Ja" : "Nee"}</div>
-                  
-                  {/* Verschuldigde dagen sectie */}
-                  {member.standBackDaysRemaining && member.standBackDaysRemaining > 0 && (
-                    <div className="mt-3 p-2 bg-orange-50 border border-orange-200 rounded">
-                      <div className="text-sm font-medium text-orange-800">
-                        Verschuldigde dagen: {member.standBackDaysRemaining} van {member.standBackDaysRequired || 7}
-                      </div>
+              <CardContent className="space-y-3">
+                {/* Position */}
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Functie:</span> {member.position}
+                </div>
+
+                {/* Regime */}
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Regime:</span> {member.regime}
+                </div>
+
+                {/* Contact Info */}
+                <div className="space-y-2 text-sm">
+                  {member.phone && (
+                    <div className="text-gray-600">
+                      <span className="font-medium">Telefoon:</span> {member.phone}
+                    </div>
+                  )}
+                  {member.email && (
+                    <div className="text-gray-600">
+                      <span className="font-medium">Email:</span> {member.email}
                     </div>
                   )}
                 </div>
-                
-                <div className="flex gap-2 mt-4">
+
+                {/* Experience */}
+                {member.experience && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Ervaring:</span> {member.experience}
+                  </div>
+                )}
+
+                {/* Diplomas */}
+                {member.diplomas && member.diplomas.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Diploma's:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {member.diplomas.map((diploma: string, index: number) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {diploma}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {member.notes && member.notes.length > 0 && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Notities:</span>
+                    <p className="italic mt-1">{member.notes[0]}</p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex justify-end space-x-2 pt-3 border-t">
+                  <Link href={`/bemanning/${member.id}`}>
+                    <Button variant="outline" size="sm">
+                      <span className="mr-1">👁️</span>
+                      Bekijk
+                    </Button>
+                  </Link>
                   <Button 
                     size="sm" 
-                    className="flex-1"
                     onClick={() => {
                       setSelectedMember(member);
-                      setSelectedShip("");
-                      setOnBoardDate("");
                       setShowAssignmentDialog(true);
                     }}
                   >
-                    Indelen aan schip
+                    <span className="mr-1">🚢</span>
+                    Toewijzen
                   </Button>
                 </div>
               </CardContent>
@@ -292,25 +291,23 @@ export default function NogInTeDelenPage() {
         </div>
       )}
 
-      {/* Toewijzen Dialog */}
+      {/* Assignment Dialog */}
       <Dialog open={showAssignmentDialog} onOpenChange={setShowAssignmentDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Toewijzen: {selectedMember?.firstName} {selectedMember?.lastName}
+              Toewijzen aan schip - {selectedMember?.first_name} {selectedMember?.last_name}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                Selecteer schip
-              </Label>
+              <Label htmlFor="ship">Schip</Label>
               <Select value={selectedShip} onValueChange={setSelectedShip}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Kies een schip..." />
+                  <SelectValue placeholder="Selecteer schip" />
                 </SelectTrigger>
                 <SelectContent>
-                  {operationalShips.map((ship: any) => (
+                  {ships.map((ship) => (
                     <SelectItem key={ship.id} value={ship.id}>
                       {ship.name}
                     </SelectItem>
@@ -318,37 +315,22 @@ export default function NogInTeDelenPage() {
                 </SelectContent>
               </Select>
             </div>
-            
             <div>
-              <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                Aanvangsdatum op schip
-              </Label>
+              <Label htmlFor="onBoardDate">Aan boord datum</Label>
               <Input
+                id="onBoardDate"
                 type="date"
                 value={onBoardDate}
                 onChange={(e) => setOnBoardDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full"
+                required
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Vanaf deze datum gaat het regime automatisch lopen
-              </p>
             </div>
-            
-            <div className="flex gap-2 pt-4">
-              <Button 
-                onClick={assignToShip}
-                disabled={!selectedShip || !onBoardDate}
-                className="flex-1"
-              >
-                Toewijzen
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => setShowAssignmentDialog(false)}
-                className="flex-1"
-              >
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowAssignmentDialog(false)}>
                 Annuleren
+              </Button>
+              <Button onClick={assignToShip}>
+                Toewijzen
               </Button>
             </div>
           </div>
