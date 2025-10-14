@@ -7,14 +7,20 @@ import { Ship, Users, CheckCircle, Clock, UserX } from "lucide-react"
 import { ShipOverview } from "@/components/ship-overview"
 import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
-import { DashboardHeader } from "@/components/dashboard-header"
+import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useState, useEffect } from "react"
 
 export default function Dashboard() {
+  return (
+    <ProtectedRoute>
+      <DashboardContent />
+    </ProtectedRoute>
+  )
+}
+
+function DashboardContent() {
   const [mounted, setMounted] = useState(false);
-  // State voor universele zoekbalk
-  const [search, setSearch] = useState("")
   
   // Gebruik Supabase data
   const { ships, crew, sickLeave, loading, error } = useSupabaseData()
@@ -57,23 +63,6 @@ export default function Dashboard() {
     );
   }
 
-  // Zoekfunctie
-  const filteredCrew = crew.filter((member) => {
-    const searchTerm = search.toLowerCase()
-    return (
-      member.first_name.toLowerCase().includes(searchTerm) ||
-      member.last_name.toLowerCase().includes(searchTerm) ||
-      member.position.toLowerCase().includes(searchTerm) ||
-      member.nationality.toLowerCase().includes(searchTerm)
-    )
-  })
-
-  // Zoek in schepen
-  const filteredShips = ships.filter((ship) => {
-    const searchTerm = search.toLowerCase()
-    return ship.name.toLowerCase().includes(searchTerm)
-  })
-
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="container mx-auto py-8">
@@ -86,9 +75,6 @@ export default function Dashboard() {
           {/* Main Content - Rechts */}
           <div className="lg:col-span-3">
             <div className="grid grid-cols-1 gap-6">
-              {/* Header */}
-              <DashboardHeader search={search} setSearch={setSearch} />
-
               {/* Stats */}
               <DashboardStats />
 

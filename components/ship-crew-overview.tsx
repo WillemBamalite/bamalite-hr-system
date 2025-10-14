@@ -6,35 +6,40 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, MapPin, Phone, AlertCircle, CheckCircle, Clock, Plus } from "lucide-react"
 import Link from "next/link"
-import { useCrewData } from "@/hooks/use-crew-data"
-import { getCombinedShipDatabase } from "@/utils/ship-utils"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 
 export function ShipCrewOverview() {
-  // Gebruik echte data uit de database
-  const { crewDatabase } = useCrewData();
+  // Gebruik Supabase data
+  const { ships: shipsData, crew: crewData, loading, error } = useSupabaseData();
   
-  const ships = Object.values(getCombinedShipDatabase())
-    .map((ship: any) => {
-      const shipCrew = Object.values(crewDatabase).filter((crew: any) => 
-        crew.shipId === ship.id && crew.status !== "uit-dienst"
+  const ships = shipsData.map((ship: any) => {
+      const shipCrew = crewData.filter((crew: any) => 
+        crew.ship_id === ship.id && crew.status !== "uit-dienst"
       );
       
       return {
         ...ship,
-        crew: shipCrew.map((crew: any) => ({
-          id: crew.id,
-          name: `${crew.firstName} ${crew.lastName}`,
-          position: crew.position,
-          nationality: crew.nationality,
-          regime: crew.regime,
-          status: crew.status,
-          onBoardSince: crew.onBoardSince,
-          offBoardDate: crew.nextRotationDate,
-          terugkeerDatum: crew.terugkeerDatum,
-          daysLeft: crew.nextRotationDate ? Math.ceil((new Date(crew.nextRotationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0,
-          phone: crew.phone || "",
-        }))
+        crew: shipCrew.map((crew: any) => {
+          // Bereken huidige status en next rotation date
+          const statusInfo = crew.on_board_since && crew.regime 
+            ? calculateCurrentStatus(crew.on_board_since, crew.regime)
+            : { status: crew.status, nextRotationDate: null };
+          
+          return {
+            id: crew.id,
+            name: `${crew.first_name} ${crew.last_name}`,
+            position: crew.position,
+            nationality: crew.nationality,
+            regime: crew.regime,
+            status: crew.status,
+            onBoardSince: crew.on_board_since,
+            offBoardDate: statusInfo.nextRotationDate,
+            terugkeerDatum: null, // Deprecated in Supabase versie
+            daysLeft: statusInfo.nextRotationDate ? Math.ceil((new Date(statusInfo.nextRotationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0,
+            phone: crew.phone || "",
+          };
+        })
       };
     });
 

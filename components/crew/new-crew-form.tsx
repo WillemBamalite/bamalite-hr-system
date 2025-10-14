@@ -32,10 +32,10 @@ const diplomaOptions = [
 ]
 const companyOptions = [
   "Bamalite S.A.",
-  "Alcina S.A.",
   "Devel Shipping S.A.",
+  "Brugo Shipping SARL.",
   "Europe Shipping AG.",
-  "Brugo Shipping SARL"
+  "Alcina S.A."
 ]
 
 interface NewCrewFormData {
@@ -120,8 +120,8 @@ export function NewCrewForm() {
     if (!formData.phone.trim()) errors.push("Telefoonnummer is verplicht")
     if (!formData.birthDate) errors.push("Geboortedatum is verplicht")
 
-    // Validatie voor startdatum als er een schip is geselecteerd
-    if (formData.shipId && formData.shipId !== "none" && !formData.startDate) {
+    // Validatie voor startdatum als er een schip is geselecteerd (niet voor 'Geen schip' of 'Nog in te delen')
+    if (formData.shipId && formData.shipId !== "none" && formData.shipId !== "unassigned" && !formData.startDate) {
       errors.push("Startdatum is verplicht als er een schip is geselecteerd")
     }
 
@@ -145,38 +145,48 @@ export function NewCrewForm() {
       let onBoardSince = null
       let thuisSinds = null
 
-      if (formData.shipId && formData.shipId !== "none" && formData.startDate) {
+      if (formData.shipId && formData.shipId !== "none" && formData.shipId !== "unassigned" && formData.startDate) {
         const calculatedStatus = calculateCurrentStatus(formData.startDate, formData.regime)
         status = calculatedStatus.status
         onBoardSince = calculatedStatus.onBoardSince
         thuisSinds = calculatedStatus.thuisSinds
       }
 
-      // Maak crew member object voor Supabase (laat Supabase de UUID id genereren)
+      // Genereer client-side id (zelfde patroon als aflossers)
+      const id = `crew-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+      // Maak crew member object voor Supabase
       const crewMember = {
+        id,
         first_name: formData.firstName,
         last_name: formData.lastName,
         nationality: formData.nationality,
         position: formData.position,
-        // Gebruik null als er geen schip is gekozen; lege string breekt UUID kolom
-        ship_id: formData.shipId === "none" ? null : formData.shipId,
+        ship_id: (formData.shipId === "none" || formData.shipId === "unassigned") ? null : formData.shipId,
         regime: formData.regime,
-        status: status as "aan-boord" | "thuis" | "ziek" | "uit-dienst" | "nog-in-te-delen",
-        on_board_since: onBoardSince || undefined,
-        thuis_sinds: thuisSinds || undefined,
-        phone: formData.phone,
-        email: formData.email,
-        birth_date: formData.birthDate,
+        status: (formData.shipId === "unassigned" ? 'nog-in-te-delen' : status) as "aan-boord" | "thuis" | "ziek" | "uit-dienst" | "nog-in-te-delen",
+        on_board_since: onBoardSince || null,
+        thuis_sinds: thuisSinds || null,
+        expected_start_date: (status === "thuis" && formData.startDate && new Date(formData.startDate) > new Date()) ? formData.startDate : null,
+        phone: formData.phone || null,
+        email: formData.email || null,
+        birth_date: formData.birthDate || null,
+        birth_place: formData.birthPlace || null,
+        matricule: formData.matricule || null,
+        company: formData.company || null,
+        smoking: formData.smoking || false,
+        experience: formData.experience || null,
         address: formData.address,
-        assignment_history: [],
         diplomas: formData.diplomas,
-        notes: [formData.notes],
-        matricule: formData.matricule || undefined
+        notes: formData.notes ? [formData.notes] : []
       }
 
-      const created = await addCrew(crewMember as any)
+      console.log('Saving crew member to Supabase:', crewMember)
 
-      // Succes: meteen door naar overzicht (hook heeft state + localStorage al bijgewerkt)
+      // Bewaar via Supabase
+      await addCrew(crewMember as any)
+
+      // Succes: meteen door naar overzicht
       setIsSuccess(true)
 
       // Reset form
@@ -211,10 +221,10 @@ export function NewCrewForm() {
         educationEndDate: ""
       })
 
-      // Ga direct naar bemanningsoverzicht
+      // Navigeer naar overzicht na korte delay
       setTimeout(() => {
         window.location.href = '/bemanning/overzicht'
-      }, 500)
+      }, 1500)
       
     } catch (error) {
       console.error('Error adding crew member:', error)
@@ -261,7 +271,19 @@ export function NewCrewForm() {
   // Helper functie voor status berekening
   const calculateCurrentStatus = (startDate: string, regime: string) => {
     const start = new Date(startDate)
+    start.setHours(0, 0, 0, 0) // Reset naar start van de dag
     const today = new Date()
+    today.setHours(0, 0, 0, 0) // Reset naar start van de dag
+    
+    // Als de startdatum in de toekomst ligt, persoon is "thuis" tot startdatum
+    if (start > today) {
+      return { 
+        status: "thuis", 
+        onBoardSince: null, 
+        thuisSinds: today.toISOString().split('T')[0] // Thuis sinds vandaag
+      }
+    }
+    
     const daysSinceStart = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
     
     let status = "nog-in-te-delen"
@@ -447,12 +469,23 @@ export function NewCrewForm() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="shipId">Schip</Label>
-                <Select value={formData.shipId} onValueChange={(value) => setFormData(prev => ({ ...prev, shipId: value }))}>
+                <Select
+                  value={formData.shipId}
+                  onValueChange={(value) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      shipId: value,
+                      // Startdatum wissen wanneer geen schip of 'Nog in te delen'
+                      startDate: (value === 'none' || value === 'unassigned') ? '' : prev.startDate
+                    }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecteer schip" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Geen schip</SelectItem>
+                    <SelectItem value="unassigned">Nog in te delen</SelectItem>
                     {ships.map((ship) => (
                       <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
                     ))}
@@ -479,9 +512,9 @@ export function NewCrewForm() {
                   type="date"
                   value={formData.startDate}
                   onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
-                  required={!!formData.shipId}
+                  required={!!(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none')}
                 />
-                {formData.shipId && (
+                {(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none') && (
                   <p className="text-xs text-gray-500">Verplicht als er een schip is geselecteerd</p>
                 )}
               </div>

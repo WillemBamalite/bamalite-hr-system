@@ -1,6 +1,7 @@
 "use client"
 
-import { Suspense, useState, use } from "react"
+import { Suspense, useState, use, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { CrewMemberHeader } from "@/components/crew/crew-member-header"
 import { CrewMemberProfile } from "@/components/crew/crew-member-profile"
 import { CrewMemberNotes } from "@/components/crew/crew-member-notes"
@@ -17,7 +18,19 @@ interface Props {
 
 export default function BemanningslidPage({ params }: Props) {
   const resolvedParams = use(params);
+  const searchParams = useSearchParams();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [autoEdit, setAutoEdit] = useState(false);
+
+  // Check if we should auto-open edit mode
+  useEffect(() => {
+    const shouldEdit = searchParams.get('edit') === 'true';
+    const isHired = searchParams.get('hired') === 'true';
+    
+    if (shouldEdit && isHired) {
+      setAutoEdit(true);
+    }
+  }, [searchParams]);
 
   const handleProfileUpdate = () => {
     setRefreshKey(prev => prev + 1);
@@ -38,6 +51,7 @@ export default function BemanningslidPage({ params }: Props) {
                   key={refreshKey}
                   crewMemberId={resolvedParams.id} 
                   onProfileUpdate={handleProfileUpdate}
+                  autoEdit={autoEdit}
                 />
               </Suspense>
             </div>

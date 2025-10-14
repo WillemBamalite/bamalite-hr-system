@@ -59,7 +59,7 @@ export function NewSickLeaveForm({ onClose }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     // Hier zou je de ziekmelding opslaan
-
+    console.log('Sick leave data:', {
       crewMemberId: selectedCrewMember,
       startDate,
       description,

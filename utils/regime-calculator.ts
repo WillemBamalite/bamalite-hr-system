@@ -11,7 +11,7 @@ export interface RegimeCalculation {
 
 // Nieuwe functie om automatisch status te berekenen op basis van regime en huidige datum
 export function calculateCurrentStatus(
-  regime: "1/1" | "2/2" | "3/3" | "Altijd",
+  regime: "1/1" | "2/2" | "3/3" | "Altijd" | "" | "Onbekend",
   thuisSinds: string | null,
   onBoardSince: string | null,
   isSick: boolean = false,
@@ -23,7 +23,7 @@ export function calculateCurrentStatus(
 } {
   const today = new Date()
   
-  if (!regime) {
+  if (!regime || regime === "" || regime === "Onbekend") {
     return {
       currentStatus: "thuis",
       nextRotationDate: null,

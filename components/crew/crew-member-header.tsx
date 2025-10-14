@@ -5,11 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link"
-import { crewDatabase } from "@/data/crew-database"
-import { getCombinedShipDatabase } from "@/utils/ship-utils"
 import { useRouter } from "next/navigation"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { BackButton } from "@/components/ui/back-button"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 
 interface Props {
   crewMemberId: string
@@ -17,8 +16,23 @@ interface Props {
 
 export function CrewMemberHeader({ crewMemberId }: Props) {
   const router = useRouter()
-  // Haal echte data uit database
-  const crewMember = (crewDatabase as any)[crewMemberId]
+  const { crew, ships, loading } = useSupabaseData()
+  
+  // Haal data uit Supabase
+  const crewMember = crew.find((c: any) => c.id === crewMemberId)
+  
+  if (loading) {
+    return (
+      <header className="border-b bg-white shadow-sm">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <BackButton />
+            <div className="text-gray-600">Laden...</div>
+          </div>
+        </div>
+      </header>
+    )
+  }
   
   if (!crewMember) {
     return (
@@ -34,7 +48,8 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
   }
 
   const isAflosser = crewMember.position?.toLowerCase().includes("aflos")
-      const shipName = crewMember.shipId ? getCombinedShipDatabase()[crewMember.shipId]?.name : crewMember.ship || "-"
+  const ship = ships.find((s: any) => s.id === crewMember.ship_id)
+  const shipName = ship?.name || "-"
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -59,7 +74,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
             <div className="flex items-center space-x-4">
               <Avatar className="w-12 h-12">
                 <AvatarFallback className="bg-blue-100 text-blue-700 text-lg">
-                  {`${crewMember.firstName} ${crewMember.lastName}`
+                  {`${crewMember.first_name} ${crewMember.last_name}`
                     .split(" ")
                     .map((n: string) => n[0])
                     .join("")}
@@ -67,7 +82,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
               </Avatar>
 
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{crewMember.firstName} {crewMember.lastName}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{crewMember.first_name} {crewMember.last_name}</h1>
                 <div className="flex items-center space-x-4 mt-1">
                   {!isAflosser && (
                     <span className="text-gray-600">{crewMember.position}</span>
@@ -80,18 +95,26 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                     </div>
                   )}
                   <Badge className={(() => {
+                    if (crewMember.status === "ziek") return "bg-red-100 text-red-800"
+                    if (crewMember.status === "nog-in-te-delen") return "bg-gray-100 text-gray-800"
+                    if (!crewMember.regime) return crewMember.status === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                    
                     const statusCalculation = calculateCurrentStatus(
-                      crewMember.regime,
-                      crewMember.thuisSinds,
-                      crewMember.onBoardSince
+                      crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd",
+                      crewMember.thuis_sinds,
+                      crewMember.on_board_since
                     )
                     return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
                   })()}>
                     {(() => {
+                      if (crewMember.status === "ziek") return "Ziek"
+                      if (crewMember.status === "nog-in-te-delen") return "Nog in te delen"
+                      if (!crewMember.regime) return crewMember.status === "aan-boord" ? "Aan boord" : "Thuis"
+                      
                       const statusCalculation = calculateCurrentStatus(
-                        crewMember.regime,
-                        crewMember.thuisSinds,
-                        crewMember.onBoardSince
+                        crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd",
+                        crewMember.thuis_sinds,
+                        crewMember.on_board_since
                       )
                       return statusCalculation.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
                     })()}

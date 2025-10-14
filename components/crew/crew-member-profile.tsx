@@ -11,6 +11,7 @@ import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 
 const POSITION_OPTIONS = [
   "Kapitein",
@@ -61,19 +62,58 @@ const DIPLOMA_OPTIONS = [
 interface Props {
   crewMemberId: string
   onProfileUpdate?: () => void
+  autoEdit?: boolean
 }
 
-export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
+export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = false }: Props) {
   const { crew, ships, loading, error, updateCrew } = useSupabaseData()
   const [isEditing, setIsEditing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [editData, setEditData] = useState<Record<string, any>>({})
+  const [showOutDialog, setShowOutDialog] = useState(false)
+  const [outDate, setOutDate] = useState("")
+  const [outReason, setOutReason] = useState("")
+  const [resetRotation, setResetRotation] = useState(false)
+  const [newRotationDate, setNewRotationDate] = useState("")
+
+  const handleMarkOutOfService = async () => {
+    if (!outDate || !outReason) {
+      alert("Vul een datum en reden in")
+      return
+    }
+    try {
+      // Update crew member in Supabase met status, datum en reden
+      await updateCrew(crewMemberId, {
+        status: 'uit-dienst',
+        ship_id: null,
+        out_of_service_date: outDate,
+        out_of_service_reason: outReason
+      } as any)
+
+      // Sluit dialoog en reset velden
+      setShowOutDialog(false)
+      setOutDate("")
+      setOutReason("")
+      if (onProfileUpdate) onProfileUpdate()
+      alert("Bemanningslid is uit dienst gezet")
+    } catch (e) {
+      console.error(e)
+      alert("Kon het bemanningslid niet uit dienst zetten")
+    }
+  }
 
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Auto-open edit mode if autoEdit is true
+  useEffect(() => {
+    if (autoEdit && mounted && !isEditing) {
+      setIsEditing(true)
+    }
+  }, [autoEdit, mounted, isEditing])
 
   // Find the crew member
   const crewMember = crew.find((member: any) => member.id === crewMemberId)
@@ -92,8 +132,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
         phone: crewMember.phone || "",
         email: crewMember.email || "",
         birth_date: crewMember.birth_date || "",
-        birth_place: (crewMember as any).birth_place || "", // UI only field
-        matricule: (crewMember as any).matricule || "",
+        expected_start_date: (crewMember as any).expected_start_date || "",
         address: crewMember.address || {
           street: "",
           city: "",
@@ -211,7 +250,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
       console.log('Updating crew member with data:', editData)
       
       // Prepare data for Supabase (only include fields that exist in the database)
-      const supabaseData = {
+      const supabaseData: any = {
         first_name: editData.first_name,
         last_name: editData.last_name,
         nationality: editData.nationality,
@@ -222,9 +261,40 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
         phone: editData.phone,
         email: editData.email,
         birth_date: editData.birth_date,
+        expected_start_date: editData.expected_start_date,
         address: editData.address,
         diplomas: editData.diplomas,
         notes: editData.notes
+      }
+      
+      // Reset rotatie als gevraagd
+      if (resetRotation) {
+        const rotationDate = newRotationDate || new Date().toISOString().split('T')[0]
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const startDate = new Date(rotationDate)
+        startDate.setHours(0, 0, 0, 0)
+        
+        if (startDate > today) {
+          // Toekomstige start: gebruik expected_start_date
+          supabaseData.expected_start_date = rotationDate
+          supabaseData.on_board_since = null
+          supabaseData.thuis_sinds = today.toISOString().split('T')[0]
+          supabaseData.status = "thuis"
+          console.log('Resetting rotation to future date (expected_start_date):', rotationDate)
+        } else {
+          // Start vandaag of in verleden: begin rotatie direct
+          supabaseData.on_board_since = rotationDate
+          supabaseData.thuis_sinds = null
+          supabaseData.expected_start_date = null
+          supabaseData.status = "thuis"
+          console.log('Resetting rotation to current/past date (on_board_since):', rotationDate)
+        }
+      }
+      
+      // Als dit een aangenomen kandidaat is, update de sub_status
+      if (autoEdit && crewMember.status === "nog-in-te-delen") {
+        supabaseData.sub_status = "wacht-op-startdatum"
       }
       
       console.log('Sending to Supabase:', supabaseData)
@@ -248,8 +318,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
             phone: editData.phone,
             email: editData.email,
             birthDate: editData.birth_date,
-            birthPlace: editData.birth_place || "",
-            matricule: editData.matricule,
+            expectedStartDate: editData.expected_start_date,
             address: editData.address,
             diplomas: editData.diplomas,
             notes: editData.notes
@@ -261,6 +330,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
       }
       
       setIsEditing(false)
+      setResetRotation(false)
+      setNewRotationDate("")
       if (onProfileUpdate) {
         onProfileUpdate()
       }
@@ -276,6 +347,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
 
   const handleCancel = () => {
     setIsEditing(false)
+    setResetRotation(false)
+    setNewRotationDate("")
     // Reset edit data to original values
     if (crewMember) {
       setEditData({
@@ -393,6 +466,32 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Banner voor nieuwe aangenomen kandidaat */}
+      {autoEdit && (
+        <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 mb-4">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 text-green-600 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-green-900">Kandidaat Aangenomen - Vul het profiel compleet in</h3>
+              <p className="text-sm text-green-800 mt-1">
+                Vul alle verplichte velden (*) in om het bemanningslid klaar te maken voor indeling:
+              </p>
+              <ul className="text-sm text-green-800 mt-2 ml-4 list-disc space-y-1">
+                <li><strong className="text-red-700">Verwachte Startdatum</strong> - CRUCIAAL voor het automatische rotatie systeem!</li>
+                <li><strong>Regime</strong> - Kies het werkschema (1/1, 2/2, of 3/3)</li>
+                <li><strong>Geboortedatum</strong> - Verplicht voor administratie</li>
+                <li><strong>Adres</strong> - Volledig adres invullen</li>
+                <li><strong>Diploma's</strong> - Selecteer alle relevante diploma's</li>
+                <li><strong>Schip</strong> - Wijs een schip toe als deze al bekend is</li>
+              </ul>
+              <p className="text-sm text-green-800 mt-2 font-medium">
+                ⚠️ Zonder startdatum kan het rotatie systeem niet automatisch berekenen wanneer iemand aan boord of thuis is!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hoofdprofiel */}
       <Card>
       <CardHeader>
@@ -436,6 +535,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
               )}
               <Badge className={(() => {
                 if (crewMember.status === "ziek") return "bg-red-100 text-red-800"
+                if (crewMember.status === "nog-in-te-delen") return "bg-gray-100 text-gray-800"
                 if (!crewMember.regime) return getStatusColor(crewMember.status)
                 
                 const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
@@ -443,6 +543,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
               })()}>
                 {(() => {
                   if (crewMember.status === "ziek") return "Ziek"
+                  if (crewMember.status === "nog-in-te-delen") return "Nog in te delen"
                   if (!crewMember.regime) return crewMember.status === "aan-boord" ? "Aan boord" : "Thuis"
                   
                   const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
@@ -463,6 +564,13 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Uit dienst knop */}
+        <div className="flex justify-end">
+          <Button variant="destructive" onClick={() => setShowOutDialog(true)}>
+            <Trash2 className="w-4 h-4 mr-2" /> Bemanningslid uit dienst
+          </Button>
+        </div>
+
         {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
@@ -497,6 +605,26 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
                 {crewMember.regime && crewMember.regime !== "Altijd" && (
                   <div className="mt-1 text-xs text-gray-500">
                     {(() => {
+                      // Als status "nog-in-te-delen" en er is een verwachte startdatum
+                      if (crewMember.status === "nog-in-te-delen" && (crewMember as any).expected_start_date) {
+                        const today = new Date()
+                        today.setHours(0, 0, 0, 0)
+                        const startDate = new Date((crewMember as any).expected_start_date)
+                        startDate.setHours(0, 0, 0, 0)
+                        const daysUntilStart = Math.floor((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                        
+                        if (daysUntilStart < 0) {
+                          return `⚠️ Startdatum ${Math.abs(daysUntilStart)} dag${Math.abs(daysUntilStart) !== 1 ? 'en' : ''} geleden!`
+                        } else if (daysUntilStart === 0) {
+                          return `🚀 Start vandaag!`
+                        } else if (daysUntilStart === 1) {
+                          return `🚀 Start morgen!`
+                        } else {
+                          return `Start over ${daysUntilStart} dagen`
+                        }
+                      }
+                      
+                      // Anders normale rotatie berekening
                       const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
                       return `Volgende wijziging: ${statusCalculation.daysUntilRotation} dagen`
                     })()}
@@ -510,6 +638,38 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
                 <label className="text-sm font-medium text-gray-700">Huidig Schip</label>
                 {renderField("Schip", crewMember.ship_id, "ship_id", "select")}
               </div>
+
+              {/* Reset Rotatie Optie */}
+              {isEditing && (
+                <div className="border-l-4 border-blue-500 bg-blue-50 p-4 space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="resetRotation"
+                      checked={resetRotation}
+                      onChange={(e) => setResetRotation(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <label htmlFor="resetRotation" className="text-sm font-medium text-gray-900 cursor-pointer">
+                      🔄 Start nieuwe rotatie (bij schip/regime wijziging)
+                    </label>
+                  </div>
+                  {resetRotation && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Startdatum nieuwe rotatie</label>
+                      <Input
+                        type="date"
+                        value={newRotationDate}
+                        onChange={(e) => setNewRotationDate(e.target.value)}
+                        placeholder={new Date().toISOString().split('T')[0]}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Laat leeg voor vandaag. Persoon start "thuis" en rotatie begint vanaf deze datum.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-medium text-gray-700">Matricule Nummer</label>
@@ -644,6 +804,22 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
         )}
           </div>
 
+        {/* Verwachte Startdatum - BELANGRIJK voor rotatie systeem */}
+        {crewMember.status === "nog-in-te-delen" && (
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-2">
+              <Calendar className="w-5 h-5 text-blue-600 mt-0.5" />
+              <div className="flex-1">
+                <label className="text-sm font-semibold text-blue-900">Verwachte Startdatum *</label>
+                <p className="text-xs text-blue-700 mb-2">
+                  Deze datum wordt gebruikt om het automatische rotatie systeem te starten
+                </p>
+                {renderField("Verwachte Startdatum", (crewMember as any).expected_start_date, "expected_start_date", "date")}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Notes */}
           <div>
             <label className="text-sm font-medium text-gray-700">Notities</label>
@@ -714,6 +890,29 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate }: Props) {
         )}
       </CardContent>
     </Card>
+
+    {/* Uit dienst dialog */}
+    <Dialog open={showOutDialog} onOpenChange={setShowOutDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Zet bemanningslid uit dienst</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700">Datum uit dienst</label>
+            <Input type="date" value={outDate} onChange={(e) => setOutDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">Reden</label>
+            <Textarea value={outReason} onChange={(e) => setOutReason(e.target.value)} placeholder="Bijv. einde contract, eigen verzoek, etc." />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowOutDialog(false)}>Annuleren</Button>
+          <Button variant="destructive" onClick={handleMarkOutOfService}>Bevestigen</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
 
     </div>

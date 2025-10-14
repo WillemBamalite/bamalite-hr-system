@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Progress } from '@/components/ui/progress'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MobileHeaderNav } from '@/components/ui/mobile-header-nav'
 import { DashboardButton } from '@/components/ui/dashboard-button'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
@@ -22,19 +24,25 @@ import {
   Calendar,
   FileText,
   Search,
-  Filter
+  Filter,
+  Wallet
 } from 'lucide-react'
 
 export default function LeningenPage() {
-  const { crew, loans, addLoan, completeLoan, loading } = useSupabaseData()
+  const { crew, loans, addLoan, completeLoan, makePayment, loading } = useSupabaseData()
   const [newLoanDialog, setNewLoanDialog] = useState(false)
   const [completeLoanDialog, setCompleteLoanDialog] = useState<{ isOpen: boolean; loanId: string; loanName: string }>({
     isOpen: false,
     loanId: "",
     loanName: ""
   })
+  const [paymentDialog, setPaymentDialog] = useState<{ isOpen: boolean; loanId: string; loanName: string; maxAmount: number }>({
+    isOpen: false,
+    loanId: "",
+    loanName: "",
+    maxAmount: 0
+  })
   const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
   const [newLoanData, setNewLoanData] = useState({
     crew_id: "",
     name: "",
@@ -43,21 +51,28 @@ export default function LeningenPage() {
     reason: ""
   })
   const [completeNotes, setCompleteNotes] = useState("")
-
-  // Filter loans based on search and status
-  const filteredLoans = loans.filter((loan) => {
-    const crewMember = crew.find((c) => c.id === loan.crew_id)
-    const crewName = crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : 'Onbekend'
-    
-    const matchesSearch = searchTerm === "" || 
-      crewName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      loan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      loan.reason.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = statusFilter === "all" || loan.status === statusFilter
-    
-    return matchesSearch && matchesStatus
+  const [paymentData, setPaymentData] = useState({
+    amount: "",
+    note: ""
   })
+
+  // Filter loans based on search only (status filtered by tabs)
+  const filterLoansBySearch = (loansToFilter: any[]) => {
+    return loansToFilter.filter((loan) => {
+      const crewMember = crew.find((c) => c.id === loan.crew_id)
+      const crewName = crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : 'Onbekend'
+      
+      const matchesSearch = searchTerm === "" || 
+        crewName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        loan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        loan.reason.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      return matchesSearch
+    })
+  }
+
+  const openLoansFiltered = filterLoansBySearch(loans.filter(loan => loan.status === 'open'))
+  const completedLoansFiltered = filterLoansBySearch(loans.filter(loan => loan.status === 'voltooid'))
 
   const handleAddLoan = async () => {
     try {
@@ -73,10 +88,13 @@ export default function LeningenPage() {
       }
 
       await addLoan({
+        id: `loan-${Date.now()}`,
         crew_id: newLoanData.crew_id,
         name: newLoanData.name,
         period: newLoanData.period,
         amount: parsedAmount,
+        amount_paid: 0,
+        amount_remaining: parsedAmount,
         reason: newLoanData.reason,
         status: 'open'
       })
@@ -87,6 +105,31 @@ export default function LeningenPage() {
     } catch (error) {
       console.error("Error adding loan:", error)
       const message = error instanceof Error ? error.message : 'Fout bij het toevoegen van de lening'
+      alert(message)
+    }
+  }
+
+  const handlePayment = async () => {
+    try {
+      if (!paymentData.amount || parseFloat(paymentData.amount) <= 0) {
+        alert("Vul een geldig bedrag in")
+        return
+      }
+
+      const paymentAmount = parseFloat(paymentData.amount)
+      if (paymentAmount > paymentDialog.maxAmount) {
+        alert(`Het bedrag mag niet hoger zijn dan €${paymentDialog.maxAmount.toFixed(2)}`)
+        return
+      }
+
+      await makePayment(paymentDialog.loanId, paymentAmount, paymentData.note)
+
+      setPaymentDialog({ isOpen: false, loanId: "", loanName: "", maxAmount: 0 })
+      setPaymentData({ amount: "", note: "" })
+      alert(`Betaling van €${paymentAmount.toFixed(2)} succesvol verwerkt!`)
+    } catch (error) {
+      console.error("Error making payment:", error)
+      const message = error instanceof Error ? error.message : 'Fout bij het verwerken van de betaling'
       alert(message)
     }
   }
@@ -193,18 +236,11 @@ export default function LeningenPage() {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Search Filter */}
       <Card className="mb-6">
-        <CardHeader>
-          <div className="flex items-center space-x-2">
-            <Filter className="w-5 h-5 text-gray-600" />
-            <h3 className="text-lg font-semibold">Filters</h3>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Zoeken</label>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
@@ -215,117 +251,145 @@ export default function LeningenPage() {
                 />
               </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Alle statussen" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Alle statussen</SelectItem>
-                  <SelectItem value="open">Openstaand</SelectItem>
-                  <SelectItem value="voltooid">Voltooid</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
+            {searchTerm && (
               <Button 
                 variant="outline" 
-                onClick={() => {
-                  setSearchTerm("")
-                  setStatusFilter("all")
-                }}
-                className="w-full"
+                onClick={() => setSearchTerm("")}
               >
-                Filters Wissen
+                Wissen
               </Button>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Results */}
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <p className="text-sm text-gray-600">
-            {filteredLoans.length} van {loans.length} leningen
-          </p>
-        </div>
-      </div>
+      {/* Loans Tabs */}
+      <Tabs defaultValue="open" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsTrigger value="open" className="flex items-center gap-2">
+            <Clock className="w-4 h-4" />
+            Openstaand ({openLoansFiltered.length})
+          </TabsTrigger>
+          <TabsTrigger value="completed" className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            Voltooid ({completedLoansFiltered.length})
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Loans List */}
-      {filteredLoans.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Geen leningen gevonden</h3>
-            <p className="text-gray-500">
-              {loans.length === 0 
-                ? "Er zijn nog geen leningen geregistreerd."
-                : "Probeer andere filters te gebruiken."
-              }
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {filteredLoans.map((loan) => {
+        {/* Open Loans Tab */}
+        <TabsContent value="open">
+          {openLoansFiltered.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Geen openstaande leningen</h3>
+                <p className="text-gray-500">
+                  {loans.filter(l => l.status === 'open').length === 0 
+                    ? "Er zijn nog geen openstaande leningen."
+                    : "Geen leningen gevonden met deze zoekcriteria."
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {openLoansFiltered.map((loan) => {
             const crewMember = crew.find((c) => c.id === loan.crew_id)
             return (
               <Card key={loan.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1">
-                        <User className="w-4 h-4 text-gray-400" />
-                        <h4 className="font-medium text-gray-900">
-                          {crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : 'Onbekend'}
-                        </h4>
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                    {/* Left side: Details */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <User className="w-4 h-4 text-gray-400" />
+                          <h4 className="font-medium text-gray-900">
+                            {crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : 'Onbekend'}
+                          </h4>
+                        </div>
+                        <p className="text-sm text-gray-600">{loan.name}</p>
                       </div>
-                      <p className="text-sm text-gray-600">{loan.name}</p>
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-700">Periode</span>
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <Calendar className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-700">Periode</span>
+                        </div>
+                        <p className="text-sm text-gray-600">{loan.period}</p>
                       </div>
-                      <p className="text-sm text-gray-600">{loan.period}</p>
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1">
-                        <Euro className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-700">Bedrag</span>
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <Euro className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-700">Totaal Bedrag</span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900">€{loan.amount.toFixed(2)}</p>
+                        {loan.status === 'open' && (
+                          <>
+                            <p className="text-xs text-green-600">Betaald: €{(loan.amount_paid || 0).toFixed(2)}</p>
+                            <p className="text-xs text-orange-600">Nog te betalen: €{(loan.amount_remaining || loan.amount).toFixed(2)}</p>
+                          </>
+                        )}
                       </div>
-                      <p className="text-sm font-semibold text-gray-900">€{loan.amount.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1">
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-700">Reden</span>
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <FileText className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-700">Reden</span>
+                        </div>
+                        <p className="text-sm text-gray-600">{loan.reason}</p>
                       </div>
-                      <p className="text-sm text-gray-600">{loan.reason}</p>
                     </div>
-                    <div className="flex justify-end space-x-2">
+                    
+                    {/* Right side: Status & Actions */}
+                    <div className="flex flex-col items-end space-y-2 md:min-w-[280px]">
                       <Badge 
                         className={loan.status === 'open' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}
                       >
                         {loan.status === 'open' ? 'Openstaand' : 'Voltooid'}
                       </Badge>
                       {loan.status === 'open' && (
-                        <Button
-                          size="sm"
-                          onClick={() => setCompleteLoanDialog({
-                            isOpen: true,
-                            loanId: loan.id,
-                            loanName: loan.name
-                          })}
-                        >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Afronden
-                        </Button>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPaymentDialog({
+                              isOpen: true,
+                              loanId: loan.id,
+                              loanName: loan.name,
+                              maxAmount: loan.amount_remaining || loan.amount
+                            })}
+                          >
+                            <Wallet className="w-4 h-4 mr-1" />
+                            Betalen
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => setCompleteLoanDialog({
+                              isOpen: true,
+                              loanId: loan.id,
+                              loanName: loan.name
+                            })}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Afronden
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
+                  
+                  {/* Progress Bar */}
+                  {loan.status === 'open' && (
+                    <div className="mb-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-medium text-gray-600">Voortgang</span>
+                        <span className="text-xs text-gray-500">
+                          {Math.round(((loan.amount_paid || 0) / loan.amount) * 100)}%
+                        </span>
+                      </div>
+                      <Progress value={((loan.amount_paid || 0) / loan.amount) * 100} className="h-2" />
+                    </div>
+                  )}
+                  
                   {loan.completed_at && (
                     <div className="mt-3 pt-3 border-t">
                       <p className="text-xs text-gray-500">
@@ -334,12 +398,127 @@ export default function LeningenPage() {
                       </p>
                     </div>
                   )}
+                  
+                  {/* Payment History */}
+                  {loan.payment_history && loan.payment_history.length > 0 && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-xs font-medium text-gray-600 mb-2">Betalingshistorie</p>
+                      <div className="space-y-1">
+                        {loan.payment_history.map((payment: any, idx: number) => (
+                          <div key={idx} className="flex justify-between text-xs text-gray-500">
+                            <span>{format(new Date(payment.date), 'dd-MM-yyyy')}: {payment.note}</span>
+                            <span className="font-medium text-green-600">€{payment.amount.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )
           })}
-        </div>
-      )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Completed Loans Tab */}
+        <TabsContent value="completed">
+          {completedLoansFiltered.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <CheckCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Geen voltooide leningen</h3>
+                <p className="text-gray-500">
+                  {loans.filter(l => l.status === 'voltooid').length === 0 
+                    ? "Er zijn nog geen voltooide leningen."
+                    : "Geen leningen gevonden met deze zoekcriteria."
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {completedLoansFiltered.map((loan) => {
+                const crewMember = crew.find((c) => c.id === loan.crew_id)
+                return (
+                  <Card key={loan.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                        {/* Left side: Details */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                          <div>
+                            <div className="flex items-center space-x-2 mb-1">
+                              <User className="w-4 h-4 text-gray-400" />
+                              <h4 className="font-medium text-gray-900">
+                                {crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : 'Onbekend'}
+                              </h4>
+                            </div>
+                            <p className="text-sm text-gray-600">{loan.name}</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2 mb-1">
+                              <Calendar className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm font-medium text-gray-700">Periode</span>
+                            </div>
+                            <p className="text-sm text-gray-600">{loan.period}</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2 mb-1">
+                              <Euro className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm font-medium text-gray-700">Totaal Bedrag</span>
+                            </div>
+                            <p className="text-sm font-semibold text-gray-900">€{loan.amount.toFixed(2)}</p>
+                            <p className="text-xs text-green-600">Volledig betaald</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2 mb-1">
+                              <FileText className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm font-medium text-gray-700">Reden</span>
+                            </div>
+                            <p className="text-sm text-gray-600">{loan.reason}</p>
+                          </div>
+                        </div>
+                        
+                        {/* Right side: Status */}
+                        <div className="flex flex-col items-end space-y-2 md:min-w-[280px]">
+                          <Badge className="bg-green-100 text-green-800">
+                            Voltooid
+                          </Badge>
+                        </div>
+                      </div>
+                      
+                      {/* Completion Info */}
+                      {loan.completed_at && (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-xs text-gray-500">
+                            Afgerond op: {format(new Date(loan.completed_at), 'dd-MM-yyyy')}
+                            {loan.notes && ` - ${loan.notes}`}
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* Payment History */}
+                      {loan.payment_history && loan.payment_history.length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-xs font-medium text-gray-600 mb-2">Betalingshistorie</p>
+                          <div className="space-y-1">
+                            {loan.payment_history.map((payment: any, idx: number) => (
+                              <div key={idx} className="flex justify-between text-xs text-gray-500">
+                                <span>{format(new Date(payment.date), 'dd-MM-yyyy')}: {payment.note}</span>
+                                <span className="font-medium text-green-600">€{payment.amount.toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* New Loan Dialog */}
       <Dialog open={newLoanDialog} onOpenChange={setNewLoanDialog}>
@@ -423,6 +602,61 @@ export default function LeningenPage() {
               </Button>
               <Button onClick={handleAddLoan}>
                 Toevoegen
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Dialog */}
+      <Dialog open={paymentDialog.isOpen} onOpenChange={(open) => setPaymentDialog({...paymentDialog, isOpen: open})}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Betaling Registreren</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Betaling voor lening: <span className="font-medium">{paymentDialog.loanName}</span>
+            </p>
+            <div>
+              <Label htmlFor="paymentAmount">Bedrag (max €{paymentDialog.maxAmount.toFixed(2)}) *</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">€</span>
+                <Input
+                  id="paymentAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={paymentDialog.maxAmount}
+                  value={paymentData.amount}
+                  onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})}
+                  placeholder="0.00"
+                  className="pl-8"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Nog te betalen: €{paymentDialog.maxAmount.toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="paymentNote">Notitie (optioneel)</Label>
+              <Input
+                id="paymentNote"
+                value={paymentData.note}
+                onChange={(e) => setPaymentData({...paymentData, note: e.target.value})}
+                placeholder="Bijv. Betaling maand januari"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => {
+                setPaymentDialog({isOpen: false, loanId: "", loanName: "", maxAmount: 0})
+                setPaymentData({amount: "", note: ""})
+              }}>
+                Annuleren
+              </Button>
+              <Button onClick={handlePayment}>
+                <Wallet className="w-4 h-4 mr-1" />
+                Betaling Bevestigen
               </Button>
             </div>
           </div>

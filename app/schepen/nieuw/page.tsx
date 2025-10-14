@@ -20,7 +20,8 @@ export default function NewShipPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [formData, setFormData] = useState({
     shipId: '',
-    shipName: ''
+    shipName: '',
+    company: 'Bamalite S.A.'
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,7 +33,11 @@ export default function NewShipPage() {
       const newShip = {
         id: formData.shipId,
         name: formData.shipName,
-        max_crew: 8
+        max_crew: 8,
+        status: 'Operationeel', // Required field in Supabase
+        location: '', // Required field in Supabase
+        route: '', // Required field in Supabase
+        company: formData.company
       };
       
       await addShip(newShip);
@@ -42,7 +47,8 @@ export default function NewShipPage() {
       // Reset form
       setFormData({
         shipId: '',
-        shipName: ''
+        shipName: '',
+        company: 'Bamalite S.A.'
       });
       
       // Ga terug naar dashboard na 2 seconden
@@ -52,7 +58,8 @@ export default function NewShipPage() {
       
     } catch (error) {
       console.error('Error adding ship:', error);
-      alert('Er is een fout opgetreden bij het toevoegen van het schip.');
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      alert(`Er is een fout opgetreden bij het toevoegen van het schip: ${error?.message || 'Onbekende fout'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -133,6 +140,22 @@ export default function NewShipPage() {
                     required
                     className="w-full"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Firma *</Label>
+                  <Select value={formData.company} onValueChange={(v) => setFormData(prev => ({ ...prev, company: v }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Kies firma" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Bamalite S.A.">Bamalite S.A.</SelectItem>
+                      <SelectItem value="Devel Shipping S.A.">Devel Shipping S.A.</SelectItem>
+                      <SelectItem value="Brugo Shipping SARL.">Brugo Shipping SARL.</SelectItem>
+                      <SelectItem value="Europe Shipping AG.">Europe Shipping AG.</SelectItem>
+                      <SelectItem value="Alcina S.A.">Alcina S.A.</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">

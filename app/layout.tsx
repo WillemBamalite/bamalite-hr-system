@@ -4,13 +4,14 @@ import Link from "next/link"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { CrewProvider } from "@/components/crew/CrewProvider"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AuthProvider } from "@/contexts/AuthContext"
 import { Toaster } from "@/components/ui/toaster"
 import { Inter } from "next/font/google"
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Bamalite HR System',
+  title: 'Bemanningslijst',
   description: 'Bemanningslijst management systeem - Updated 2025',
 }
 
@@ -34,11 +35,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <CrewProvider>
-            <DashboardHeader />
-            {children}
-            <Toaster />
-          </CrewProvider>
+          <AuthProvider>
+            <CrewProvider>
+              <DashboardHeader />
+              {children}
+              <Toaster />
+            </CrewProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

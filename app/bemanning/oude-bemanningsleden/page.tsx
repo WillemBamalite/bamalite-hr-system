@@ -1,15 +1,14 @@
 "use client"
 
-import { crewDatabase } from "@/data/crew-database"
-import { getOutOfServiceCrew, getOutOfServiceRecord } from "@/utils/out-of-service-storage"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Users } from "lucide-react"
+import { ArrowLeft, Users, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 
 const RANK_ORDER = [
   "Schipper",
@@ -21,72 +20,37 @@ const RANK_ORDER = [
 ];
 
 export default function FormerCrewPage() {
-  const [formerCrew, setFormerCrew] = useState<any[]>([])
+  const { crew, deleteCrew } = useSupabaseData()
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
-  const [refreshKey, setRefreshKey] = useState(0)
+  
+  // Filter crew members die uit dienst zijn
+  const formerCrew = crew.filter((c: any) => c.status === 'uit-dienst')
 
-  // Functie om de data te laden
-  const loadData = () => {
-    // Filter crew members who are out of service
-    const outOfServiceRecords = getOutOfServiceCrew()
-    
-    // Haal crew data op uit zowel de geïmporteerde database als localStorage
-    let allCrewData = { ...crewDatabase }
-    
-    if (typeof window !== 'undefined') {
-      try {
-        const localStorageData = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        allCrewData = { ...allCrewData, ...localStorageData }
-      } catch (error) {
-        console.error('Error reading localStorage:', error)
-      }
-    }
-    
-    const filteredCrew = Object.values(allCrewData).filter((crew: any) => 
-      outOfServiceRecords.some(record => record.crewMemberId === crew.id)
-    )
-    
-    // Debug logging
-
-    
-    setFormerCrew(filteredCrew)
-
-    // Group by rank
-    const groupedData: { [rank: string]: any[] } = {}
-    filteredCrew.forEach((crew) => {
-      const rank = RANK_ORDER.includes(crew.position) ? crew.position : "Overig"
-      if (!groupedData[rank]) groupedData[rank] = []
-      groupedData[rank].push(crew)
-    })
-    
-    // Debug logging
-
-    
-    setGrouped(groupedData)
-  }
-
+  // Group by rank whenever crew changes
   useEffect(() => {
-    loadData()
-    
-    // Luister naar localStorage updates
-    const handleStorageUpdate = () => {
-      setRefreshKey(prev => prev + 1)
+    const groupedData: { [rank: string]: any[] } = {}
+    formerCrew.forEach((crewMember: any) => {
+      const rawPos = crewMember.position || "Overig"
+      const normalized = rawPos === "Kapitein" ? "Schipper" : rawPos
+      const rank = RANK_ORDER.includes(normalized) ? normalized : "Overig"
+      if (!groupedData[rank]) groupedData[rank] = []
+      groupedData[rank].push(crewMember)
+    })
+    setGrouped(groupedData)
+  }, [crew.length])
+
+  const handleDeleteCrew = async (crewId: string, fullName: string) => {
+    if (!confirm(`Weet je zeker dat je ${fullName} definitief wilt verwijderen? Dit kan niet ongedaan gemaakt worden.`)) {
+      return
     }
-    
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'crewDatabase' || e.key === 'bamalite-out-of-service-crew') {
-        setRefreshKey(prev => prev + 1)
-      }
+    try {
+      await deleteCrew(crewId)
+      alert('Bemanningslid definitief verwijderd.')
+    } catch (e) {
+      console.error('Definitief verwijderen mislukt:', e)
+      alert('Verwijderen mislukt. Probeer opnieuw.')
     }
-    
-    window.addEventListener('localStorageUpdate', handleStorageUpdate)
-    window.addEventListener('storage', handleStorageChange)
-    
-    return () => {
-      window.removeEventListener('localStorageUpdate', handleStorageUpdate)
-      window.removeEventListener('storage', handleStorageChange)
-    }
-    }, [refreshKey])
+  }
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
@@ -133,40 +97,42 @@ export default function FormerCrewPage() {
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-10 h-10">
                           <AvatarFallback className="bg-gray-100 text-gray-700">
-                            {crew.firstName[0]}{crew.lastName[0]}
+                            {(crew.first_name || "?").charAt(0)}{(crew.last_name || "?").charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <Link href={`/bemanning/${crew.id}`} className="hover:underline">
                             <h3 className="font-semibold text-gray-900 cursor-pointer">
-                              {crew.firstName} {crew.lastName}
+                              {crew.first_name} {crew.last_name}
                             </h3>
                           </Link>
-                          <p className="text-sm text-gray-600">{crew.position}</p>
+                          <p className="text-sm text-gray-600">{crew.position === 'Kapitein' ? 'Schipper' : crew.position}</p>
                         </div>
                       </div>
-                      <Badge className="bg-gray-100 text-gray-800" variant="outline">
-                        Uit dienst
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-gray-100 text-gray-800" variant="outline">
+                          Uit dienst
+                        </Badge>
+                        <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteCrew(crew.id, `${crew.first_name} ${crew.last_name}`)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="space-y-2 text-sm text-gray-700">
-                      {(() => {
-                        const outOfServiceRecord = getOutOfServiceRecord(crew.id)
-                        return outOfServiceRecord ? (
-                          <>
-                            <div>
-                              <strong>Uit dienst sinds:</strong> {new Date(outOfServiceRecord.outOfServiceDate).toLocaleDateString('nl-NL')}
-                            </div>
-                            <div>
-                              <strong>Reden:</strong> {outOfServiceRecord.outOfServiceReason}
-                            </div>
-                          </>
-                        ) : null
-                      })()}
-                      {crew.shipId && (
+                      {crew.out_of_service_date && (
                         <div>
-                          <strong>Laatste schip:</strong> {crew.shipId}
+                          <strong>Uit dienst sinds:</strong> {new Date(crew.out_of_service_date).toLocaleDateString('nl-NL')}
+                        </div>
+                      )}
+                      {crew.out_of_service_reason && (
+                        <div>
+                          <strong>Reden:</strong> {crew.out_of_service_reason}
+                        </div>
+                      )}
+                      {crew.ship_id && (
+                        <div>
+                          <strong>Laatste schip:</strong> {crew.ship_id}
                         </div>
                       )}
                     </div>
@@ -192,40 +158,42 @@ export default function FormerCrewPage() {
                     <div className="flex items-center space-x-3">
                       <Avatar className="w-10 h-10">
                         <AvatarFallback className="bg-gray-100 text-gray-700">
-                          {crew.firstName[0]}{crew.lastName[0]}
+                          {(crew.first_name || "?").charAt(0)}{(crew.last_name || "?").charAt(0)}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <Link href={`/bemanning/${crew.id}`} className="hover:underline">
                           <h3 className="font-semibold text-gray-900 cursor-pointer">
-                            {crew.firstName} {crew.lastName}
+                            {crew.first_name} {crew.last_name}
                           </h3>
                         </Link>
-                        <p className="text-sm text-gray-600">{crew.position}</p>
+                        <p className="text-sm text-gray-600">{crew.position === 'Kapitein' ? 'Schipper' : crew.position}</p>
                       </div>
                     </div>
-                    <Badge className="bg-gray-100 text-gray-800" variant="outline">
-                      Uit dienst
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-gray-100 text-gray-800" variant="outline">
+                        Uit dienst
+                      </Badge>
+                      <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteCrew(crew.id, `${crew.first_name} ${crew.last_name}`)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="space-y-2 text-sm text-gray-700">
-                    {(() => {
-                      const outOfServiceRecord = getOutOfServiceRecord(crew.id)
-                      return outOfServiceRecord ? (
-                        <>
-                          <div>
-                            <strong>Uit dienst sinds:</strong> {new Date(outOfServiceRecord.outOfServiceDate).toLocaleDateString('nl-NL')}
-                          </div>
-                          <div>
-                            <strong>Reden:</strong> {outOfServiceRecord.outOfServiceReason}
-                          </div>
-                        </>
-                      ) : null
-                    })()}
-                    {crew.shipId && (
+                    {crew.out_of_service_date && (
                       <div>
-                        <strong>Laatste schip:</strong> {crew.shipId}
+                        <strong>Uit dienst sinds:</strong> {new Date(crew.out_of_service_date).toLocaleDateString('nl-NL')}
+                      </div>
+                    )}
+                    {crew.out_of_service_reason && (
+                      <div>
+                        <strong>Reden:</strong> {crew.out_of_service_reason}
+                      </div>
+                    )}
+                    {crew.ship_id && (
+                      <div>
+                        <strong>Laatste schip:</strong> {crew.ship_id}
                       </div>
                     )}
                   </div>

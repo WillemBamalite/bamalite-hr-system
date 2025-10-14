@@ -1,7 +1,5 @@
 "use client"
 
-import { shipDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
-import { isCrewMemberOutOfService } from "@/utils/out-of-service-storage"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
 import { useState, useEffect } from "react"
@@ -9,11 +7,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Printer, Users, CheckCircle, Clock, UserX } from "lucide-react"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 
 export function ShipPrintOverview() {
-  // Gebruik de hook voor gecombineerde crew data
-  const { crewDatabase: allCrewData } = useCrewData()
+  // Gebruik Supabase data
+  const { ships, crew, sickLeave, loading, error } = useSupabaseData()
+  
+  // Converteer crew naar oude formaat voor compatibility
+  const allCrewData = crew.reduce((acc: any, c: any) => {
+    acc[c.id] = {
+      id: c.id,
+      firstName: c.first_name,
+      lastName: c.last_name,
+      position: c.position,
+      nationality: c.nationality,
+      regime: c.regime,
+      status: c.status,
+      shipId: c.ship_id,
+      phone: c.phone,
+      onBoardSince: c.on_board_since,
+    }
+    return acc
+  }, {})
 
   // Firma mapping
   const companyMapping = {
@@ -35,8 +50,18 @@ export function ShipPrintOverview() {
     "ms-serenitas": "EUROPE SHIPPING AG."
   }
 
+  // Converteer ships naar oude formaat
+  const shipDatabase = ships.reduce((acc: any, s: any) => {
+    acc[s.id] = {
+      id: s.id,
+      name: s.name,
+      maxCrew: s.max_crew || 8,
+    }
+    return acc
+  }, {})
+
   // Groepeer schepen per firma (exclusief MS Realite voor print)
-  const groupedShips = Object.values(shipDatabase).reduce((acc: any, ship: any) => {
+  const groupedShips = ships.reduce((acc: any, ship: any) => {
     // Skip MS Realite voor print
     if (ship.id === "ms-realite") {
       return acc

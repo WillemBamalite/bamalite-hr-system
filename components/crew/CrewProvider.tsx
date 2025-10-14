@@ -8,16 +8,8 @@ export function CrewProvider({ children }: { children: React.ReactNode }) {
   const [crew, setCrew] = useState<any>(initialCrewDatabase)
 
   useEffect(() => {
-    // Clear all localStorage databases to force fresh data load
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('crewDatabase');
-      localStorage.removeItem('shipDatabase');
-      localStorage.removeItem('documentDatabase');
-      localStorage.removeItem('sickLeaveDatabase');
-      localStorage.removeItem('sickLeaveHistoryDatabase');
-      
-  
-    }
+    // Verwijder GEEN data bij mount; dit brak het toevoegen en direct tonen
+    // Indien ooit nodig, maak een aparte debug-pagina om opslag te legen.
   }, []);
 
   return (

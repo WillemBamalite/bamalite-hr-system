@@ -1,30 +1,54 @@
 "use client"
 import { Button } from "@/components/ui/button"
 import { PrinterIcon as Print, Download, ArrowLeft } from "lucide-react"
-import { shipDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useRouter } from "next/navigation"
 
 export function CrewPrintOverview() {
   const router = useRouter()
+  const { ships, crew, loading, error } = useSupabaseData()
+  
   const handlePrint = () => {
     window.print()
   }
 
   const handleDownload = () => {
     // Hier zou je een PDF kunnen genereren
-
   }
 
+  // Helper: converteer Supabase crew naar oude formaat voor template
+  const convertCrew = (c: any) => ({
+    id: c.id,
+    firstName: c.first_name,
+    lastName: c.last_name,
+    position: c.position,
+    nationality: c.nationality,
+    regime: c.regime,
+    status: c.status,
+    onBoardSince: c.on_board_since,
+    nextRotationDate: null, // TODO: berekenen
+    shipId: c.ship_id,
+    phone: c.phone,
+  })
+
+  // Helper: converteer ship naar oude formaat
+  const convertShip = (s: any) => ({
+    id: s.id,
+    name: s.name,
+    maxCrew: s.max_crew || 8,
+  })
+
   // Groepeer bemanning per schip
-  const shipCrewData = Object.values(shipDatabase).map((ship: any) => {
-    const shipCrew = Object.values(crewDatabase).filter((crew: any) => crew.shipId === ship.id && crew.status !== "uit-dienst")
-    const onBoard = shipCrew.filter((crew: any) => crew.status === "aan-boord")
-    const atHome = shipCrew.filter((crew: any) => crew.status === "thuis")
-    const sick = shipCrew.filter((crew: any) => crew.status === "ziek")
+  const shipCrewData = ships.map((ship: any) => {
+    const shipCrew = crew
+      .filter((c: any) => c.ship_id === ship.id && c.status !== "uit-dienst")
+      .map(convertCrew)
+    const onBoard = shipCrew.filter((c: any) => c.status === "aan-boord")
+    const atHome = shipCrew.filter((c: any) => c.status === "thuis")
+    const sick = shipCrew.filter((c: any) => c.status === "ziek")
 
     return {
-      ship,
+      ship: convertShip(ship),
       onBoard,
       atHome,
       sick,
@@ -33,10 +57,14 @@ export function CrewPrintOverview() {
   })
 
   // Beschikbare bemanning (niet toegewezen)
-  const availableCrew = Object.values(crewDatabase).filter((crew: any) => !crew.shipId && crew.status !== "uit-dienst")
+  const availableCrew = crew
+    .filter((c: any) => !c.ship_id && c.status !== "uit-dienst")
+    .map(convertCrew)
 
   // Zieke bemanning
-  const sickCrew = Object.values(crewDatabase).filter((crew: any) => crew.status === "ziek" && crew.status !== "uit-dienst")
+  const sickCrew = crew
+    .filter((c: any) => c.status === "ziek" && c.status !== "uit-dienst")
+    .map(convertCrew)
 
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {

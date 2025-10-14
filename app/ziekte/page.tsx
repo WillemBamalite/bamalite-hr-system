@@ -25,14 +25,18 @@ export default function ZiektePage() {
   const [editForm, setEditForm] = useState({
     hasCertificate: false,
     certificateValidUntil: "",
+    salaryPercentage: "100",
+    paidBy: "Bamalite S.A.",
     notes: ""
   })
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
   const [recoveryRecord, setRecoveryRecord] = useState<any>(null)
   const [recoveryDate, setRecoveryDate] = useState("")
 
-  // Filter actieve ziekmeldingen (inclusief wacht-op-briefje)
-  const activeSickLeaves = sickLeave
+  // Filter actieve ziekmeldingen (inclusief wacht-op-briefje, EXCLUSIEF afgerond)
+  const activeSickLeaves = sickLeave.filter((s: any) => 
+    s.status === "actief" || s.status === "wacht-op-briefje"
+  )
 
   // Combineer ziekmeldingen met crew data
   const sickLeaveRecords = activeSickLeaves
@@ -146,8 +150,10 @@ export default function ZiektePage() {
   const handleEdit = (record: any) => {
     setEditingRecord(record)
     setEditForm({
-      hasCertificate: !!record.certificate_valid_until,
+      hasCertificate: !!record.certificate_valid_until, // Heeft briefje als deze datum gevuld is
       certificateValidUntil: record.certificate_valid_until ? format(new Date(record.certificate_valid_until), "yyyy-MM-dd") : "",
+      salaryPercentage: record.salary_percentage?.toString() || "100",
+      paidBy: record.paid_by || "Bamalite S.A.",
       notes: record.notes || ""
     })
     setEditDialogOpen(true)
@@ -158,10 +164,12 @@ export default function ZiektePage() {
 
     try {
       // Update de record in Supabase
+      // Note: dokters_verklaring is GEEN database kolom, wordt afgeleid van certificate_valid_until
       const updatedRecord: any = {
-        has_certificate: editForm.hasCertificate,
-        certificate_valid_until: editForm.certificateValidUntil,
-        notes: editForm.notes
+        certificate_valid_until: editForm.hasCertificate && editForm.certificateValidUntil ? editForm.certificateValidUntil : null,
+        salary_percentage: parseInt(editForm.salaryPercentage),
+        paid_by: editForm.paidBy,
+        notes: editForm.notes || null
       }
 
       // Update status naar "actief" als er een briefje is
@@ -169,19 +177,23 @@ export default function ZiektePage() {
         updatedRecord.status = "actief"
       }
 
-      // Hier zou je de Supabase update functie moeten aanroepen
-      // Voor nu, we reloaden de data
-      window.location.reload()
+      // Update in Supabase
+      await updateSickLeave(editingRecord.id, updatedRecord)
 
       setEditDialogOpen(false)
       setEditingRecord(null)
       setEditForm({
         hasCertificate: false,
         certificateValidUntil: "",
+        salaryPercentage: "100",
+        paidBy: "Bamalite S.A.",
         notes: ""
       })
+      
+      alert("Ziekmelding bijgewerkt!")
     } catch (error) {
       console.error("Error updating sick leave record:", error)
+      alert("Fout bij het bijwerken van de ziekmelding")
     }
   }
 
@@ -213,22 +225,53 @@ export default function ZiektePage() {
       })
       console.log('✅ Sick leave updated successfully')
 
-      // Update crew member status naar "thuis" en zet de aan boord datum
+      // Update crew member status naar "thuis"
       console.log('Updating crew member...')
-      await updateCrew(recoveryRecord.crewMember.id, {
-        status: "thuis",
-        on_board_since: recoveryDate // Vanaf deze datum start de rotatie weer
-      })
+      
+      // Check of terugkeerdatum in de toekomst ligt
+      const recoveryDateObj = new Date(recoveryDate)
+      recoveryDateObj.setHours(0, 0, 0, 0)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const isFutureDate = recoveryDateObj > today
+      
+      if (isFutureDate) {
+        // Terugkeerdatum in de toekomst: persoon blijft "thuis" tot die datum
+        console.log('Recovery date is in the future, setting expected_start_date')
+        await updateCrew(recoveryRecord.crewMember.id, {
+          status: "thuis",
+          expected_start_date: recoveryDate, // Wacht tot deze datum om aan boord te gaan
+          on_board_since: null, // Nog niet aan boord
+          thuis_sinds: today.toISOString().split('T')[0] // Thuis vanaf vandaag
+        })
+      } else {
+        // Terugkeerdatum vandaag of in het verleden: persoon gaat direct aan boord
+        console.log('Recovery date is today or in the past, starting rotation immediately')
+        await updateCrew(recoveryRecord.crewMember.id, {
+          status: "thuis",
+          on_board_since: recoveryDate, // Vanaf deze datum start de rotatie
+          expected_start_date: null, // Geen wachtdatum
+          thuis_sinds: null // Rotatie is gestart
+        })
+      }
+      
       console.log('✅ Crew member updated successfully')
+
+      // Bereken ziekte duur
+      const sickStartDate = new Date(recoveryRecord.start_date)
+      const sickEndDate = new Date(recoveryDate)
+      const daysCount = Math.floor((sickEndDate.getTime() - sickStartDate.getTime()) / (1000 * 60 * 60 * 24))
 
       // Voeg 7 dagen "terug te staan" toe aan de history
       const standBackRecord = {
         id: `standback-${Date.now()}`,
         crew_member_id: recoveryRecord.crewMember.id,
-        start_date: recoveryDate,
+        sick_leave_id: recoveryRecord.id,
+        start_date: recoveryRecord.start_date,
         end_date: recoveryDate,
-        days_count: 0,
-        description: `Terug te staan na ziekte (${recoveryRecord.crewMember.first_name} ${recoveryRecord.crewMember.last_name})`,
+        days_count: daysCount,
+        description: recoveryRecord.reason || 'Geen klacht opgegeven',
         stand_back_days_required: 7,
         stand_back_days_completed: 0,
         stand_back_days_remaining: 7,
@@ -538,7 +581,7 @@ export default function ZiektePage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Ziektebriefje bewerken</DialogTitle>
+            <DialogTitle>Ziekmelding bewerken</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -567,6 +610,44 @@ export default function ZiektePage() {
                 />
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="salaryPercentage">Salaris percentage</Label>
+              <Select 
+                value={editForm.salaryPercentage} 
+                onValueChange={(value) => setEditForm({...editForm, salaryPercentage: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer percentage" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="100">100% (aan boord)</SelectItem>
+                  <SelectItem value="80">80% (thuis)</SelectItem>
+                  <SelectItem value="0">0% (onbetaald)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="paidBy">Betaald door</Label>
+              <Select 
+                value={editForm.paidBy} 
+                onValueChange={(value) => setEditForm({...editForm, paidBy: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer betaler" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Bamalite S.A.">Bamalite S.A.</SelectItem>
+                  <SelectItem value="Alcina S.A.">Alcina S.A.</SelectItem>
+                  <SelectItem value="Brugo Shipping SARL">Brugo Shipping SARL</SelectItem>
+                  <SelectItem value="Develshipping S.A.">Develshipping S.A.</SelectItem>
+                  <SelectItem value="Europe Shipping AG">Europe Shipping AG</SelectItem>
+                  <SelectItem value="CNS">CNS</SelectItem>
+                  <SelectItem value="CCCS">CCCS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notities</Label>

@@ -5,32 +5,52 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone } from "lucide-react"
-import { shipDatabase } from "@/data/crew-database"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 
 export function SickLeaveOverview() {
-  const { activeSickLeaves, crewDatabase } = useCrewData()
+  const { sickLeave, crew, ships, loading, error } = useSupabaseData()
   
-  // Gebruik de centrale actieve ziekmeldingen
-  const sickLeaveRecords = activeSickLeaves
+  // Filter actieve ziekmeldingen en koppel aan crew + ships
+  const sickLeaveRecords = sickLeave
+    .filter((sick: any) => sick.status !== "hersteld") // Filter out herstelde records
     .map((sick: any) => {
-      const crewMember = (crewDatabase as any)[sick.crewMemberId]
-      const ship = crewMember?.shipId ? (shipDatabase as any)[crewMember.shipId] : null
+      const crewMember = crew.find((c: any) => c.id === sick.crew_member_id)
+      const ship = crewMember?.ship_id ? ships.find((s: any) => s.id === crewMember.ship_id) : null
 
       // Bereken dagen ziek
-      const startDate = new Date(sick.startDate)
+      const startDate = new Date(sick.start_date)
       const today = new Date()
       const daysCount = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
 
       return {
-        ...sick,
-        crewMember,
-        ship,
+        id: sick.id,
+        crewMemberId: sick.crew_member_id,
+        startDate: sick.start_date,
+        endDate: sick.end_date,
+        reason: sick.reason,
+        status: sick.status,
+        notes: sick.notes,
+        doktersVerklaring: sick.dokters_verklaring || false,
+        hasCertificate: sick.dokters_verklaring || false,
+        certificateValidUntil: sick.certificate_valid_until || null,
+        crewMember: crewMember ? {
+          id: crewMember.id,
+          firstName: crewMember.first_name,
+          lastName: crewMember.last_name,
+          position: crewMember.position,
+          nationality: crewMember.nationality,
+          phone: crewMember.phone,
+          status: crewMember.status,
+          shipId: crewMember.ship_id,
+        } : null,
+        ship: ship ? {
+          id: ship.id,
+          name: ship.name,
+        } : null,
         daysCount,
       }
     })
     .filter((record) => record.crewMember && record.crewMember.status !== "uit-dienst") // Filter out records zonder crew member en uit dienst
-    .filter((record) => record.status !== "hersteld") // Filter out herstelde records
 
   const getStatusColor = (status: string) => {
     switch (status) {

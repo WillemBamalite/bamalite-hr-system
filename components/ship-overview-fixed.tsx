@@ -12,7 +12,6 @@ import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
-import { supabase } from "@/lib/supabase"
 
 // Sorteringsfunctie voor bemanningsleden op rang
 const sortCrewByRank = (crew: any[]) => {
@@ -125,23 +124,12 @@ export function ShipOverview() {
   // Crew Card Component
   const CrewCard = ({ member, onDoubleClick, sickLeave }: { member: any; onDoubleClick: (id: string, name: string) => void; sickLeave: any[] }) => {
     const getNextRotation = () => {
-      // Als er een expected_start_date is, bereken dagen tot startdatum
-      if (member.expected_start_date) {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const startDate = new Date(member.expected_start_date)
-        startDate.setHours(0, 0, 0, 0)
-        const daysUntilStart = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-        return daysUntilStart
-      }
-      
       if (!member.regime || member.regime === "Altijd") return null
       const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
       return statusCalculation.daysUntilRotation
     }
 
     const nextRotation = getNextRotation()
-    const isWaitingForStart = !!member.expected_start_date
 
     // Haal ziekinformatie op
     const getSickInfo = () => {
@@ -187,19 +175,6 @@ export function ShipOverview() {
               {member.position}
             </div>
 
-            {/* Diplomas (alleen voor niet-zieke bemanningsleden) */}
-            {!sickInfo && member.diplomas && member.diplomas.length > 0 && (
-              <div className="mb-1">
-                <div className="flex flex-wrap gap-1">
-                  {member.diplomas.map((diploma: string, index: number) => (
-                    <span key={index} className="text-xs text-gray-500 bg-gray-100 px-1 py-0.5 rounded">
-                      {diploma}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Regime en Next Rotation (alleen voor niet-zieke bemanningsleden en geen aflossers) */}
             {!sickInfo && member.position !== "Aflosser" && (
               <>
@@ -209,20 +184,12 @@ export function ShipOverview() {
 
                 {nextRotation !== null && (
                   <div className="text-xs text-blue-600 mb-1">
-                    {isWaitingForStart ? (
-                      <>
-                        Gaat aan boord: {nextRotation === 0 ? "vandaag" : nextRotation === 1 ? "morgen" : `${nextRotation} dagen`} ({format(new Date(member.expected_start_date), 'dd-MM-yyyy')})
-                      </>
-                    ) : (
-                      <>
-                        Volgende rotatie: {nextRotation} dagen ({(() => {
-                          if (!member.regime || member.regime === "Altijd") return ""
-                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
-                          if (!statusCalculation.nextRotationDate) return ""
-                          return format(new Date(statusCalculation.nextRotationDate), 'dd-MM-yyyy')
-                        })()})
-                      </>
-                    )}
+                    Volgende rotatie: {nextRotation} dagen (                    {(() => {
+                      if (!member.regime || member.regime === "Altijd") return ""
+                      const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
+                      if (!statusCalculation.nextRotationDate) return ""
+                      return format(new Date(statusCalculation.nextRotationDate), 'dd-MM-yyyy')
+                    })()})
                   </div>
                 )}
               </>
@@ -297,6 +264,19 @@ export function ShipOverview() {
               }
               return null
             })()}
+
+            {/* Diplomas (alleen voor niet-zieke bemanningsleden) */}
+            {!sickInfo && member.diplomas && member.diplomas.length > 0 && (
+              <div className="mt-1">
+                <div className="flex flex-wrap gap-1">
+                  {member.diplomas.map((diploma: string, index: number) => (
+                    <span key={index} className="text-xs text-gray-500 bg-gray-100 px-1 py-0.5 rounded">
+                      {diploma}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -367,30 +347,11 @@ export function ShipOverview() {
     });
   }
 
-  async function handleDeleteShip(shipId: string, shipName: string) {
+  function handleDeleteShip(shipId: string, shipName: string) {
     if (confirm(`Weet je zeker dat je het schip "${shipName}" wilt verwijderen?`)) {
-      try {
-        // Delete ship from Supabase
-        const { error } = await supabase
-          .from('ships')
-          .delete()
-          .eq('id', shipId)
-
-        if (error) {
-          console.error('Error deleting ship:', error)
-          alert(`Fout bij het verwijderen van het schip: ${error.message}`)
-          return
-        }
-
-        // Success message
-        alert(`Schip "${shipName}" is succesvol verwijderd.`)
-        
-        // Reload the data
-        window.location.reload()
-      } catch (err) {
-        console.error('Error deleting ship:', err)
-        alert('Er is een fout opgetreden bij het verwijderen van het schip.')
-      }
+      // Hier zou je de Supabase delete functie moeten aanroepen
+      // Voor nu, we reloaden de data
+      window.location.reload();
     }
   }
 
@@ -412,7 +373,7 @@ export function ShipOverview() {
               <p>Nog geen schepen toegevoegd</p>
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               {(() => {
                 // Group ships by company
                 const shipsByCompany = ships.reduce((acc: any, ship: any) => {
@@ -427,19 +388,17 @@ export function ShipOverview() {
                 return Object.entries(shipsByCompany).map(([company, companyShips]: [string, any]) => (
                   <div key={company} className="space-y-4">
                     {/* Company Header */}
-                    <div className="border-b pb-3 text-center">
-                      <h3 className="text-2xl font-bold text-gray-900">{company}</h3>
-                      <p className="text-sm text-gray-600 mt-1">{companyShips.length} {companyShips.length === 1 ? 'schip' : 'schepen'}</p>
+                    <div className="border-b pb-2">
+                      <h3 className="text-lg font-semibold text-gray-800">{company}</h3>
+                      <p className="text-sm text-gray-600">{companyShips.length} schip{companyShips.length !== 1 ? 'pen' : ''}</p>
                     </div>
 
                     {/* Ships for this company */}
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {companyShips.map((ship: any) => {
                         const shipCrew = crew.filter((member: any) => {
                           // Verberg leden die uit dienst zijn
                           if (member.status === "uit-dienst") return false
-                          // Verberg leden die nog niet gestart zijn
-                          if (member.status === "nog-in-te-delen") return false
                           // Only show crew members assigned to this ship
                           if (member.ship_id !== ship.id) return false
                           
@@ -472,7 +431,7 @@ export function ShipOverview() {
                         const crewDetails = getCrewDetails(shipCrew)
 
                         return (
-                          <div key={ship.id} className="border rounded-lg p-6 bg-white shadow-sm">
+                          <div key={ship.id} className="border rounded-lg p-4">
                             <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center space-x-3">
                                 <Ship className="w-6 h-6 text-blue-600" />
@@ -494,32 +453,28 @@ export function ShipOverview() {
 
                             {/* Crew List - Organized by Status */}
                             {shipCrew.length > 0 ? (
-                              <div className="space-y-4 mt-6">
+                              <div className="space-y-4">
                                 <h4 className="font-medium text-gray-700">Bemanning:</h4>
                                 
                                 {/* Status Columns */}
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                                   {/* Aan Boord Column */}
-                                  <div className="space-y-3">
-                                    <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center space-x-2 mb-3">
                                       <CheckCircle className="w-4 h-4 text-green-600" />
                                       <h5 className="font-medium text-green-700">Aan Boord</h5>
                                       <Badge className="bg-green-100 text-green-800 text-xs">
                                         {shipCrew.filter((member: any) => {
                                           if (member.status === "ziek") return false
-                                          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                          if (member.expected_start_date) return member.status === "aan-boord"
                                           if (!member.regime) return member.status === "aan-boord"
                                           const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
                                           return statusCalculation.currentStatus === "aan-boord"
                                         }).length}
                                       </Badge>
                                     </div>
-                                    <div className="space-y-3 min-h-[100px]">
+                                    <div className="space-y-2">
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
                                         if (member.status === "ziek") return false
-                                        // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                        if (member.expected_start_date) return member.status === "aan-boord"
                                         if (!member.regime) return member.status === "aan-boord"
                                         const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
                                         return statusCalculation.currentStatus === "aan-boord"
@@ -530,26 +485,22 @@ export function ShipOverview() {
                                   </div>
 
                                   {/* Thuis Column */}
-                                  <div className="space-y-3">
-                                    <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center space-x-2 mb-3">
                                       <Clock className="w-4 h-4 text-blue-600" />
                                       <h5 className="font-medium text-blue-700">Thuis</h5>
                                       <Badge className="bg-blue-100 text-blue-800 text-xs">
                                         {shipCrew.filter((member: any) => {
                                           if (member.status === "ziek") return false
-                                          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                          if (member.expected_start_date) return member.status === "thuis"
                                           if (!member.regime) return member.status === "thuis"
                                           const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
                                           return statusCalculation.currentStatus === "thuis"
                                         }).length}
                                       </Badge>
                                     </div>
-                                    <div className="space-y-3 min-h-[100px]">
+                                    <div className="space-y-2">
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
                                         if (member.status === "ziek") return false
-                                        // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                        if (member.expected_start_date) return member.status === "thuis"
                                         if (!member.regime) return member.status === "thuis"
                                         const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
                                         return statusCalculation.currentStatus === "thuis"
@@ -560,15 +511,15 @@ export function ShipOverview() {
                                   </div>
 
                                   {/* Ziek Column */}
-                                  <div className="space-y-3">
-                                    <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center space-x-2 mb-3">
                                       <UserX className="w-4 h-4 text-red-600" />
                                       <h5 className="font-medium text-red-700">Ziek</h5>
                                       <Badge className="bg-red-100 text-red-800 text-xs">
                                         {shipCrew.filter((member: any) => member.status === "ziek").length}
                                       </Badge>
                                     </div>
-                                    <div className="space-y-3 min-h-[100px]">
+                                    <div className="space-y-2">
                                       {sortCrewByRank(shipCrew.filter((member: any) => member.status === "ziek")).map((member: any) => (
                                         <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
                                       ))}
@@ -638,3 +589,4 @@ export function ShipOverview() {
     </>
   )
 }
+

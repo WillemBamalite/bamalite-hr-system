@@ -10,25 +10,50 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { ClockIcon as UserClock, Calendar, CheckCircle, Ship, Plus } from "lucide-react"
-import { sickLeaveHistoryDatabase, shipDatabase } from "@/data/crew-database"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 
 export function StandBackDaysOverview() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
   const [isAddDaysOpen, setIsAddDaysOpen] = useState(false)
   const [daysToAdd, setDaysToAdd] = useState("")
   const [note, setNote] = useState("")
+  
+  const { standBackRecords, crew, ships, loading, error, updateStandBackRecord } = useSupabaseData()
 
   // Filter records met openstaande terug staan dagen
-  const openStandBackRecords = Object.values(sickLeaveHistoryDatabase)
-    .filter((record: any) => record.standBackDaysRemaining > 0)
+  const openStandBackRecords = standBackRecords
+    .filter((record: any) => (record.stand_back_days_remaining || 0) > 0)
     .map((record: any) => {
-      const crewMember = crewDatabase[record.crewMemberId]
-      const ship = crewMember?.shipId ? shipDatabase[crewMember.shipId] : null
+      const crewMember = crew.find((c: any) => c.id === record.crew_member_id)
+      const ship = crewMember?.ship_id ? ships.find((s: any) => s.id === crewMember.ship_id) : null
       return {
-        ...record,
-        crewMember,
-        ship,
+        id: record.id,
+        crewMemberId: record.crew_member_id,
+        sickLeaveId: record.sick_leave_id,
+        startDate: record.start_date,
+        endDate: record.end_date,
+        daysCount: record.days_count || 0,
+        description: record.description || '',
+        standBackDaysRemaining: record.stand_back_days_remaining || 0,
+        standBackDaysRequired: record.stand_back_days_required || 0,
+        standBackDaysCompleted: record.stand_back_days_completed || 0,
+        standBackHistory: record.stand_back_history || [],
+        standBackStatus: record.stand_back_status || 'openstaand',
+        createdAt: record.created_at,
+        updatedAt: record.updated_at,
+        crewMember: crewMember ? {
+          id: crewMember.id,
+          firstName: crewMember.first_name,
+          lastName: crewMember.last_name,
+          position: crewMember.position,
+          nationality: crewMember.nationality,
+          phone: crewMember.phone,
+          shipId: crewMember.ship_id,
+        } : null,
+        ship: ship ? {
+          id: ship.id,
+          name: ship.name,
+        } : null,
       }
     })
     .filter((record) => record.crewMember)
@@ -53,19 +78,47 @@ export function StandBackDaysOverview() {
     return flags[nationality] || "🌍"
   }
 
-  const handleAddStandBackDays = () => {
-    if (!selectedRecord || !daysToAdd || Number.parseInt(daysToAdd) <= 0) return
+  const handleAddStandBackDays = async () => {
+    if (!selectedRecord || !daysToAdd || Number.parseInt(daysToAdd) <= 0) {
+      alert("Vul een geldig aantal dagen in")
+      return
+    }
 
-    const daysToComplete = Math.min(Number.parseInt(daysToAdd), selectedRecord.standBackDaysRemaining)
-
-    // Hier zou je normaal de database updaten
-
-
-    // Reset form
-    setDaysToAdd("")
-    setNote("")
-    setIsAddDaysOpen(false)
-    setSelectedRecord(null)
+    try {
+      const daysToComplete = Math.min(Number.parseInt(daysToAdd), selectedRecord.standBackDaysRemaining)
+      
+      // Bereken nieuwe waarden
+      const newCompleted = selectedRecord.standBackDaysCompleted + daysToComplete
+      const newRemaining = selectedRecord.standBackDaysRemaining - daysToComplete
+      const newStatus = newRemaining === 0 ? 'voltooid' : 'openstaand'
+      
+      // Maak history entry
+      const historyEntry = {
+        date: new Date().toISOString(),
+        daysCompleted: daysToComplete,
+        note: note || 'Dagen afgeboekt',
+        completedBy: 'User' // Je zou hier de logged in user kunnen gebruiken
+      }
+      
+      // Update in database
+      await updateStandBackRecord(selectedRecord.id, {
+        stand_back_days_completed: newCompleted,
+        stand_back_days_remaining: newRemaining,
+        stand_back_status: newStatus,
+        stand_back_history: [...selectedRecord.standBackHistory, historyEntry]
+      })
+      
+      alert(`Succesvol ${daysToComplete} dag(en) afgeboekt voor ${selectedRecord.crewMember?.firstName} ${selectedRecord.crewMember?.lastName}`)
+      
+      // Reset form
+      setDaysToAdd("")
+      setNote("")
+      setIsAddDaysOpen(false)
+      setSelectedRecord(null)
+    } catch (error) {
+      console.error('Error booking off days:', error)
+      alert('Fout bij het afboeken van dagen: ' + (error instanceof Error ? error.message : String(error)))
+    }
   }
 
   return (

@@ -25,18 +25,69 @@ export default function CrewOverviewPage() {
   const [filteredCrew, setFilteredCrew] = useState<any[]>([])
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
 
+  // Lees crew uitsluitend uit localStorage als bron (hook-data is aanvullend maar niet leidend)
+  const buildMergedCrew = (hookCrew: any[]): any[] => {
+    let localCrew: any[] = []
+    if (typeof window !== 'undefined') {
+      try {
+        const map = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
+        localCrew = Object.values(map || {})
+      } catch {}
+    }
+    const normalizedLocal = localCrew
+      .filter((m: any) => m && m.id)
+      .map((m: any) => ({
+        id: m.id,
+        first_name: m.first_name || m.firstName,
+        last_name: m.last_name || m.lastName,
+        nationality: m.nationality,
+        position: m.position,
+        ship_id: m.ship_id ?? m.shipId ?? null,
+        regime: m.regime,
+        status: m.status,
+      }))
+    // Vul eventueel aan met hookCrew voor bestaande leden die nog niet in localStorage staan
+    const byId: Record<string, any> = {}
+    for (const row of normalizedLocal) byId[row.id] = row
+    for (const m of hookCrew || []) if (m?.id && !byId[m.id]) byId[m.id] = m
+    return Object.values(byId)
+  }
+
   useEffect(() => {
-    if (crew.length > 0) {
-      setFilteredCrew(crew)
-      
-      // Groepeer per rang
+    const merged = buildMergedCrew(crew)
+    const visible = merged.filter((c: any) => c.status !== 'uit-dienst')
+    setFilteredCrew(visible)
+    const groupedData: { [rank: string]: any[] } = {}
+    visible.forEach((c: any) => {
+      const rank = RANK_ORDER.includes(c.position) ? c.position : "Overig"
+      if (!groupedData[rank]) groupedData[rank] = []
+      groupedData[rank].push(c)
+    })
+    setGrouped(groupedData)
+  }, [crew])
+
+  // Luister naar localStorage updates vanuit de form
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const update = () => {
+      const merged = buildMergedCrew(crew)
+      const visible = merged.filter((c: any) => c.status !== 'uit-dienst')
+      setFilteredCrew(visible)
       const groupedData: { [rank: string]: any[] } = {}
-      crew.forEach((c) => {
-        const rank = RANK_ORDER.includes(c.position) ? c.position : "Overig"
+      visible.forEach((c: any) => {
+        const rank = RANK_ORDER.includes(c.position) ? c.position : 'Overig'
         if (!groupedData[rank]) groupedData[rank] = []
         groupedData[rank].push(c)
       })
       setGrouped(groupedData)
+    }
+    window.addEventListener('localStorageUpdate', update)
+    window.addEventListener('forceRefresh', update as any)
+    window.addEventListener('storage', update)
+    return () => {
+      window.removeEventListener('localStorageUpdate', update)
+      window.removeEventListener('forceRefresh', update as any)
+      window.removeEventListener('storage', update)
     }
   }, [crew])
 
@@ -103,7 +154,7 @@ export default function CrewOverviewPage() {
       {/* Snelle acties */}
       <div className="mb-8">
         <div className="text-lg font-semibold text-gray-800 mb-4">Snelle acties</div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Link href="/bemanning/nieuw" className="bg-indigo-600 text-white text-sm py-4 px-6 rounded-lg text-center hover:bg-indigo-700 shadow-lg transition-colors">
             <div className="text-2xl mb-2">➕</div>
             <div className="font-semibold">Nieuw bemanningslid</div>
@@ -118,6 +169,11 @@ export default function CrewOverviewPage() {
             <div className="text-2xl mb-2">🎓</div>
             <div className="font-semibold">Studenten</div>
             <div className="text-xs opacity-90 mt-1">Bekijk studenten</div>
+          </Link>
+          <Link href="/bemanning/oude-bemanningsleden" className="bg-red-600 text-white text-sm py-4 px-6 rounded-lg text-center hover:bg-red-700 shadow-lg transition-colors">
+            <div className="text-2xl mb-2">🗂️</div>
+            <div className="font-semibold">Oude werknemers</div>
+            <div className="text-xs opacity-90 mt-1">Uit dienst overzicht</div>
           </Link>
         </div>
       </div>
@@ -139,7 +195,8 @@ export default function CrewOverviewPage() {
                       <div className="flex items-center space-x-3 mb-3">
                         <Avatar className="w-10 h-10">
                           <AvatarFallback className="bg-blue-100 text-blue-700">
-                            {member.first_name[0]}{member.last_name[0]}
+                            {((member.first_name || member.firstName || "?") as string).charAt(0)}
+                            {((member.last_name || member.lastName || "?") as string).charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
@@ -147,7 +204,7 @@ export default function CrewOverviewPage() {
                             href={`/bemanning/${member.id}`}
                             className="font-medium text-gray-900 hover:text-blue-600"
                           >
-                            {member.first_name} {member.last_name}
+                            {(member.first_name || member.firstName || "")} {(member.last_name || member.lastName || "")}
                           </Link>
                           <div className="flex items-center space-x-2 text-sm text-gray-500">
                             <span>{getNationalityFlag(member.nationality)}</span>
@@ -237,7 +294,8 @@ export default function CrewOverviewPage() {
                     <div className="flex items-center space-x-3 mb-3">
                       <Avatar className="w-10 h-10">
                         <AvatarFallback className="bg-blue-100 text-blue-700">
-                          {member.first_name[0]}{member.last_name[0]}
+                          {((member.first_name || member.firstName || '?') as string).charAt(0)}
+                          {((member.last_name || member.lastName || '?') as string).charAt(0)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
@@ -245,7 +303,7 @@ export default function CrewOverviewPage() {
                           href={`/bemanning/${member.id}`}
                           className="font-medium text-gray-900 hover:text-blue-600"
                         >
-                          {member.first_name} {member.last_name}
+                          {(member.first_name || member.firstName || '')} {(member.last_name || member.lastName || '')}
                         </Link>
                         <div className="flex items-center space-x-2 text-sm text-gray-500">
                           <span>{getNationalityFlag(member.nationality)}</span>

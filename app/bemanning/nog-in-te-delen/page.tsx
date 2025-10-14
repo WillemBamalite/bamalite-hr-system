@@ -11,16 +11,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { BackButton } from "@/components/ui/back-button";
 
 export default function NogInTeDelenPage() {
-  const { crew, ships, loading, error, updateCrew } = useSupabaseData();
+  const { crew, ships, loading, error, updateCrew, addCrew, deleteCrew } = useSupabaseData();
   const [mounted, setMounted] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [selectedShip, setSelectedShip] = useState<string>("");
   const [onBoardDate, setOnBoardDate] = useState<string>("");
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
+  const [expectedStartDate, setExpectedStartDate] = useState<string>("");
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const [newSubStatus, setNewSubStatus] = useState<string>("");
+  const [showNewCandidateDialog, setShowNewCandidateDialog] = useState(false);
+  const [showFullFormDialog, setShowFullFormDialog] = useState(false);
+  const [selectedCandidateForFullForm, setSelectedCandidateForFullForm] = useState<any>(null);
+  const [candidateForm, setCandidateForm] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+    position: "",
+    nationality: "NL",
+    diplomas: [] as string[],
+    notes: ""
+  });
 
   // Prevent hydration errors
   useEffect(() => {
@@ -58,6 +75,19 @@ export default function NogInTeDelenPage() {
   const unassignedCrew = crew.filter((member: any) => 
     member.status === "nog-in-te-delen" && 
     !member.is_aflosser
+  );
+
+  // Categoriseer op basis van sub_status veld
+  const nogTeBenaderen = unassignedCrew.filter((m: any) => 
+    !m.sub_status || m.sub_status === "nog-te-benaderen"
+  );
+  
+  const wachtOpStartdatum = unassignedCrew.filter((m: any) => 
+    m.sub_status === "wacht-op-startdatum"
+  );
+  
+  const wachtlijst = unassignedCrew.filter((m: any) => 
+    m.sub_status === "wachtlijst"
   );
 
   const getNationalityFlag = (nationality: string) => {
@@ -104,6 +134,111 @@ export default function NogInTeDelenPage() {
     }
   };
 
+  const updateSubStatus = async () => {
+    if (!selectedMember || !newSubStatus) {
+      alert("Selecteer een status");
+      return;
+    }
+
+    // Als status "aangenomen" is, open volledig formulier
+    if (newSubStatus === "wacht-op-startdatum") {
+      setShowStatusDialog(false);
+      setSelectedCandidateForFullForm(selectedMember);
+      setShowFullFormDialog(true);
+      return;
+    }
+
+    try {
+      const updates: any = {
+        sub_status: newSubStatus
+      };
+
+      await updateCrew(selectedMember.id, updates);
+
+      alert(`Status succesvol bijgewerkt!`);
+      
+      setShowStatusDialog(false);
+      setSelectedMember(null);
+      setNewSubStatus("");
+      setExpectedStartDate("");
+    } catch (error) {
+      console.error("Fout bij updaten status:", error);
+      alert("Er is een fout opgetreden. Probeer het opnieuw.");
+    }
+  };
+
+  const handleNoInterest = async (memberId: string, memberName: string) => {
+    if (!confirm(`Weet je zeker dat je ${memberName} wilt verwijderen? Deze persoon wordt volledig uit het systeem verwijderd.`)) {
+      return;
+    }
+
+    try {
+      await deleteCrew(memberId);
+      alert(`${memberName} is verwijderd uit het systeem.`);
+    } catch (error) {
+      console.error("Fout bij verwijderen:", error);
+      alert("Er is een fout opgetreden bij het verwijderen.");
+    }
+  };
+
+  const addCandidate = async () => {
+    if (!candidateForm.firstName || !candidateForm.lastName) {
+      alert("Vul minimaal voor- en achternaam in");
+      return;
+    }
+
+    try {
+      const newCandidate = {
+        id: `crew-${Date.now()}`,
+        first_name: candidateForm.firstName,
+        last_name: candidateForm.lastName,
+        phone: candidateForm.phone || "",
+        email: candidateForm.email || "",
+        position: candidateForm.position || "Onbekend",
+        nationality: candidateForm.nationality,
+        status: "nog-in-te-delen",
+        sub_status: "nog-te-benaderen",
+        regime: "",
+        notes: candidateForm.notes ? [candidateForm.notes] : [],
+        diplomas: candidateForm.diplomas,
+        created_at: new Date().toISOString()
+      };
+
+      console.log('Adding candidate via Supabase:', newCandidate);
+      
+      await addCrew(newCandidate);
+
+      alert(`Kandidaat ${candidateForm.firstName} ${candidateForm.lastName} succesvol toegevoegd!`);
+      
+      setShowNewCandidateDialog(false);
+      setCandidateForm({
+        firstName: "",
+        lastName: "",
+        phone: "",
+        email: "",
+        position: "",
+        nationality: "NL",
+        diplomas: [],
+        notes: ""
+      });
+    } catch (error) {
+      console.error("Fout bij toevoegen kandidaat:", error);
+      console.error("Error type:", typeof error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+      
+      let errorMessage = "Onbekende fout";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = JSON.stringify(error);
+      } else {
+        errorMessage = String(error);
+      }
+      
+      alert("Er is een fout opgetreden bij het toevoegen: " + errorMessage);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
       <MobileHeaderNav />
@@ -116,10 +251,17 @@ export default function NogInTeDelenPage() {
           <p className="text-gray-600">Bemanningsleden die nog geen schip hebben toegewezen</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => setShowNewCandidateDialog(true)}
+          >
+            <span className="mr-2">👤</span>
+            Nieuwe Kandidaat
+          </Button>
           <Link href="/bemanning/nieuw">
             <Button className="bg-green-600 hover:bg-green-700">
               <span className="mr-2">➕</span>
-              Nieuw Bemanningslid
+              Volledig Formulier
             </Button>
           </Link>
         </div>
@@ -130,10 +272,10 @@ export default function NogInTeDelenPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <div className="w-5 h-5 bg-orange-500 rounded-full"></div>
+              <div className="w-5 h-5 bg-red-500 rounded-full"></div>
               <div>
-                <p className="text-sm text-gray-600">Nog in te delen</p>
-                <p className="text-2xl font-bold text-orange-600">{unassignedCrew.length}</p>
+                <p className="text-sm text-gray-600">Nog te benaderen</p>
+                <p className="text-2xl font-bold text-red-600">{nogTeBenaderen.length}</p>
               </div>
             </div>
           </CardContent>
@@ -141,12 +283,10 @@ export default function NogInTeDelenPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <div className="w-5 h-5 bg-green-500 rounded-full"></div>
+              <div className="w-5 h-5 bg-yellow-500 rounded-full"></div>
               <div>
-                <p className="text-sm text-gray-600">Toegewezen</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {crew.filter((c: any) => c.ship_id && c.status !== "nog-in-te-delen").length}
-                </p>
+                <p className="text-sm text-gray-600">Aangenomen - In te delen</p>
+                <p className="text-2xl font-bold text-yellow-600">{wachtOpStartdatum.length}</p>
               </div>
             </div>
           </CardContent>
@@ -156,15 +296,15 @@ export default function NogInTeDelenPage() {
             <div className="flex items-center space-x-2">
               <div className="w-5 h-5 bg-blue-500 rounded-full"></div>
               <div>
-                <p className="text-sm text-gray-600">Totaal bemanning</p>
-                <p className="text-2xl font-bold text-blue-600">{crew.length}</p>
+                <p className="text-sm text-gray-600">Wachtlijst</p>
+                <p className="text-2xl font-bold text-blue-600">{wachtlijst.length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Unassigned Crew List */}
+      {/* Empty state */}
       {unassignedCrew.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
@@ -182,8 +322,23 @@ export default function NogInTeDelenPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {unassignedCrew.map((member: any) => (
+        <div className="space-y-10">
+          {/* 1. NOG TE BENADEREN */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">📞 Nog Te Benaderen</h2>
+              <Badge className="bg-red-100 text-red-800">{nogTeBenaderen.length}</Badge>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Nieuwe aanmeldingen die nog telefonisch benaderd moeten worden</p>
+            {nogTeBenaderen.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-center text-gray-500">
+                  Geen personen om te benaderen
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {nogTeBenaderen.map((member: any) => (
             <Card key={member.id} className="hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -202,14 +357,275 @@ export default function NogInTeDelenPage() {
                       </Link>
                       <div className="flex items-center space-x-2 text-sm text-gray-500">
                         <span>{getNationalityFlag(member.nationality)}</span>
-                        <span>•</span>
-                        <span>{member.nationality}</span>
                       </div>
                     </div>
                   </div>
-                  <Badge className="bg-orange-100 text-orange-800">
-                    Nog in te delen
-                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Position */}
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Functie:</span> {member.position}
+                </div>
+
+                {/* Regime */}
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Regime:</span> {member.regime}
+                </div>
+
+                {/* Contact Info */}
+                <div className="space-y-2 text-sm">
+                  {member.phone && (
+                    <div className="text-gray-600">
+                      <span className="font-medium">Telefoon:</span> {member.phone}
+                    </div>
+                  )}
+                  {member.email && (
+                    <div className="text-gray-600">
+                      <span className="font-medium">Email:</span> {member.email}
+                    </div>
+                  )}
+                </div>
+
+                {/* Experience */}
+                {member.experience && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Ervaring:</span> {member.experience}
+                  </div>
+                )}
+
+                {/* Diplomas */}
+                {member.diplomas && member.diplomas.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Diploma's:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {member.diplomas.map((diploma: string, index: number) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {diploma}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {member.notes && member.notes.length > 0 && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Notities:</span>
+                    <p className="italic mt-1">{member.notes[0]}</p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="space-y-2 pt-3 border-t">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="text-green-600 border-green-200 hover:bg-green-50"
+                      onClick={() => {
+                        setSelectedCandidateForFullForm(member);
+                        setShowFullFormDialog(true);
+                      }}
+                    >
+                      <span className="mr-1">✓</span>
+                      Aangenomen
+                    </Button>
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                      onClick={() => {
+                        setSelectedMember(member);
+                        setShowStatusDialog(true);
+                      }}
+                    >
+                      <span className="mr-1">⏳</span>
+                      Wachtlijst
+                    </Button>
+                  </div>
+                  <Button 
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                    onClick={() => handleNoInterest(member.id, `${member.first_name} ${member.last_name}`)}
+                  >
+                    <span className="mr-1">✕</span>
+                    Geen Interesse
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+              </div>
+            )}
+          </div>
+
+          {/* 2. AANGENOMEN - NOG IN TE DELEN */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">✅ Aangenomen - Nog In Te Delen</h2>
+              <Badge className="bg-yellow-100 text-yellow-800">{wachtOpStartdatum.length}</Badge>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Mensen die we aangenomen hebben om op een bepaalde datum te starten, moeten nog schip krijgen</p>
+            {wachtOpStartdatum.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-center text-gray-500">
+                  Geen aangenomen personen die nog ingedeeld moeten worden
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {wachtOpStartdatum.map((member: any) => (
+            <Card key={member.id} className="hover:shadow-lg transition-shadow border-yellow-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback className="bg-yellow-100 text-yellow-700">
+                        {member.first_name[0]}{member.last_name[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <Link 
+                        href={`/bemanning/${member.id}`}
+                        className="font-medium text-gray-900 hover:text-blue-700"
+                      >
+                        {member.first_name} {member.last_name}
+                      </Link>
+                      <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <span>{getNationalityFlag(member.nationality)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Position */}
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Functie:</span> {member.position}
+                </div>
+
+                {/* Regime */}
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Regime:</span> {member.regime}
+                </div>
+
+                {/* Startdatum */}
+                {member.expected_start_date && (
+                  <div className="text-sm bg-yellow-50 p-2 rounded border border-yellow-200">
+                    <span className="font-medium text-yellow-800">📅 Kan starten:</span> 
+                    <span className="ml-2 text-yellow-900">{member.expected_start_date}</span>
+                  </div>
+                )}
+
+                {/* Contact Info */}
+                <div className="space-y-2 text-sm">
+                  {member.phone && (
+                    <div className="text-gray-600">
+                      <span className="font-medium">Telefoon:</span> {member.phone}
+                    </div>
+                  )}
+                  {member.email && (
+                    <div className="text-gray-600">
+                      <span className="font-medium">Email:</span> {member.email}
+                    </div>
+                  )}
+                </div>
+
+                {/* Experience */}
+                {member.experience && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Ervaring:</span> {member.experience}
+                  </div>
+                )}
+
+                {/* Diplomas */}
+                {member.diplomas && member.diplomas.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium text-gray-700">Diploma's:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {member.diplomas.map((diploma: string, index: number) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {diploma}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {member.notes && member.notes.length > 0 && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Notities:</span>
+                    <p className="italic mt-1">{member.notes[0]}</p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex justify-end space-x-2 pt-3 border-t">
+                  <Link href={`/bemanning/${member.id}`}>
+                    <Button variant="outline" size="sm">
+                      <span className="mr-1">👁️</span>
+                      Bekijk
+                    </Button>
+                  </Link>
+                  <Button 
+                    size="sm"
+                    className="bg-yellow-600 hover:bg-yellow-700"
+                    onClick={() => {
+                      setSelectedMember(member);
+                      setShowAssignmentDialog(true);
+                    }}
+                  >
+                    <span className="mr-1">🚢</span>
+                    Toewijzen aan Schip
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 3. WACHTLIJST */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">⏳ Wachtlijst</h2>
+              <Badge className="bg-blue-100 text-blue-800">{wachtlijst.length}</Badge>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Al benaderd, maar geen beschikbare plek op dit moment. Bewaren voor later</p>
+            {wachtlijst.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-center text-gray-500">
+                  Geen personen op wachtlijst
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {wachtlijst.map((member: any) => (
+            <Card key={member.id} className="hover:shadow-lg transition-shadow border-blue-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback className="bg-blue-100 text-blue-700">
+                        {member.first_name[0]}{member.last_name[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <Link 
+                        href={`/bemanning/${member.id}`}
+                        className="font-medium text-gray-900 hover:text-blue-700"
+                      >
+                        {member.first_name} {member.last_name}
+                      </Link>
+                      <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <span>{getNationalityFlag(member.nationality)}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -275,21 +691,284 @@ export default function NogInTeDelenPage() {
                     </Button>
                   </Link>
                   <Button 
-                    size="sm" 
+                    size="sm"
+                    variant="outline"
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
                     onClick={() => {
                       setSelectedMember(member);
                       setShowAssignmentDialog(true);
                     }}
                   >
                     <span className="mr-1">🚢</span>
-                    Toewijzen
+                    Toewijzen (Plek Beschikbaar)
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          ))}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
+
+      {/* New Candidate Dialog */}
+      <Dialog open={showNewCandidateDialog} onOpenChange={setShowNewCandidateDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Nieuwe Kandidaat Toevoegen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-blue-50 p-3 rounded-lg mb-4">
+              <p className="text-sm text-blue-800">
+                💡 <strong>Snel formulier</strong> voor kandidaten die ons benaderd hebben. 
+                Alleen naam is verplicht, rest is optioneel. Later kun je meer details toevoegen.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="firstName">Voornaam *</Label>
+                <Input
+                  id="firstName"
+                  value={candidateForm.firstName}
+                  onChange={(e) => setCandidateForm({...candidateForm, firstName: e.target.value})}
+                  placeholder="Voornaam"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="lastName">Achternaam *</Label>
+                <Input
+                  id="lastName"
+                  value={candidateForm.lastName}
+                  onChange={(e) => setCandidateForm({...candidateForm, lastName: e.target.value})}
+                  placeholder="Achternaam"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="phone">Telefoonnummer</Label>
+                <Input
+                  id="phone"
+                  value={candidateForm.phone}
+                  onChange={(e) => setCandidateForm({...candidateForm, phone: e.target.value})}
+                  placeholder="+31 6 12345678"
+                />
+              </div>
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={candidateForm.email}
+                  onChange={(e) => setCandidateForm({...candidateForm, email: e.target.value})}
+                  placeholder="email@voorbeeld.nl"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="position">Functie</Label>
+                <Select value={candidateForm.position} onValueChange={(value) => setCandidateForm({...candidateForm, position: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer functie" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Kapitein">Kapitein</SelectItem>
+                    <SelectItem value="Stuurman">Stuurman</SelectItem>
+                    <SelectItem value="Matroos">Matroos</SelectItem>
+                    <SelectItem value="Lichtmatroos">Lichtmatroos</SelectItem>
+                    <SelectItem value="Machinist">Machinist</SelectItem>
+                    <SelectItem value="Kok">Kok</SelectItem>
+                    <SelectItem value="Onbekend">Onbekend</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="nationality">Nationaliteit</Label>
+                <Select value={candidateForm.nationality} onValueChange={(value) => setCandidateForm({...candidateForm, nationality: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer nationaliteit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NL">🇳🇱 Nederland</SelectItem>
+                    <SelectItem value="BE">🇧🇪 België</SelectItem>
+                    <SelectItem value="DE">🇩🇪 Duitsland</SelectItem>
+                    <SelectItem value="PO">🇵🇱 Polen</SelectItem>
+                    <SelectItem value="CZ">🇨🇿 Tsjechië</SelectItem>
+                    <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
+                    <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
+                    <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label>Diploma's (optioneel)</Label>
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                {[
+                  "Vaarbewijs",
+                  "Rijnpatent tot Mannheim",
+                  "Rijnpatent tot Iffezheim",
+                  "Radar",
+                  "ADN",
+                  "STCW",
+                  "Marifoon",
+                  "BHV"
+                ].map((diploma) => (
+                  <div key={diploma} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={diploma}
+                      checked={candidateForm.diplomas.includes(diploma)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setCandidateForm({
+                            ...candidateForm,
+                            diplomas: [...candidateForm.diplomas, diploma]
+                          });
+                        } else {
+                          setCandidateForm({
+                            ...candidateForm,
+                            diplomas: candidateForm.diplomas.filter((d) => d !== diploma)
+                          });
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor={diploma}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      {diploma}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="notes">Notities</Label>
+              <Input
+                id="notes"
+                value={candidateForm.notes}
+                onChange={(e) => setCandidateForm({...candidateForm, notes: e.target.value})}
+                placeholder="Bijv: Benaderd via email, heeft interesse in stuurman positie..."
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setShowNewCandidateDialog(false)}>
+                Annuleren
+              </Button>
+              <Button 
+                onClick={addCandidate}
+                disabled={!candidateForm.firstName || !candidateForm.lastName}
+              >
+                Kandidaat Toevoegen
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Full Form Redirect Dialog */}
+      <Dialog open={showFullFormDialog} onOpenChange={setShowFullFormDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Kandidaat Aangenomen - Volledig Formulier</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-green-50 p-4 rounded-lg">
+              <p className="text-sm text-green-800">
+                ✅ <strong>{selectedCandidateForFullForm?.first_name} {selectedCandidateForFullForm?.last_name}</strong> is aangenomen!
+              </p>
+              <p className="text-sm text-green-700 mt-2">
+                Om deze persoon volledig in te delen, moet je het volledige bemanningsformulier invullen met:
+              </p>
+              <ul className="text-sm text-green-700 mt-2 ml-4 list-disc">
+                <li>Regime (1/1, 2/2, 3/3, Altijd)</li>
+                <li>Verwachte startdatum</li>
+                <li>Alle diploma's en certificaten</li>
+                <li>Adresgegevens</li>
+                <li>Eventuele extra notities</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setShowFullFormDialog(false)}>
+                Annuleren
+              </Button>
+              <Link href={`/bemanning/${selectedCandidateForFullForm?.id}?edit=true&hired=true`}>
+                <Button className="bg-green-600 hover:bg-green-700">
+                  Naar Volledig Formulier →
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Status Change Dialog */}
+      <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Status Wijzigen - {selectedMember?.first_name} {selectedMember?.last_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="subStatus">Nieuwe Status</Label>
+              <Select value={newSubStatus} onValueChange={setNewSubStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wacht-op-startdatum">Aangenomen - Nog in te delen</SelectItem>
+                  <SelectItem value="wachtlijst">Wachtlijst (geen plek)</SelectItem>
+                  <SelectItem value="nog-te-benaderen">Nog te benaderen</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {newSubStatus === "wacht-op-startdatum" && (
+              <div>
+                <Label htmlFor="expectedStartDate">Verwachte startdatum</Label>
+                <Input
+                  id="expectedStartDate"
+                  type="date"
+                  value={expectedStartDate}
+                  onChange={(e) => setExpectedStartDate(e.target.value)}
+                />
+                <p className="text-xs text-gray-500 mt-1">Op welke datum kan deze persoon starten?</p>
+              </div>
+            )}
+
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <p className="text-sm text-blue-800">
+                💡 <strong>Tip:</strong><br/>
+                • <strong>Aangenomen - Nog in te delen</strong>: Al aangenomen, kan op bepaalde datum starten, moet nog schip krijgen<br/>
+                • <strong>Wachtlijst</strong>: Telefonisch contact gehad, maar momenteel geen plek beschikbaar<br/>
+                • <strong>Nog te benaderen</strong>: Nog niet gebeld, moet nog contact opnemen
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowStatusDialog(false)}>
+                Annuleren
+              </Button>
+              <Button onClick={updateSubStatus} disabled={!newSubStatus}>
+                Status Bijwerken
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Assignment Dialog */}
       <Dialog open={showAssignmentDialog} onOpenChange={setShowAssignmentDialog}>

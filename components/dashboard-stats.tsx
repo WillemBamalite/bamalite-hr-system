@@ -14,15 +14,16 @@ export function DashboardStats() {
     c.position === "Aflosser" || c.position === "aflosser"
   )
   
+  const activeCrew = crew.filter((c) => c.status !== 'uit-dienst')
   const stats = {
-    totalCrew: crew.length,
-    aflossers: aflossers.length,
-    studenten: crew.filter((c) => c.position === "Student" || c.position === "student").length,
-    aanBoord: crew.filter((c) => c.status === "aan-boord").length,
-    thuis: crew.filter((c) => c.status === "thuis").length,
+    totalCrew: activeCrew.filter((c) => c.position !== 'Aflosser' && c.position !== 'aflosser').length,
+    aflossers: aflossers.filter((c) => c.status !== 'uit-dienst').length,
+    zieken: sickLeave.filter((s: any) => s.status === "actief" || s.status === "wacht-op-briefje").length,
+    aanBoord: activeCrew.filter((c) => c.status === "aan-boord").length,
+    thuis: activeCrew.filter((c) => c.status === "thuis").length,
     actieveZiekmeldingen: sickLeave.filter((s) => s.status === "actief").length,
     ziekmeldingenMetBriefje: sickLeave.filter((s) => s.status === "wacht-op-briefje").length,
-    nogInTeDelen: crew.filter((c) => c.status === "nog-in-te-delen").length
+    nogInTeDelen: activeCrew.filter((c) => c.status === "nog-in-te-delen").length
   }
 
   return (
@@ -36,9 +37,9 @@ export function DashboardStats() {
           <div className="text-2xl font-bold text-green-800">{stats.aflossers}</div>
           <div className="text-xs text-green-700 mt-1">Aflossers</div>
         </Link>
-        <Link href="/bemanning/studenten" className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center hover:bg-purple-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-purple-800">{stats.studenten}</div>
-          <div className="text-xs text-purple-700 mt-1">Studenten</div>
+        <Link href="/ziekte" className="bg-red-50 border border-red-200 rounded-lg p-4 text-center hover:bg-red-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-red-800">{stats.zieken}</div>
+          <div className="text-xs text-red-700 mt-1">Zieken</div>
         </Link>
         <Link href="/bemanning/nog-in-te-delen" className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center hover:bg-gray-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-gray-800">{stats.nogInTeDelen}</div>

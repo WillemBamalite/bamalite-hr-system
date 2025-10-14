@@ -117,6 +117,21 @@ export function CrewQuickActions() {
               </div>
             </Button>
           </Link>
+
+          <Link href="/bemanning/oude-bemanningsleden">
+            <Button
+              variant="ghost"
+              className="bg-red-600 hover:bg-red-700 text-white h-12 p-3 w-full justify-start relative"
+            >
+              <div className="flex items-center space-x-3 w-full">
+                <div className="w-6 h-6 flex-shrink-0">🗂️</div>
+                <div className="text-left flex-1">
+                  <div className="font-medium">Oude werknemers</div>
+                  <div className="text-sm opacity-90">Uit-dienst overzicht</div>
+                </div>
+              </div>
+            </Button>
+          </Link>
         </div>
       </CardContent>
     </Card>

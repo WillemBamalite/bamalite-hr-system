@@ -7,11 +7,33 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Printer, Download, FileText, Users, Ship, UserPlus, Clock, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
-import { useCrewData } from "@/hooks/use-crew-data"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { BackButton } from "@/components/ui/back-button"
 
 export default function CrewPrintPage() {
-  const { crewDatabase: allCrewData, stats } = useCrewData()
+  const { crew, ships, sickLeave, loading, error } = useSupabaseData()
+  
+  // Converteer naar oude formaat voor compatibility
+  const allCrewData = crew.reduce((acc: any, c: any) => {
+    acc[c.id] = {
+      id: c.id,
+      firstName: c.first_name,
+      lastName: c.last_name,
+      position: c.position,
+      nationality: c.nationality,
+      status: c.status,
+      shipId: c.ship_id,
+    }
+    return acc
+  }, {})
+  
+  // Bereken stats
+  const stats = {
+    totalCrew: crew.filter((c: any) => c.status !== 'uit-dienst').length,
+    onBoard: crew.filter((c: any) => c.status === 'aan-boord').length,
+    atHome: crew.filter((c: any) => c.status === 'thuis').length,
+    sick: crew.filter((c: any) => c.status === 'ziek').length,
+  }
 
   const handlePrintAll = () => {
     window.print()

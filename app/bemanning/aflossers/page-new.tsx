@@ -37,12 +37,6 @@ export default function ReizenAflossersPage() {
   const [newTripDialog, setNewTripDialog] = useState(false)
   const [assignAflosserDialog, setAssignAflosserDialog] = useState<string | null>(null)
   const [selectedAflosserId, setSelectedAflosserId] = useState("")
-  const [absenceDialog, setAbsenceDialog] = useState<string | null>(null)
-  const [absenceData, setAbsenceData] = useState({
-    startDate: "",
-    endDate: "",
-    reason: ""
-  })
   
   // Trip data
   const [plannedTrips, setPlannedTrips] = useState<any[]>([])
@@ -97,10 +91,8 @@ export default function ReizenAflossersPage() {
     }
   }
 
-  // Filter aflossers (exclude "uit-dienst" - die horen bij Oude Werknemers)
-  const aflossers = crew.filter((member: any) => 
-    member.position === "Aflosser" && member.status !== "uit-dienst"
-  )
+  // Filter aflossers
+  const aflossers = crew.filter((member: any) => member.position === "Aflosser")
 
   // Create new trip
   const handleCreateTrip = async () => {
@@ -224,47 +216,6 @@ export default function ReizenAflossersPage() {
     }
 
     alert("Reis geannuleerd!")
-  }
-
-  // Register absence
-  const handleRegisterAbsence = async () => {
-    if (!absenceDialog) return
-
-    try {
-      const currentDate = new Date().toISOString().split('T')[0]
-      const isCurrentAbsence = absenceData.startDate <= currentDate
-
-      // Store in localStorage
-      if (typeof window !== 'undefined') {
-        const assignmentHistoryKey = `assignment_history_${absenceDialog}`
-        const existingHistory = JSON.parse(localStorage.getItem(assignmentHistoryKey) || '[]')
-        
-        const newAbsence = {
-          id: `absence_${Date.now()}`,
-          start_date: absenceData.startDate,
-          end_date: absenceData.endDate || absenceData.startDate,
-          reason: absenceData.reason,
-          type: "absence",
-          created_at: new Date().toISOString()
-        }
-        
-        existingHistory.push(newAbsence)
-        localStorage.setItem(assignmentHistoryKey, JSON.stringify(existingHistory))
-      }
-
-      // Update aflosser status if absence is current
-      if (isCurrentAbsence) {
-        await updateCrew(absenceDialog, { status: "afwezig" })
-      }
-
-      setAbsenceDialog(null)
-      setAbsenceData({ startDate: "", endDate: "", reason: "" })
-      alert("Afwezigheid succesvol geregistreerd!")
-      
-    } catch (error) {
-      console.error("Error registering absence:", error)
-      alert("Fout bij registreren afwezigheid")
-    }
   }
 
   if (loading) {
@@ -637,49 +588,17 @@ export default function ReizenAflossersPage() {
                       </div>
                     )}
 
-                    {/* Diploma's */}
-                    {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs font-medium text-gray-600 mb-2">Diploma's:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {aflosser.diplomas.slice(0, 4).map((diploma: string, index: number) => (
-                            <Badge key={index} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                              {diploma}
-                            </Badge>
-                          ))}
-                          {aflosser.diplomas.length > 4 && (
-                            <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600">
-                              +{aflosser.diplomas.length - 4} meer
-                            </Badge>
-                          )}
-                        </div>
+                    {aflosser.ship_id && (
+                      <div className="flex items-center space-x-2 text-sm text-gray-600 mb-3">
+                        <Ship className="w-4 h-4" />
+                        <span>{getShipName(aflosser.ship_id)}</span>
                       </div>
                     )}
-
-                    {/* Belangrijke Notitie */}
-                    {aflosser.notes && aflosser.notes.length > 0 && aflosser.notes[0] && (
-                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-md mb-3">
-                        <p className="text-xs font-medium text-yellow-800 mb-1">⚠️ Belangrijke Notitie</p>
-                        <p className="text-sm text-yellow-900">
-                          {typeof aflosser.notes[0] === 'string' ? aflosser.notes[0] : aflosser.notes[0]?.text || ''}
-                        </p>
-                      </div>
-                    )}
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full mt-3"
-                      onClick={() => setAbsenceDialog(aflosser.id)}
-                    >
-                      <CalendarDays className="w-4 h-4 mr-1" />
-                      Afwezigheid Registreren
-                    </Button>
 
                     {assignAflosserDialog && aflosser.status === "thuis" && (
                       <Button
                         size="sm"
-                        className="w-full mt-2"
+                        className="w-full"
                         onClick={() => {
                           setSelectedAflosserId(aflosser.id)
                           handleAssignAflosser()
@@ -790,64 +709,6 @@ export default function ReizenAflossersPage() {
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 Reis Aanmaken
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ABSENCE DIALOG */}
-      <Dialog open={!!absenceDialog} onOpenChange={() => setAbsenceDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Afwezigheid Registreren</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="absenceStartDate">Startdatum *</Label>
-              <Input
-                id="absenceStartDate"
-                type="date"
-                value={absenceData.startDate}
-                onChange={(e) => setAbsenceData({...absenceData, startDate: e.target.value})}
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="absenceEndDate">Einddatum (optioneel)</Label>
-              <Input
-                id="absenceEndDate"
-                type="date"
-                value={absenceData.endDate}
-                onChange={(e) => setAbsenceData({...absenceData, endDate: e.target.value})}
-              />
-              <p className="text-xs text-gray-500 mt-1">Laat leeg voor onbekende einddatum</p>
-            </div>
-            <div>
-              <Label htmlFor="absenceReason">Reden</Label>
-              <Textarea
-                id="absenceReason"
-                value={absenceData.reason}
-                onChange={(e) => setAbsenceData({...absenceData, reason: e.target.value})}
-                placeholder="Reden van afwezigheid..."
-                rows={3}
-              />
-            </div>
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <p className="text-sm text-blue-800">
-                💡 <strong>Tip:</strong> Je kunt zowel huidige als toekomstige afwezigheden registreren.
-                De status wordt automatisch aangepast op de startdatum.
-              </p>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setAbsenceDialog(null)}>
-                Annuleren
-              </Button>
-              <Button 
-                onClick={handleRegisterAbsence}
-                disabled={!absenceData.startDate}
-              >
-                Registreren
               </Button>
             </div>
           </div>
