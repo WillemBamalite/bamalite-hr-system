@@ -167,25 +167,12 @@ export function ShipPrintOverview() {
   }
 
   const getSickLeaveInfo = (crewId: string) => {
-    // Check localStorage first
-    let localStorageSickLeave = {}
-    if (typeof window !== 'undefined') {
-      try {
-        const storedSickLeave = JSON.parse(localStorage.getItem('sickLeaveDatabase') || '{}')
-        localStorageSickLeave = storedSickLeave
-      } catch (e) {
-        console.error('Error parsing localStorage sickLeave:', e)
-      }
-    }
-    
-    // Combine databases
-    const allSickLeaveData = { ...sickLeaveDatabase, ...localStorageSickLeave }
-    
-    const sickLeave = Object.values(allSickLeaveData).find((sick: any) => 
-      sick.crewMemberId === crewId && (sick.status === "actief" || sick.status === "wacht-op-briefje")
+    // Gebruik Supabase sickLeave data
+    const activeSickLeave = sickLeave.find((sick: any) => 
+      sick.crew_member_id === crewId && (sick.status === "actief" || sick.status === "wacht-op-briefje")
     )
     
-    return sickLeave || null
+    return activeSickLeave || null
   }
 
   const handlePrint = () => {
@@ -747,24 +734,11 @@ export function ShipPrintOverview() {
             <h3 className="text-sm font-semibold mb-2">Actieve ziekmeldingen</h3>
             <div className="space-y-1">
               {(() => {
-                // Get localStorage sick leave data
-                let localStorageSickLeave = {}
-                if (typeof window !== 'undefined') {
-                  try {
-                    const storedSickLeave = JSON.parse(localStorage.getItem('sickLeaveDatabase') || '{}')
-                    localStorageSickLeave = storedSickLeave
-                  } catch (e) {
-                    console.error('Error parsing localStorage sickLeave:', e)
-                  }
-                }
-                
-                // Combine databases
-                const allSickLeaveData = { ...sickLeaveDatabase, ...localStorageSickLeave }
-                
-                return Object.values(allSickLeaveData)
+                // Gebruik Supabase sickLeave data
+                return sickLeave
               .filter((sick: any) => sick.status === "actief" || sick.status === "wacht-op-briefje")
               .map((sick: any) => {
-                  const crewMember = (allCrewData as any)[sick.crewMemberId]
+                  const crewMember = (allCrewData as any)[sick.crew_member_id]
                 if (!crewMember) return null
 
                 return (
@@ -776,10 +750,10 @@ export function ShipPrintOverview() {
                       </Badge>
                       </div>
                       <div className="text-xs text-red-600">
-                        <div><span className="font-medium">Ziek vanaf:</span> {sick.startDate ? format(new Date(sick.startDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}</div>
+                        <div><span className="font-medium">Ziek vanaf:</span> {sick.start_date ? format(new Date(sick.start_date), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}</div>
                         <div><span className="font-medium">Ziek:</span> {sick.notes || "Onbekend"}</div>
-                        <div><span className="font-medium">Briefje tot:</span> {sick.certificateValidUntil ? format(new Date(sick.certificateValidUntil), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}</div>
-                        <div><span className="font-medium">Betaald door:</span> {sick.paidBy || "Onbekend"} • {sick.salaryPercentage || 0}%</div>
+                        <div><span className="font-medium">Briefje tot:</span> {sick.certificate_valid_until ? format(new Date(sick.certificate_valid_until), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}</div>
+                        <div><span className="font-medium">Betaald door:</span> {sick.paid_by || "Onbekend"} • {sick.salary_percentage || 0}%</div>
                       </div>
                     </div>
                   )
