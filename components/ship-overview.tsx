@@ -497,8 +497,8 @@ export function ShipOverview() {
                               <div className="space-y-4 mt-6">
                                 <h4 className="font-medium text-gray-700">Bemanning:</h4>
                                 
-                                {/* Status Columns */}
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Status Columns - force desktop layout on all screens */}
+                                <div className="grid grid-cols-3 gap-6">
                                   {/* Aan Boord Column */}
                                   <div className="space-y-3">
                                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
