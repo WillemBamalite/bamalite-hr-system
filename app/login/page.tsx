@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Ship } from 'lucide-react'
+import Image from 'next/image'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -35,8 +35,8 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-blue-600 rounded-full">
-              <Ship className="w-8 h-8 text-white" />
+            <div className="w-14 h-14 rounded-full bg-[#1e3a8a] flex items-center justify-center shadow">
+              <span className="text-3xl font-bold text-yellow-400">B</span>
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Bemanningslijst Systeem</CardTitle>
