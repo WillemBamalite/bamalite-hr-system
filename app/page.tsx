@@ -65,15 +65,15 @@ function DashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="max-w-[1200px] mx-auto py-8 px-4">
-        <div className="grid grid-cols-4 gap-6">
+      <main className="w-full py-8 px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Quick Actions - Links */}
-          <div className="col-span-1">
+          <div className="lg:col-span-1">
             <CrewQuickActions />
           </div>
 
           {/* Main Content - Rechts */}
-          <div className="col-span-3">
+          <div className="lg:col-span-3">
             <div className="grid grid-cols-1 gap-6">
               {/* Stats */}
               <DashboardStats />

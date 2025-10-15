@@ -16,7 +16,7 @@ export function SickLeaveHeader() {
 
   return (
     <header className="border-b bg-white shadow-sm">
-      <div className="container mx-auto px-4 py-4">
+      <div className="w-full px-4 py-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
             <button onClick={() => router.back()} className="flex items-center text-sm text-gray-700 hover:text-blue-700">
