@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Calendar } from "lucide-react"
+import { LogOut, User, Calendar, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
 import { usePathname } from "next/navigation"
@@ -8,6 +8,7 @@ import Image from "next/image"
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
+import { supabase } from "@/lib/supabase"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -18,6 +19,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const pathname = usePathname()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
+  const [locale, setLocale] = useState<'nl' | 'de' | 'fr'>('nl')
   
   // Prevent hydration errors
   useEffect(() => {
@@ -32,6 +34,22 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
 
     return () => clearInterval(timer)
   }, [])
+
+  // Load preferred locale from Supabase user metadata
+  useEffect(() => {
+    const loadLocale = async () => {
+      if (!user) return
+      const { data } = await supabase.auth.getUser()
+      const l = (data.user?.user_metadata as any)?.locale as 'nl' | 'de' | 'fr' | undefined
+      if (l) setLocale(l)
+    }
+    loadLocale()
+  }, [user])
+
+  const updateLocale = async (l: 'nl' | 'de' | 'fr') => {
+    setLocale(l)
+    await supabase.auth.updateUser({ data: { locale: l } })
+  }
   
   // Don't show header on login page
   if (pathname === '/login') {
@@ -65,6 +83,21 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         </div>
         
         <div className="flex items-center gap-4">
+          {/* Language switch */}
+          {user && (
+            <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-2 py-1">
+              <Globe className="w-4 h-4 text-gray-600" />
+              {(['nl','de','fr'] as const).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => updateLocale(l)}
+                  className={`text-xs px-2 py-1 rounded ${locale===l ? 'bg-white border border-gray-300 text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
           {user && (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
