@@ -66,22 +66,16 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full py-8 px-4">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Quick Actions - Links */}
-          <div className="lg:col-span-1">
-            <CrewQuickActions />
-          </div>
+        {/* Single column flow: stats → quick actions → ships */}
+        <div className="grid grid-cols-1 gap-6">
+          {/* Stats */}
+          <DashboardStats />
 
-          {/* Main Content - Rechts */}
-          <div className="lg:col-span-3">
-            <div className="grid grid-cols-1 gap-6">
-              {/* Stats */}
-              <DashboardStats />
+          {/* Snelle acties als knoppen direct onder de kaarten */}
+          <CrewQuickActions />
 
-              {/* Ship Overview */}
-              <ShipOverview />
-            </div>
-          </div>
+          {/* Schepen overzicht */}
+          <ShipOverview />
         </div>
       </main>
     </div>

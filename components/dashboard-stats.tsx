@@ -7,7 +7,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import Link from "next/link"
 
 export function DashboardStats() {
-  const { crew, ships, sickLeave } = useSupabaseData()
+  const { crew, ships, sickLeave, loans } = useSupabaseData()
   
   // Bereken stats uit Supabase data
   const aflossers = crew.filter((c) => 
@@ -23,12 +23,14 @@ export function DashboardStats() {
     thuis: activeCrew.filter((c) => c.status === "thuis").length,
     actieveZiekmeldingen: sickLeave.filter((s) => s.status === "actief").length,
     ziekmeldingenMetBriefje: sickLeave.filter((s) => s.status === "wacht-op-briefje").length,
-    nogInTeDelen: activeCrew.filter((c) => c.status === "nog-in-te-delen").length
+    nogInTeDelen: activeCrew.filter((c) => c.status === "nog-in-te-delen").length,
+    oudMedewerkers: crew.filter((c) => c.status === 'uit-dienst').length,
+    openLeningen: (loans || []).filter((l: any) => l.status === 'open').length
   }
 
   return (
     <div className="space-y-4 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Link href="/bemanning/overzicht" className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
           <div className="text-xs text-blue-700 mt-1">Totaal bemanningsleden</div>
@@ -44,6 +46,14 @@ export function DashboardStats() {
         <Link href="/bemanning/nog-in-te-delen" className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center hover:bg-gray-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-gray-800">{stats.nogInTeDelen}</div>
           <div className="text-xs text-gray-700 mt-1">Nog in te delen</div>
+        </Link>
+        <Link href="/bemanning/leningen" className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>
+          <div className="text-xs text-yellow-700 mt-1">Openstaande leningen</div>
+        </Link>
+        <Link href="/bemanning/oude-bemanningsleden" className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center hover:bg-purple-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-purple-800">{stats.oudMedewerkers}</div>
+          <div className="text-xs text-purple-700 mt-1">Oude medewerkers</div>
         </Link>
       </div>
     </div>

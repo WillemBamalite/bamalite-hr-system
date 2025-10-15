@@ -43,6 +43,9 @@ export default function ReizenAflossersPage() {
     endDate: "",
     reason: ""
   })
+  // Beschikbaar-vanaf dialog
+  const [availableDialog, setAvailableDialog] = useState<string | null>(null)
+  const [availableDate, setAvailableDate] = useState<string>("")
   
   // Trip data
   const [plannedTrips, setPlannedTrips] = useState<any[]>([])
@@ -79,7 +82,8 @@ export default function ReizenAflossersPage() {
     return ship ? ship.name : 'Onbekend schip'
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, subStatus?: string) => {
+    if (subStatus === 'afwezig') return 'bg-orange-100 text-orange-800'
     switch (status) {
       case 'aan-boord': return 'bg-red-100 text-red-800'
       case 'thuis': return 'bg-green-100 text-green-800'
@@ -88,7 +92,8 @@ export default function ReizenAflossersPage() {
     }
   }
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: string, subStatus?: string) => {
+    if (subStatus === 'afwezig') return 'Afwezig'
     switch (status) {
       case 'aan-boord': return 'Aan boord'
       case 'thuis': return 'Beschikbaar'
@@ -226,7 +231,7 @@ export default function ReizenAflossersPage() {
     alert("Reis geannuleerd!")
   }
 
-  // Register absence
+  // Register absence (Supabase-first)
   const handleRegisterAbsence = async () => {
     if (!absenceDialog) return
 
@@ -234,35 +239,41 @@ export default function ReizenAflossersPage() {
       const currentDate = new Date().toISOString().split('T')[0]
       const isCurrentAbsence = absenceData.startDate <= currentDate
 
-      // Store in localStorage
-      if (typeof window !== 'undefined') {
-        const assignmentHistoryKey = `assignment_history_${absenceDialog}`
-        const existingHistory = JSON.parse(localStorage.getItem(assignmentHistoryKey) || '[]')
-        
-        const newAbsence = {
-          id: `absence_${Date.now()}`,
-          start_date: absenceData.startDate,
-          end_date: absenceData.endDate || absenceData.startDate,
-          reason: absenceData.reason,
-          type: "absence",
-          created_at: new Date().toISOString()
-        }
-        
-        existingHistory.push(newAbsence)
-        localStorage.setItem(assignmentHistoryKey, JSON.stringify(existingHistory))
+      // Supabase update: we mark the aflosser as 'thuis' with sub_status 'afwezig'
+      // If the absence is in the future, use expected_start_date to start the absence later
+      const today = currentDate
+      const member = crew.find((c: any) => c.id === absenceDialog)
+      const absenceNote = {
+        type: 'absence',
+        start_date: absenceData.startDate,
+        end_date: absenceData.endDate || null,
+        reason: absenceData.reason || '',
+        created_at: new Date().toISOString(),
+      }
+      const payload: any = {
+        status: 'thuis',
+        sub_status: 'afwezig',
+        notes: Array.isArray(member?.notes) ? [absenceNote, ...member.notes] : [absenceNote]
+      }
+      if (isCurrentAbsence) {
+        payload.thuis_sinds = absenceData.startDate || today
+        payload.on_board_since = null
+        payload.expected_start_date = null
+      } else {
+        // future absence: person stays thuis until that date becomes active
+        payload.thuis_sinds = today
+        payload.expected_start_date = absenceData.startDate
       }
 
-      // Update aflosser status if absence is current
-      if (isCurrentAbsence) {
-        await updateCrew(absenceDialog, { status: "afwezig" })
-      }
+      await updateCrew(absenceDialog, payload)
 
       setAbsenceDialog(null)
       setAbsenceData({ startDate: "", endDate: "", reason: "" })
       alert("Afwezigheid succesvol geregistreerd!")
       
     } catch (error) {
-      console.error("Error registering absence:", error)
+      const e = error as any
+      console.error("Error registering absence:", e?.message || e, e)
       alert("Fout bij registreren afwezigheid")
     }
   }
@@ -534,7 +545,7 @@ export default function ReizenAflossersPage() {
                   <div>
                     <p className="text-sm text-gray-600">Beschikbaar</p>
                     <p className="text-3xl font-bold text-green-600">
-                      {aflossers.filter((a: any) => a.status === "thuis").length}
+                      {aflossers.filter((a: any) => a.status === "thuis" && a.sub_status !== 'afwezig').length}
                     </p>
                   </div>
                 </div>
@@ -560,7 +571,7 @@ export default function ReizenAflossersPage() {
                   <div>
                     <p className="text-sm text-gray-600">Afwezig</p>
                     <p className="text-3xl font-bold text-orange-600">
-                      {aflossers.filter((a: any) => a.status === "afwezig").length}
+                      {aflossers.filter((a: any) => a.sub_status === 'afwezig' || a.status === "afwezig").length}
                     </p>
                   </div>
                 </div>
@@ -625,8 +636,8 @@ export default function ReizenAflossersPage() {
                           </div>
                         </div>
                       </div>
-                      <Badge className={getStatusColor(aflosser.status)}>
-                        {getStatusText(aflosser.status)}
+                      <Badge className={getStatusColor(aflosser.status, aflosser.sub_status)}>
+                        {getStatusText(aflosser.status, aflosser.sub_status)}
                       </Badge>
                     </div>
 
@@ -656,13 +667,19 @@ export default function ReizenAflossersPage() {
                       </div>
                     )}
 
-                    {/* Belangrijke Notitie */}
-                    {aflosser.notes && aflosser.notes.length > 0 && aflosser.notes[0] && (
-                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-md mb-3">
-                        <p className="text-xs font-medium text-yellow-800 mb-1">⚠️ Belangrijke Notitie</p>
-                        <p className="text-sm text-yellow-900">
-                          {typeof aflosser.notes[0] === 'string' ? aflosser.notes[0] : aflosser.notes[0]?.text || ''}
-                        </p>
+                    {/* Afwezigheidsinformatie */}
+                    {(aflosser.sub_status === 'afwezig') && (
+                      <div className="p-2 bg-orange-50 border border-orange-200 rounded-md mb-3">
+                        <p className="text-xs font-medium text-orange-800 mb-1">Afwezig</p>
+                        {(() => {
+                          const lastAbsence = Array.isArray(aflosser.notes) ? aflosser.notes.find((n: any) => n?.type === 'absence') : null
+                          const start = lastAbsence?.start_date ? format(new Date(lastAbsence.start_date), 'dd-MM-yyyy') : 'onbekend'
+                          const end = lastAbsence?.end_date ? format(new Date(lastAbsence.end_date), 'dd-MM-yyyy') : 'onbekend'
+                          const reason = lastAbsence?.reason || '—'
+                          return (
+                            <p className="text-xs text-orange-900">{start} {lastAbsence?.end_date ? `- ${end}` : ''} • {reason}</p>
+                          )
+                        })()}
                       </div>
                     )}
 
@@ -675,6 +692,19 @@ export default function ReizenAflossersPage() {
                       <CalendarDays className="w-4 h-4 mr-1" />
                       Afwezigheid Registreren
                     </Button>
+                    {aflosser.sub_status === 'afwezig' && (
+                      <Button
+                        size="sm"
+                        className="w-full mt-2"
+                        variant="secondary"
+                        onClick={() => {
+                          setAvailableDialog(aflosser.id)
+                          setAvailableDate(new Date().toISOString().split('T')[0])
+                        }}
+                      >
+                        Beschikbaar vanaf …
+                      </Button>
+                    )}
 
                     {assignAflosserDialog && aflosser.status === "thuis" && (
                       <Button
@@ -848,6 +878,56 @@ export default function ReizenAflossersPage() {
                 disabled={!absenceData.startDate}
               >
                 Registreren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* AVAILABLE FROM DIALOG */}
+      <Dialog open={!!availableDialog} onOpenChange={() => setAvailableDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Beschikbaar vanaf</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="availableDate">Datum *</Label>
+              <Input
+                id="availableDate"
+                type="date"
+                value={availableDate}
+                onChange={(e) => setAvailableDate(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setAvailableDialog(null)}>
+                Annuleren
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!availableDialog || !availableDate) return
+                  try {
+                    const member = crew.find((c: any) => c.id === availableDialog)
+                    const note = { type: 'availability', available_from: availableDate, created_at: new Date().toISOString() }
+                    await updateCrew(availableDialog, {
+                      status: 'thuis',
+                      sub_status: null,
+                      expected_start_date: null,
+                      on_board_since: null,
+                      notes: Array.isArray(member?.notes) ? [note, ...member.notes] : [note]
+                    })
+                    setAvailableDialog(null)
+                    alert('Aflosser beschikbaar gesteld')
+                  } catch (e) {
+                    console.error('Error setting available from:', e)
+                    alert('Kon beschikbaarheid niet opslaan')
+                  }
+                }}
+                disabled={!availableDate}
+              >
+                Opslaan
               </Button>
             </div>
           </div>
