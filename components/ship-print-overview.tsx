@@ -11,7 +11,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 
 export function ShipPrintOverview() {
   // Gebruik Supabase data
-  const { ships, crew, sickLeave, loading, error } = useSupabaseData()
+  const { ships, crew, sickLeave, standBackRecords, loading, error } = useSupabaseData()
   
   // Converteer crew naar oude formaat voor compatibility
   const allCrewData = crew.reduce((acc: any, c: any) => {
