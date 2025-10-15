@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Force 3-column ship status grid also on small screens, without affecting other pages */
+.ship-status-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Make main content span full width similar to header on all devices */
+main {
+  width: 100%;
+}
+
+/* Desktop-on-mobile: keep desktop width and allow horizontal scroll if needed */
+.app-container {
+  min-width: 1200px;
+}
+
 body {
   font-family: Arial, Helvetica, sans-serif;
 }

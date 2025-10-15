@@ -21,7 +21,7 @@ export default function PrintPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Print Controls - alleen zichtbaar op scherm */}
       <div className="no-print bg-white border-b border-gray-200 shadow-sm">
-        <div className="container mx-auto px-4 py-6">
+        <div className="w-full px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
               <BackButton href="/" />
@@ -53,12 +53,12 @@ export default function PrintPage() {
       </div>
 
       {/* Print Content */}
-      <div className="container mx-auto px-4 py-8">
+      <div className="w-full px-4 py-8">
         <ShipPrintOverview />
       </div>
 
       {/* Print Instructions - alleen zichtbaar op scherm */}
-      <div className="no-print container mx-auto px-4 pb-8">
+      <div className="no-print w-full px-4 pb-8">
         <Card className="bg-white shadow-lg border-0">
           <CardHeader>
             <CardTitle className="flex items-center text-lg">

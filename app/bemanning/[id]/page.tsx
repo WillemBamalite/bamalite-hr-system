@@ -42,7 +42,7 @@ export default function BemanningslidPage({ params }: Props) {
       <MobileHeaderNav />
 
       <div className="w-full px-2 md:px-8 py-8">
-        <main className="container mx-auto px-4 py-6">
+        <main className="w-full px-4 py-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Hoofdprofiel */}
             <div className="lg:col-span-2 space-y-6">

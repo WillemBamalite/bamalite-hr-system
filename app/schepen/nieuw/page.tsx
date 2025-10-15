@@ -104,7 +104,7 @@ export default function NewShipPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="container mx-auto px-4 py-4">
+        <div className="w-full px-4 py-4">
           <div className="flex items-center space-x-4">
             <BackButton href="/" />
             <div>
@@ -117,7 +117,7 @@ export default function NewShipPage() {
       <DashboardButton />
 
       {/* Main content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         <div className="max-w-2xl mx-auto">
           {/* Form */}
           <Card className="mb-8">

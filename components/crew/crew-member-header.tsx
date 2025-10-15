@@ -24,7 +24,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
   if (loading) {
     return (
       <header className="border-b bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4">
+        <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between">
             <BackButton />
             <div className="text-gray-600">Laden...</div>
@@ -37,7 +37,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
   if (!crewMember) {
     return (
       <header className="border-b bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4">
+        <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between">
             <BackButton />
             <div className="text-red-600">Bemanningslid niet gevonden</div>
@@ -66,7 +66,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
 
   return (
     <header className="border-b bg-white shadow-sm">
-      <div className="container mx-auto px-4 py-4">
+      <div className="w-full px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <BackButton />

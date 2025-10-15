@@ -120,7 +120,7 @@ export default function NieuwAflosserPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="container mx-auto px-4 py-4">
+        <div className="w-full px-4 py-4">
           <div className="flex items-center space-x-4">
             <BackButton href="/bemanning/aflossers" />
             <div>
@@ -135,7 +135,7 @@ export default function NieuwAflosserPage() {
       <DashboardButton />
 
       {/* Main content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="w-full px-4 py-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">

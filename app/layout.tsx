@@ -23,7 +23,8 @@ export default function RootLayout({
   return (
     <html lang="nl" suppressHydrationWarning>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/* Force desktop layout on mobile by fixing viewport width */}
+        <meta name="viewport" content="width=1200, initial-scale=1" />
         <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
         <meta httpEquiv="Pragma" content="no-cache" />
         <meta httpEquiv="Expires" content="0" />
@@ -38,7 +39,9 @@ export default function RootLayout({
           <AuthProvider>
             <CrewProvider>
               <DashboardHeader />
-              {children}
+              <div className="app-container">
+                {children}
+              </div>
               <Toaster />
             </CrewProvider>
           </AuthProvider>
