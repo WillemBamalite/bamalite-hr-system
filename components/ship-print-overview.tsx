@@ -762,32 +762,40 @@ export function ShipPrintOverview() {
           </div>
         </div>
 
-        {/* Openstaande terug staan dagen */}
+        {/* Openstaande terug staan dagen (gebaseerd op stand_back_records uit Supabase) */}
         <div>
             <h3 className="text-sm font-semibold mb-2">Openstaande terug staan dagen</h3>
             <div className="space-y-1">
-            {Object.values(sickLeaveHistoryDatabase)
-              .filter((history: any) => history.type === "terug-staan" && !history.completed)
-              .map((history: any) => {
-                  const crewMember = (allCrewData as any)[history.crewMemberId]
+            {standBackRecords
+              .filter((rec: any) => (rec.stand_back_days_remaining || 0) > 0)
+              .map((rec: any) => {
+                const crewMember = (allCrewData as any)[rec.crew_member_id]
                 if (!crewMember) return null
 
                 return (
-                    <div key={history.id} className="border border-gray-200 rounded p-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <h4 className="font-medium text-xs">{crewMember.firstName} {crewMember.lastName}</h4>
-                        <Badge variant="outline" className="text-xs">Terug staan</Badge>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1 text-xs">
-                        <div>
-                          <span className="font-medium">Van:</span> {history.startDate ? format(new Date(history.startDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
+                  <div key={rec.id} className="border border-gray-200 rounded p-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="font-medium text-xs">{crewMember.firstName} {crewMember.lastName}</h4>
+                      <Badge variant="outline" className="text-xs">Terug staan</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      <div>
+                        <span className="font-medium">Van:</span> {rec.start_date ? format(new Date(rec.start_date), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
                       </div>
                       <div>
-                          <span className="font-medium">Tot:</span> {history.endDate ? format(new Date(history.endDate), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
+                        <span className="font-medium">Tot:</span> {rec.end_date ? format(new Date(rec.end_date), "dd-MM-yyyy", { locale: nl }) : "Onbekend"}
                       </div>
-                      <div className="col-span-2">
-                        <span className="font-medium">Notitie:</span> {history.note}
+                      <div>
+                        <span className="font-medium">Totaal:</span> {rec.stand_back_days_required || 0} dagen
                       </div>
+                      <div>
+                        <span className="font-medium">Openstaand:</span> {rec.stand_back_days_remaining || 0} dagen
+                      </div>
+                      {rec.description && (
+                        <div className="col-span-2">
+                          <span className="font-medium">Notitie:</span> {rec.description}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
