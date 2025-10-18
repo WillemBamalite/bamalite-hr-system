@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MobileHeaderNav } from '@/components/ui/mobile-header-nav'
 import { DashboardButton } from '@/components/ui/dashboard-button'
-import { getShipName } from '@/lib/utils'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { 
   ArrowLeft, 
@@ -19,11 +18,71 @@ import {
   CalendarDays,
   MapPin,
   UserPlus,
-  Ship
+  Ship,
+  Trash2
 } from 'lucide-react'
 
+// Helper function to calculate work days from trip data
+// SIMPLE LOGIC: tel kalenderdagen van start tot eind (inclusief beide)
+function calculateWorkDays(startDate: string, startTime: string, endDate: string, endTime: string): number {
+  if (!startDate || !endDate) return 0
+
+  // Parse both DD-MM-YYYY and ISO format dates
+  const parseDate = (dateStr: string): Date => {
+    if (!dateStr || typeof dateStr !== 'string') {
+      console.error('Invalid date string:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    // Check if it's already an ISO date (contains T or has 4-digit year at start)
+    if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      // It's already an ISO date, use it directly
+      const date = new Date(dateStr)
+      if (isNaN(date.getTime())) {
+        console.error('Invalid ISO date:', dateStr)
+        return new Date() // Return current date as fallback
+      }
+      return date
+    }
+    
+    // Otherwise, parse as DD-MM-YYYY format
+    const parts = dateStr.split('-')
+    if (parts.length !== 3) {
+      console.error('Invalid date format:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    const [day, month, year] = parts
+    const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    const date = new Date(isoDate)
+    
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    return date
+  }
+
+  const start = parseDate(startDate)
+  const end = parseDate(endDate)
+
+  // Validatie: afstapdatum mag niet voor instapdatum liggen
+  if (end < start) {
+    console.error('Error: end date is before start date')
+    return 0
+  }
+
+  // Simpele telling: tel kalenderdagen van start tot eind (inclusief beide)
+  const timeDiff = end.getTime() - start.getTime()
+  const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1 // +1 omdat we beide datums inclusief tellen
+
+
+  return daysDiff
+}
+
 export default function VoltooideReizenPage() {
-  const { ships, crew, loading } = useSupabaseData()
+  const { ships, crew, trips, loading, deleteTrip } = useSupabaseData()
   const [completedTrips, setCompletedTrips] = useState<any[]>([])
   const [filteredTrips, setFilteredTrips] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -32,14 +91,11 @@ export default function VoltooideReizenPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
 
-  // Load completed trips from localStorage on component mount
+  // Load completed trips from Supabase
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedTrips = JSON.parse(localStorage.getItem('plannedTrips') || '[]')
-      const completed = storedTrips.filter((trip: any) => trip.status === 'voltooid')
-      setCompletedTrips(completed)
-    }
-  }, [])
+    const completed = trips.filter((trip: any) => trip.status === 'voltooid')
+    setCompletedTrips(completed)
+  }, [trips])
 
   // Filter trips based on search and filters
   useEffect(() => {
@@ -80,7 +136,10 @@ export default function VoltooideReizenPage() {
   }, [completedTrips, searchTerm, selectedShip, selectedYear])
 
   // Helper functions
-  const getShipNameLocal = (shipId: string) => getShipName(shipId, ships)
+  const getShipNameLocal = (shipId: string) => {
+    const ship = ships.find((s: any) => s.id === shipId)
+    return ship ? ship.name : 'Onbekend schip'
+  }
 
   const getAflosserName = (aflosserId: string) => {
     const aflosser = crew.find((c: any) => c.id === aflosserId)
@@ -120,61 +179,6 @@ export default function VoltooideReizenPage() {
         </Link>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Ship className="w-5 h-5 text-blue-600" />
-              <div>
-                <p className="text-sm text-gray-600">Totaal Voltooid</p>
-                <p className="text-2xl font-bold text-blue-600">{completedTrips.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <CalendarDays className="w-5 h-5 text-green-600" />
-              <div>
-                <p className="text-sm text-gray-600">Dit Jaar</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {completedTrips.filter((trip: any) => 
-                    new Date(trip.start_date).getFullYear() === new Date().getFullYear()
-                  ).length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <UserPlus className="w-5 h-5 text-purple-600" />
-              <div>
-                <p className="text-sm text-gray-600">Unieke Aflossers</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {new Set(completedTrips.map((trip: any) => trip.aflosser_id).filter(Boolean)).size}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <MapPin className="w-5 h-5 text-orange-600" />
-              <div>
-                <p className="text-sm text-gray-600">Unieke Schepen</p>
-                <p className="text-2xl font-bold text-orange-600">
-                  {new Set(completedTrips.map((trip: any) => trip.ship_id)).size}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Filters */}
       <Card className="mb-6">
@@ -282,36 +286,112 @@ export default function VoltooideReizenPage() {
             return (
               <Card key={trip.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-1">{getShipNameLocal(trip.ship_id)}</h4>
-                      <p className="text-sm text-gray-600">{trip.trip_from} → {trip.trip_to}</p>
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2 text-sm text-gray-600 mb-1">
-                        <CalendarDays className="w-4 h-4" />
-                        <span>
-                          {format(new Date(trip.start_date), 'dd-MM-yyyy')} 
-                          {trip.end_date ? ` - ${format(new Date(trip.end_date), 'dd-MM-yyyy')}` : ' - Onbekend'}
-                        </span>
+                  <div className="space-y-4">
+                    {/* Header row */}
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-1">{getShipNameLocal(trip.ship_id)}</h4>
+                        <p className="text-sm text-gray-600">{trip.trip_from} → {trip.trip_to}</p>
                       </div>
-                      <p className="text-sm text-gray-500">Reis: {trip.trip_name}</p>
+                      <div className="flex items-center space-x-2">
+                        <Badge className="bg-gray-100 text-gray-800">Voltooid</Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            if (confirm('Weet je zeker dat je deze reis definitief wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.')) {
+                              try {
+                                await deleteTrip(trip.id)
+                                alert('Reis succesvol verwijderd!')
+                              } catch (error) {
+                                console.error('Error deleting trip:', error)
+                                alert('Fout bij verwijderen van reis')
+                              }
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div>
-                      {assignedAflosser ? (
-                        <div className="flex items-center space-x-2">
-                          <UserPlus className="w-4 h-4 text-green-600" />
-                          <span className="text-sm font-medium text-green-700">
-                            {assignedAflosser.first_name} {assignedAflosser.last_name}
+
+                    {/* Trip details */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex items-center space-x-2 text-sm text-gray-600 mb-1">
+                          <CalendarDays className="w-4 h-4" />
+                          <span>
+                            {format(new Date(trip.start_date), 'dd-MM-yyyy')} 
+                            {trip.end_date ? ` - ${format(new Date(trip.end_date), 'dd-MM-yyyy')}` : ' - Onbekend'}
                           </span>
                         </div>
-                      ) : (
-                        <span className="text-sm text-gray-500">Geen aflosser toegewezen</span>
-                      )}
+                        <p className="text-sm text-gray-500">Reis: {trip.trip_name}</p>
+                      </div>
+                      <div>
+                        {assignedAflosser ? (
+                          <div className="flex items-center space-x-2">
+                            <UserPlus className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-medium text-green-700">
+                              {assignedAflosser.first_name} {assignedAflosser.last_name}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-500">Geen aflosser toegewezen</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex justify-end">
-                      <Badge className="bg-gray-100 text-gray-800">Voltooid</Badge>
-                    </div>
+
+                    {/* Actual boarding/leaving times */}
+                    {(trip.start_datum || trip.eind_datum) && (
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">Werkelijke tijden</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                          {trip.start_datum && (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-gray-600">Aan boord:</span>
+                              <span className="font-medium">
+                                {format(new Date(trip.start_datum), 'dd-MM-yyyy')} {trip.start_tijd || ''}
+                              </span>
+                            </div>
+                          )}
+                          {trip.eind_datum && (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-gray-600">Afgestapt:</span>
+                              <span className="font-medium">
+                                {format(new Date(trip.eind_datum), 'dd-MM-yyyy')} {trip.eind_tijd || ''}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Werkdagen berekening */}
+                        {trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Werkdagen:</span>
+                              <span className="font-medium text-blue-600">
+                                {(() => {
+                                  const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                  return workDays === Math.floor(workDays) 
+                                    ? `${workDays} dag${workDays !== 1 ? 'en' : ''}`
+                                    : `${workDays} dag${workDays !== 1 ? 'en' : ''}`
+                                })()}
+                              </span>
+                            </div>
+                            
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Aflosser opmerkingen */}
+                    {trip.aflosser_opmerkingen && (
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <h5 className="text-sm font-medium text-blue-700 mb-1">Opmerkingen over aflosser</h5>
+                        <p className="text-sm text-blue-600 italic">{trip.aflosser_opmerkingen}</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

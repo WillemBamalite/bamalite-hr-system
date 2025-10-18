@@ -132,12 +132,488 @@ async function autoRotateCrewMembers(crewData: any[]) {
   }
 }
 
+// Functie om automatisch vaste dienst records te beheren
+async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords: any[], tripsData: any[]) {
+  const today = new Date()
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth() + 1 // JavaScript months are 0-based
+  
+  console.log(`🔧 Auto-managing vaste dienst records for ${currentYear}-${currentMonth}`)
+  
+  // Get all aflossers in vaste dienst
+  const vasteDienstAflossers = crewData.filter(member => member.vaste_dienst === true)
+  
+  for (const aflosser of vasteDienstAflossers) {
+    console.log(`📋 Processing vaste dienst aflosser: ${aflosser.first_name} ${aflosser.last_name}`)
+    
+    // Check if current month record exists
+    const existingRecord = vasteDienstRecords.find(record => 
+      record.aflosser_id === aflosser.id && 
+      record.year === currentYear && 
+      record.month === currentMonth
+    )
+    
+    if (!existingRecord) {
+      // Create new monthly record
+      console.log(`📅 Creating new monthly record for ${aflosser.first_name} ${aflosser.last_name}`)
+      
+      try {
+        const newRecord = {
+          aflosser_id: aflosser.id,
+          year: currentYear,
+          month: currentMonth,
+          required_days: 15, // Standard 15 days per month
+          actual_days: 0, // Will be calculated from trips
+          balance_days: 0, // Will be calculated
+          notes: `Automatisch aangemaakt voor ${currentYear}-${currentMonth}`
+        }
+        
+        const { data, error } = await supabase
+          .from('vaste_dienst_records')
+          .insert([newRecord])
+          .select()
+          .single()
+        
+        if (error) {
+          console.error('Error creating vaste dienst record:', error)
+        } else {
+          console.log(`✅ Created monthly record for ${aflosser.first_name}`)
+        }
+      } catch (err) {
+        console.error('Error in vaste dienst record creation:', err)
+      }
+    }
+    
+    // Calculate actual days from completed trips for current month
+    const currentMonthTrips = tripsData.filter(trip => 
+      trip.aflosser_id === aflosser.id && 
+      trip.status === 'voltooid' &&
+      trip.eind_datum &&
+      new Date(trip.eind_datum).getFullYear() === currentYear &&
+      new Date(trip.eind_datum).getMonth() + 1 === currentMonth
+    )
+    
+    let totalWorkDays = 0
+    for (const trip of currentMonthTrips) {
+      const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+      totalWorkDays += workDays
+    }
+    
+    // Update the record with actual days and balance
+    if (existingRecord) {
+      const requiredDays = 15
+      const balanceDays = totalWorkDays - requiredDays
+      
+      // Cap values to fit in DECIMAL(4,1) - max 999.9
+      const cappedActualDays = Math.min(totalWorkDays, 999.9)
+      const cappedBalanceDays = Math.min(Math.max(balanceDays, -999.9), 999.9)
+      
+      if (existingRecord.actual_days !== cappedActualDays || existingRecord.balance_days !== cappedBalanceDays) {
+        console.log(`📊 Updating record for ${aflosser.first_name}: ${cappedActualDays} days (balance: ${cappedBalanceDays})`)
+        
+        try {
+        const { error } = await supabase
+          .from('vaste_dienst_records')
+          .update({
+            actual_days: cappedActualDays,
+            balance_days: cappedBalanceDays
+          })
+          .eq('id', existingRecord.id)
+          
+          if (error) {
+            console.error('❌ Error updating vaste dienst record:', error)
+            console.error('❌ Error details:', JSON.stringify(error, null, 2))
+            console.error('❌ Record data:', { id: existingRecord.id, actual_days: totalWorkDays, balance_days: balanceDays })
+          } else {
+            console.log(`✅ Updated record for ${aflosser.first_name}`)
+          }
+        } catch (err) {
+          console.error('Error updating vaste dienst record:', err)
+        }
+      }
+    }
+  }
+}
+
+// Helper function to calculate work days from trip data
+export function calculateWorkDays(startDate: string, startTime: string, endDate: string, endTime: string): number {
+  if (!startDate || !endDate) return 0
+
+  // Parse both DD-MM-YYYY and ISO format dates
+  const parseDate = (dateStr: string): Date => {
+    if (!dateStr || typeof dateStr !== 'string') {
+      console.error('Invalid date string:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    // Check if it's already an ISO date (contains T or has 4-digit year at start)
+    if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      // It's already an ISO date, use it directly
+      const date = new Date(dateStr)
+      if (isNaN(date.getTime())) {
+        console.error('Invalid ISO date:', dateStr)
+        return new Date() // Return current date as fallback
+      }
+      return date
+    }
+    
+    // Otherwise, parse as DD-MM-YYYY format
+    const parts = dateStr.split('-')
+    if (parts.length !== 3) {
+      console.error('Invalid date format:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    const [day, month, year] = parts
+    const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    const date = new Date(isoDate)
+    
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    return date
+  }
+
+  const start = parseDate(startDate)
+  const end = parseDate(endDate)
+
+  // Validatie: afstapdatum mag niet voor instapdatum liggen
+  if (end < start) {
+    console.error('Error: end date is before start date')
+    return 0
+  }
+
+  // Simpele telling: tel kalenderdagen van start tot eind (inclusief beide)
+  const timeDiff = end.getTime() - start.getTime()
+  const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1 // +1 omdat we beide datums inclusief tellen
+
+
+  return daysDiff
+}
+
+// Function to auto-update vaste dienst records when a trip is completed
+async function autoUpdateVasteDienstFromTrip(completedTrip: any) {
+  try {
+    console.log(`🔄 Auto-updating vaste dienst for completed trip: ${completedTrip.id}`)
+    console.log(`🔄 Trip data:`, completedTrip)
+    
+    // Get the aflosser
+    const { data: aflosser, error: aflosserError } = await supabase
+      .from('crew')
+      .select('*')
+      .eq('id', completedTrip.aflosser_id)
+      .single()
+    
+    if (aflosserError || !aflosser) {
+      console.error('Error fetching aflosser:', aflosserError)
+      return
+    }
+    
+    // Check if aflosser is in vaste dienst
+    if (!aflosser.vaste_dienst) {
+      console.log('Aflosser is not in vaste dienst, skipping auto-update')
+      return
+    }
+    
+    // Get the month/year of the trip completion
+    // Parse the date using our safe parseDate function
+    const parseDate = (dateStr: string): Date => {
+      if (!dateStr || typeof dateStr !== 'string') {
+        console.error('Invalid date string:', dateStr)
+        return new Date()
+      }
+      
+      // Check if it's already an ISO date (contains T or has 4-digit year at start)
+      if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+        // It's already an ISO date, use it directly
+        const date = new Date(dateStr)
+        if (isNaN(date.getTime())) {
+          console.error('Invalid ISO date:', dateStr)
+          return new Date()
+        }
+        return date
+      }
+      
+      // Otherwise, parse as DD-MM-YYYY format
+      const parts = dateStr.split('-')
+      if (parts.length !== 3) {
+        console.error('Invalid date format:', dateStr)
+        return new Date()
+      }
+      
+      const [day, month, year] = parts
+      const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      const date = new Date(isoDate)
+      
+      if (isNaN(date.getTime())) {
+        console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
+        return new Date()
+      }
+      
+      return date
+    }
+    
+    const endDate = parseDate(completedTrip.eind_datum)
+    const year = endDate.getFullYear()
+    const month = endDate.getMonth() + 1
+    
+    // Check if monthly record exists
+    const { data: existingRecord, error: recordError } = await supabase
+      .from('vaste_dienst_records')
+      .select('*')
+      .eq('aflosser_id', completedTrip.aflosser_id)
+      .eq('year', year)
+      .eq('month', month)
+      .single()
+    
+    if (recordError && recordError.code !== 'PGRST116') { // PGRST116 = no rows found
+      console.error('Error fetching vaste dienst record:', recordError)
+      return
+    }
+    
+    let recordId = existingRecord?.id
+    
+    // Create record if it doesn't exist
+    if (!existingRecord) {
+      console.log(`📅 Creating new monthly record for ${aflosser.first_name} ${aflosser.last_name}`)
+      
+      const newRecord = {
+        aflosser_id: completedTrip.aflosser_id,
+        year: year,
+        month: month,
+        required_days: 15,
+        actual_days: 0,
+        balance_days: 0,
+        notes: `Automatisch aangemaakt voor ${year}-${month}`
+      }
+      
+      const { data: createdRecord, error: createError } = await supabase
+        .from('vaste_dienst_records')
+        .insert([newRecord])
+        .select()
+        .single()
+      
+      if (createError) {
+        console.error('Error creating vaste dienst record:', createError)
+        return
+      }
+      
+      recordId = createdRecord.id
+    }
+    
+    // Calculate work days for this trip
+    const workDays = calculateWorkDays(
+      completedTrip.start_datum, 
+      completedTrip.start_tijd, 
+      completedTrip.eind_datum, 
+      completedTrip.eind_tijd
+    )
+    
+    // Get all completed trips for this month to calculate total
+    const { data: allTrips, error: tripsError } = await supabase
+      .from('trips')
+      .select('*')
+      .eq('aflosser_id', completedTrip.aflosser_id)
+      .eq('status', 'voltooid')
+      .not('eind_datum', 'is', null)
+    
+    if (tripsError) {
+      console.error('Error fetching trips:', tripsError)
+      return
+    }
+    
+    // Calculate total work days for the month
+    let totalWorkDays = 0
+    for (const trip of allTrips || []) {
+      const tripEndDate = parseDate(trip.eind_datum)
+      if (tripEndDate.getFullYear() === year && tripEndDate.getMonth() + 1 === month) {
+        const tripWorkDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+        totalWorkDays += tripWorkDays
+      }
+    }
+    
+    // Update the record
+    const requiredDays = 15
+    const balanceDays = totalWorkDays - requiredDays
+    
+    // Cap values to fit in DECIMAL(4,1) - max 999.9
+    const cappedActualDays = Math.min(totalWorkDays, 999.9)
+    const cappedBalanceDays = Math.min(Math.max(balanceDays, -999.9), 999.9)
+    
+    const { error: updateError } = await supabase
+      .from('vaste_dienst_records')
+      .update({
+        actual_days: cappedActualDays,
+        balance_days: cappedBalanceDays
+      })
+      .eq('id', recordId)
+    
+    if (updateError) {
+      console.error('❌ Error updating vaste dienst record:', updateError)
+      console.error('❌ Error details:', JSON.stringify(updateError, null, 2))
+      console.error('❌ Record data:', { id: recordId, actual_days: totalWorkDays, balance_days: balanceDays })
+    } else {
+      console.log(`✅ Updated vaste dienst record for ${aflosser.first_name}: ${totalWorkDays} days (balance: ${balanceDays})`)
+    }
+    
+  } catch (err) {
+    console.error('Error in auto-update vaste dienst:', err)
+  }
+}
+
+// Function to force recalculate all vaste dienst records with new logic
+async function forceRecalculateAllVasteDienstRecords(crewData: any[], tripsData: any[]) {
+  try {
+    console.log('🔄 Force recalculating all vaste dienst records...')
+    console.log(`📊 Crew data: ${crewData.length} members`)
+    console.log(`📊 Trips data: ${tripsData.length} trips`)
+    
+    // Get all vaste dienst records
+    const { data: allRecords, error: fetchError } = await supabase
+      .from('vaste_dienst_records')
+      .select('*')
+    
+    if (fetchError) {
+      console.error('❌ Error fetching vaste dienst records:', fetchError)
+      return
+    }
+    
+    if (!allRecords || allRecords.length === 0) {
+      console.log('⚠️ No vaste dienst records found to recalculate')
+      return
+    }
+    
+    console.log(`📋 Found ${allRecords.length} records to recalculate`)
+    
+    // Process each record
+    for (const record of allRecords) {
+      try {
+        console.log(`\n🔍 Processing record ${record.id} for aflosser ${record.aflosser_id}`)
+        
+        // Find the aflosser
+        const aflosser = crewData.find(crew => crew.id === record.aflosser_id)
+        if (!aflosser) {
+          console.log(`⚠️ Aflosser not found for record ${record.id}`)
+          continue
+        }
+        
+        console.log(`👤 Found aflosser: ${aflosser.first_name} ${aflosser.last_name}`)
+        
+        // Get all completed trips for this aflosser
+        const allTrips = tripsData.filter((trip: any) => 
+          trip.aflosser_id === record.aflosser_id &&
+          trip.status === 'voltooid' &&
+          trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd
+        )
+        
+        console.log(`🚢 Found ${allTrips.length} completed trips for this aflosser`)
+        
+        // Calculate total work days with new logic
+        let totalWorkDays = 0
+        for (const trip of allTrips) {
+          const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+          console.log(`  📅 Trip ${trip.id}: ${trip.start_datum} to ${trip.eind_datum} = ${workDays} days`)
+          totalWorkDays += workDays
+        }
+        
+        console.log(`📊 Total work days calculated: ${totalWorkDays}`)
+        
+        // Cap values to fit in DECIMAL(4,1)
+        const requiredDays = 15
+        const balanceDays = totalWorkDays - requiredDays
+        const cappedActualDays = Math.min(totalWorkDays, 999.9)
+        const cappedBalanceDays = Math.min(Math.max(balanceDays, -999.9), 999.9)
+        
+        console.log(`💾 Updating record: actual=${cappedActualDays}, balance=${cappedBalanceDays}`)
+        
+        // Update the record
+        const { error: updateError } = await supabase
+          .from('vaste_dienst_records')
+          .update({
+            actual_days: cappedActualDays,
+            balance_days: cappedBalanceDays
+          })
+          .eq('id', record.id)
+        
+        if (updateError) {
+          console.error(`❌ Error updating record ${record.id}:`, updateError)
+        } else {
+          console.log(`✅ Successfully updated record for ${aflosser.first_name}: ${cappedActualDays} days (balance: ${cappedBalanceDays})`)
+        }
+        
+      } catch (err) {
+        console.error(`❌ Error processing record ${record.id}:`, err)
+      }
+    }
+    
+    console.log('🎉 Force recalculation completed!')
+    
+  } catch (err) {
+    console.error('❌ Error in force recalculate:', err)
+  }
+}
+
+// Function to reset all vaste dienst records to 0
+async function resetAllVasteDienstRecords() {
+  try {
+    console.log('🧹 Resetting all vaste dienst records to 0...')
+    
+    // Get all vaste dienst records
+    const { data: allRecords, error: fetchError } = await supabase
+      .from('vaste_dienst_records')
+      .select('*')
+    
+    if (fetchError) {
+      console.error('Error fetching vaste dienst records for reset:', fetchError)
+      return
+    }
+    
+    if (!allRecords || allRecords.length === 0) {
+      console.log('No vaste dienst records found to reset')
+      return
+    }
+    
+    console.log(`Found ${allRecords.length} records to reset`)
+    
+    // Reset each record to 0
+    for (const record of allRecords) {
+      try {
+        const { error: updateError } = await supabase
+          .from('vaste_dienst_records')
+          .update({
+            actual_days: 0,
+            balance_days: -15 // -15 because required_days is 15
+          })
+          .eq('id', record.id)
+        
+        if (updateError) {
+          console.error(`❌ Error resetting record ${record.id}:`, updateError)
+        } else {
+          console.log(`✅ Reset record ${record.id} to 0`)
+        }
+        
+      } catch (err) {
+        console.error(`Error resetting record ${record.id}:`, err)
+      }
+    }
+    
+    console.log('🎉 Reset completed!')
+    
+  } catch (err) {
+    console.error('Error in reset all records:', err)
+  }
+}
+
 export function useSupabaseData() {
   const [ships, setShips] = useState<any[]>([])
   const [crew, setCrew] = useState<any[]>([])
   const [sickLeave, setSickLeave] = useState<any[]>([])
   const [standBackRecords, setStandBackRecords] = useState<any[]>([])
   const [loans, setLoans] = useState<any[]>([])
+  const [trips, setTrips] = useState<any[]>([])
+  const [vasteDienstRecords, setVasteDienstRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -159,8 +635,24 @@ export function useSupabaseData() {
         setSickLeave([])
         setStandBackRecords([])
         setLoans([])
+        setTrips([])
+        setVasteDienstRecords([])
         setLoading(false)
         return
+      }
+
+      // Test Supabase connection
+      console.log('Testing Supabase connection...')
+      const { data: testData, error: testError } = await supabase
+        .from('sick_leave')
+        .select('id')
+        .limit(1)
+      
+      if (testError) {
+        console.error('Supabase connection test failed:', testError)
+        console.error('Test error details:', JSON.stringify(testError, null, 2))
+      } else {
+        console.log('✅ Supabase connection test successful')
       }
 
       // Load ships
@@ -191,26 +683,12 @@ export function useSupabaseData() {
       } else {
         console.log('Crew loaded:', crewData?.length || 0)
         
-        // Check en activeer crew members die vandaag moeten starten
-        await autoActivateCrewMembers(crewData || [])
+        // Temporarily disable auto-activation and rotation to prevent infinite loops
+        // await autoActivateCrewMembers(crewData || [])
+        // await autoRotateCrewMembers(crewData || [])
         
-        // Check en roteer crew members automatisch
-        await autoRotateCrewMembers(crewData || [])
-        
-        // Herlaad crew data NA de automatische rotaties
-        console.log('Reloading crew after auto-rotation...')
-        const { data: updatedCrewData, error: reloadError } = await supabase
-          .from('crew')
-          .select('*')
-          .order('first_name')
-        
-        if (reloadError) {
-          console.error('Error reloading crew:', reloadError)
-          setCrew(crewData || [])
-        } else {
-          console.log('Crew reloaded after rotation:', updatedCrewData?.length || 0)
-          setCrew(updatedCrewData || [])
-        }
+        // Set crew data directly without reloading
+        setCrew(crewData || [])
       }
 
       // Load sick leave
@@ -256,6 +734,49 @@ export function useSupabaseData() {
         console.log('Loans loaded:', loansData?.length || 0)
         setLoans(loansData || [])
       }
+
+            // Load trips
+            console.log('Loading trips...')
+            const { data: tripsData, error: tripsError } = await supabase
+              .from('trips')
+              .select('*')
+              .order('created_at', { ascending: false })
+
+            if (tripsError) {
+              console.error('Error loading trips:', tripsError)
+              setTrips([])
+            } else {
+              console.log('Trips loaded:', tripsData?.length || 0)
+              setTrips(tripsData || [])
+            }
+
+            // Load vaste dienst records
+            console.log('Loading vaste dienst records...')
+            const { data: vasteDienstData, error: vasteDienstError } = await supabase
+              .from('vaste_dienst_records')
+              .select('*')
+              .order('year', { ascending: false })
+              .order('month', { ascending: false })
+
+            if (vasteDienstError) {
+              console.error('Error loading vaste dienst records:', vasteDienstError)
+              setVasteDienstRecords([])
+            } else {
+              console.log('Vaste dienst records loaded:', vasteDienstData?.length || 0)
+              setVasteDienstRecords(vasteDienstData || [])
+              
+              // Auto-manage vaste dienst records after loading all data
+              console.log('🔧 Auto-managing vaste dienst records...')
+              await autoManageVasteDienstRecords(crewData || [], vasteDienstData || [], tripsData || [])
+              
+              // Force recalculate all existing records with new logic
+              console.log('🔄 Force recalculating all vaste dienst records...')
+              await forceRecalculateAllVasteDienstRecords(crewData || [], tripsData || [])
+              
+              // Also reset all records to 0 first to ensure clean calculation
+              console.log('🧹 Resetting all vaste dienst records to 0...')
+              await resetAllVasteDienstRecords()
+            }
       
       console.log('Data loading completed!')
 
@@ -271,13 +792,13 @@ export function useSupabaseData() {
   useEffect(() => {
     loadData()
     
-    // Check elke 24 uur voor automatische activaties
-    const dailyCheck = setInterval(() => {
-      console.log('Running daily auto-activation check...')
-      loadData() // Dit zal autoActivateCrewMembers aanroepen
-    }, 24 * 60 * 60 * 1000) // 24 uur
+    // Temporarily disable daily check to prevent infinite loops
+    // const dailyCheck = setInterval(() => {
+    //   console.log('Running daily auto-activation check...')
+    //   loadData() // Dit zal autoActivateCrewMembers aanroepen
+    // }, 24 * 60 * 60 * 1000) // 24 uur
     
-    return () => clearInterval(dailyCheck)
+    // return () => clearInterval(dailyCheck)
   }, [])
 
   // Subscribe to real-time changes
@@ -322,12 +843,21 @@ export function useSupabaseData() {
       })
       .subscribe()
 
+    // Subscribe to trips changes
+    const tripsSubscription = supabase
+      .channel('trips-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
+        loadData()
+      })
+      .subscribe()
+
     return () => {
       shipsSubscription.unsubscribe()
       crewSubscription.unsubscribe()
       sickLeaveSubscription.unsubscribe()
       standBackSubscription.unsubscribe()
       loansSubscription.unsubscribe()
+      tripsSubscription.unsubscribe()
     }
   }, [])
 
@@ -466,14 +996,26 @@ export function useSupabaseData() {
   // Add sick leave
   const addSickLeave = async (sickLeaveData: any) => {
     try {
+      console.log('Adding sick leave to Supabase:', sickLeaveData)
+      
+      // Ensure notes is not null
+      if (sickLeaveData.notes === null || sickLeaveData.notes === undefined) {
+        sickLeaveData.notes = ""
+      }
+      
       const { data, error } = await supabase
         .from('sick_leave')
         .insert([sickLeaveData])
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error adding sick leave:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        throw error
+      }
 
+      console.log('Sick leave added successfully:', data)
       await loadData() // Reload all data
       return data
     } catch (err) {
@@ -485,6 +1027,13 @@ export function useSupabaseData() {
   // Update sick leave
   const updateSickLeave = async (id: string, updates: any) => {
     try {
+      console.log('Updating sick leave in Supabase:', id, updates)
+      
+      // Ensure notes is not null
+      if (updates.notes === null || updates.notes === undefined) {
+        updates.notes = ""
+      }
+      
       const { data, error } = await supabase
         .from('sick_leave')
         .update(updates)
@@ -492,34 +1041,91 @@ export function useSupabaseData() {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error updating sick leave:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        throw error
+      }
 
+      console.log('Sick leave updated successfully:', data)
       await loadData() // Reload all data
       return data
     } catch (err) {
       console.error('Error updating sick leave:', err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
       throw err
     }
   }
 
   const addStandBackRecord = async (recordData: any) => {
     try {
-      console.log('Adding stand back record to Supabase:', recordData)
+      console.log('=== ADDING STAND BACK RECORD ===')
+      console.log('Original record data:', recordData)
+      
+      // Generate a UUID for the id field
+      const uuid = crypto.randomUUID()
+      console.log('Generated UUID:', uuid)
+      
+      // Remove id if it exists and add our generated UUID
+      const { id, ...dataWithoutId } = recordData
+      
+      // Create a safe data object with only known database columns
+      const dataToInsert = {
+        id: uuid,
+        crew_member_id: dataWithoutId.crew_member_id,
+        start_date: dataWithoutId.start_date,
+        end_date: dataWithoutId.end_date,
+        days_count: dataWithoutId.days_count,
+        description: dataWithoutId.description,
+        stand_back_days_required: dataWithoutId.stand_back_days_required,
+        stand_back_days_completed: dataWithoutId.stand_back_days_completed,
+        stand_back_days_remaining: dataWithoutId.stand_back_days_remaining,
+        stand_back_status: dataWithoutId.stand_back_status,
+        stand_back_history: dataWithoutId.stand_back_history || []
+      }
+      
+      // Add optional fields if they exist (for backward compatibility)
+      if (dataWithoutId.reason) {
+        (dataToInsert as any).reason = dataWithoutId.reason
+      }
+      if (dataWithoutId.notes) {
+        (dataToInsert as any).notes = dataWithoutId.notes
+      }
+      
+      console.log('Data to insert (with generated UUID):', dataToInsert)
+      console.log('Data to insert JSON:', JSON.stringify(dataToInsert, null, 2))
+      
+      // Validate required fields
+      const requiredFields = ['id', 'crew_member_id', 'start_date', 'end_date', 'days_count', 'stand_back_days_required', 'stand_back_days_completed', 'stand_back_days_remaining', 'stand_back_status']
+      const missingFields = requiredFields.filter(field => !(dataToInsert as any)[field] && (dataToInsert as any)[field] !== 0)
+      
+      if (missingFields.length > 0) {
+        console.error('Missing required fields:', missingFields)
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
+      }
+      
+      console.log('All required fields present, inserting to database...')
+      
       const { data, error } = await supabase
         .from('stand_back_records')
-        .insert([recordData])
+        .insert([dataToInsert])
         .select()
       
       if (error) {
-        console.error('Supabase error adding stand back record:', error)
+        console.error('❌ Supabase error adding stand back record:', error)
+        console.error('❌ Error details:', JSON.stringify(error, null, 2))
+        console.error('❌ Error code:', error.code)
+        console.error('❌ Error message:', error.message)
+        console.error('❌ Error hint:', error.hint)
         throw error
       }
       
-      console.log('Stand back record added successfully:', data)
+      console.log('✅ Stand back record added successfully:', data)
       await loadData() // Reload all data
       return data
     } catch (err) {
-      console.error('Error adding stand back record:', err)
+      console.error('❌ Error adding stand back record:', err)
+      console.error('❌ Error details:', JSON.stringify(err, null, 2))
       throw err
     }
   }
@@ -577,7 +1183,7 @@ export function useSupabaseData() {
         .update({
           status: 'voltooid',
           completed_at: new Date().toISOString(),
-          notes: notes || null
+          notes: notes || ""
         })
         .eq('id', loanId)
         .select()
@@ -651,12 +1257,188 @@ export function useSupabaseData() {
     }
   }
 
+  // Trip functions
+  const addTrip = async (tripData: any) => {
+    try {
+      console.log('Adding trip:', tripData)
+      
+      const { data, error } = await supabase
+        .from('trips')
+        .insert([tripData])
+        .select()
+      
+      if (error) {
+        console.error('Error adding trip:', error)
+        throw error
+      }
+      
+      console.log('Trip added successfully:', data)
+      await loadData() // Reload all data
+      return data
+    } catch (err) {
+      console.error('Error adding trip:', err)
+      throw err
+    }
+  }
+
+  const updateTrip = async (tripId: string, updates: any) => {
+    try {
+      console.log('Updating trip:', tripId, updates)
+      
+      const { data, error } = await supabase
+        .from('trips')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', tripId)
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('Error updating trip:', error)
+        throw error
+      }
+      
+      console.log('Trip updated successfully:', data)
+      
+      // If trip is completed, auto-update vaste dienst records
+      if (updates.status === 'voltooid' && data.aflosser_id) {
+        console.log('🚀 Trip completed - auto-updating vaste dienst records')
+        await autoUpdateVasteDienstFromTrip(data)
+      }
+      
+      await loadData() // Reload all data
+      return data
+    } catch (err) {
+      console.error('Error updating trip:', err)
+      throw err
+    }
+  }
+
+
+  // Vaste dienst functions
+  const addVasteDienstRecord = async (recordData: any) => {
+    try {
+      console.log('Adding vaste dienst record:', recordData)
+      
+      const { data, error } = await supabase
+        .from('vaste_dienst_records')
+        .insert([recordData])
+        .select()
+      
+      if (error) {
+        console.error('Error adding vaste dienst record:', error)
+        throw error
+      }
+      
+      console.log('Vaste dienst record added successfully:', data)
+      await loadData() // Reload all data
+      return data
+    } catch (err) {
+      console.error('Error adding vaste dienst record:', err)
+      throw err
+    }
+  }
+
+  const updateVasteDienstRecord = async (recordId: string, updates: any) => {
+    try {
+      console.log('Updating vaste dienst record:', recordId, updates)
+      
+      const { data, error } = await supabase
+        .from('vaste_dienst_records')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', recordId)
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('Error updating vaste dienst record:', error)
+        throw error
+      }
+      
+      console.log('Vaste dienst record updated successfully:', data)
+      await loadData() // Reload all data
+      return data
+    } catch (err) {
+      console.error('Error updating vaste dienst record:', err)
+      throw err
+    }
+  }
+
+  const deleteVasteDienstRecord = async (recordId: string) => {
+    try {
+      console.log('Deleting vaste dienst record:', recordId)
+      
+      const { error } = await supabase
+        .from('vaste_dienst_records')
+        .delete()
+        .eq('id', recordId)
+      
+      if (error) {
+        console.error('Error deleting vaste dienst record:', error)
+        throw error
+      }
+      
+      console.log('Vaste dienst record deleted successfully')
+      await loadData() // Reload all data
+    } catch (err) {
+      console.error('Error deleting vaste dienst record:', err)
+      throw err
+    }
+  }
+
+  // Delete trip permanently
+  const deleteTrip = async (tripId: string) => {
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .delete()
+        .eq('id', tripId)
+      
+      if (error) {
+        console.error('Supabase error deleting trip:', error)
+        throw error
+      }
+      
+      console.log('Trip deleted successfully')
+      await loadData() // Reload all data
+    } catch (err) {
+      console.error('Error deleting trip:', err)
+      throw err
+    }
+  }
+
+  // Delete aflosser permanently
+  const deleteAflosser = async (aflosserId: string) => {
+    try {
+      // First delete all related records
+      await supabase.from('vaste_dienst_records').delete().eq('aflosser_id', aflosserId)
+      await supabase.from('trips').delete().eq('aflosser_id', aflosserId)
+      
+      // Then delete the aflosser
+      const { error } = await supabase
+        .from('crew')
+        .delete()
+        .eq('id', aflosserId)
+      
+      if (error) {
+        console.error('Supabase error deleting aflosser:', error)
+        throw error
+      }
+      
+      console.log('Aflosser deleted successfully')
+      await loadData() // Reload all data
+    } catch (err) {
+      console.error('Error deleting aflosser:', err)
+      throw err
+    }
+  }
+
   return {
     ships,
     crew,
     sickLeave,
     standBackRecords,
     loans,
+    trips,
     loading,
     error,
     loadData,
@@ -673,5 +1455,13 @@ export function useSupabaseData() {
     addLoan,
     completeLoan,
     makePayment,
+    addTrip,
+    updateTrip,
+    deleteTrip,
+    deleteAflosser,
+    vasteDienstRecords,
+    addVasteDienstRecord,
+    updateVasteDienstRecord,
+    deleteVasteDienstRecord,
   }
 } 

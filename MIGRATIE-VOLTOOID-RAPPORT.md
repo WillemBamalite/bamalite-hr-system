@@ -274,3 +274,4 @@ De rest werkt al op Supabase. De overige 5% (toewijzen/update pagina's) zijn opt
 **Goed gedaan! Het systeem is nu klaar voor multi-user gebruik! 🎊**
 
 
+

@@ -17,7 +17,7 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 import { useRouter } from "next/navigation"
 
 export default function NieuwAflosserPage() {
-  const { addCrew } = useSupabaseData()
+  const { addCrew, addVasteDienstRecord } = useSupabaseData()
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   // Diploma opties
@@ -48,7 +48,11 @@ export default function NieuwAflosserPage() {
     selectedDiplomas: [] as string[],
     inVasteDienst: false,
     vasteDienstStartDate: "",
-    vasteDienstDays: 0
+    vasteDienstStartMonth: new Date().getMonth() + 1,
+    vasteDienstStartYear: new Date().getFullYear(),
+    vasteDienstInitialBalance: 0,
+    isUitzendbureau: false,
+    uitzendbureauNaam: ""
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,28 +86,26 @@ export default function NieuwAflosserPage() {
         birth_date: formData.birthDate || null,
         address: formData.address ? { raw: formData.address } : {},
         diplomas: formData.selectedDiplomas,
-        notes: formData.notes ? [formData.notes] : []
-      }
-
-      // Voeg vaste dienst informatie toe als localStorage data
-      if (formData.inVasteDienst) {
-        const vasteDienstData = {
-          in_vaste_dienst: true,
-          vaste_dienst_start_date: formData.vasteDienstStartDate,
-          vaste_dienst_days: formData.vasteDienstDays,
-          vaste_dienst_history: [
-            {
-              date: new Date().toISOString().split('T')[0],
-              action: 'start',
-              days: formData.vasteDienstDays,
-              description: 'Aflosser toegevoegd aan systeem met bestaande dagen'
-            }
-          ]
-        }
-        localStorage.setItem(`vaste_dienst_info_${id}`, JSON.stringify(vasteDienstData))
+        notes: formData.notes ? [formData.notes] : [],
+        vaste_dienst: formData.inVasteDienst, // Voeg vaste_dienst veld toe
+        is_uitzendbureau: formData.isUitzendbureau,
+        uitzendbureau_naam: formData.isUitzendbureau ? formData.uitzendbureauNaam : null
       }
 
       await addCrew(newAflosser)
+
+      // Voeg vaste dienst record toe aan Supabase als vaste dienst is geselecteerd
+      if (formData.inVasteDienst) {
+        await addVasteDienstRecord({
+          aflosser_id: id,
+          year: formData.vasteDienstStartYear,
+          month: formData.vasteDienstStartMonth,
+          required_days: 15,
+          actual_days: 0, // Start met 0 werkdagen
+          balance_days: formData.vasteDienstInitialBalance, // Start met opgegeven saldo
+          notes: `Aflosser toegevoegd met startsaldo van ${formData.vasteDienstInitialBalance} dagen`
+        })
+      }
       
       alert("Aflosser succesvol toegevoegd!")
       router.push("/bemanning/aflossers")
@@ -260,34 +262,101 @@ export default function NieuwAflosserPage() {
                    </Label>
                  </div>
                  {formData.inVasteDienst && (
-                   <div className="space-y-4">
-                     <div>
-                       <Label htmlFor="vasteDienstStartDate">Startdatum vaste dienst *</Label>
-                       <Input
-                         id="vasteDienstStartDate"
-                         type="date"
-                         value={formData.vasteDienstStartDate}
-                         onChange={(e) => setFormData({...formData, vasteDienstStartDate: e.target.value})}
-                         required={formData.inVasteDienst}
-                       />
+                   <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                     <h4 className="font-medium text-blue-800">Vaste Dienst Instellingen</h4>
+                     
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div>
+                         <Label htmlFor="vasteDienstStartYear">Start Jaar *</Label>
+                         <Input
+                           id="vasteDienstStartYear"
+                           type="number"
+                           value={formData.vasteDienstStartYear}
+                           onChange={(e) => setFormData({...formData, vasteDienstStartYear: parseInt(e.target.value) || new Date().getFullYear()})}
+                           min="2020"
+                           max="2030"
+                           required={formData.inVasteDienst}
+                         />
+                       </div>
+                       
+                       <div>
+                         <Label htmlFor="vasteDienstStartMonth">Start Maand *</Label>
+                         <Select
+                           value={formData.vasteDienstStartMonth.toString()}
+                           onValueChange={(value) => setFormData({...formData, vasteDienstStartMonth: parseInt(value)})}
+                         >
+                           <SelectTrigger>
+                             <SelectValue placeholder="Selecteer maand" />
+                           </SelectTrigger>
+                           <SelectContent>
+                             {Array.from({length: 12}, (_, i) => i + 1).map(month => (
+                               <SelectItem key={month} value={month.toString()}>
+                                 {new Date(2024, month - 1).toLocaleString('nl-NL', { month: 'long' })}
+                               </SelectItem>
+                             ))}
+                           </SelectContent>
+                         </Select>
+                       </div>
                      </div>
+                     
                      <div>
-                       <Label htmlFor="vasteDienstDays">
-                         Aantal dagen al gemaakt (positief = plus, negatief = min)
+                       <Label htmlFor="vasteDienstInitialBalance">
+                         Startsaldo (positief = voorsprong, negatief = achterstand)
                        </Label>
                        <Input
-                         id="vasteDienstDays"
+                         id="vasteDienstInitialBalance"
                          type="number"
-                         value={formData.vasteDienstDays}
-                         onChange={(e) => setFormData({...formData, vasteDienstDays: parseInt(e.target.value) || 0})}
+                         step="0.5"
+                         value={formData.vasteDienstInitialBalance}
+                         onChange={(e) => setFormData({...formData, vasteDienstInitialBalance: parseFloat(e.target.value) || 0})}
                          placeholder="0"
                          min="-365"
                          max="365"
                        />
                        <p className="text-sm text-gray-500 mt-1">
                          Voer een positief getal in als de aflosser al extra dagen heeft gemaakt, 
-                         of een negatief getal als er nog dagen openstaan.
+                         of een negatief getal als er nog dagen openstaan. Dit wordt het startsaldo.
                        </p>
+                     </div>
+                   </div>
+                 )}
+               </div>
+             </div>
+
+             {/* Uitzendbureau */}
+             <div>
+               <h3 className="text-lg font-semibold mb-4">Uitzendbureau</h3>
+               <div className="space-y-4">
+                 <div className="flex items-center space-x-2">
+                   <Checkbox
+                     id="isUitzendbureau"
+                     checked={formData.isUitzendbureau}
+                     onCheckedChange={(checked) => {
+                       setFormData({
+                         ...formData,
+                         isUitzendbureau: checked as boolean,
+                         uitzendbureauNaam: checked ? formData.uitzendbureauNaam : ""
+                       })
+                     }}
+                   />
+                   <Label htmlFor="isUitzendbureau" className="text-sm cursor-pointer">
+                     Komt van uitzendbureau
+                   </Label>
+                 </div>
+                 {formData.isUitzendbureau && (
+                   <div className="space-y-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                     <h4 className="font-medium text-orange-800">Uitzendbureau Informatie</h4>
+                     
+                     <div>
+                       <Label htmlFor="uitzendbureauNaam">Naam van het uitzendbureau *</Label>
+                       <Input
+                         id="uitzendbureauNaam"
+                         type="text"
+                         value={formData.uitzendbureauNaam}
+                         onChange={(e) => setFormData({...formData, uitzendbureauNaam: e.target.value})}
+                         placeholder="Bijv. Randstad, Tempo-Team, etc."
+                         required={formData.isUitzendbureau}
+                       />
                      </div>
                    </div>
                  )}

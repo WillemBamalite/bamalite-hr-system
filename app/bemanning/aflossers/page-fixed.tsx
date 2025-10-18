@@ -28,8 +28,7 @@ import {
   Clock,
   UserCheck,
   UserX,
-  MessageSquare,
-  Award
+  MessageSquare
 } from 'lucide-react'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
 
@@ -54,7 +53,7 @@ export default function ReizenAflossersPage() {
     trip_to: "",
     notes: ""
   })
-
+  
   const [boardData, setBoardData] = useState({
     start_datum: "",
     start_tijd: ""
@@ -167,8 +166,8 @@ export default function ReizenAflossersPage() {
         aflosser_id: selectedAflosserId
       })
 
-    setAssignAflosserDialog(null)
-    setSelectedAflosserId("")
+      setAssignAflosserDialog(null)
+      setSelectedAflosserId("")
       alert("Aflosser succesvol toegewezen!")
     } catch (error) {
       console.error("Error assigning aflosser:", error)
@@ -193,7 +192,7 @@ export default function ReizenAflossersPage() {
 
       // Update aflosser status to 'aan-boord'
       if (trip.aflosser_id) {
-    await updateCrew(trip.aflosser_id, {
+        await updateCrew(trip.aflosser_id, {
           status: "aan-boord",
           ship_id: trip.ship_id
         })
@@ -356,12 +355,12 @@ export default function ReizenAflossersPage() {
               <Plus className="w-4 h-4 mr-2" />
               Nieuwe Reis
             </Button>
-              <Link href="/bemanning/aflossers/voltooide-reizen">
-                <Button variant="outline">
+            <Link href="/bemanning/aflossers/voltooide-reizen">
+              <Button variant="outline">
                 <Clock className="w-4 h-4 mr-2" />
                 Voltooide Reizen ({voltooideTrips.length})
-                </Button>
-              </Link>
+              </Button>
+            </Link>
           </div>
 
           {/* Trips Grid */}
@@ -385,38 +384,38 @@ export default function ReizenAflossersPage() {
                         <Badge className={getStatusColor(trip.status)}>
                           {getStatusText(trip.status)}
                         </Badge>
-                  </div>
+                      </div>
                       
                       <div className="space-y-2 text-sm text-gray-600">
                         <div className="flex items-center space-x-2">
                           <MapPin className="w-4 h-4" />
-                              <span>{trip.trip_from} → {trip.trip_to}</span>
-                            </div>
+                          <span>{trip.trip_from} → {trip.trip_to}</span>
+                        </div>
                         <div className="flex items-center space-x-2">
                           <CalendarDays className="w-4 h-4" />
                           <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
-                          </div>
+                        </div>
                       </div>
                       
                       <div className="flex space-x-2">
-                            <Button 
-                              size="sm"
-                              onClick={() => setAssignAflosserDialog(trip.id)}
+                        <Button 
+                          size="sm" 
+                          onClick={() => setAssignAflosserDialog(trip.id)}
                           className="bg-blue-600 hover:bg-blue-700"
-                            >
+                        >
                           <UserPlus className="w-4 h-4 mr-1" />
                           Toewijzen
-                            </Button>
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleCancelTrip(trip.id)}
-                            >
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleCancelTrip(trip.id)}
+                        >
                           <UserX className="w-4 h-4 mr-1" />
-                              Annuleren
-                            </Button>
-                          </div>
-                  </div>
+                          Annuleren
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </CardContent>
@@ -435,7 +434,7 @@ export default function ReizenAflossersPage() {
               <CardContent className="space-y-4">
                 {ingedeeldeTrips.map((trip: any) => {
                   const assignedAflosser = crew.find((c: any) => c.id === trip.aflosser_id)
-                      return (
+                  return (
                     <div key={trip.id} className="border rounded-lg p-4">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -443,13 +442,13 @@ export default function ReizenAflossersPage() {
                           <Badge className={getStatusColor(trip.status)}>
                             {getStatusText(trip.status)}
                           </Badge>
-                              </div>
+                        </div>
                         
                         <div className="space-y-2 text-sm text-gray-600">
                           <div className="flex items-center space-x-2">
                             <MapPin className="w-4 h-4" />
-                                <span>{trip.trip_from} → {trip.trip_to}</span>
-                              </div>
+                            <span>{trip.trip_from} → {trip.trip_to}</span>
+                          </div>
                           <div className="flex items-center space-x-2">
                             <CalendarDays className="w-4 h-4" />
                             <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
@@ -458,22 +457,22 @@ export default function ReizenAflossersPage() {
                             <div className="flex items-center space-x-2">
                               <UserPlus className="w-4 h-4" />
                               <span>{assignedAflosser.first_name} {assignedAflosser.last_name}</span>
-                                </div>
-                              )}
                             </div>
+                          )}
+                        </div>
                         
-                            <Button 
-                              size="sm"
+                        <Button 
+                          size="sm" 
                           onClick={() => setBoardShipDialog(trip.id)}
                           className="bg-green-600 hover:bg-green-700"
-                            >
+                        >
                           <CheckCircle className="w-4 h-4 mr-1" />
                           Aan Boord Melden
-                            </Button>
+                        </Button>
                       </div>
                     </div>
-                      )
-                    })}
+                  )
+                })}
               </CardContent>
             </Card>
 
@@ -498,31 +497,31 @@ export default function ReizenAflossersPage() {
                           <Badge className={getStatusColor(trip.status)}>
                             {getStatusText(trip.status)}
                           </Badge>
-                </div>
+                        </div>
                         
                         <div className="space-y-2 text-sm text-gray-600">
                           <div className="flex items-center space-x-2">
                             <MapPin className="w-4 h-4" />
                             <span>{trip.trip_from} → {trip.trip_to}</span>
-                  </div>
+                          </div>
                           <div className="flex items-center space-x-2">
                             <CalendarDays className="w-4 h-4" />
                             <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
-                </div>
+                          </div>
                           {assignedAflosser && (
                             <div className="flex items-center space-x-2">
                               <UserPlus className="w-4 h-4" />
                               <span>{assignedAflosser.first_name} {assignedAflosser.last_name}</span>
-                  </div>
+                            </div>
                           )}
                           {trip.start_datum && (
                             <div className="flex items-center space-x-2">
                               <Clock className="w-4 h-4" />
                               <span>Aan boord: {format(new Date(trip.start_datum), 'dd-MM-yyyy')} {trip.start_tijd}</span>
-                </div>
+                            </div>
                           )}
-          </div>
-
+                        </div>
+                        
                         <Button 
                           size="sm" 
                           onClick={() => setCompleteTripDialog(trip.id)}
@@ -530,9 +529,9 @@ export default function ReizenAflossersPage() {
                         >
                           <Clock className="w-4 h-4 mr-1" />
                           Reis Afsluiten
-              </Button>
-            </div>
-          </div>
+                        </Button>
+                      </div>
+                    </div>
                   )
                 })}
               </CardContent>
@@ -542,326 +541,96 @@ export default function ReizenAflossersPage() {
 
         {/* Aflossers Tab */}
         <TabsContent value="aflossers" className="space-y-6">
-          {/* Aflossers Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Aflossers</h2>
-              <p className="text-gray-600">Beheer alle aflossers en hun status</p>
-            </div>
-            <Link href="/bemanning/aflossers/nieuw">
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Nieuwe Aflosser
-              </Button>
-            </Link>
-          </div>
-
-          {/* Categorized Aflossers */}
-          <div className="space-y-8">
-            {/* Vaste Dienst Aflossers */}
-            {aflossers.filter((a: any) => a.vaste_dienst).length > 0 && (
-              <div>
-                <h3 className="text-xl font-semibold text-blue-800 mb-4 flex items-center">
-                  <UserCheck className="w-5 h-5 mr-2" />
-                  Aflossers in Vaste Dienst ({aflossers.filter((a: any) => a.vaste_dienst).length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {aflossers.filter((a: any) => a.vaste_dienst).map((aflosser: any) => {
-                    const vasteDienstBalance = getVasteDienstBalance(aflosser.id)
-                    return (
-                      <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-6">
-                          <div className="space-y-4">
-                            {/* Header */}
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <Avatar className="h-12 w-12">
-                                  <AvatarFallback className="bg-blue-100 text-blue-600">
-                                    {aflosser.first_name?.[0] || '?'}{aflosser.last_name?.[0] || '?'}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <Link href={`/bemanning/aflossers/${aflosser.id}`}>
-                                    <h3 className="font-semibold text-blue-600 hover:text-blue-800 cursor-pointer transition-colors">
-                                      {aflosser.first_name} {aflosser.last_name}
-                                    </h3>
-                                  </Link>
-                                  <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
-                                </div>
-                              </div>
-                              <Badge className={
-                                aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
-                                aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                              }>
-                                {aflosser.status === 'thuis' ? 'Thuis' :
-                                 aflosser.status === 'aan-boord' ? 'Aan Boord' :
-                                 aflosser.status}
-                              </Badge>
-                            </div>
-
-                            {/* Diploma's */}
-                            {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                              <div className="bg-green-50 p-3 rounded-lg">
-                                <div className="flex items-start space-x-2">
-                                  <Award className="w-4 h-4 text-green-600 mt-0.5" />
-                                  <div>
-                                    <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
-                                    <div className="flex flex-wrap gap-1">
-                                      {aflosser.diplomas.map((diploma: string, index: number) => (
-                                        <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                          {diploma}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Contact Info */}
-                            <div className="space-y-2">
-                              {aflosser.phone && (
-                                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                  <Phone className="w-4 h-4" />
-                                  <span>{aflosser.phone}</span>
-                                </div>
-                              )}
-                              {aflosser.email && (
-                                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                  <MessageSquare className="w-4 h-4" />
-                                  <span>{aflosser.email}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Vaste Dienst Saldo */}
-                            {aflosser.vaste_dienst && (
-                              <div className="bg-blue-50 p-3 rounded-lg">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm font-medium text-blue-800">Vaste Dienst Saldo</span>
-                                  <span className={`text-sm font-bold ${
-                                    vasteDienstBalance > 0 ? 'text-green-600' :
-                                    vasteDienstBalance < 0 ? 'text-red-600' :
-                                    'text-gray-600'
-                                  }`}>
-                                    {vasteDienstBalance > 0 ? '+' : ''}{vasteDienstBalance} dagen
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Algemene Opmerkingen */}
-                            {aflosser.aflosser_opmerkingen && (
-                              <div className="bg-gray-50 p-3 rounded-lg">
-                                <div className="flex items-start space-x-2">
-                                  <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
-                                    <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Zelfstandige Aflossers */}
-            {aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).length > 0 && (
-              <div>
-                <h3 className="text-xl font-semibold text-green-800 mb-4 flex items-center">
-                  <UserX className="w-5 h-5 mr-2" />
-                  Zelfstandige Aflossers ({aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).map((aflosser: any) => (
-                    <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="space-y-4">
-                          {/* Header */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Avatar className="h-12 w-12">
-                                <AvatarFallback className="bg-green-100 text-green-600">
-                                  {aflosser.first_name?.[0] || '?'}{aflosser.last_name?.[0] || '?'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <Link href={`/bemanning/aflossers/${aflosser.id}`}>
-                                  <h3 className="font-semibold text-green-600 hover:text-green-800 cursor-pointer transition-colors">
-                                    {aflosser.first_name} {aflosser.last_name}
-                                  </h3>
-                                </Link>
-                                <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
-                              </div>
-                            </div>
-                            <Badge className={
-                              aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
-                              aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
-                              'bg-gray-100 text-gray-800'
-                            }>
-                              {aflosser.status === 'thuis' ? 'Thuis' :
-                               aflosser.status === 'aan-boord' ? 'Aan Boord' :
-                               aflosser.status}
-                            </Badge>
-                          </div>
-
-                          {/* Diploma's */}
-                          {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                            <div className="bg-green-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <Award className="w-4 h-4 text-green-600 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {aflosser.diplomas.map((diploma: string, index: number) => (
-                                      <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                        {diploma}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Contact Info */}
-                          <div className="space-y-2">
-                            {aflosser.phone && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <Phone className="w-4 h-4" />
-                                <span>{aflosser.phone}</span>
-                              </div>
-                            )}
-                            {aflosser.email && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <MessageSquare className="w-4 h-4" />
-                                <span>{aflosser.email}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Algemene Opmerkingen */}
-                          {aflosser.aflosser_opmerkingen && (
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
-                                  <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {aflossers.map((aflosser: any) => {
+              const vasteDienstBalance = getVasteDienstBalance(aflosser.id)
+              return (
+                <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="space-y-4">
+                      {/* Header */}
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="h-12 w-12">
+                          <AvatarFallback className="bg-blue-100 text-blue-600">
+                            {aflosser.first_name?.[0] || '?'}{aflosser.last_name?.[0] || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900">
+                            {aflosser.first_name} {aflosser.last_name}
+                          </h3>
+                          <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
+                      </div>
 
-            {/* Uitzendbureau Aflossers */}
-            {aflossers.filter((a: any) => a.is_uitzendbureau).length > 0 && (
-              <div>
-                <h3 className="text-xl font-semibold text-orange-800 mb-4 flex items-center">
-                  <Users className="w-5 h-5 mr-2" />
-                  Aflossers van Uitzendbureaus ({aflossers.filter((a: any) => a.is_uitzendbureau).length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {aflossers.filter((a: any) => a.is_uitzendbureau).map((aflosser: any) => (
-                    <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="space-y-4">
-                          {/* Header */}
+                      {/* Contact Info */}
+                      <div className="space-y-2">
+                        {aflosser.phone && (
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <Phone className="w-4 h-4" />
+                            <span>{aflosser.phone}</span>
+                          </div>
+                        )}
+                        {aflosser.email && (
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <MessageSquare className="w-4 h-4" />
+                            <span>{aflosser.email}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex items-center justify-between">
+                        <Badge className={
+                          aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
+                          aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-800'
+                        }>
+                          {aflosser.status === 'thuis' ? 'Thuis' :
+                           aflosser.status === 'aan-boord' ? 'Aan Boord' :
+                           aflosser.status}
+                        </Badge>
+                        <Link href={`/bemanning/aflossers/${aflosser.id}`}>
+                          <Button size="sm" variant="outline">
+                            <ArrowLeft className="w-4 h-4 mr-1" />
+                            Bekijk
+                          </Button>
+                        </Link>
+                      </div>
+
+                      {/* Vaste Dienst Saldo */}
+                      {aflosser.vaste_dienst && (
+                        <div className="bg-blue-50 p-3 rounded-lg">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <Avatar className="h-12 w-12">
-                                <AvatarFallback className="bg-orange-100 text-orange-600">
-                                  {aflosser.first_name?.[0] || '?'}{aflosser.last_name?.[0] || '?'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <Link href={`/bemanning/aflossers/${aflosser.id}`}>
-                                  <h3 className="font-semibold text-orange-600 hover:text-orange-800 cursor-pointer transition-colors">
-                                    {aflosser.first_name} {aflosser.last_name}
-                                  </h3>
-                                </Link>
-                                <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
-                                <p className="text-xs text-orange-600 font-medium">{aflosser.uitzendbureau_naam}</p>
-                              </div>
-                            </div>
-                            <Badge className={
-                              aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
-                              aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
-                              'bg-gray-100 text-gray-800'
-                            }>
-                              {aflosser.status === 'thuis' ? 'Thuis' :
-                               aflosser.status === 'aan-boord' ? 'Aan Boord' :
-                               aflosser.status}
-                            </Badge>
+                            <span className="text-sm font-medium text-blue-800">Vaste Dienst Saldo</span>
+                            <span className={`text-sm font-bold ${
+                              vasteDienstBalance > 0 ? 'text-green-600' :
+                              vasteDienstBalance < 0 ? 'text-red-600' :
+                              'text-gray-600'
+                            }`}>
+                              {vasteDienstBalance > 0 ? '+' : ''}{vasteDienstBalance} dagen
+                            </span>
                           </div>
-
-                          {/* Diploma's */}
-                          {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                            <div className="bg-green-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <Award className="w-4 h-4 text-green-600 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {aflosser.diplomas.map((diploma: string, index: number) => (
-                                      <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                        {diploma}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Contact Info */}
-                          <div className="space-y-2">
-                            {aflosser.phone && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <Phone className="w-4 h-4" />
-                                <span>{aflosser.phone}</span>
-                              </div>
-                            )}
-                            {aflosser.email && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <MessageSquare className="w-4 h-4" />
-                                <span>{aflosser.email}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Algemene Opmerkingen */}
-                          {aflosser.aflosser_opmerkingen && (
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
-                                  <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
+                      )}
+
+                      {/* Algemene Opmerkingen */}
+                      {aflosser.aflosser_opmerkingen && (
+                        <div className="bg-gray-50 p-3 rounded-lg">
+                          <div className="flex items-start space-x-2">
+                            <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
+                              <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         </TabsContent>
       </Tabs>
@@ -899,45 +668,45 @@ export default function ReizenAflossersPage() {
               </Select>
             </div>
             
-              <div>
+            <div>
               <Label htmlFor="start_date">Start Datum *</Label>
-                <Input
+              <Input
                 id="start_date"
-                  type="date"
+                type="date"
                 value={newTripData.start_date}
                 onChange={(e) => setNewTripData({...newTripData, start_date: e.target.value})}
-                />
-              </div>
+              />
+            </div>
             
-              <div>
+            <div>
               <Label htmlFor="end_date">Eind Datum</Label>
-                <Input
+              <Input
                 id="end_date"
-                  type="date"
+                type="date"
                 value={newTripData.end_date}
                 onChange={(e) => setNewTripData({...newTripData, end_date: e.target.value})}
-                />
-              </div>
+              />
+            </div>
             
-              <div>
+            <div>
               <Label htmlFor="trip_from">Van *</Label>
-                <Input
+              <Input
                 id="trip_from"
                 value={newTripData.trip_from}
                 onChange={(e) => setNewTripData({...newTripData, trip_from: e.target.value})}
                 placeholder="Bijv. Rotterdam"
-                />
-              </div>
+              />
+            </div>
             
-              <div>
+            <div>
               <Label htmlFor="trip_to">Naar *</Label>
-                <Input
+              <Input
                 id="trip_to"
                 value={newTripData.trip_to}
                 onChange={(e) => setNewTripData({...newTripData, trip_to: e.target.value})}
                 placeholder="Bijv. Hamburg"
-                />
-              </div>
+              />
+            </div>
             
             <div>
               <Label htmlFor="notes">Notities</Label>
@@ -1050,9 +819,9 @@ export default function ReizenAflossersPage() {
                 value={completeData.eind_datum}
                 onChange={(e) => setCompleteData({...completeData, eind_datum: e.target.value})}
               />
-                  </div>
-                  
-                  <div>
+            </div>
+            
+            <div>
               <Label htmlFor="eind_tijd">Afgestapt Tijd *</Label>
               <Input
                 id="eind_tijd"
@@ -1060,8 +829,8 @@ export default function ReizenAflossersPage() {
                 value={completeData.eind_tijd}
                 onChange={(e) => setCompleteData({...completeData, eind_tijd: e.target.value})}
               />
-                  </div>
-                  
+            </div>
+            
             <div>
               <Label htmlFor="aflosser_opmerkingen">Opmerkingen over Aflosser</Label>
               <Textarea
@@ -1070,7 +839,7 @@ export default function ReizenAflossersPage() {
                 onChange={(e) => setCompleteData({...completeData, aflosser_opmerkingen: e.target.value})}
                 placeholder="Optionele opmerkingen over gedrag, voorkeuren, etc..."
               />
-                    </div>
+            </div>
             
             <div className="flex space-x-2">
               <Button onClick={handleCompleteTrip} className="flex-1" disabled={!completeData.eind_datum || !completeData.eind_tijd}>

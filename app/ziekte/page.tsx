@@ -163,13 +163,17 @@ export default function ZiektePage() {
     if (!editingRecord) return
 
     try {
+      console.log('=== STARTING SICK LEAVE UPDATE ===')
+      console.log('Editing record ID:', editingRecord.id)
+      console.log('Edit form data:', editForm)
+      
       // Update de record in Supabase
       // Note: dokters_verklaring is GEEN database kolom, wordt afgeleid van certificate_valid_until
       const updatedRecord: any = {
         certificate_valid_until: editForm.hasCertificate && editForm.certificateValidUntil ? editForm.certificateValidUntil : null,
         salary_percentage: parseInt(editForm.salaryPercentage),
         paid_by: editForm.paidBy,
-        notes: editForm.notes || null
+        notes: editForm.notes || "" // Use empty string instead of null
       }
 
       // Update status naar "actief" als er een briefje is
@@ -177,8 +181,12 @@ export default function ZiektePage() {
         updatedRecord.status = "actief"
       }
 
+      console.log('Updated record data:', updatedRecord)
+
       // Update in Supabase
-      await updateSickLeave(editingRecord.id, updatedRecord)
+      console.log('Calling updateSickLeave...')
+      const result = await updateSickLeave(editingRecord.id, updatedRecord)
+      console.log('✅ Update result:', result)
 
       setEditDialogOpen(false)
       setEditingRecord(null)
@@ -191,9 +199,11 @@ export default function ZiektePage() {
       })
       
       alert("Ziekmelding bijgewerkt!")
+      console.log('=== SICK LEAVE UPDATE COMPLETED ===')
     } catch (error) {
-      console.error("Error updating sick leave record:", error)
-      alert("Fout bij het bijwerken van de ziekmelding")
+      console.error("❌ Error updating sick leave record:", error)
+      console.error("❌ Error details:", JSON.stringify(error, null, 2))
+      alert("Fout bij het bijwerken van de ziekmelding: " + (error instanceof Error ? error.message : String(error)))
     }
   }
 
@@ -263,31 +273,29 @@ export default function ZiektePage() {
       const sickEndDate = new Date(recoveryDate)
       const daysCount = Math.floor((sickEndDate.getTime() - sickStartDate.getTime()) / (1000 * 60 * 60 * 24))
 
-      // Voeg 7 dagen "terug te staan" toe aan de history
+      // Voeg 7 dagen "terug te staan" toe aan Supabase
       const standBackRecord = {
-        id: `standback-${Date.now()}`,
+        id: crypto.randomUUID(), // Generate UUID for the record
         crew_member_id: recoveryRecord.crewMember.id,
         sick_leave_id: recoveryRecord.id,
         start_date: recoveryRecord.start_date,
         end_date: recoveryDate,
         days_count: daysCount,
+        reason: 'ziekte', // Stand-back reason is always 'ziekte' for sick leave
         description: recoveryRecord.reason || 'Geen klacht opgegeven',
+        notes: recoveryRecord.notes || '', // Pass through the notes from sick leave
         stand_back_days_required: 7,
         stand_back_days_completed: 0,
         stand_back_days_remaining: 7,
-        stand_back_status: "openstaand" as const,
+        stand_back_status: "openstaand",
         stand_back_history: []
       }
 
-      console.log('Creating stand back record:', standBackRecord)
+      console.log('Creating stand back record in Supabase:', standBackRecord)
+      console.log('Stand back record data structure:', JSON.stringify(standBackRecord, null, 2))
+      
       const result = await addStandBackRecord(standBackRecord)
-      console.log('✅ Stand back record created:', result)
-
-      // Check localStorage after creation
-      if (typeof window !== 'undefined') {
-        const localStorageData = localStorage.getItem('sickLeaveHistoryDatabase')
-        console.log('localStorage after creation:', localStorageData)
-      }
+      console.log('✅ Stand back record created in Supabase:', result)
 
       alert(`Herstel succesvol geregistreerd voor ${recoveryRecord.crewMember.first_name} ${recoveryRecord.crewMember.last_name}. Terugkeer aan boord: ${recoveryDate}. 7 dagen terug te staan toegevoegd.`)
       

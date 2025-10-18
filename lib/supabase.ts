@@ -73,6 +73,8 @@ export interface StandBackRecord {
   end_date: string
   days_count: number
   description: string
+  reason?: string
+  notes?: string
   stand_back_days_required: number
   stand_back_days_completed: number
   stand_back_days_remaining: number
@@ -94,4 +96,32 @@ export interface Loan {
   updated_at: string
   completed_at?: string
   notes?: string
+}
+
+export interface Trip {
+  id: string
+  trip_name: string
+  ship_id: string
+  start_date: string
+  end_date?: string
+  trip_from: string
+  trip_to: string
+  notes?: string
+  
+  // New workflow fields
+  status: 'gepland' | 'ingedeeld' | 'actief' | 'voltooid'
+  aflosser_id?: string
+  
+  // Actual boarding/leaving times
+  start_datum?: string
+  start_tijd?: string
+  eind_datum?: string
+  eind_tijd?: string
+  
+  // Aflosser feedback
+  aflosser_opmerkingen?: string
+  
+  // Timestamps
+  created_at: string
+  updated_at: string
 } 
