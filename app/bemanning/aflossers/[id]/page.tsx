@@ -531,6 +531,28 @@ export default function AflosserDetailPage() {
                   </div>
                 )}
               </div>
+
+              {/* Gearchiveerde Notities */}
+              {aflosser.archived_notes && aflosser.archived_notes.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-medium text-sm text-gray-700 mb-2">Gearchiveerde Notities:</h4>
+                  <div className="space-y-2">
+                    {aflosser.archived_notes.map((note: any) => (
+                      <div key={note.id} className="bg-gray-50 p-3 rounded border-l-4 border-gray-300">
+                        <div className="text-sm text-gray-600 mb-1">{note.content}</div>
+                        <div className="text-xs text-gray-500">
+                          Toegevoegd: {format(new Date(note.createdAt), 'dd-MM-yyyy HH:mm')}
+                          {note.archivedAt && (
+                            <span className="ml-2">
+                              • Gearchiveerd: {format(new Date(note.archivedAt), 'dd-MM-yyyy HH:mm')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

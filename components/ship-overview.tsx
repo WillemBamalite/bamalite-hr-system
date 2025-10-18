@@ -4,13 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus } from "lucide-react"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { supabase } from "@/lib/supabase"
 
@@ -34,8 +36,14 @@ const sortCrewByRank = (crew: any[]) => {
 }
 
 export function ShipOverview() {
-  const { ships, crew, sickLeave, loading, error } = useSupabaseData()
+  const { ships, crew, sickLeave, loading, error, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
   const [mounted, setMounted] = useState(false);
+  
+  // Notes functionality state
+  const [notesDialog, setNotesDialog] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [newNote, setNewNote] = useState("");
+  const [isAddingNote, setIsAddingNote] = useState(false);
   const [quickNoteDialog, setQuickNoteDialog] = useState<{
     isOpen: boolean;
     crewId: string;
@@ -297,6 +305,31 @@ export function ShipOverview() {
               }
               return null
             })()}
+
+            {/* Active Notes */}
+            {member.active_notes && member.active_notes.length > 0 && (
+              <div className="mt-2 space-y-1 border-t pt-2">
+                <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3" />
+                  Notities:
+                </div>
+                {member.active_notes.map((note: any) => (
+                  <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200 flex items-start justify-between gap-2">
+                    <span className="flex-1">{note.content}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveNote(member.id, note.id, note.content);
+                      }}
+                      className="text-red-500 hover:text-red-700 flex-shrink-0"
+                      title="Notitie verwijderen"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -330,19 +363,22 @@ export function ShipOverview() {
     setQuickNote("");
   }
 
-  function handleSaveQuickNote() {
+  async function handleSaveQuickNote() {
     if (!quickNote.trim()) return;
 
-    // Hier zou je de Supabase update functie moeten aanroepen
-    // Voor nu, we reloaden de data
-    window.location.reload();
-
-    setQuickNoteDialog({
-      isOpen: false,
-      crewId: "",
-      crewName: ""
-    });
-    setQuickNote("");
+    try {
+      await addNoteToCrew(quickNoteDialog.crewId, quickNote.trim());
+      
+      setQuickNoteDialog({
+        isOpen: false,
+        crewId: "",
+        crewName: ""
+      });
+      setQuickNote("");
+    } catch (error) {
+      console.error('Error saving note:', error);
+      alert('Fout bij het opslaan van de notitie');
+    }
   }
 
   function handleRemoveNote(crewId: string, noteId: string, noteContent: string) {
@@ -354,17 +390,20 @@ export function ShipOverview() {
     });
   }
 
-  function handleConfirmDeleteNote() {
-    // Hier zou je de Supabase delete functie moeten aanroepen
-    // Voor nu, we reloaden de data
-    window.location.reload();
-
-    setDeleteNoteDialog({
-      isOpen: false,
-      crewId: "",
-      noteId: "",
-      noteContent: ""
-    });
+  async function handleConfirmDeleteNote() {
+    try {
+      await removeNoteFromCrew(deleteNoteDialog.crewId, deleteNoteDialog.noteId);
+      
+      setDeleteNoteDialog({
+        isOpen: false,
+        crewId: "",
+        noteId: "",
+        noteContent: ""
+      });
+    } catch (error) {
+      console.error('Error removing note:', error);
+      alert('Fout bij het verwijderen van de notitie');
+    }
   }
 
   async function handleDeleteShip(shipId: string, shipName: string) {

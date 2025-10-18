@@ -1432,6 +1432,96 @@ export function useSupabaseData() {
     }
   }
 
+  // Notes functions
+  const addNoteToCrew = async (crewId: string, note: string) => {
+    try {
+      // Get current crew member data
+      const { data: crewData, error: fetchError } = await supabase
+        .from('crew')
+        .select('active_notes')
+        .eq('id', crewId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Parse existing notes or initialize empty array
+      const currentNotes = crewData?.active_notes || [];
+      
+      // Add new note with timestamp
+      const newNote = {
+        id: Date.now().toString(), // Simple ID generation
+        content: note,
+        createdAt: new Date().toISOString(),
+        createdBy: 'user' // You could get this from auth context
+      };
+
+      const updatedNotes = [...currentNotes, newNote];
+
+      // Update crew member with new notes
+      const { error: updateError } = await supabase
+        .from('crew')
+        .update({ active_notes: updatedNotes })
+        .eq('id', crewId);
+
+      if (updateError) throw updateError;
+
+      console.log('Note added successfully')
+      await loadData(); // Reload data
+    } catch (error) {
+      console.error('Error adding note:', error);
+      throw error;
+    }
+  };
+
+  const removeNoteFromCrew = async (crewId: string, noteId: string) => {
+    try {
+      // Get current crew member data
+      const { data: crewData, error: fetchError } = await supabase
+        .from('crew')
+        .select('active_notes, archived_notes')
+        .eq('id', crewId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentActiveNotes = crewData?.active_notes || [];
+      const currentArchivedNotes = crewData?.archived_notes || [];
+
+      // Find the note to remove
+      const noteToArchive = currentActiveNotes.find((note: any) => note.id === noteId);
+      if (!noteToArchive) {
+        throw new Error('Note not found');
+      }
+
+      // Remove from active notes
+      const updatedActiveNotes = currentActiveNotes.filter((note: any) => note.id !== noteId);
+
+      // Add to archived notes with archive timestamp
+      const archivedNote = {
+        ...noteToArchive,
+        archivedAt: new Date().toISOString()
+      };
+      const updatedArchivedNotes = [...currentArchivedNotes, archivedNote];
+
+      // Update crew member
+      const { error: updateError } = await supabase
+        .from('crew')
+        .update({ 
+          active_notes: updatedActiveNotes,
+          archived_notes: updatedArchivedNotes
+        })
+        .eq('id', crewId);
+
+      if (updateError) throw updateError;
+
+      console.log('Note archived successfully')
+      await loadData(); // Reload data
+    } catch (error) {
+      console.error('Error removing note:', error);
+      throw error;
+    }
+  };
+
   return {
     ships,
     crew,
@@ -1463,5 +1553,7 @@ export function useSupabaseData() {
     addVasteDienstRecord,
     updateVasteDienstRecord,
     deleteVasteDienstRecord,
+    addNoteToCrew,
+    removeNoteFromCrew
   }
 } 

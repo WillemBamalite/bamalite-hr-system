@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
-import { crewDatabase } from "@/data/crew-database"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { StickyNote, Plus, Save, X, ArrowLeft } from "lucide-react"
+import { StickyNote, Plus, Save, X, ArrowLeft, MessageSquare, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { format } from "date-fns"
 
 interface Props {
   crewMemberId: string
@@ -15,74 +16,71 @@ interface Props {
 
 interface Note {
   id: string
-  date: string
-  author: string
-  type: string
   content: string
+  createdAt: string
+  createdBy: string
+  archivedAt?: string
 }
 
 export function CrewMemberNotes({ crewMemberId }: Props) {
   const router = useRouter()
   const [newNote, setNewNote] = useState("")
   const [isAddingNote, setIsAddingNote] = useState(false)
-
-  // Haal bemanningslid uit database
-  const crewMember = (crewDatabase as any)[crewMemberId]
+  const [mounted, setMounted] = useState(false)
   
-  // Gebruik echte notities uit database of fallback naar lege array
-  // Debug info verwijderd
-  const notes: Note[] = Array.isArray(crewMember?.notes) ? crewMember.notes : []
+  const { crew, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "positief":
-        return "bg-green-100 text-green-800"
-      case "negatief":
-        return "bg-red-100 text-red-800"
-      case "ontwikkeling":
-        return "bg-blue-100 text-blue-800"
-      case "neutraal":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+  // Prevent hydration errors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Find crew member from Supabase data
+  const crewMember = crew.find(member => member.id === crewMemberId)
+  
+  // Get active and archived notes
+  const activeNotes: Note[] = crewMember?.active_notes || []
+  const archivedNotes: Note[] = crewMember?.archived_notes || []
+
+  const handleSaveNote = async () => {
+    if (newNote.trim()) {
+      try {
+        await addNoteToCrew(crewMemberId, newNote.trim())
+        setNewNote("")
+        setIsAddingNote(false)
+      } catch (error) {
+        console.error('Error saving note:', error)
+        alert('Fout bij het opslaan van de notitie')
+      }
     }
   }
 
-  const handleSaveNote = () => {
-    if (newNote.trim()) {
-      // Maak nieuwe notitie
-      const newNoteObj: Note = {
-        id: `note-${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        author: "HR Manager", // Later dynamisch maken
-        type: "neutraal", // Later selecteerbaar maken
-        content: newNote.trim()
+  const handleRemoveNote = async (noteId: string) => {
+    if (confirm('Weet je zeker dat je deze notitie wilt verwijderen? Deze wordt gearchiveerd.')) {
+      try {
+        await removeNoteFromCrew(crewMemberId, noteId)
+      } catch (error) {
+        console.error('Error removing note:', error)
+        alert('Fout bij het verwijderen van de notitie')
       }
-      
-      // Voeg toe aan database
-      if (crewMember) {
-        const currentNotes = Array.isArray(crewMember.notes) ? crewMember.notes : []
-        const updatedNotes = [...currentNotes, newNoteObj]
-        crewMember.notes = updatedNotes
-        
-        // Update localStorage
-        try {
-          const crewData = localStorage.getItem('crewDatabase')
-          const crew = crewData ? JSON.parse(crewData) : {}
-          crew[crewMemberId] = crewMember
-          localStorage.setItem('crewDatabase', JSON.stringify(crew))
-          
-          // Trigger events voor UI update
-          window.dispatchEvent(new Event('localStorageUpdate'))
-          window.dispatchEvent(new Event('forceRefresh'))
-        } catch (error) {
-          console.error('Error updating crew database:', error)
-        }
-      }
-      
-      setNewNote("")
-      setIsAddingNote(false)
     }
+  }
+
+  // Don't render until mounted
+  if (!mounted) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <StickyNote className="w-5 h-5" />
+            <span>Notities & Opmerkingen</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">Laden...</div>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -106,6 +104,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Terug
         </button>
+
         {/* Nieuwe notitie toevoegen */}
         {isAddingNote && (
           <div className="border rounded-lg p-4 bg-blue-50">
@@ -137,29 +136,62 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
           </div>
         )}
 
-        {/* Bestaande notities */}
-        <div className="space-y-3">
-          {notes.map((note) => (
-            <div key={note.id} className="border rounded-lg p-3 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <Badge className={getTypeColor(note.type)} variant="secondary">
-                    {note.type}
-                  </Badge>
-                  <span className="text-xs text-gray-500">{note.author}</span>
+        {/* Actieve Notities */}
+        {activeNotes.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="font-medium text-sm text-gray-700 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Actieve Notities:
+            </h4>
+            {activeNotes.map((note) => (
+              <div key={note.id} className="bg-orange-50 p-3 rounded border-l-4 border-orange-300">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-700 mb-1">{note.content}</p>
+                    <p className="text-xs text-gray-500">
+                      Toegevoegd: {format(new Date(note.createdAt), 'dd-MM-yyyy HH:mm')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveNote(note.id)}
+                    className="text-red-500 hover:text-red-700 flex-shrink-0"
+                    title="Notitie verwijderen (archiveren)"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <span className="text-xs text-gray-400">{new Date(note.date).toLocaleDateString("nl-NL")}</span>
               </div>
-              <p className="text-sm text-gray-700 leading-relaxed">{note.content}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {notes.length === 0 && !isAddingNote && (
-          <div className="text-center py-6">
-            <StickyNote className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-gray-500 text-sm">Nog geen notities toegevoegd</p>
-            <Button variant="outline" size="sm" className="mt-2 bg-transparent" onClick={() => setIsAddingNote(true)}>
+        {/* Gearchiveerde Notities */}
+        {archivedNotes.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="font-medium text-sm text-gray-700">Gearchiveerde Notities:</h4>
+            {archivedNotes.map((note) => (
+              <div key={note.id} className="bg-gray-50 p-3 rounded border-l-4 border-gray-300">
+                <p className="text-sm text-gray-600 mb-1">{note.content}</p>
+                <p className="text-xs text-gray-500">
+                  Toegevoegd: {format(new Date(note.createdAt), 'dd-MM-yyyy HH:mm')}
+                  {note.archivedAt && (
+                    <span className="ml-2">
+                      • Gearchiveerd: {format(new Date(note.archivedAt), 'dd-MM-yyyy HH:mm')}
+                    </span>
+                  )}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Geen notities */}
+        {activeNotes.length === 0 && archivedNotes.length === 0 && !isAddingNote && (
+          <div className="text-center py-8">
+            <StickyNote className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 mb-4">Nog geen notities toegevoegd</p>
+            <Button variant="outline" onClick={() => setIsAddingNote(true)}>
+              <Plus className="w-4 h-4 mr-2" />
               Eerste notitie toevoegen
             </Button>
           </div>
