@@ -14,10 +14,10 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 const RANK_ORDER = [
   "Kapitein",
   "Stuurman",
-  "Machinist",
+  "Lichtmatroos",
   "Matroos",
-  "Aflosser",
-  "Student"
+  "Deksman",
+  "Aflosser"
 ];
 
 export default function CrewOverviewPage() {

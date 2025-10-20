@@ -361,7 +361,7 @@ export default function AflossersToewijzenPage() {
         nationality: "Nederlands",
         phone: "0687654321",
         status: "beschikbaar",
-        qualifications: ["Varen", "Machinist"],
+        qualifications: ["Varen", "Deksman"],
         smoking: true
       }
     };

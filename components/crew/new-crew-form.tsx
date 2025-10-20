@@ -413,10 +413,10 @@ export function NewCrewForm() {
                   <SelectContent>
                     <SelectItem value="Kapitein">Kapitein</SelectItem>
                     <SelectItem value="Stuurman">Stuurman</SelectItem>
-                    <SelectItem value="Machinist">Machinist</SelectItem>
+                    <SelectItem value="Lichtmatroos">Lichtmatroos</SelectItem>
                     <SelectItem value="Matroos">Matroos</SelectItem>
+                    <SelectItem value="Deksman">Deksman</SelectItem>
                     <SelectItem value="Aflosser">Aflosser</SelectItem>
-                    <SelectItem value="Student">Student</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

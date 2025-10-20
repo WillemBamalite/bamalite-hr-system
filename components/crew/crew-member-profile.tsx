@@ -16,10 +16,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 const POSITION_OPTIONS = [
   "Kapitein",
   "Stuurman",
-  "Machinist",
+  "Lichtmatroos",
   "Matroos",
-  "Aflosser",
-  "Student"
+  "Deksman",
+  "Aflosser"
 ]
 
 const NATIONALITY_OPTIONS = [

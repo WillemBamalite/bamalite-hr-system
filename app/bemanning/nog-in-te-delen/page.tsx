@@ -783,7 +783,7 @@ export default function NogInTeDelenPage() {
                     <SelectItem value="Stuurman">Stuurman</SelectItem>
                     <SelectItem value="Matroos">Matroos</SelectItem>
                     <SelectItem value="Lichtmatroos">Lichtmatroos</SelectItem>
-                    <SelectItem value="Machinist">Machinist</SelectItem>
+                    <SelectItem value="Deksman">Deksman</SelectItem>
                     <SelectItem value="Kok">Kok</SelectItem>
                     <SelectItem value="Onbekend">Onbekend</SelectItem>
                   </SelectContent>
