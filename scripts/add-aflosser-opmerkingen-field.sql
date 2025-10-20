@@ -10,3 +10,4 @@ COMMENT ON COLUMN crew.aflosser_opmerkingen IS 'General comments and notes about
 
 -- Create index for better performance (optional)
 CREATE INDEX IF NOT EXISTS idx_crew_aflosser_opmerkingen ON crew(aflosser_opmerkingen) WHERE aflosser_opmerkingen IS NOT NULL;
+

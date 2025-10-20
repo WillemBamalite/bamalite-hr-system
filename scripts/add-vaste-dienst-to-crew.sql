@@ -10,3 +10,4 @@ COMMENT ON COLUMN crew.vaste_dienst IS 'Indicates if crew member is in fixed ser
 
 -- Create index for better performance (optional)
 CREATE INDEX IF NOT EXISTS idx_crew_vaste_dienst ON crew(vaste_dienst) WHERE vaste_dienst = TRUE;
+

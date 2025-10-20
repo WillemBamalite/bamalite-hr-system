@@ -161,3 +161,4 @@ COMMENT ON COLUMN stand_back_records.archived_by IS 'User who archived the recor
 -- - 4-stappen workflow voor reizen (gepland -> ingedeeld -> actief -> voltooid)
 -- - Uitgebreide terug-te-staan dagen beheer
 -- - Werkdagen berekening met 12:00 regel
+

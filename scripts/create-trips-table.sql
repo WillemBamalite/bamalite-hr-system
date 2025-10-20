@@ -42,3 +42,4 @@ COMMENT ON COLUMN trips.start_tijd IS 'Actual time when aflosser boarded the shi
 COMMENT ON COLUMN trips.eind_datum IS 'Actual date when aflosser left the ship';
 COMMENT ON COLUMN trips.eind_tijd IS 'Actual time when aflosser left the ship';
 COMMENT ON COLUMN trips.aflosser_opmerkingen IS 'Optional notes about the aflosser performance/behavior';
+

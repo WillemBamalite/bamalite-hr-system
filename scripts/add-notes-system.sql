@@ -7,3 +7,4 @@ ADD COLUMN IF NOT EXISTS archived_notes JSONB DEFAULT '[]';
 UPDATE crew 
 SET active_notes = '[]', archived_notes = '[]' 
 WHERE active_notes IS NULL OR archived_notes IS NULL;
+

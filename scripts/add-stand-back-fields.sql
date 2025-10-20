@@ -33,3 +33,4 @@ CHECK (archive_status IN ('openstaand', 'voltooid', 'gearchiveerd-uitdienst'));
 CREATE INDEX IF NOT EXISTS idx_stand_back_reason ON stand_back_records(reason);
 CREATE INDEX IF NOT EXISTS idx_stand_back_archive_status ON stand_back_records(archive_status);
 CREATE INDEX IF NOT EXISTS idx_stand_back_archived_at ON stand_back_records(archived_at);
+

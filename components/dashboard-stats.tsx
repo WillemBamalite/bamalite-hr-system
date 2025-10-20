@@ -45,7 +45,7 @@ export function DashboardStats() {
         </Link>
         <Link href="/bemanning/nog-in-te-delen" className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center hover:bg-gray-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-gray-800">{stats.nogInTeDelen}</div>
-          <div className="text-xs text-gray-700 mt-1">Nog in te delen</div>
+          <div className="text-xs text-gray-700 mt-1">Nieuw Personeel</div>
         </Link>
         <Link href="/bemanning/leningen" className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>

@@ -12,3 +12,4 @@ UPDATE crew
 SET is_uitzendbureau = FALSE, uitzendbureau_naam = NULL 
 WHERE is_uitzendbureau IS NULL;
 `);
+

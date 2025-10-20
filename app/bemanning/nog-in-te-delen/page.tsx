@@ -86,9 +86,7 @@ export default function NogInTeDelenPage() {
     m.sub_status === "wacht-op-startdatum"
   );
   
-  const wachtlijst = unassignedCrew.filter((m: any) => 
-    m.sub_status === "wachtlijst"
-  );
+  // Wachtlijst verwijderd op verzoek; er is geen aparte wachtlijstcategorie meer
 
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
@@ -247,8 +245,8 @@ export default function NogInTeDelenPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Nog In Te Delen</h1>
-          <p className="text-gray-600">Bemanningsleden die nog geen schip hebben toegewezen</p>
+          <h1 className="text-3xl font-bold text-gray-900">Nieuw Personeel</h1>
+          <p className="text-gray-600">Kandidaten en aangenomen personeel zonder toewijzing</p>
         </div>
         <div className="flex gap-2">
           <Button 
@@ -268,7 +266,7 @@ export default function NogInTeDelenPage() {
       </div>
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -291,17 +289,7 @@ export default function NogInTeDelenPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-5 h-5 bg-blue-500 rounded-full"></div>
-              <div>
-                <p className="text-sm text-gray-600">Wachtlijst</p>
-                <p className="text-2xl font-bold text-blue-600">{wachtlijst.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Wachtlijst-kaart verwijderd */}
       </div>
 
       {/* Empty state */}
@@ -418,7 +406,7 @@ export default function NogInTeDelenPage() {
 
                 {/* Actions */}
                 <div className="space-y-2 pt-3 border-t">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <Button 
                       size="sm"
                       variant="outline"
@@ -430,18 +418,6 @@ export default function NogInTeDelenPage() {
                     >
                       <span className="mr-1">✓</span>
                       Aangenomen
-                    </Button>
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                      onClick={() => {
-                        setSelectedMember(member);
-                        setShowStatusDialog(true);
-                      }}
-                    >
-                      <span className="mr-1">⏳</span>
-                      Wachtlijst
                     </Button>
                   </div>
                   <Button 
@@ -589,126 +565,7 @@ export default function NogInTeDelenPage() {
             )}
           </div>
 
-          {/* 3. WACHTLIJST */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">⏳ Wachtlijst</h2>
-              <Badge className="bg-blue-100 text-blue-800">{wachtlijst.length}</Badge>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">Al benaderd, maar geen beschikbare plek op dit moment. Bewaren voor later</p>
-            {wachtlijst.length === 0 ? (
-              <Card>
-                <CardContent className="p-6 text-center text-gray-500">
-                  Geen personen op wachtlijst
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {wachtlijst.map((member: any) => (
-            <Card key={member.id} className="hover:shadow-lg transition-shadow border-blue-200">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-blue-100 text-blue-700">
-                        {member.first_name[0]}{member.last_name[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <Link 
-                        href={`/bemanning/${member.id}`}
-                        className="font-medium text-gray-900 hover:text-blue-700"
-                      >
-                        {member.first_name} {member.last_name}
-                      </Link>
-                      <div className="flex items-center space-x-2 text-sm text-gray-500">
-                        <span>{getNationalityFlag(member.nationality)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Position */}
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium">Functie:</span> {member.position}
-                </div>
-
-                {/* Regime */}
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium">Regime:</span> {member.regime}
-                </div>
-
-                {/* Contact Info */}
-                <div className="space-y-2 text-sm">
-                  {member.phone && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Telefoon:</span> {member.phone}
-                    </div>
-                  )}
-                  {member.email && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Email:</span> {member.email}
-                    </div>
-                  )}
-                </div>
-
-                {/* Experience */}
-                {member.experience && (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Ervaring:</span> {member.experience}
-                  </div>
-                )}
-
-                {/* Diplomas */}
-                {member.diplomas && member.diplomas.length > 0 && (
-                  <div className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Diploma's:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {member.diplomas.map((diploma: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {diploma}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {member.notes && member.notes.length > 0 && (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Notities:</span>
-                    <p className="italic mt-1">{member.notes[0]}</p>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex justify-end space-x-2 pt-3 border-t">
-                  <Link href={`/bemanning/${member.id}`}>
-                    <Button variant="outline" size="sm">
-                      <span className="mr-1">👁️</span>
-                      Bekijk
-                    </Button>
-                  </Link>
-                  <Button 
-                    size="sm"
-                    variant="outline"
-                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                    onClick={() => {
-                      setSelectedMember(member);
-                      setShowAssignmentDialog(true);
-                    }}
-                  >
-                    <span className="mr-1">🚢</span>
-                    Toewijzen (Plek Beschikbaar)
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Wachtlijst sectie volledig verwijderd */}
         </div>
       )}
 
@@ -930,7 +787,6 @@ export default function NogInTeDelenPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="wacht-op-startdatum">Aangenomen - Nog in te delen</SelectItem>
-                  <SelectItem value="wachtlijst">Wachtlijst (geen plek)</SelectItem>
                   <SelectItem value="nog-te-benaderen">Nog te benaderen</SelectItem>
                 </SelectContent>
               </Select>
@@ -953,7 +809,6 @@ export default function NogInTeDelenPage() {
               <p className="text-sm text-blue-800">
                 💡 <strong>Tip:</strong><br/>
                 • <strong>Aangenomen - Nog in te delen</strong>: Al aangenomen, kan op bepaalde datum starten, moet nog schip krijgen<br/>
-                • <strong>Wachtlijst</strong>: Telefonisch contact gehad, maar momenteel geen plek beschikbaar<br/>
                 • <strong>Nog te benaderen</strong>: Nog niet gebeld, moet nog contact opnemen
               </p>
             </div>

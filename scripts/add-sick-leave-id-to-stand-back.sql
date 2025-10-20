@@ -14,3 +14,4 @@ CREATE INDEX IF NOT EXISTS idx_stand_back_sick_leave_id ON stand_back_records(si
 SELECT 'sick_leave_id column added successfully!' as result;
 
 
+

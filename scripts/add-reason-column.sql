@@ -15,3 +15,4 @@ CREATE INDEX IF NOT EXISTS idx_stand_back_reason ON stand_back_records(reason);
 -- Add comments for documentation
 COMMENT ON COLUMN stand_back_records.reason IS 'Type of stand-back situation: ziekte, vrij genomen, verlof, training, school, overig';
 COMMENT ON COLUMN stand_back_records.notes IS 'Additional notes about the stand-back situation';
+

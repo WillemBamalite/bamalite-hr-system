@@ -28,3 +28,4 @@ COMMENT ON TABLE vaste_dienst_records IS 'Tracks monthly work days for relief cr
 COMMENT ON COLUMN vaste_dienst_records.required_days IS 'Required days per month (usually 15)';
 COMMENT ON COLUMN vaste_dienst_records.actual_days IS 'Actual days worked this month';
 COMMENT ON COLUMN vaste_dienst_records.balance_days IS 'Running balance of surplus/deficit days';
+
