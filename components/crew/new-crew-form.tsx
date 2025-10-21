@@ -137,6 +137,16 @@ export function NewCrewForm() {
       errors.push("Startdatum is verplicht als er een schip is geselecteerd")
     }
 
+    // Student validatie
+    if (formData.isStudent) {
+      if (!formData.educationType) {
+        errors.push("Opleidingstype is verplicht voor studenten")
+      }
+      if (formData.educationType === "BOL" && !formData.educationEndDate) {
+        errors.push("Einddatum opleiding is verplicht voor BOL studenten")
+      }
+    }
+
     return errors
   }
 
@@ -196,7 +206,12 @@ export function NewCrewForm() {
         in_dienst_vanaf: formData.in_dienst_vanaf || null,
         arbeidsovereenkomst: formData.arbeidsovereenkomst,
         ingeschreven_luxembourg: formData.ingeschreven_luxembourg,
-        verzekerd: formData.verzekerd
+        verzekerd: formData.verzekerd,
+        // Student velden
+        is_student: formData.isStudent,
+        education_type: formData.isStudent ? formData.educationType : null,
+        education_end_date: formData.isStudent && formData.educationType === "BOL" ? formData.educationEndDate : null,
+        school_periods: formData.isStudent ? formData.schoolPeriods : []
       }
 
       console.log('Saving crew member to Supabase:', crewMember)

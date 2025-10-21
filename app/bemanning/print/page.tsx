@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Printer, Download, FileText, Users, Ship, UserPlus, Clock, AlertTriangle } from "lucide-react"
+import { Printer, Download, FileText, Users, Ship, UserPlus, Clock, AlertTriangle, GraduationCap } from "lucide-react"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
@@ -296,7 +296,7 @@ export default function CrewPrintPage() {
       </div>
 
       {/* Snelle links */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Link href="/bemanning/overzicht">
           <Card className="hover:shadow-lg transition-shadow cursor-pointer">
             <CardContent className="p-4 text-center">
@@ -325,7 +325,15 @@ export default function CrewPrintPage() {
           <Card className="hover:shadow-lg transition-shadow cursor-pointer">
             <CardContent className="p-4 text-center">
               <Clock className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-              <p className="font-medium">In te delen</p>
+              <p className="font-medium">Nieuw Personeel</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/bemanning/studenten">
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+            <CardContent className="p-4 text-center">
+              <GraduationCap className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+              <p className="font-medium">Studenten</p>
             </CardContent>
           </Card>
         </Link>
