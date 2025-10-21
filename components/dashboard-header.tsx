@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Calendar, Globe } from "lucide-react"
+import { LogOut, User, Calendar, Globe, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -97,6 +97,15 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
                 <User className="w-4 h-4 text-gray-600" />
                 <span className="text-sm text-gray-700">{user.email}</span>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('/print', '_blank')}
+                className="flex items-center gap-2"
+              >
+                <Printer className="w-4 h-4" />
+                Print
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

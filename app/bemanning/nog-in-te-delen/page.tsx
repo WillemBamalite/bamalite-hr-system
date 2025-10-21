@@ -88,11 +88,21 @@ export default function NogInTeDelenPage() {
       return false;
     }
     
-    // Check onboarding checklist
-    const checklist = member.onboarding_checklist;
-    if (!checklist) return true; // Geen checklist = incomplete
+    // Check checklist - gebruik directe velden (meer betrouwbaar)
+    const contractSigned = member.arbeidsovereenkomst === true;
+    const luxembourgRegistered = member.ingeschreven_luxembourg === true;
+    const insured = member.verzekerd === true;
     
-    return !checklist.contract_signed || !checklist.luxembourg_registered || !checklist.insured;
+    const isChecklistComplete = contractSigned && luxembourgRegistered && insured;
+    const hasShip = member.ship_id && member.ship_id !== 'none' && member.ship_id !== '';
+    
+    // Als checklist compleet is EN heeft een schip toegewezen, dan niet tonen
+    if (isChecklistComplete && hasShip) {
+      return false;
+    }
+    
+    // Anders tonen als checklist incompleet is
+    return !isChecklistComplete;
   });
 
   // Categoriseer op basis van sub_status veld
@@ -202,6 +212,16 @@ export default function NogInTeDelenPage() {
     } catch (error) {
       console.error("Fout bij verwijderen:", error);
       alert("Er is een fout opgetreden bij het verwijderen.");
+    }
+  };
+
+  const handleChecklistToggle = async (memberId: string, field: string, value: boolean) => {
+    try {
+      await updateCrew(memberId, {
+        [field]: value
+      });
+    } catch (error) {
+      console.error('Error updating checklist:', error);
     }
   };
 
@@ -524,19 +544,28 @@ export default function NogInTeDelenPage() {
                 <div className="bg-orange-50 p-2 rounded border border-orange-200">
                   <div className="text-xs font-medium text-orange-800 mb-1">{t('checklist')}:</div>
                   <div className="space-y-0.5">
-                    <div className="flex items-center justify-between text-xs">
+                    <div 
+                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-orange-100 p-1 rounded"
+                      onClick={() => handleChecklistToggle(member.id, 'arbeidsovereenkomst', !member.arbeidsovereenkomst)}
+                    >
                       <span>Contract:</span>
                       <span className={member.arbeidsovereenkomst ? "text-green-600" : "text-red-600"}>
                         {member.arbeidsovereenkomst ? "✅" : "❌"}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-xs">
+                    <div 
+                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-orange-100 p-1 rounded"
+                      onClick={() => handleChecklistToggle(member.id, 'ingeschreven_luxembourg', !member.ingeschreven_luxembourg)}
+                    >
                       <span>Luxembourg:</span>
                       <span className={member.ingeschreven_luxembourg ? "text-green-600" : "text-red-600"}>
                         {member.ingeschreven_luxembourg ? "✅" : "❌"}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-xs">
+                    <div 
+                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-orange-100 p-1 rounded"
+                      onClick={() => handleChecklistToggle(member.id, 'verzekerd', !member.verzekerd)}
+                    >
                       <span>Verzekerd:</span>
                       <span className={member.verzekerd ? "text-green-600" : "text-red-600"}>
                         {member.verzekerd ? "✅" : "❌"}

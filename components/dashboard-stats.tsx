@@ -51,11 +51,21 @@ export function DashboardStats() {
           return false;
         }
         
-        // Check onboarding checklist
-        const checklist = member.onboarding_checklist;
-        if (!checklist) return true; // Geen checklist = incomplete
+        // Check checklist - gebruik directe velden (meer betrouwbaar)
+        const contractSigned = member.arbeidsovereenkomst === true;
+        const luxembourgRegistered = member.ingeschreven_luxembourg === true;
+        const insured = member.verzekerd === true;
         
-        return !checklist.contract_signed || !checklist.luxembourg_registered || !checklist.insured;
+        const isChecklistComplete = contractSigned && luxembourgRegistered && insured;
+        const hasShip = member.ship_id && member.ship_id !== 'none' && member.ship_id !== '';
+        
+        // Als checklist compleet is EN heeft een schip toegewezen, dan niet tellen
+        if (isChecklistComplete && hasShip) {
+          return false;
+        }
+        
+        // Anders tellen als checklist incompleet is
+        return !isChecklistComplete;
       });
       
       const nogTeBenaderen = unassignedCrew.filter((m: any) => 
