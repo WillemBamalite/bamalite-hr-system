@@ -120,7 +120,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
   // Initialize edit data when crew member is found
   useEffect(() => {
-    if (crewMember && !isEditing) {
+    if (crewMember) {
       setEditData({
         first_name: crewMember.first_name || "",
         last_name: crewMember.last_name || "",
@@ -147,7 +147,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         notes: crewMember.notes || []
       })
     }
-  }, [crewMember, isEditing])
+  }, [crewMember])
 
   // Don't render until mounted
   if (!mounted) {
@@ -419,6 +419,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
   const renderField = (label: string, value: any, field: string, type: string = "text") => {
     const hasExistingValue = value && value.toString().trim() !== "";
+    const currentValue = editData[field] || "";
     
     if (isEditing) {
       switch (type) {
@@ -432,7 +433,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                 </div>
               )}
               <Select 
-                value={editData[field] || ""} 
+                value={currentValue} 
                 onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: value }))}
               >
                 <SelectTrigger>
@@ -475,7 +476,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                 </div>
               )}
               <Textarea
-                value={editData[field] || ""}
+                value={currentValue}
                 onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
                 placeholder={`Voer ${label.toLowerCase()} in`}
               />
@@ -492,7 +493,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
               )}
               <Input
                 type={type}
-                value={editData[field] || ""}
+                value={currentValue}
                 onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
                 placeholder={`Voer ${label.toLowerCase()} in`}
               />
