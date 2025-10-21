@@ -79,7 +79,7 @@ export default function NogInTeDelenPage() {
 
   // Filter alle bemanningsleden met incomplete checklist (ook die aan schip zijn toegewezen)
   const allCrewWithIncompleteChecklist = crew.filter((member: any) => 
-    member.sub_status === "wacht-op-startdatum" && 
+    member.recruitment_status === "aangenomen" && 
     (!member.arbeidsovereenkomst || !member.ingeschreven_luxembourg || !member.verzekerd) &&
     !member.is_aflosser
   );
@@ -89,10 +89,6 @@ export default function NogInTeDelenPage() {
     !m.sub_status || m.sub_status === "nog-te-benaderen"
   );
   
-  const wachtOpStartdatum = unassignedCrew.filter((m: any) => 
-    m.sub_status === "wacht-op-startdatum" &&
-    m.arbeidsovereenkomst && m.ingeschreven_luxembourg && m.verzekerd
-  );
   
   const nogAfTeRonden = allCrewWithIncompleteChecklist;
   
@@ -163,13 +159,6 @@ export default function NogInTeDelenPage() {
       return;
     }
 
-    // Als status "aangenomen" is, open volledig formulier
-    if (newSubStatus === "wacht-op-startdatum") {
-      setShowStatusDialog(false);
-      setSelectedCandidateForFullForm(selectedMember);
-      setShowFullFormDialog(true);
-      return;
-    }
 
     try {
       const updates: any = {
@@ -299,17 +288,6 @@ export default function NogInTeDelenPage() {
               <div>
                 <p className="text-sm text-gray-600">Nog te benaderen</p>
                 <p className="text-2xl font-bold text-red-600">{nogTeBenaderen.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-5 h-5 bg-yellow-500 rounded-full"></div>
-              <div>
-                <p className="text-sm text-gray-600">Aangenomen - In te delen</p>
-                <p className="text-2xl font-bold text-yellow-600">{wachtOpStartdatum.length}</p>
               </div>
             </div>
           </CardContent>
@@ -472,133 +450,6 @@ export default function NogInTeDelenPage() {
             )}
           </div>
 
-          {/* 2. AANGENOMEN - NOG IN TE DELEN */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">✅ Aangenomen - Nog In Te Delen</h2>
-              <Badge className="bg-yellow-100 text-yellow-800">{wachtOpStartdatum.length}</Badge>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">Mensen die we aangenomen hebben om op een bepaalde datum te starten, moeten nog schip krijgen</p>
-            {wachtOpStartdatum.length === 0 ? (
-              <Card>
-                <CardContent className="p-6 text-center text-gray-500">
-                  Geen aangenomen personen die nog ingedeeld moeten worden
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {wachtOpStartdatum.map((member: any) => (
-            <Card key={member.id} className="hover:shadow-lg transition-shadow border-yellow-200">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-yellow-100 text-yellow-700">
-                        {member.first_name[0]}{member.last_name[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <Link 
-                        href={`/bemanning/${member.id}`}
-                        className="font-medium text-gray-900 hover:text-blue-700"
-                      >
-                        {member.first_name} {member.last_name}
-                      </Link>
-                      <div className="flex items-center space-x-2 text-sm text-gray-500">
-                        <span>{getNationalityFlag(member.nationality)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Position */}
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium">Functie:</span> {member.position}
-                </div>
-
-                {/* Regime */}
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium">Regime:</span> {member.regime}
-                </div>
-
-                {/* Startdatum */}
-                {member.expected_start_date && (
-                  <div className="text-sm bg-yellow-50 p-2 rounded border border-yellow-200">
-                    <span className="font-medium text-yellow-800">📅 Kan starten:</span> 
-                    <span className="ml-2 text-yellow-900">{formatDate(member.expected_start_date)}</span>
-                  </div>
-                )}
-
-                {/* Contact Info */}
-                <div className="space-y-2 text-sm">
-                  {member.phone && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Telefoon:</span> {member.phone}
-                    </div>
-                  )}
-                  {member.email && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Email:</span> {member.email}
-                    </div>
-                  )}
-                </div>
-
-                {/* Experience */}
-                {member.experience && (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Ervaring:</span> {member.experience}
-                  </div>
-                )}
-
-                {/* Diplomas */}
-                {member.diplomas && member.diplomas.length > 0 && (
-                  <div className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Diploma's:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {member.diplomas.map((diploma: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {diploma}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {member.notes && member.notes.length > 0 && (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Notities:</span>
-                    <p className="italic mt-1">{member.notes[0]}</p>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex justify-end space-x-2 pt-3 border-t">
-                  <Link href={`/bemanning/${member.id}`}>
-                    <Button variant="outline" size="sm">
-                      <span className="mr-1">👁️</span>
-                      Bekijk
-                    </Button>
-                  </Link>
-                  <Button 
-                    size="sm"
-                    className="bg-yellow-600 hover:bg-yellow-700"
-                    onClick={() => {
-                      setSelectedMember(member);
-                      setShowAssignmentDialog(true);
-                    }}
-                  >
-                    <span className="mr-1">🚢</span>
-                    Toewijzen aan Schip
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-                ))}
-              </div>
-            )}
-          </div>
 
           {/* 3. NOG AF TE RONDEN */}
           <div>
@@ -936,29 +787,15 @@ export default function NogInTeDelenPage() {
                   <SelectValue placeholder="Selecteer status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="wacht-op-startdatum">Aangenomen - Nog in te delen</SelectItem>
                   <SelectItem value="nog-te-benaderen">Nog te benaderen</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {newSubStatus === "wacht-op-startdatum" && (
-              <div>
-                <Label htmlFor="expectedStartDate">Verwachte startdatum</Label>
-                <Input
-                  id="expectedStartDate"
-                  type="date"
-                  value={expectedStartDate}
-                  onChange={(e) => setExpectedStartDate(e.target.value)}
-                />
-                <p className="text-xs text-gray-500 mt-1">Op welke datum kan deze persoon starten?</p>
-              </div>
-            )}
 
             <div className="bg-blue-50 p-3 rounded-lg">
               <p className="text-sm text-blue-800">
                 💡 <strong>Tip:</strong><br/>
-                • <strong>Aangenomen - Nog in te delen</strong>: Al aangenomen, kan op bepaalde datum starten, moet nog schip krijgen<br/>
                 • <strong>Nog te benaderen</strong>: Nog niet gebeld, moet nog contact opnemen
               </p>
             </div>
