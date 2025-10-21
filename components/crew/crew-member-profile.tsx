@@ -418,59 +418,85 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   statusChanges.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   const renderField = (label: string, value: any, field: string, type: string = "text") => {
+    const hasExistingValue = value && value.toString().trim() !== "";
+    
     if (isEditing) {
       switch (type) {
         case "select":
           return (
-            <Select 
-              value={editData[field] || ""} 
-                             onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={`Selecteer ${label.toLowerCase()}`} />
-              </SelectTrigger>
-              <SelectContent>
-                {field === "nationality" && NATIONALITY_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-                {field === "position" && POSITION_OPTIONS.map(option => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
-                ))}
-                {field === "regime" && REGIME_OPTIONS.map(option => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
-                ))}
-                {field === "status" && STATUS_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                ))}
-                {field === "ship_id" && (
-                  <>
-                    <SelectItem value="none">Geen schip</SelectItem>
-                    {ships.map((ship) => (
-                      <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
-                    ))}
-                  </>
-                )}
-              </SelectContent>
-            </Select>
+            <div className="space-y-1">
+              {hasExistingValue && (
+                <div className="flex items-center text-xs text-green-600">
+                  <span className="mr-1">✓</span>
+                  <span>Al ingevuld: {value}</span>
+                </div>
+              )}
+              <Select 
+                value={editData[field] || ""} 
+                onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={`Selecteer ${label.toLowerCase()}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {field === "nationality" && NATIONALITY_OPTIONS.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                  {field === "position" && POSITION_OPTIONS.map(option => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                  {field === "regime" && REGIME_OPTIONS.map(option => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                  {field === "status" && STATUS_OPTIONS.map(option => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
+                  {field === "ship_id" && (
+                    <>
+                      <SelectItem value="none">Geen schip</SelectItem>
+                      {ships.map((ship) => (
+                        <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
+                      ))}
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           )
         case "textarea":
           return (
-                         <Textarea
-               value={editData[field] || ""}
-               onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
-               placeholder={`Voer ${label.toLowerCase()} in`}
-             />
+            <div className="space-y-1">
+              {hasExistingValue && (
+                <div className="flex items-center text-xs text-green-600">
+                  <span className="mr-1">✓</span>
+                  <span>Al ingevuld: {value}</span>
+                </div>
+              )}
+              <Textarea
+                value={editData[field] || ""}
+                onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
+                placeholder={`Voer ${label.toLowerCase()} in`}
+              />
+            </div>
           )
         default:
           return (
-                         <Input
-               type={type}
-               value={editData[field] || ""}
-               onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
-               placeholder={`Voer ${label.toLowerCase()} in`}
-             />
+            <div className="space-y-1">
+              {hasExistingValue && (
+                <div className="flex items-center text-xs text-green-600">
+                  <span className="mr-1">✓</span>
+                  <span>Al ingevuld: {value}</span>
+                </div>
+              )}
+              <Input
+                type={type}
+                value={editData[field] || ""}
+                onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
+                placeholder={`Voer ${label.toLowerCase()} in`}
+              />
+            </div>
           )
       }
     } else {
@@ -488,7 +514,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
             <div>
               <h3 className="font-semibold text-green-900">Kandidaat Aangenomen - Vul het profiel compleet in</h3>
               <p className="text-sm text-green-800 mt-1">
-                Vul alle verplichte velden (*) in om het bemanningslid klaar te maken voor indeling:
+                <strong>✓ Bestaande gegevens zijn al ingevuld!</strong> Vul alleen de ontbrekende verplichte velden (*) in:
               </p>
               <ul className="text-sm text-green-800 mt-2 ml-4 list-disc space-y-1">
                 <li><strong className="text-red-700">Verwachte Startdatum</strong> - CRUCIAAL voor het automatische rotatie systeem!</li>
@@ -499,7 +525,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                 <li><strong>Schip</strong> - Wijs een schip toe als deze al bekend is</li>
               </ul>
               <p className="text-sm text-green-800 mt-2 font-medium">
-                ⚠️ Zonder startdatum kan het rotatie systeem niet automatisch berekenen wanneer iemand aan boord of thuis is!
+                💡 <strong>Tip:</strong> Velden met "✓ Al ingevuld" hoef je niet aan te passen tenzij je iets wilt wijzigen!
               </p>
             </div>
           </div>
