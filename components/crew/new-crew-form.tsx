@@ -71,12 +71,13 @@ interface NewCrewFormData {
   // Student velden
   isStudent: boolean
   educationType?: "BBL" | "BOL"
+  educationStartDate?: string // Voor BOL
+  educationEndDate?: string // Voor BOL
   schoolPeriods: Array<{
     fromDate: string
     toDate: string
     reason: string
   }>
-  educationEndDate?: string // Voor BOL
 }
 
 export function NewCrewForm() {
@@ -114,8 +115,9 @@ export function NewCrewForm() {
     // Student velden
     isStudent: false,
     educationType: "BBL",
-    schoolPeriods: [],
-    educationEndDate: ""
+    educationStartDate: "",
+    educationEndDate: "",
+    schoolPeriods: []
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -142,8 +144,13 @@ export function NewCrewForm() {
       if (!formData.educationType) {
         errors.push("Opleidingstype is verplicht voor studenten")
       }
-      if (formData.educationType === "BOL" && !formData.educationEndDate) {
-        errors.push("Einddatum opleiding is verplicht voor BOL studenten")
+      if (formData.educationType === "BOL") {
+        if (!formData.educationStartDate) {
+          errors.push("Begindatum opleiding is verplicht voor BOL studenten")
+        }
+        if (!formData.educationEndDate) {
+          errors.push("Einddatum opleiding is verplicht voor BOL studenten")
+        }
       }
     }
 
@@ -210,6 +217,7 @@ export function NewCrewForm() {
         // Student velden
         is_student: formData.isStudent,
         education_type: formData.isStudent ? formData.educationType : null,
+        education_start_date: formData.isStudent && formData.educationType === "BOL" ? formData.educationStartDate : null,
         education_end_date: formData.isStudent && formData.educationType === "BOL" ? formData.educationEndDate : null,
         school_periods: formData.isStudent ? formData.schoolPeriods : []
       }
@@ -256,8 +264,9 @@ export function NewCrewForm() {
         // Student velden
         isStudent: false,
         educationType: "BBL",
-        schoolPeriods: [],
-        educationEndDate: ""
+        educationStartDate: "",
+        educationEndDate: "",
+        schoolPeriods: []
       })
 
       // Navigeer naar overzicht na korte delay
@@ -302,8 +311,9 @@ export function NewCrewForm() {
       notes: "",
       isStudent: false,
       educationType: "BBL",
-      schoolPeriods: [],
-      educationEndDate: ""
+      educationStartDate: "",
+      educationEndDate: "",
+      schoolPeriods: []
     })
   }
 
@@ -840,16 +850,28 @@ export function NewCrewForm() {
                     </Select>
                   </div>
                   {formData.educationType === "BOL" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="educationEndDate">Einddatum opleiding *</Label>
-                      <Input
-                        id="educationEndDate"
-                        type="date"
-                        value={formData.educationEndDate}
-                        onChange={(e) => setFormData(prev => ({ ...prev, educationEndDate: e.target.value }))}
-                        required={formData.educationType === "BOL"}
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="educationStartDate">Begindatum opleiding *</Label>
+                        <Input
+                          id="educationStartDate"
+                          type="date"
+                          value={formData.educationStartDate}
+                          onChange={(e) => setFormData(prev => ({ ...prev, educationStartDate: e.target.value }))}
+                          required={formData.educationType === "BOL"}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="educationEndDate">Einddatum opleiding *</Label>
+                        <Input
+                          id="educationEndDate"
+                          type="date"
+                          value={formData.educationEndDate}
+                          onChange={(e) => setFormData(prev => ({ ...prev, educationEndDate: e.target.value }))}
+                          required={formData.educationType === "BOL"}
+                        />
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

@@ -168,9 +168,22 @@ export function ShipOverview() {
 
     return (
       <div
-        className="p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+        className="p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative"
         onDoubleClick={() => onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
       >
+        {/* Student Education Type Badge */}
+        {member.is_student && member.education_type && (
+          <div className="absolute top-2 right-2">
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+              member.education_type === 'BOL' 
+                ? 'bg-blue-100 text-blue-800' 
+                : 'bg-green-100 text-green-800'
+            }`}>
+              {member.education_type}
+            </span>
+          </div>
+        )}
+        
         <div className="flex items-start space-x-3">
           <Avatar className="w-8 h-8 flex-shrink-0">
             <AvatarFallback className="text-xs bg-blue-100 text-blue-700">

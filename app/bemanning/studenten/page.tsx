@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import { useSupabaseData } from "@/hooks/use-supabase-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -104,19 +103,9 @@ export default function StudentenManagementPage() {
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Studenten Overzicht</h1>
-          <p className="text-gray-600">Beheer alle studenten in het systeem</p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/bemanning/nieuw">
-            <Button className="bg-green-600 hover:bg-green-700">
-              <GraduationCap className="w-4 h-4 mr-2" />
-              Nieuwe Student
-            </Button>
-          </Link>
-        </div>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Studenten Overzicht</h1>
+        <p className="text-gray-600">Beheer alle studenten in het systeem</p>
       </div>
 
       {/* Statistics */}
@@ -180,12 +169,9 @@ export default function StudentenManagementPage() {
             <GraduationCap className="w-16 h-16 mx-auto mb-4 text-gray-300" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Geen studenten gevonden</h3>
             <p className="text-gray-500 mb-4">Er zijn nog geen studenten toegevoegd aan het systeem.</p>
-            <Link href="/bemanning/nieuw">
-              <Button className="bg-green-600 hover:bg-green-700">
-                <GraduationCap className="w-4 h-4 mr-2" />
-                Eerste Student Toevoegen
-              </Button>
-            </Link>
+            <p className="text-sm text-gray-600">
+              Ga naar <Link href="/bemanning/nieuw" className="text-blue-600 hover:underline">Nieuw Bemanningslid</Link> om een student toe te voegen.
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -232,12 +218,22 @@ export default function StudentenManagementPage() {
                   </div>
                 )}
 
-                {/* Education End Date for BOL */}
-                {student.education_type === "BOL" && student.education_end_date && (
-                  <div className="flex items-center space-x-2 text-sm text-gray-600">
-                    <Calendar className="w-4 h-4" />
-                    <span>Einddatum: {new Date(student.education_end_date).toLocaleDateString('nl-NL')}</span>
-                  </div>
+                {/* Education Dates for BOL */}
+                {student.education_type === "BOL" && (
+                  <>
+                    {student.education_start_date && (
+                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                        <Calendar className="w-4 h-4" />
+                        <span>Start: {new Date(student.education_start_date).toLocaleDateString('nl-NL')}</span>
+                      </div>
+                    )}
+                    {student.education_end_date && (
+                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                        <Calendar className="w-4 h-4" />
+                        <span>Eind: {new Date(student.education_end_date).toLocaleDateString('nl-NL')}</span>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* School Periods for BBL */}
@@ -283,10 +279,11 @@ export default function StudentenManagementPage() {
 
                 {/* Actions */}
                 <div className="flex justify-end space-x-2 pt-3 border-t">
-                  <Link href={`/bemanning/${student.id}`}>
-                    <Button variant="outline" size="sm">
-                      <Calendar className="w-4 h-4" />
-                    </Button>
+                  <Link 
+                    href={`/bemanning/${student.id}`}
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    Bekijk profiel →
                   </Link>
                 </div>
               </CardContent>

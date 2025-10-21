@@ -25,12 +25,13 @@ export function DashboardStats() {
     ziekmeldingenMetBriefje: sickLeave.filter((s) => s.status === "wacht-op-briefje").length,
     nogInTeDelen: activeCrew.filter((c) => c.status === "nog-in-te-delen").length,
     oudMedewerkers: crew.filter((c) => c.status === 'uit-dienst').length,
-    openLeningen: (loans || []).filter((l: any) => l.status === 'open').length
+    openLeningen: (loans || []).filter((l: any) => l.status === 'open').length,
+    studenten: crew.filter((c) => c.is_student && c.status !== 'uit-dienst').length
   }
 
   return (
     <div className="space-y-4 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
         <Link href="/bemanning/overzicht" className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
           <div className="text-xs text-blue-700 mt-1">Totaal bemanningsleden</div>
@@ -38,6 +39,10 @@ export function DashboardStats() {
         <Link href="/bemanning/aflossers" className="bg-green-50 border border-green-200 rounded-lg p-4 text-center hover:bg-green-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-green-800">{stats.aflossers}</div>
           <div className="text-xs text-green-700 mt-1">Aflossers</div>
+        </Link>
+        <Link href="/bemanning/studenten" className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center hover:bg-purple-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-purple-800">{stats.studenten}</div>
+          <div className="text-xs text-purple-700 mt-1">Studenten</div>
         </Link>
         <Link href="/ziekte" className="bg-red-50 border border-red-200 rounded-lg p-4 text-center hover:bg-red-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-red-800">{stats.zieken}</div>
@@ -51,9 +56,9 @@ export function DashboardStats() {
           <div className="text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>
           <div className="text-xs text-yellow-700 mt-1">Openstaande leningen</div>
         </Link>
-        <Link href="/bemanning/oude-bemanningsleden" className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center hover:bg-purple-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-purple-800">{stats.oudMedewerkers}</div>
-          <div className="text-xs text-purple-700 mt-1">Oude medewerkers</div>
+        <Link href="/bemanning/oude-bemanningsleden" className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center hover:bg-slate-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-slate-800">{stats.oudMedewerkers}</div>
+          <div className="text-xs text-slate-700 mt-1">Oude medewerkers</div>
         </Link>
       </div>
     </div>
