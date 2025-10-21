@@ -425,86 +425,61 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   }
 
   const renderField = (label: string, value: any, field: string, type: string = "text") => {
-    const hasExistingValue = value && value.toString().trim() !== "";
     const currentValue = editData[field] || "";
     
     if (isEditing) {
       switch (type) {
         case "select":
           return (
-            <div className="space-y-1">
-              {hasExistingValue && (
-                <div className="flex items-center text-xs text-green-600">
-                  <span className="mr-1">✓</span>
-                  <span>Al ingevuld: {value}</span>
-                </div>
-              )}
-              <Select 
-                value={currentValue} 
-                onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={`Selecteer ${label.toLowerCase()}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {field === "nationality" && NATIONALITY_OPTIONS.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                  {field === "position" && POSITION_OPTIONS.map(option => (
-                    <SelectItem key={option} value={option}>{option}</SelectItem>
-                  ))}
-                  {field === "regime" && REGIME_OPTIONS.map(option => (
-                    <SelectItem key={option} value={option}>{option}</SelectItem>
-                  ))}
-                  {field === "status" && STATUS_OPTIONS.map(option => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                  {field === "ship_id" && (
-                    <>
-                      <SelectItem value="none">Geen schip</SelectItem>
-                      {ships.map((ship) => (
-                        <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
-                      ))}
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            <Select 
+              value={currentValue} 
+              onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={`Selecteer ${label.toLowerCase()}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {field === "nationality" && NATIONALITY_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+                {field === "position" && POSITION_OPTIONS.map(option => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+                {field === "regime" && REGIME_OPTIONS.map(option => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+                {field === "status" && STATUS_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+                {field === "ship_id" && (
+                  <>
+                    <SelectItem value="none">Geen schip</SelectItem>
+                    {ships.map((ship) => (
+                      <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
+                    ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
           )
         case "textarea":
           return (
-            <div className="space-y-1">
-              {hasExistingValue && (
-                <div className="flex items-center text-xs text-green-600">
-                  <span className="mr-1">✓</span>
-                  <span>Al ingevuld: {value}</span>
-                </div>
-              )}
-              <Textarea
-                value={currentValue}
-                onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
-                placeholder={`Voer ${label.toLowerCase()} in`}
-              />
-            </div>
+            <Textarea
+              value={currentValue}
+              onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
+              placeholder={`Voer ${label.toLowerCase()} in`}
+            />
           )
         default:
           return (
-            <div className="space-y-1">
-              {hasExistingValue && (
-                <div className="flex items-center text-xs text-green-600">
-                  <span className="mr-1">✓</span>
-                  <span>Al ingevuld: {value}</span>
-                </div>
-              )}
-              <Input
-                type={type}
-                value={currentValue}
-                onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
-                placeholder={`Voer ${label.toLowerCase()} in`}
-              />
-            </div>
+            <Input
+              type={type}
+              value={currentValue}
+              onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, [field]: e.target.value }))}
+              placeholder={`Voer ${label.toLowerCase()} in`}
+            />
           )
       }
     } else {
@@ -533,7 +508,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                 <li><strong>Schip</strong> - Wijs een schip toe als deze al bekend is</li>
               </ul>
               <p className="text-sm text-green-800 mt-2 font-medium">
-                💡 <strong>Tip:</strong> Velden met "✓ Al ingevuld" hoef je niet aan te passen tenzij je iets wilt wijzigen!
+                💡 <strong>Tip:</strong> Bestaande gegevens zijn al ingevuld - je hoeft alleen de ontbrekende velden aan te vullen!
               </p>
             </div>
           </div>
