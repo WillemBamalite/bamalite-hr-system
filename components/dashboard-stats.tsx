@@ -18,11 +18,20 @@ export function DashboardStats() {
   const stats = {
     totalCrew: activeCrew.filter((c) => c.position !== 'Aflosser' && c.position !== 'aflosser').length,
     aflossers: aflossers.filter((c) => c.status !== 'uit-dienst').length,
-    zieken: sickLeave.filter((s: any) => s.status === "actief" || s.status === "wacht-op-briefje").length,
+    zieken: sickLeave.filter((s: any) => {
+      const crewMember = crew.find((c) => c.id === s.crew_member_id)
+      return (s.status === "actief" || s.status === "wacht-op-briefje") && crewMember && crewMember.status !== 'uit-dienst'
+    }).length,
     aanBoord: activeCrew.filter((c) => c.status === "aan-boord").length,
     thuis: activeCrew.filter((c) => c.status === "thuis").length,
-    actieveZiekmeldingen: sickLeave.filter((s) => s.status === "actief").length,
-    ziekmeldingenMetBriefje: sickLeave.filter((s) => s.status === "wacht-op-briefje").length,
+    actieveZiekmeldingen: sickLeave.filter((s) => {
+      const crewMember = crew.find((c) => c.id === s.crew_member_id)
+      return s.status === "actief" && crewMember && crewMember.status !== 'uit-dienst'
+    }).length,
+    ziekmeldingenMetBriefje: sickLeave.filter((s) => {
+      const crewMember = crew.find((c) => c.id === s.crew_member_id)
+      return s.status === "wacht-op-briefje" && crewMember && crewMember.status !== 'uit-dienst'
+    }).length,
     nogInTeDelen: activeCrew.filter((c) => c.status === "nog-in-te-delen").length,
     oudMedewerkers: crew.filter((c) => c.status === 'uit-dienst').length,
     openLeningen: (loans || []).filter((l: any) => l.status === 'open').length,
