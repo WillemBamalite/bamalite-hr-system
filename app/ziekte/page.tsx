@@ -56,7 +56,7 @@ export default function ZiektePage() {
         daysCount,
       }
     })
-    .filter((record) => record.crewMember) // Filter out records zonder crew member
+    .filter((record) => record.crewMember && record.crewMember.status !== 'uit-dienst') // Filter out records zonder crew member en uit-dienst crew
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -297,7 +297,7 @@ export default function ZiektePage() {
       const result = await addStandBackRecord(standBackRecord)
       console.log('✅ Stand back record created in Supabase:', result)
 
-      alert(`Herstel succesvol geregistreerd voor ${recoveryRecord.crewMember.first_name} ${recoveryRecord.crewMember.last_name}. Terugkeer aan boord: ${recoveryDate}. 7 dagen terug te staan toegevoegd.`)
+      // Recovery registered - no alert needed
       
       setRecoveryDialogOpen(false)
       setRecoveryRecord(null)

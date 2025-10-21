@@ -101,7 +101,7 @@ export default function LeningenPage() {
 
       setNewLoanDialog(false)
       setNewLoanData({ crew_id: "", name: "", period: "", amount: "", reason: "" })
-      alert("Lening succesvol toegevoegd!")
+      // Loan added - no alert needed
     } catch (error) {
       console.error("Error adding loan:", error)
       const message = error instanceof Error ? error.message : 'Fout bij het toevoegen van de lening'
@@ -126,7 +126,7 @@ export default function LeningenPage() {
 
       setPaymentDialog({ isOpen: false, loanId: "", loanName: "", maxAmount: 0 })
       setPaymentData({ amount: "", note: "" })
-      alert(`Betaling van €${paymentAmount.toFixed(2)} succesvol verwerkt!`)
+      // Payment processed - no alert needed
     } catch (error) {
       console.error("Error making payment:", error)
       const message = error instanceof Error ? error.message : 'Fout bij het verwerken van de betaling'
@@ -139,7 +139,7 @@ export default function LeningenPage() {
       await completeLoan(completeLoanDialog.loanId, completeNotes)
       setCompleteLoanDialog({ isOpen: false, loanId: "", loanName: "" })
       setCompleteNotes("")
-      alert("Lening succesvol afgerond!")
+      // Loan completed - no alert needed
     } catch (error) {
       console.error("Error completing loan:", error)
       alert("Fout bij het afronden van de lening")

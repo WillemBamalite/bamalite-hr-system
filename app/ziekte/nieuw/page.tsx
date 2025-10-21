@@ -100,7 +100,7 @@ export default function NieuwZiektePage() {
         })
       }
 
-      alert("Ziekmelding succesvol geregistreerd!")
+      // Sick leave registered - no alert needed
       router.push("/ziekte")
     } catch (error) {
       console.error("Error creating sick leave:", error)

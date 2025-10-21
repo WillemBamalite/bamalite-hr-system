@@ -141,7 +141,7 @@ export default function NogInTeDelenPage() {
         thuis_sinds: new Date().toISOString().split('T')[0] // Vandaag als thuis sinds
       });
 
-      alert(`${selectedMember.first_name} ${selectedMember.last_name} is succesvol toegewezen aan het schip!`);
+      // Success - no alert needed
       
       setShowAssignmentDialog(false);
       setSelectedMember(null);
@@ -167,7 +167,7 @@ export default function NogInTeDelenPage() {
 
       await updateCrew(selectedMember.id, updates);
 
-      alert(`Status succesvol bijgewerkt!`);
+      // Status updated - no alert needed
       
       setShowStatusDialog(false);
       setSelectedMember(null);
@@ -220,7 +220,7 @@ export default function NogInTeDelenPage() {
       
       await addCrew(newCandidate);
 
-      alert(`Kandidaat ${candidateForm.firstName} ${candidateForm.lastName} succesvol toegevoegd!`);
+      // Candidate added - no alert needed
       
       setShowNewCandidateDialog(false);
       setCandidateForm({

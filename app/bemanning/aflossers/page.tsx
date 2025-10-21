@@ -138,7 +138,7 @@ export default function ReizenAflossersPage() {
       }
 
       await addTrip(newTrip)
-      alert("Reis succesvol aangemaakt!")
+      // Trip created - no alert needed
       
       // Reset form
       setNewTripData({
@@ -169,7 +169,7 @@ export default function ReizenAflossersPage() {
 
     setAssignAflosserDialog(null)
     setSelectedAflosserId("")
-      alert("Aflosser succesvol toegewezen!")
+      // Aflosser assigned - no alert needed
     } catch (error) {
       console.error("Error assigning aflosser:", error)
       alert("Fout bij toewijzen aflosser")
@@ -201,7 +201,7 @@ export default function ReizenAflossersPage() {
 
       setBoardShipDialog(null)
       setBoardData({ start_datum: "", start_tijd: "" })
-      alert("Aflosser succesvol aan boord gemeld!")
+      // Aflosser on board - no alert needed
       
     } catch (error) {
       console.error("Error boarding ship:", error)
@@ -235,7 +235,7 @@ export default function ReizenAflossersPage() {
 
       setCompleteTripDialog(null)
       setCompleteData({ eind_datum: "", eind_tijd: "", aflosser_opmerkingen: "" })
-      alert("Reis succesvol afgesloten!")
+      // Trip completed - no alert needed
       
     } catch (error) {
       console.error("Error completing trip:", error)

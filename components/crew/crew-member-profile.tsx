@@ -96,10 +96,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
       setOutDate("")
       setOutReason("")
       if (onProfileUpdate) onProfileUpdate()
-      alert("Bemanningslid is uit dienst gezet")
     } catch (e) {
       console.error(e)
-      alert("Kon het bemanningslid niet uit dienst zetten")
     }
   }
 
@@ -359,7 +357,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
       if (onProfileUpdate) {
         onProfileUpdate()
       }
-      alert("Profiel succesvol bijgewerkt!")
     } catch (error) {
       console.error('Error updating crew member:', error)
       console.error('Error details:', JSON.stringify(error, null, 2))
