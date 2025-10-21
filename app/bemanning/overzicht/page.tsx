@@ -151,32 +151,6 @@ export default function CrewOverviewPage() {
         </div>
       </div>
       
-      {/* Snelle acties */}
-      <div className="mb-8">
-        <div className="text-lg font-semibold text-gray-800 mb-4">Snelle acties</div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Link href="/bemanning/nieuw" className="bg-indigo-600 text-white text-sm py-4 px-6 rounded-lg text-center hover:bg-indigo-700 shadow-lg transition-colors">
-            <div className="text-2xl mb-2">➕</div>
-            <div className="font-semibold">Nieuw bemanningslid</div>
-            <div className="text-xs opacity-90 mt-1">Voeg direct toe</div>
-          </Link>
-          <Link href="/bemanning/aflossers" className="bg-purple-600 text-white text-sm py-4 px-6 rounded-lg text-center hover:bg-purple-700 shadow-lg transition-colors">
-            <div className="text-2xl mb-2">🔄</div>
-            <div className="font-semibold">Aflossers</div>
-            <div className="text-xs opacity-90 mt-1">Bekijk aflossers</div>
-          </Link>
-          <Link href="/bemanning/studenten" className="bg-gray-600 text-white text-sm py-4 px-6 rounded-lg text-center hover:bg-gray-700 shadow-lg transition-colors">
-            <div className="text-2xl mb-2">🎓</div>
-            <div className="font-semibold">Studenten</div>
-            <div className="text-xs opacity-90 mt-1">Bekijk studenten</div>
-          </Link>
-          <Link href="/bemanning/oude-bemanningsleden" className="bg-red-600 text-white text-sm py-4 px-6 rounded-lg text-center hover:bg-red-700 shadow-lg transition-colors">
-            <div className="text-2xl mb-2">🗂️</div>
-            <div className="font-semibold">Oude werknemers</div>
-            <div className="text-xs opacity-90 mt-1">Uit dienst overzicht</div>
-          </Link>
-        </div>
-      </div>
 
       {RANK_ORDER.map((rank) => (
         <div key={rank} className="mb-8">
