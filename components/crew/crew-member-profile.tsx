@@ -417,6 +417,13 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   // Sorteer op datum (nieuwste eerst)
   statusChanges.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
+  // Check if checklist is complete
+  const isChecklistComplete = () => {
+    return editData.arbeidsovereenkomst && 
+           editData.ingeschreven_luxembourg && 
+           editData.verzekerd;
+  }
+
   const renderField = (label: string, value: any, field: string, type: string = "text") => {
     const hasExistingValue = value && value.toString().trim() !== "";
     const currentValue = editData[field] || "";
@@ -861,19 +868,31 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           </div>
         )}
 
-        {/* Checklist sectie - alleen tonen bij aannemen */}
-        {isEditing && (
+        {/* In dienst per datum - altijd tonen */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start space-x-2">
+            <Calendar className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div className="flex-1">
+              <label className="text-sm font-semibold text-blue-900">In dienst per</label>
+              <p className="text-xs text-blue-700 mb-2">
+                Officiële startdatum van deze bemanningslid
+              </p>
+              {isEditing ? (
+                renderField("In dienst per", (crewMember as any).in_dienst_vanaf ? new Date((crewMember as any).in_dienst_vanaf).toLocaleDateString('nl-NL') : "", "in_dienst_vanaf", "date")
+              ) : (
+                <p className="mt-1 text-blue-900 font-medium">
+                  {(crewMember as any).in_dienst_vanaf ? new Date((crewMember as any).in_dienst_vanaf).toLocaleDateString('nl-NL') : "Nog niet ingevuld"}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Checklist sectie - alleen tonen als niet volledig ingevuld */}
+        {isEditing && !isChecklistComplete() && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <h3 className="text-lg font-semibold text-yellow-900 mb-4">📋 Checklist Nieuw Personeel</h3>
             <div className="space-y-4">
-              <div>
-                <label className="text-sm font-semibold text-yellow-900">In dienst vanaf *</label>
-                <p className="text-xs text-yellow-700 mb-2">
-                  Vanaf welke datum is deze persoon officieel in dienst?
-                </p>
-                {renderField("In dienst vanaf", (crewMember as any).in_dienst_vanaf ? new Date((crewMember as any).in_dienst_vanaf).toLocaleDateString('nl-NL') : "", "in_dienst_vanaf", "date")}
-              </div>
-              
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-yellow-900">Administratieve Checklist</label>
                 <div className="space-y-2">
