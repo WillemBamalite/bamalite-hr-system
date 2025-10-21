@@ -1,6 +1,7 @@
 "use client"
 
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +23,7 @@ const RANK_ORDER = [
 
 export default function CrewOverviewPage() {
   const { crew, ships, loading, error } = useSupabaseData()
+  const { t } = useLanguage()
   const [filteredCrew, setFilteredCrew] = useState<any[]>([])
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
 
@@ -139,13 +141,13 @@ export default function CrewOverviewPage() {
       <div className="flex justify-between items-center mb-8">
         <div className="flex items-center gap-4">
           <BackButton href="/" />
-          <h1 className="text-3xl font-bold text-gray-900">Bemanning Overzicht</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{t('crew')} {t('overview')}</h1>
         </div>
         <div className="flex gap-2">
           <Link href="/bemanning/nieuw">
             <Button className="bg-green-600 hover:bg-green-700">
               <span className="mr-2">➕</span>
-              Nieuw Bemanningslid
+              {t('newCrewMember')}
             </Button>
           </Link>
         </div>

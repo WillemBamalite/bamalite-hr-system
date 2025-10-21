@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCircle, Edit, Save, X, Trash2, Ship, Clock, ArrowRight, ArrowLeft } from "lucide-react"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -67,6 +68,7 @@ interface Props {
 
 export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = false }: Props) {
   const { crew, ships, loading, error, updateCrew } = useSupabaseData()
+  const { t } = useLanguage()
   const [isEditing, setIsEditing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -79,7 +81,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
   const handleMarkOutOfService = async () => {
     if (!outDate || !outReason) {
-      alert("Vul een datum en reden in")
+      alert(t('fillDateAndReason'))
       return
     }
     try {
@@ -234,23 +236,23 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     try {
       // Validate required fields
       const errors = []
-      if (!editData.first_name?.trim()) errors.push("Voornaam is verplicht")
-      if (!editData.last_name?.trim()) errors.push("Achternaam is verplicht")
-      if (!editData.nationality) errors.push("Nationaliteit is verplicht")
-      if (!editData.position) errors.push("Functie is verplicht")
-      if (!editData.regime) errors.push("Regime is verplicht")
-      if (!editData.status) errors.push("Status is verplicht")
-      if (!editData.phone?.trim()) errors.push("Telefoonnummer is verplicht")
-      if (!editData.birth_date) errors.push("Geboortedatum is verplicht")
+      if (!editData.first_name?.trim()) errors.push(t('firstNameRequired'))
+      if (!editData.last_name?.trim()) errors.push(t('lastNameRequired'))
+      if (!editData.nationality) errors.push(t('nationalityRequired'))
+      if (!editData.position) errors.push(t('positionRequired'))
+      if (!editData.regime) errors.push(t('regimeRequired'))
+      if (!editData.status) errors.push(t('statusRequired'))
+      if (!editData.phone?.trim()) errors.push(t('phoneRequired'))
+      if (!editData.birth_date) errors.push(t('birthDateRequired'))
       
       // In dienst vanaf is alleen verplicht als er nog geen datum is ingevuld
       const hasExistingDate = (crewMember as any).in_dienst_vanaf
       if (!editData.in_dienst_vanaf && !hasExistingDate) {
-        errors.push("In dienst vanaf datum is verplicht")
+        errors.push(t('startDateRequired'))
       }
       
       if (errors.length > 0) {
-        alert("Vul de volgende verplichte velden in:\n" + errors.join("\n"))
+        alert(t('fillRequiredFields') + ":\n" + errors.join("\n"))
         setIsSaving(false)
         return
       }
@@ -360,7 +362,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     } catch (error) {
       console.error('Error updating crew member:', error)
       console.error('Error details:', JSON.stringify(error, null, 2))
-      alert("Fout bij het bijwerken van het profiel: " + (error instanceof Error ? error.message : String(error)))
+      alert(t('errorUpdatingProfile') + " " + (error instanceof Error ? error.message : String(error)))
     } finally {
       setIsSaving(false)
     }
@@ -490,6 +492,15 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           )
       }
     } else {
+      // Format dates for display
+      if (type === "date" && value) {
+        try {
+          const formattedDate = format(new Date(value), 'dd-MM-yyyy');
+          return <p className="mt-1">{formattedDate}</p>
+        } catch {
+          return <p className="mt-1">{value}</p>
+        }
+      }
       return <p className="mt-1">{value || "Niet ingevuld"}</p>
     }
   }
@@ -528,7 +539,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center space-x-3">
             <User className="w-5 h-5" />
-            <span>Profiel</span>
+            <span>{t('profile')}</span>
           </CardTitle>
           <div className="flex items-center space-x-2">
               {!isEditing ? (
@@ -539,7 +550,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                   className="flex items-center space-x-2"
                 >
                   <Edit className="w-4 h-4" />
-                  <span>Bewerken</span>
+                  <span>{t('edit')}</span>
                 </Button>
               ) : (
                 <div className="flex items-center space-x-2">
@@ -550,7 +561,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                     className="flex items-center space-x-2"
                   >
                     <Save className="w-4 h-4" />
-                    <span>{isSaving ? "Opslaan..." : "Opslaan"}</span>
+                    <span>{isSaving ? t('save') + "..." : t('save')}</span>
                   </Button>
                   <Button
                     onClick={handleCancel}
@@ -559,7 +570,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                     className="flex items-center space-x-2"
                   >
                     <X className="w-4 h-4" />
-                    <span>Annuleren</span>
+                    <span>{t('cancel')}</span>
                   </Button>
                 </div>
               )}
@@ -605,33 +616,33 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div>
-                <label className="text-sm font-medium text-gray-700">Voornaam *</label>
-                {renderField("Voornaam", crewMember.first_name, "first_name")}
+                <label className="text-sm font-medium text-gray-700">{t('firstName')} *</label>
+                {renderField(t('firstName'), crewMember.first_name, "first_name")}
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700">Achternaam *</label>
-                {renderField("Achternaam", crewMember.last_name, "last_name")}
+                <label className="text-sm font-medium text-gray-700">{t('lastName')} *</label>
+                {renderField(t('lastName'), crewMember.last_name, "last_name")}
                 </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700">Nationaliteit *</label>
-                {renderField("Nationaliteit", crewMember.nationality, "nationality", "select")}
+                <label className="text-sm font-medium text-gray-700">{t('nationality')} *</label>
+                {renderField(t('nationality'), crewMember.nationality, "nationality", "select")}
             </div>
 
             <div>
-                <label className="text-sm font-medium text-gray-700">Functie *</label>
-                {renderField("Functie", crewMember.position, "position", "select")}
+                <label className="text-sm font-medium text-gray-700">{t('position')} *</label>
+                {renderField(t('position'), crewMember.position, "position", "select")}
             </div>
 
             <div>
-                <label className="text-sm font-medium text-gray-700">Regime *</label>
-                {renderField("Regime", crewMember.regime, "regime", "select")}
+                <label className="text-sm font-medium text-gray-700">{t('regime')} *</label>
+                {renderField(t('regime'), crewMember.regime, "regime", "select")}
             </div>
 
             <div>
-                <label className="text-sm font-medium text-gray-700">Status *</label>
-                {renderField("Status", crewMember.status, "status", "select")}
+                <label className="text-sm font-medium text-gray-700">{t('status')} *</label>
+                {renderField(t('status'), crewMember.status, "status", "select")}
                 {crewMember.regime && crewMember.regime !== "Altijd" && (
                   <div className="mt-1 text-xs text-gray-500">
                     {(() => {
@@ -707,23 +718,23 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700">Telefoon *</label>
-                {renderField("Telefoon", crewMember.phone, "phone")}
+                <label className="text-sm font-medium text-gray-700">{t('phoneNumber')} *</label>
+                {renderField(t('phoneNumber'), crewMember.phone, "phone")}
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Email</label>
-                {renderField("Email", crewMember.email, "email", "email")}
+              <label className="text-sm font-medium text-gray-700">{t('email')}</label>
+                {renderField(t('email'), crewMember.email, "email", "email")}
             </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700">Geboortedatum *</label>
-                {renderField("Geboortedatum", crewMember.birth_date, "birth_date", "date")}
+                <label className="text-sm font-medium text-gray-700">{t('dateOfBirth')} *</label>
+                {renderField(t('dateOfBirth'), crewMember.birth_date, "birth_date", "date")}
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700">Geboorteplaats</label>
-                {renderField("Geboorteplaats", (crewMember as any).birth_place, "birth_place")}
+              <label className="text-sm font-medium text-gray-700">{t('placeOfBirth')}</label>
+                {renderField(t('placeOfBirth'), (crewMember as any).birth_place, "birth_place")}
               </div>
               </div>
                   </div>
@@ -840,11 +851,11 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
             <div className="flex items-start space-x-2">
               <Calendar className="w-5 h-5 text-blue-600 mt-0.5" />
               <div className="flex-1">
-                <label className="text-sm font-semibold text-blue-900">Verwachte Startdatum *</label>
+                <label className="text-sm font-semibold text-blue-900">{t('expectedStartDate')} *</label>
                 <p className="text-xs text-blue-700 mb-2">
                   Deze datum wordt gebruikt om het automatische rotatie systeem te starten
                 </p>
-                {renderField("Verwachte Startdatum", (crewMember as any).expected_start_date, "expected_start_date", "date")}
+                {renderField(t('expectedStartDate'), (crewMember as any).expected_start_date, "expected_start_date", "date")}
               </div>
             </div>
           </div>
@@ -855,15 +866,15 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           <div className="flex items-start space-x-2">
             <Calendar className="w-5 h-5 text-blue-600 mt-0.5" />
             <div className="flex-1">
-              <label className="text-sm font-semibold text-blue-900">In dienst per</label>
+              <label className="text-sm font-semibold text-blue-900">{t('inServiceFrom')}</label>
               <p className="text-xs text-blue-700 mb-2">
                 Officiële startdatum van deze bemanningslid
               </p>
               {isEditing ? (
-                renderField("In dienst per", (crewMember as any).in_dienst_vanaf ? new Date((crewMember as any).in_dienst_vanaf).toLocaleDateString('nl-NL') : "", "in_dienst_vanaf", "date")
+                renderField(t('inServiceFrom'), (crewMember as any).in_dienst_vanaf ? format(new Date((crewMember as any).in_dienst_vanaf), 'dd-MM-yyyy') : "", "in_dienst_vanaf", "date")
               ) : (
                 <p className="mt-1 text-blue-900 font-medium">
-                  {(crewMember as any).in_dienst_vanaf ? new Date((crewMember as any).in_dienst_vanaf).toLocaleDateString('nl-NL') : "Nog niet ingevuld"}
+                  {(crewMember as any).in_dienst_vanaf ? format(new Date((crewMember as any).in_dienst_vanaf), 'dd-MM-yyyy') : "Nog niet ingevuld"}
                 </p>
               )}
             </div>
@@ -873,10 +884,10 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         {/* Checklist sectie - alleen tonen als niet volledig ingevuld */}
         {isEditing && !isChecklistComplete() && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-yellow-900 mb-4">📋 Checklist Nieuw Personeel</h3>
+            <h3 className="text-lg font-semibold text-yellow-900 mb-4">📋 {t('checklist')} {t('newPersonnel')}</h3>
             <div className="space-y-4">
               <div className="space-y-3">
-                <label className="text-sm font-semibold text-yellow-900">Administratieve Checklist</label>
+                <label className="text-sm font-semibold text-yellow-900">{t('checklist')}</label>
                 <div className="space-y-2">
                   <div className="flex items-center space-x-3">
                     <input
@@ -887,7 +898,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                       className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
                     />
                     <label htmlFor="arbeidsovereenkomst" className="text-sm text-yellow-800">
-                      ✅ Arbeidsovereenkomst ondertekend
+                      ✅ {t('contractSigned')}
                     </label>
                   </div>
                   
@@ -900,7 +911,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                       className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
                     />
                     <label htmlFor="ingeschreven_luxembourg" className="text-sm text-yellow-800">
-                      ✅ Ingeschreven in Luxembourg
+                      ✅ {t('registeredLuxembourg')}
                     </label>
                   </div>
                   
@@ -913,7 +924,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                       className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
                     />
                     <label htmlFor="verzekerd" className="text-sm text-yellow-800">
-                      ✅ Verzekerd
+                      ✅ {t('insured')}
                     </label>
                   </div>
                 </div>
@@ -924,7 +935,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
         {/* Notes */}
           <div>
-            <label className="text-sm font-medium text-gray-700">Notities</label>
+            <label className="text-sm font-medium text-gray-700">{t('notes')}</label>
             {isEditing ? (
               <Textarea
                 value={editData.notes?.join('\n') || ""}
@@ -1010,8 +1021,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setShowOutDialog(false)}>Annuleren</Button>
-          <Button variant="destructive" onClick={handleMarkOutOfService}>Bevestigen</Button>
+          <Button variant="outline" onClick={() => setShowOutDialog(false)}>{t('cancel')}</Button>
+          <Button variant="destructive" onClick={handleMarkOutOfService}>{t('confirm')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

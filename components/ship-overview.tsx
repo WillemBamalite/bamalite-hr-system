@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { supabase } from "@/lib/supabase"
 
 // Sorteringsfunctie voor bemanningsleden op rang
@@ -37,6 +38,7 @@ const sortCrewByRank = (crew: any[]) => {
 
 export function ShipOverview() {
   const { ships, crew, sickLeave, loading, error, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
+  const { t } = useLanguage()
   const [mounted, setMounted] = useState(false);
   
   // Notes functionality state
@@ -76,10 +78,10 @@ export function ShipOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Schepen Overzicht</CardTitle>
+          <CardTitle>Schepen {t('overview')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">Laden...</div>
+          <div className="text-center py-8 text-gray-500">{t('loading')}...</div>
         </CardContent>
       </Card>
     );
@@ -90,10 +92,10 @@ export function ShipOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Schepen Overzicht</CardTitle>
+          <CardTitle>Schepen {t('overview')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-500">Data laden...</div>
+          <div className="text-center py-8 text-gray-500">{t('loading')} data...</div>
         </CardContent>
       </Card>
     );
@@ -104,7 +106,7 @@ export function ShipOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Schepen Overzicht</CardTitle>
+          <CardTitle>Schepen {t('overview')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8 text-red-500">Fout: {error}</div>
@@ -361,7 +363,7 @@ export function ShipOverview() {
   function SafeDate({ date }: { date: string }) {
     if (!date) return <span className="text-gray-400">Niet ingevuld</span>
     try {
-      return <span>{new Date(date).toLocaleDateString('nl-NL')}</span>
+      return <span>{format(new Date(date), 'dd-MM-yyyy')}</span>
     } catch {
       return <span className="text-gray-400">Ongeldige datum</span>
     }
@@ -650,20 +652,20 @@ export function ShipOverview() {
       <Dialog open={quickNoteDialog.isOpen} onOpenChange={(open) => setQuickNoteDialog(prev => ({ ...prev, isOpen: open }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Snelle notitie voor {quickNoteDialog.crewName}</DialogTitle>
+            <DialogTitle>{t('quickNoteFor')} {quickNoteDialog.crewName}</DialogTitle>
           </DialogHeader>
           <Textarea
             value={quickNote}
             onChange={(e) => setQuickNote(e.target.value)}
-            placeholder="Voeg een snelle notitie toe..."
+            placeholder={t('quickNotePlaceholder')}
             rows={3}
           />
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => setQuickNoteDialog(prev => ({ ...prev, isOpen: false }))}>
-              Annuleren
+              {t('cancel')}
             </Button>
             <Button onClick={handleSaveQuickNote}>
-              Opslaan
+              {t('save')}
             </Button>
           </div>
         </DialogContent>
@@ -673,16 +675,16 @@ export function ShipOverview() {
       <Dialog open={deleteNoteDialog.isOpen} onOpenChange={(open) => setDeleteNoteDialog(prev => ({ ...prev, isOpen: open }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Notitie verwijderen</DialogTitle>
+            <DialogTitle>{t('deleteNote')}</DialogTitle>
           </DialogHeader>
-          <p>Weet je zeker dat je deze notitie wilt verwijderen?</p>
+          <p>{t('confirmDeleteNote')}</p>
           <p className="text-sm text-gray-600 italic">"{deleteNoteDialog.noteContent}"</p>
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => setDeleteNoteDialog(prev => ({ ...prev, isOpen: false }))}>
-              Annuleren
+              {t('cancel')}
             </Button>
             <Button variant="destructive" onClick={handleConfirmDeleteNote}>
-              Verwijderen
+              {t('delete')}
             </Button>
           </div>
         </DialogContent>

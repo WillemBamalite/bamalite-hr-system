@@ -11,6 +11,7 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -20,6 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 export default function ZiektePage() {
   const { crew, sickLeave, loading, error, updateCrew, updateSickLeave, addStandBackRecord } = useSupabaseData()
+  const { t } = useLanguage()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -343,7 +345,7 @@ export default function ZiektePage() {
         <div className="flex items-center gap-4">
           <BackButton href="/" />
           <div>
-            <h1 className="text-2xl font-bold">Ziekte Overzicht</h1>
+            <h1 className="text-2xl font-bold">{t('sickLeaveOverview')}</h1>
             <p className="text-sm text-gray-600">Actieve ziekmeldingen en ziekte management</p>
           </div>
         </div>
@@ -365,7 +367,7 @@ export default function ZiektePage() {
             <div className="flex items-center space-x-2">
               <UserX className="w-5 h-5 text-red-600" />
               <div>
-                <p className="text-sm text-gray-600">Actief ziek</p>
+                <p className='text-sm text-gray-600'>{t('activeSick')}</p>
                 <p className="text-2xl font-bold text-red-600">{activeSick}</p>
               </div>
             </div>
@@ -376,7 +378,7 @@ export default function ZiektePage() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-5 h-5 text-orange-600" />
               <div>
-                <p className="text-sm text-gray-600">Geen geldig briefje</p>
+                <p className='text-sm text-gray-600'>{t('noValidCertificate')}</p>
                 <p className="text-2xl font-bold text-orange-600">{waitingForCertificate}</p>
               </div>
             </div>
@@ -425,7 +427,7 @@ export default function ZiektePage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Ziekte details */}
+                  {/* {t('sickLeaveDetails')} */}
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Start datum:</span>
@@ -435,7 +437,7 @@ export default function ZiektePage() {
                       </div>
                     </div>
                     <div>
-                      <span className="text-gray-500">Dagen ziek:</span>
+                      <span className='text-gray-500'>{t('daysSick')}:</span>
                       <p className="font-medium mt-1">{record.daysCount} dagen</p>
                     </div>
                     <div>
@@ -456,7 +458,7 @@ export default function ZiektePage() {
                   <div className="flex items-center justify-between pt-3 border-t">
                     <div className="flex items-center space-x-2">
                       <FileText className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-600">Ziektebriefje:</span>
+                      <span className='text-sm text-gray-600'>{t('sickCertificate')}:</span>
                     </div>
                       <Badge className={certificateStatus.color}>
                         {certificateStatus.text}
@@ -525,14 +527,14 @@ export default function ZiektePage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {/* Ziekte details */}
+                {/* {t('sickLeaveDetails')} */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-gray-500">Start datum:</span>
                     <p className="font-medium mt-1">{format(new Date(record.start_date), "dd-MM-yyyy")}</p>
               </div>
                 <div>
-                    <span className="text-gray-500">Dagen ziek:</span>
+                    <span className='text-gray-500'>{t('daysSick')}:</span>
                     <p className="font-medium mt-1">{record.daysCount} dagen</p>
                 </div>
                 <div>
@@ -550,7 +552,7 @@ export default function ZiektePage() {
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="flex items-center space-x-2">
                     <FileText className="w-3 h-3 text-gray-400" />
-                    <span className="text-xs text-gray-600">Ziektebriefje:</span>
+                    <span className='text-xs text-gray-600'>{t('sickCertificate')}:</span>
               </div>
                   <Badge className={`${certificateStatus.color} text-xs`}>
                   {certificateStatus.text}
@@ -581,7 +583,7 @@ export default function ZiektePage() {
       {sickLeaveRecords.length === 0 && (
         <div className="text-center py-8">
           <UserX className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">Geen ziekmeldingen gevonden</p>
+          <p className='text-gray-500'>{t('noSickLeaveFound')}</p>
         </div>
       )}
 
@@ -593,7 +595,7 @@ export default function ZiektePage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="hasCertificate">Ziektebriefje aangeleverd</Label>
+              <Label htmlFor="hasCertificate">{t('sickCertificateProvided')}</Label>
               <Select 
                 value={editForm.hasCertificate ? "ja" : "nee"} 
                 onValueChange={(value) => setEditForm({...editForm, hasCertificate: value === "ja"})}

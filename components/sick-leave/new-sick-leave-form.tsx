@@ -13,12 +13,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, User, Euro } from "lucide-react"
+import { useLanguage } from "@/contexts/LanguageContext"
 
 interface Props {
   onClose: () => void
 }
 
 export function NewSickLeaveForm({ onClose }: Props) {
+  const { t } = useLanguage()
   const [selectedCrewMember, setSelectedCrewMember] = useState("")
   const [startDate, setStartDate] = useState("")
   const [description, setDescription] = useState("")

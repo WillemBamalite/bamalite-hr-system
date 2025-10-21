@@ -5,13 +5,15 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, UserPlus, Ship, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
+import { useLanguage } from "@/contexts/LanguageContext"
 
 export function CrewQuickActions() {
+  const { t } = useLanguage();
 
   const quickActions = [
     {
-      title: "Nieuw Bemanningslid",
-      description: "Voeg een nieuw bemanningslid toe",
+      title: t('newCrewMember'),
+      description: t('addANewCrewMember'),
       icon: UserPlus,
       href: "/bemanning/nieuw",
       color: "bg-blue-500 hover:bg-blue-600",
@@ -20,8 +22,8 @@ export function CrewQuickActions() {
 
 
     {
-      title: "Nieuw Schip",
-      description: "Voeg een nieuw schip toe",
+      title: t('newShip'),
+      description: t('addANewShip'),
       icon: Ship,
       href: "/schepen/nieuw",
       color: "bg-blue-500 hover:bg-blue-600",
@@ -38,7 +40,7 @@ export function CrewQuickActions() {
       <CardHeader className="py-3">
         <CardTitle className="flex items-center space-x-2 text-base">
           <Plus className="w-4 h-4" />
-          <span>Snelle acties</span>
+          <span>{t('quickActions')}</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useSupabaseData } from "@/hooks/use-supabase-data";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -8,9 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle, GraduationCap } from "lucide-react";
 import Link from "next/link";
+import { format } from 'date-fns';
 
 export default function StudentenManagementPage() {
   const { crew, ships, loading, error } = useSupabaseData();
+  const { t } = useLanguage();
   const [mounted, setMounted] = useState(false);
 
   // Prevent hydration errors
@@ -22,7 +25,7 @@ export default function StudentenManagementPage() {
   if (!mounted) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-2">
-        <div className="text-center py-8 text-gray-500">Laden...</div>
+        <div className="text-center py-8 text-gray-500">{t('loading')}...</div>
       </div>
     );
   }
@@ -31,7 +34,7 @@ export default function StudentenManagementPage() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-2">
-        <div className="text-center py-8 text-gray-500">Data laden...</div>
+        <div className="text-center py-8 text-gray-500">{t('loading')} data...</div>
       </div>
     );
   }
@@ -40,7 +43,7 @@ export default function StudentenManagementPage() {
   if (error) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-2">
-        <div className="text-center py-8 text-red-500">Fout: {error}</div>
+        <div className="text-center py-8 text-red-500">{t('error')}: {error}</div>
       </div>
     );
   }
@@ -104,7 +107,7 @@ export default function StudentenManagementPage() {
     <div className="max-w-4xl mx-auto py-8 px-2">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Studenten Overzicht</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('studentsOverview')}</h1>
         <p className="text-gray-600">Beheer alle studenten in het systeem</p>
       </div>
 
@@ -115,7 +118,7 @@ export default function StudentenManagementPage() {
             <div className="flex items-center space-x-2">
               <GraduationCap className="w-5 h-5 text-blue-600" />
               <div>
-                <p className="text-sm text-gray-600">Totaal Studenten</p>
+                <p className="text-sm text-gray-600">{t('totalStudents')}</p>
                 <p className="text-2xl font-bold text-blue-600">{studenten.length}</p>
               </div>
             </div>
@@ -167,7 +170,7 @@ export default function StudentenManagementPage() {
         <Card>
           <CardContent className="p-8 text-center">
             <GraduationCap className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Geen studenten gevonden</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">{t('noStudentsFound')}</h3>
             <p className="text-gray-500 mb-4">Er zijn nog geen studenten toegevoegd aan het systeem.</p>
             <p className="text-sm text-gray-600">
               Ga naar <Link href="/bemanning/nieuw" className="text-blue-600 hover:underline">Nieuw Bemanningslid</Link> om een student toe te voegen.
@@ -224,13 +227,13 @@ export default function StudentenManagementPage() {
                     {student.education_start_date && (
                       <div className="flex items-center space-x-2 text-sm text-gray-600">
                         <Calendar className="w-4 h-4" />
-                        <span>Start: {new Date(student.education_start_date).toLocaleDateString('nl-NL')}</span>
+                        <span>Start: {format(new Date(student.education_start_date), 'dd-MM-yyyy')}</span>
                       </div>
                     )}
                     {student.education_end_date && (
                       <div className="flex items-center space-x-2 text-sm text-gray-600">
                         <Calendar className="w-4 h-4" />
-                        <span>Eind: {new Date(student.education_end_date).toLocaleDateString('nl-NL')}</span>
+                        <span>Eind: {format(new Date(student.education_end_date), 'dd-MM-yyyy')}</span>
                       </div>
                     )}
                   </>
@@ -239,11 +242,11 @@ export default function StudentenManagementPage() {
                 {/* School Periods for BBL */}
                 {student.education_type === "BBL" && student.school_periods && student.school_periods.length > 0 && (
                   <div className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Schoolperiodes:</span>
+                    <span className="text-sm font-medium text-gray-700">{t('schoolPeriods')}:</span>
                     <div className="space-y-1">
                       {student.school_periods.slice(0, 2).map((period: any, index: number) => (
                         <div key={index} className="text-xs text-gray-600">
-                          {new Date(period.fromDate).toLocaleDateString('nl-NL')} - {new Date(period.toDate).toLocaleDateString('nl-NL')}
+                          {format(new Date(period.fromDate), 'dd-MM-yyyy')} - {format(new Date(period.toDate), 'dd-MM-yyyy')}
                         </div>
                       ))}
                       {student.school_periods.length > 2 && (
@@ -283,7 +286,7 @@ export default function StudentenManagementPage() {
                     href={`/bemanning/${student.id}`}
                     className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                   >
-                    Bekijk profiel →
+                    {t('viewProfile')} →
                   </Link>
                 </div>
               </CardContent>

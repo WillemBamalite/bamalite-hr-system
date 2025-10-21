@@ -32,9 +32,11 @@ import {
   Award
 } from 'lucide-react'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 export default function ReizenAflossersPage() {
   const { crew, ships, trips, vasteDienstRecords, loading, updateCrew, addTrip, updateTrip, deleteTrip, addVasteDienstRecord } = useSupabaseData()
+  const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState('reizen')
   
   // Dialogs
@@ -260,7 +262,7 @@ export default function ReizenAflossersPage() {
     return (
       <div className="max-w-7xl mx-auto py-8 px-4">
         <MobileHeaderNav />
-        <div className="text-center">Laden...</div>
+        <div className="text-center">{t('loading')}...</div>
       </div>
     )
   }
@@ -272,8 +274,8 @@ export default function ReizenAflossersPage() {
       
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Reizen & Aflossers Beheer</h1>
-        <p className="text-gray-600">4-stappen workflow: Gepland → Ingedeeld → Actief → Voltooid</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('tripsAndReliefCrewManagement')}</h1>
+        <p className="text-gray-600">{t('fourStepWorkflow')}</p>
       </div>
 
       {/* Tabs */}
@@ -281,11 +283,11 @@ export default function ReizenAflossersPage() {
         <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
           <TabsTrigger value="reizen" className="text-base">
             <Ship className="w-4 h-4 mr-2" />
-            Reizen
+            {t('trips')}
           </TabsTrigger>
           <TabsTrigger value="aflossers" className="text-base">
             <Users className="w-4 h-4 mr-2" />
-            Aflossers
+            {t('reliefCrew')}
           </TabsTrigger>
         </TabsList>
 

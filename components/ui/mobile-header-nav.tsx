@@ -2,19 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const navItems = [
-  { href: "/", label: "Dashboard", icon: "🏠" },
-  { href: "/bemanning/overzicht", label: "Bemanning", icon: "👥" },
-  { href: "/bemanning/aflossers", label: "Aflossers", icon: "🔄" },
-  { href: "/bemanning/studenten", label: "Studenten", icon: "🎓" },
-  { href: "/bemanning/leningen", label: "Leningen", icon: "💰" },
-  { href: "/documenten", label: "Documenten", icon: "📄" },
-  { href: "/ziekte", label: "Ziekte", icon: "🏥" },
-];
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export function MobileHeaderNav() {
   const pathname = usePathname();
+  const { t } = useLanguage();
+  
+  const navItems = [
+    { href: "/", label: t('dashboard'), icon: "🏠" },
+    { href: "/bemanning/overzicht", label: t('crew'), icon: "👥" },
+    { href: "/bemanning/aflossers", label: t('reliefCrew'), icon: "🔄" },
+    { href: "/bemanning/studenten", label: t('students'), icon: "🎓" },
+    { href: "/bemanning/leningen", label: t('loans'), icon: "💰" },
+    { href: "/documenten", label: t('documents'), icon: "📄" },
+    { href: "/ziekte", label: t('sick'), icon: "🏥" },
+  ];
   return (
     <nav className="block md:hidden sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
       <div className="flex justify-between items-center px-2 py-2">

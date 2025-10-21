@@ -5,6 +5,7 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { CrewProvider } from "@/components/crew/CrewProvider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/AuthContext"
+import { LanguageProvider } from "@/contexts/LanguageContext"
 import { Toaster } from "@/components/ui/toaster"
 import { Inter } from "next/font/google"
 
@@ -37,13 +38,15 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <CrewProvider>
-              <DashboardHeader />
-              <div className="app-container">
-                {children}
-              </div>
-              <Toaster />
-            </CrewProvider>
+            <LanguageProvider>
+              <CrewProvider>
+                <DashboardHeader />
+                <div className="app-container">
+                  {children}
+                </div>
+                <Toaster />
+              </CrewProvider>
+            </LanguageProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle, Trash2, AlertTriangle, XCircle, Plus, Edit } from "lucide-react";
 import Link from "next/link";
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav";
+import { format } from 'date-fns';
 
 interface AflosserAssignment {
   id: string;
@@ -329,7 +330,7 @@ export default function AflossersToewijzenPage() {
   }
 
   function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString("nl-NL");
+    return format(new Date(dateString), 'dd-MM-yyyy');
   }
 
   function getAflosserHistory(aflosserId: string) {

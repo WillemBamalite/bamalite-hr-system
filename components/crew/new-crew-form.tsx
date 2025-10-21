@@ -16,6 +16,7 @@ import { CalendarIcon, UserPlus, Save, X } from "lucide-react"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 
 const diplomaOptions = [
   "Vaarbewijs",
@@ -82,6 +83,7 @@ interface NewCrewFormData {
 
 export function NewCrewForm() {
   const { addCrew, ships, loading, error } = useSupabaseData()
+  const { t } = useLanguage()
   const [formData, setFormData] = useState<NewCrewFormData>({
     firstName: "",
     lastName: "",
@@ -126,13 +128,13 @@ export function NewCrewForm() {
   const validateForm = () => {
     const errors: string[] = []
 
-    if (!formData.firstName.trim()) errors.push("Voornaam is verplicht")
-    if (!formData.lastName.trim()) errors.push("Achternaam is verplicht")
-    if (!formData.nationality) errors.push("Nationaliteit is verplicht")
-    if (!formData.position) errors.push("Functie is verplicht")
-    if (!formData.phone.trim()) errors.push("Telefoonnummer is verplicht")
-    if (!formData.birthDate) errors.push("Geboortedatum is verplicht")
-    if (!formData.in_dienst_vanaf) errors.push("In dienst vanaf is verplicht")
+    if (!formData.firstName.trim()) errors.push(t('firstNameRequired'))
+    if (!formData.lastName.trim()) errors.push(t('lastNameRequired'))
+    if (!formData.nationality) errors.push(t('nationalityRequired'))
+    if (!formData.position) errors.push(t('positionRequired'))
+    if (!formData.phone.trim()) errors.push(t('phoneRequired'))
+    if (!formData.birthDate) errors.push(t('birthDateRequired'))
+    if (!formData.in_dienst_vanaf) errors.push(t('inServiceFromRequired'))
 
     // Validatie voor startdatum als er een schip is geselecteerd (niet voor 'Geen schip' of 'Nog in te delen')
     if (formData.shipId && formData.shipId !== "none" && formData.shipId !== "unassigned" && !formData.startDate) {
@@ -146,10 +148,10 @@ export function NewCrewForm() {
       }
       if (formData.educationType === "BOL") {
         if (!formData.educationStartDate) {
-          errors.push("Begindatum opleiding is verplicht voor BOL studenten")
+          errors.push(t('educationStartDateRequired'))
         }
         if (!formData.educationEndDate) {
-          errors.push("Einddatum opleiding is verplicht voor BOL studenten")
+          errors.push(t('educationEndDateRequired'))
         }
       }
     }
@@ -383,8 +385,8 @@ export function NewCrewForm() {
         <Card className="border-green-200 bg-green-50">
           <CardContent className="p-6 text-center">
             <UserPlus className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-green-900 mb-2">Bemanningslid Toegevoegd!</h2>
-            <p className="text-green-700 mb-4">
+            <h2 className="text-2xl font-bold text-green-900 mb-2">{t('crewMemberAdded')}</h2>
+            <p className='text-green-700 mb-4'>
               Het bemanningslid is succesvol toegevoegd aan het systeem.
             </p>
             <p className="text-sm text-green-600">
@@ -410,22 +412,22 @@ export function NewCrewForm() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstName">Voornaam *</Label>
+                <Label htmlFor="firstName">{t('firstName')} *</Label>
                 <Input
                   id="firstName"
                   value={formData.firstName}
                   onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
-                  placeholder="Voornaam"
+                  placeholder={t('firstName')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName">Achternaam *</Label>
+                <Label htmlFor="lastName">{t('lastName')} *</Label>
                 <Input
                   id="lastName"
                   value={formData.lastName}
                   onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
-                  placeholder="Achternaam"
+                  placeholder={t('lastName')}
                   required
                 />
               </div>
@@ -433,7 +435,7 @@ export function NewCrewForm() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="nationality">Nationaliteit *</Label>
+                <Label htmlFor="nationality">{t('nationality')} *</Label>
                 <Select value={formData.nationality} onValueChange={(value) => setFormData(prev => ({ ...prev, nationality: value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecteer nationaliteit" />
@@ -454,7 +456,7 @@ export function NewCrewForm() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="position">Functie *</Label>
+                <Label htmlFor="position">{t('position')} *</Label>
                 <Select value={formData.position} onValueChange={(value) => setFormData(prev => ({ ...prev, position: value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecteer functie" />
@@ -486,7 +488,7 @@ export function NewCrewForm() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="phone">Telefoonnummer *</Label>
+                <Label htmlFor="phone">{t('phone')} *</Label>
                 <Input
                   id="phone"
                   value={formData.phone}
@@ -496,7 +498,7 @@ export function NewCrewForm() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
+                <Label htmlFor="email">{t('email')}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -555,7 +557,7 @@ export function NewCrewForm() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="startDate">Startdatum *</Label>
+                <Label htmlFor="startDate">{t('startDate')} *</Label>
                 <Input
                   id="startDate"
                   type="date"
@@ -564,7 +566,7 @@ export function NewCrewForm() {
                   required={!!(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none')}
                 />
                 {(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none') && (
-                  <p className="text-xs text-gray-500">Verplicht als er een schip is geselecteerd</p>
+                  <p className='text-xs text-gray-500'>{t('requiredWhenShipSelected')}</p>
                 )}
               </div>
             </div>
@@ -579,7 +581,7 @@ export function NewCrewForm() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="birthDate">Geboortedatum *</Label>
+                <Label htmlFor="birthDate">{t('birthDate')} *</Label>
                 <Input
                   id="birthDate"
                   type="date"
@@ -599,12 +601,12 @@ export function NewCrewForm() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="birthPlace">Geboorteplaats *</Label>
+                <Label htmlFor="birthPlace">{t('birthPlace')} *</Label>
                 <Input
                   id="birthPlace"
                   value={formData.birthPlace}
                   onChange={(e) => setFormData(prev => ({ ...prev, birthPlace: e.target.value }))}
-                  placeholder="Geboorteplaats"
+                  placeholder={t('birthPlace')}
                   required
                 />
               </div>
@@ -692,7 +694,7 @@ export function NewCrewForm() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="experience">Ervaring</Label>
+                <Label htmlFor="experience">{t('experience')}</Label>
                 <Input
                   id="experience"
                   value={formData.experience}
@@ -733,7 +735,7 @@ export function NewCrewForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notities</Label>
+              <Label htmlFor="notes">{t('notes')}</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
@@ -820,7 +822,7 @@ export function NewCrewForm() {
         {/* Student Informatie */}
         <Card>
           <CardHeader>
-            <CardTitle>Student Informatie</CardTitle>
+            <CardTitle>{t('studentInformation')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-2">
@@ -831,28 +833,28 @@ export function NewCrewForm() {
                 onChange={(e) => setFormData(prev => ({ ...prev, isStudent: e.target.checked }))}
                 className="rounded"
               />
-              <Label htmlFor="isStudent">Is student</Label>
+              <Label htmlFor="isStudent">{t('isStudent')}</Label>
             </div>
 
             {formData.isStudent && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="educationType">Opleidingstype *</Label>
+                    <Label htmlFor="educationType">{t('educationType')} *</Label>
                     <Select value={formData.educationType} onValueChange={(value: "BBL" | "BOL") => setFormData(prev => ({ ...prev, educationType: value }))}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecteer opleidingstype" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="BBL">BBL (Beroepsbegeleidende Leerweg)</SelectItem>
-                        <SelectItem value="BOL">BOL (Beroepsopleidende Leerweg)</SelectItem>
+                        <SelectItem value='BBL'>{t('bblDescription')}</SelectItem>
+                        <SelectItem value='BOL'>{t('bolDescription')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   {formData.educationType === "BOL" && (
                     <>
                       <div className="space-y-2">
-                        <Label htmlFor="educationStartDate">Begindatum opleiding *</Label>
+                        <Label htmlFor="educationStartDate">{t('educationStartDateRequiredBOL')}</Label>
                         <Input
                           id="educationStartDate"
                           type="date"
@@ -862,7 +864,7 @@ export function NewCrewForm() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="educationEndDate">Einddatum opleiding *</Label>
+                        <Label htmlFor="educationEndDate">{t('educationEndDateRequiredBOL')}</Label>
                         <Input
                           id="educationEndDate"
                           type="date"
@@ -893,12 +895,12 @@ export function NewCrewForm() {
             {isSubmitting ? (
               <div className="flex items-center space-x-2">
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Toevoegen...</span>
+                <span>{t('save')}...</span>
               </div>
             ) : (
               <div className="flex items-center space-x-2">
                 <UserPlus className="w-4 h-4" />
-                <span>Bemanningslid Toevoegen</span>
+                <span>{t('memberAdded')}</span>
               </div>
             )}
           </Button>

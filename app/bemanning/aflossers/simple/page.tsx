@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { format } from 'date-fns';
 
 // Simpele data structure
 interface SimpleAssignment {
@@ -58,6 +60,7 @@ function saveCrewData(data: any) {
 }
 
 export default function SimpleAflossersPage() {
+  const { t } = useLanguage();
   const [crewData, setCrewData] = useState<any>({});
   const [assignments, setAssignments] = useState<SimpleAssignment[]>([]);
   const [unavailablePeriods, setUnavailablePeriods] = useState<SimpleUnavailable[]>([]);
@@ -278,7 +281,7 @@ export default function SimpleAflossersPage() {
   }
 
   function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString("nl-NL");
+    return format(new Date(dateString), 'dd-MM-yyyy');
   }
 
   function getAflosserHistory(aflosserId: string) {
@@ -450,11 +453,11 @@ export default function SimpleAflossersPage() {
       <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Afwezigheid instellen - {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
+            <DialogTitle>{t('setUnavailability')} - {selectedAflosser?.firstName} {selectedAflosser?.lastName}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="unavailableFromDate">Afwezig van</Label>
+              <Label htmlFor="unavailableFromDate">{t('unavailableFrom')}</Label>
               <Input
                 id="unavailableFromDate"
                 type="date"
@@ -463,7 +466,7 @@ export default function SimpleAflossersPage() {
               />
             </div>
             <div>
-              <Label htmlFor="unavailableToDate">Afwezig tot</Label>
+              <Label htmlFor="unavailableToDate">{t('unavailableTo')}</Label>
               <Input
                 id="unavailableToDate"
                 type="date"
@@ -472,17 +475,17 @@ export default function SimpleAflossersPage() {
               />
             </div>
             <div>
-              <Label htmlFor="reason">Reden</Label>
+              <Label htmlFor="reason">{t('reason')}</Label>
               <Textarea
                 id="reason"
-                placeholder="Reden van niet beschikbaarheid"
+                placeholder={t('reasonPlaceholder')}
                 value={newUnavailable.reason}
                 onChange={(e) => setNewUnavailable({...newUnavailable, reason: e.target.value})}
               />
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleCreateUnavailable} className="flex-1">Instellen</Button>
-              <Button variant="outline" onClick={() => setShowUnavailableDialog(false)}>Annuleren</Button>
+              <Button onClick={handleCreateUnavailable} className="flex-1">{t('setUnavailable')}</Button>
+              <Button variant="outline" onClick={() => setShowUnavailableDialog(false)}>{t('cancel')}</Button>
             </div>
           </div>
         </DialogContent>

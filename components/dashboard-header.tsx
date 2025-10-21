@@ -3,12 +3,12 @@
 import { LogOut, User, Calendar, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
-import { nl } from "date-fns/locale"
-import { supabase } from "@/lib/supabase"
+import { nl, de, fr } from "date-fns/locale"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -16,10 +16,10 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const { user, signOut } = useAuth()
+  const { locale, setLocale, t } = useLanguage()
   const pathname = usePathname()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
-  const [locale, setLocale] = useState<'nl' | 'de' | 'fr'>('nl')
   
   // Prevent hydration errors
   useEffect(() => {
@@ -35,20 +35,13 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     return () => clearInterval(timer)
   }, [])
 
-  // Load preferred locale from Supabase user metadata
-  useEffect(() => {
-    const loadLocale = async () => {
-      if (!user) return
-      const { data } = await supabase.auth.getUser()
-      const l = (data.user?.user_metadata as any)?.locale as 'nl' | 'de' | 'fr' | undefined
-      if (l) setLocale(l)
+  // Get date locale for formatting
+  const getDateLocale = () => {
+    switch (locale) {
+      case 'de': return de
+      case 'fr': return fr
+      default: return nl
     }
-    loadLocale()
-  }, [user])
-
-  const updateLocale = async (l: 'nl' | 'de' | 'fr') => {
-    setLocale(l)
-    await supabase.auth.updateUser({ data: { locale: l } })
   }
   
   // Don't show header on login page
@@ -90,7 +83,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
               {(['nl','de','fr'] as const).map((l) => (
                 <button
                   key={l}
-                  onClick={() => updateLocale(l)}
+                  onClick={() => setLocale(l)}
                   className={`text-xs px-2 py-1 rounded ${locale===l ? 'bg-white border border-gray-300 text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
                 >
                   {l.toUpperCase()}
@@ -111,7 +104,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
                 className="flex items-center gap-2"
               >
                 <LogOut className="w-4 h-4" />
-                Uitloggen
+                {t('logout')}
               </Button>
             </div>
           )}

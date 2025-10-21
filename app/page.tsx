@@ -9,6 +9,7 @@ import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { useState, useEffect } from "react"
 
 export default function Dashboard() {
@@ -21,6 +22,7 @@ export default function Dashboard() {
 
 function DashboardContent() {
   const [mounted, setMounted] = useState(false);
+  const { t } = useLanguage();
   
   // Gebruik Supabase data
   const { ships, crew, sickLeave, loading, error } = useSupabaseData()
@@ -35,7 +37,7 @@ function DashboardContent() {
     return (
       <div className="min-h-screen bg-gray-50">
         <main className="container mx-auto py-8">
-          <div className="text-center py-8 text-gray-500">Laden...</div>
+          <div className="text-center py-8 text-gray-500">{t('loading')}...</div>
         </main>
       </div>
     );
@@ -46,7 +48,7 @@ function DashboardContent() {
     return (
       <div className="min-h-screen bg-gray-50">
         <main className="container mx-auto py-8">
-          <div className="text-center py-8 text-gray-500">Data laden...</div>
+          <div className="text-center py-8 text-gray-500">{t('loading')} data...</div>
         </main>
       </div>
     );
@@ -57,7 +59,7 @@ function DashboardContent() {
     return (
       <div className="min-h-screen bg-gray-50">
         <main className="container mx-auto py-8">
-          <div className="text-center py-8 text-red-500">Fout: {error}</div>
+          <div className="text-center py-8 text-red-500">{t('error')}: {error}</div>
         </main>
       </div>
     );

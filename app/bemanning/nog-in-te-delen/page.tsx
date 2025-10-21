@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useSupabaseData } from "@/hooks/use-supabase-data";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ import { BackButton } from "@/components/ui/back-button";
 
 export default function NogInTeDelenPage() {
   const { crew, ships, loading, error, updateCrew, addCrew, deleteCrew } = useSupabaseData();
+  const { t } = useLanguage();
   const [mounted, setMounted] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [selectedShip, setSelectedShip] = useState<string>("");
@@ -26,8 +28,6 @@ export default function NogInTeDelenPage() {
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [newSubStatus, setNewSubStatus] = useState<string>("");
   const [showNewCandidateDialog, setShowNewCandidateDialog] = useState(false);
-  const [showFullFormDialog, setShowFullFormDialog] = useState(false);
-  const [selectedCandidateForFullForm, setSelectedCandidateForFullForm] = useState<any>(null);
   const [candidateForm, setCandidateForm] = useState({
     firstName: "",
     lastName: "",
@@ -48,7 +48,7 @@ export default function NogInTeDelenPage() {
   if (!mounted) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-2">
-        <div className="text-center py-8 text-gray-500">Laden...</div>
+        <div className="text-center py-8 text-gray-500">{t('loading')}...</div>
       </div>
     );
   }
@@ -78,15 +78,27 @@ export default function NogInTeDelenPage() {
   );
 
   // Filter alle bemanningsleden met incomplete checklist (ook die aan schip zijn toegewezen)
-  const allCrewWithIncompleteChecklist = crew.filter((member: any) => 
-    member.recruitment_status === "aangenomen" && 
-    (!member.arbeidsovereenkomst || !member.ingeschreven_luxembourg || !member.verzekerd) &&
-    !member.is_aflosser
-  );
+  const allCrewWithIncompleteChecklist = crew.filter((member: any) => {
+    if (member.is_aflosser || member.status === 'uit-dienst') {
+      return false;
+    }
+    
+    // Moet aangenomen zijn
+    if (member.recruitment_status !== "aangenomen") {
+      return false;
+    }
+    
+    // Check onboarding checklist
+    const checklist = member.onboarding_checklist;
+    if (!checklist) return true; // Geen checklist = incomplete
+    
+    return !checklist.contract_signed || !checklist.luxembourg_registered || !checklist.insured;
+  });
 
   // Categoriseer op basis van sub_status veld
   const nogTeBenaderen = unassignedCrew.filter((m: any) => 
-    !m.sub_status || m.sub_status === "nog-te-benaderen"
+    (!m.sub_status || m.sub_status === "nog-te-benaderen") &&
+    m.status !== 'uit-dienst'
   );
   
   
@@ -259,7 +271,7 @@ export default function NogInTeDelenPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Nieuw Personeel</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{t('newPersonnel')}</h1>
           <p className="text-gray-600">Kandidaten en aangenomen personeel zonder toewijzing</p>
         </div>
         <div className="flex gap-2">
@@ -270,12 +282,6 @@ export default function NogInTeDelenPage() {
             <span className="mr-2">👤</span>
             Nieuwe Kandidaat
           </Button>
-          <Link href="/bemanning/nieuw">
-            <Button className="bg-green-600 hover:bg-green-700">
-              <span className="mr-2">➕</span>
-              Volledig Formulier
-            </Button>
-          </Link>
         </div>
       </div>
 
@@ -297,7 +303,7 @@ export default function NogInTeDelenPage() {
             <div className="flex items-center space-x-2">
               <div className="w-5 h-5 bg-orange-500 rounded-full"></div>
               <div>
-                <p className="text-sm text-gray-600">Nog af te ronden</p>
+                <p className="text-sm text-gray-600">{t('toBeCompleted')}</p>
                 <p className="text-2xl font-bold text-orange-600">{nogAfTeRonden.length}</p>
               </div>
             </div>
@@ -334,7 +340,7 @@ export default function NogInTeDelenPage() {
             {nogTeBenaderen.length === 0 ? (
               <Card>
                 <CardContent className="p-6 text-center text-gray-500">
-                  Geen personen om te benaderen
+                  {t('noPersonsToContact')}
                 </CardContent>
               </Card>
             ) : (
@@ -424,9 +430,17 @@ export default function NogInTeDelenPage() {
                       size="sm"
                       variant="outline"
                       className="text-green-600 border-green-200 hover:bg-green-50"
-                      onClick={() => {
-                        setSelectedCandidateForFullForm(member);
-                        setShowFullFormDialog(true);
+                      onClick={async () => {
+                        try {
+                          // Zet status naar aangenomen
+                          await updateCrew(member.id, {
+                            recruitment_status: "aangenomen"
+                          });
+                          // Ga naar profiel
+                          window.location.href = `/bemanning/${member.id}?edit=true&hired=true`;
+                        } catch (error) {
+                          console.error('Error updating recruitment status:', error);
+                        }
                       }}
                     >
                       <span className="mr-1">✓</span>
@@ -440,7 +454,7 @@ export default function NogInTeDelenPage() {
                     onClick={() => handleNoInterest(member.id, `${member.first_name} ${member.last_name}`)}
                   >
                     <span className="mr-1">✕</span>
-                    Geen Interesse
+                    {t('noInterest')}
                   </Button>
                 </div>
               </CardContent>
@@ -461,7 +475,7 @@ export default function NogInTeDelenPage() {
             {nogAfTeRonden.length === 0 ? (
               <Card>
                 <CardContent className="p-6 text-center text-gray-500">
-                  Geen personen met incomplete checklist
+                  {t('noPersonsWithIncompleteChecklist')}
                 </CardContent>
               </Card>
             ) : (
@@ -508,7 +522,7 @@ export default function NogInTeDelenPage() {
 
                 {/* Checklist Status */}
                 <div className="bg-orange-50 p-2 rounded border border-orange-200">
-                  <div className="text-xs font-medium text-orange-800 mb-1">Checklist:</div>
+                  <div className="text-xs font-medium text-orange-800 mb-1">{t('checklist')}:</div>
                   <div className="space-y-0.5">
                     <div className="flex items-center justify-between text-xs">
                       <span>Contract:</span>
@@ -544,7 +558,7 @@ export default function NogInTeDelenPage() {
                   <Link href={`/bemanning/${member.id}?edit=true`}>
                     <Button variant="outline" size="sm" className="w-full text-xs">
                       <span className="mr-1">✏️</span>
-                      Checklist Afronden
+                      {t('completeChecklistButton')}
                     </Button>
                   </Link>
                   {!member.ship_id && (
@@ -734,42 +748,6 @@ export default function NogInTeDelenPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Full Form Redirect Dialog */}
-      <Dialog open={showFullFormDialog} onOpenChange={setShowFullFormDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Kandidaat Aangenomen - Volledig Formulier</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="bg-green-50 p-4 rounded-lg">
-              <p className="text-sm text-green-800">
-                ✅ <strong>{selectedCandidateForFullForm?.first_name} {selectedCandidateForFullForm?.last_name}</strong> is aangenomen!
-              </p>
-              <p className="text-sm text-green-700 mt-2">
-                Om deze persoon volledig in te delen, moet je het volledige bemanningsformulier invullen met:
-              </p>
-              <ul className="text-sm text-green-700 mt-2 ml-4 list-disc">
-                <li>Regime (1/1, 2/2, 3/3, Altijd)</li>
-                <li>Verwachte startdatum</li>
-                <li>Alle diploma's en certificaten</li>
-                <li>Adresgegevens</li>
-                <li>Eventuele extra notities</li>
-              </ul>
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button variant="outline" onClick={() => setShowFullFormDialog(false)}>
-                Annuleren
-              </Button>
-              <Link href={`/bemanning/${selectedCandidateForFullForm?.id}?edit=true&hired=true`}>
-                <Button className="bg-green-600 hover:bg-green-700">
-                  Naar Volledig Formulier →
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Status Change Dialog */}
       <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>

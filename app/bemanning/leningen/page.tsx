@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MobileHeaderNav } from '@/components/ui/mobile-header-nav'
 import { DashboardButton } from '@/components/ui/dashboard-button'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
+import { useLanguage } from '@/contexts/LanguageContext'
 import { 
   Plus, 
   CheckCircle, 
@@ -30,6 +31,7 @@ import {
 
 export default function LeningenPage() {
   const { crew, loans, addLoan, completeLoan, makePayment, loading } = useSupabaseData()
+  const { t } = useLanguage()
   const [newLoanDialog, setNewLoanDialog] = useState(false)
   const [completeLoanDialog, setCompleteLoanDialog] = useState<{ isOpen: boolean; loanId: string; loanName: string }>({
     isOpen: false,
@@ -160,7 +162,7 @@ export default function LeningenPage() {
     return (
       <div className="max-w-6xl mx-auto py-8 px-2">
         <MobileHeaderNav />
-        <div className="text-center">Laden...</div>
+        <div className="text-center">{t('loading')}...</div>
       </div>
     )
   }
@@ -179,12 +181,12 @@ export default function LeningenPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Leningen & Opleidingen</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{t('loansAndTraining')}</h1>
           <p className="text-gray-600">Overzicht van alle leningen en opleidingen voor bemanning</p>
         </div>
         <Button onClick={() => setNewLoanDialog(true)}>
           <Plus className="w-4 h-4 mr-2" />
-          Nieuwe Lening
+          {t('newLoan')}
         </Button>
       </div>
 

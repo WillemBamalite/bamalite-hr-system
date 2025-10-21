@@ -12,10 +12,12 @@ import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { BackButton } from "@/components/ui/back-button"
 
 export default function NieuwZiektePage() {
   const { crew, sickLeave, updateCrew, addSickLeave } = useSupabaseData()
+  const { t } = useLanguage()
   const router = useRouter()
   const [formData, setFormData] = useState({
     crewMemberId: "",
