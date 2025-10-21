@@ -45,8 +45,8 @@ export default function StudentenManagementPage() {
     );
   }
 
-  // Filter studenten from crew
-  const studenten = crew.filter((member: any) => member.is_student);
+  // Filter studenten from crew (only active students)
+  const studenten = crew.filter((member: any) => member.is_student && member.status !== 'uit-dienst');
 
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
