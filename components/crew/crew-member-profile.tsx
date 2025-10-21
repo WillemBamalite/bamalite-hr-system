@@ -270,15 +270,25 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         status: editData.status,
         phone: editData.phone,
         email: editData.email,
-        birth_date: editData.birth_date,
-        expected_start_date: editData.expected_start_date,
-        in_dienst_vanaf: editData.in_dienst_vanaf || (crewMember as any).in_dienst_vanaf,
         arbeidsovereenkomst: editData.arbeidsovereenkomst,
         ingeschreven_luxembourg: editData.ingeschreven_luxembourg,
         verzekerd: editData.verzekerd,
         notes: editData.notes,
         address: editData.address,
         diplomas: editData.diplomas
+      };
+
+      // Only include date fields if they have values
+      if (editData.birth_date && editData.birth_date.trim() !== "") {
+        supabaseData.birth_date = editData.birth_date;
+      }
+      if (editData.expected_start_date && editData.expected_start_date.trim() !== "") {
+        supabaseData.expected_start_date = editData.expected_start_date;
+      }
+      if (editData.in_dienst_vanaf && editData.in_dienst_vanaf.trim() !== "") {
+        supabaseData.in_dienst_vanaf = editData.in_dienst_vanaf;
+      } else if ((crewMember as any).in_dienst_vanaf) {
+        supabaseData.in_dienst_vanaf = (crewMember as any).in_dienst_vanaf;
       }
       
       // Reset rotatie als gevraagd
