@@ -133,6 +133,10 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         email: crewMember.email || "",
         birth_date: crewMember.birth_date || "",
         expected_start_date: (crewMember as any).expected_start_date || "",
+        in_dienst_vanaf: (crewMember as any).in_dienst_vanaf || "",
+        arbeidsovereenkomst: (crewMember as any).arbeidsovereenkomst || false,
+        ingeschreven_luxembourg: (crewMember as any).ingeschreven_luxembourg || false,
+        verzekerd: (crewMember as any).verzekerd || false,
         address: crewMember.address || {
           street: "",
           city: "",
@@ -241,6 +245,12 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
       if (!editData.phone?.trim()) errors.push("Telefoonnummer is verplicht")
       if (!editData.birth_date) errors.push("Geboortedatum is verplicht")
       
+      // In dienst vanaf is alleen verplicht als er nog geen datum is ingevuld
+      const hasExistingDate = (crewMember as any).in_dienst_vanaf
+      if (!editData.in_dienst_vanaf && !hasExistingDate) {
+        errors.push("In dienst vanaf datum is verplicht")
+      }
+      
       if (errors.length > 0) {
         alert("Vul de volgende verplichte velden in:\n" + errors.join("\n"))
         setIsSaving(false)
@@ -262,9 +272,13 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         email: editData.email,
         birth_date: editData.birth_date,
         expected_start_date: editData.expected_start_date,
+        in_dienst_vanaf: editData.in_dienst_vanaf || (crewMember as any).in_dienst_vanaf,
+        arbeidsovereenkomst: editData.arbeidsovereenkomst,
+        ingeschreven_luxembourg: editData.ingeschreven_luxembourg,
+        verzekerd: editData.verzekerd,
+        notes: editData.notes,
         address: editData.address,
-        diplomas: editData.diplomas,
-        notes: editData.notes
+        diplomas: editData.diplomas
       }
       
       // Reset rotatie als gevraagd
@@ -815,6 +829,66 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                   Deze datum wordt gebruikt om het automatische rotatie systeem te starten
                 </p>
                 {renderField("Verwachte Startdatum", (crewMember as any).expected_start_date, "expected_start_date", "date")}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Checklist sectie - alleen tonen bij aannemen */}
+        {isEditing && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-yellow-900 mb-4">📋 Checklist Nieuw Personeel</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-yellow-900">In dienst vanaf *</label>
+                <p className="text-xs text-yellow-700 mb-2">
+                  Vanaf welke datum is deze persoon officieel in dienst?
+                </p>
+                {renderField("In dienst vanaf", (crewMember as any).in_dienst_vanaf ? new Date((crewMember as any).in_dienst_vanaf).toLocaleDateString('nl-NL') : "", "in_dienst_vanaf", "date")}
+              </div>
+              
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-yellow-900">Administratieve Checklist</label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="arbeidsovereenkomst"
+                      checked={editData.arbeidsovereenkomst || false}
+                      onChange={(e) => setEditData({...editData, arbeidsovereenkomst: e.target.checked})}
+                      className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
+                    />
+                    <label htmlFor="arbeidsovereenkomst" className="text-sm text-yellow-800">
+                      ✅ Arbeidsovereenkomst ondertekend
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="ingeschreven_luxembourg"
+                      checked={editData.ingeschreven_luxembourg || false}
+                      onChange={(e) => setEditData({...editData, ingeschreven_luxembourg: e.target.checked})}
+                      className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
+                    />
+                    <label htmlFor="ingeschreven_luxembourg" className="text-sm text-yellow-800">
+                      ✅ Ingeschreven in Luxembourg
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="verzekerd"
+                      checked={editData.verzekerd || false}
+                      onChange={(e) => setEditData({...editData, verzekerd: e.target.checked})}
+                      className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
+                    />
+                    <label htmlFor="verzekerd" className="text-sm text-yellow-800">
+                      ✅ Verzekerd
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

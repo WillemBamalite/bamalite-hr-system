@@ -77,14 +77,24 @@ export default function NogInTeDelenPage() {
     !member.is_aflosser
   );
 
+  // Filter alle bemanningsleden met incomplete checklist (ook die aan schip zijn toegewezen)
+  const allCrewWithIncompleteChecklist = crew.filter((member: any) => 
+    member.sub_status === "wacht-op-startdatum" && 
+    (!member.arbeidsovereenkomst || !member.ingeschreven_luxembourg || !member.verzekerd) &&
+    !member.is_aflosser
+  );
+
   // Categoriseer op basis van sub_status veld
   const nogTeBenaderen = unassignedCrew.filter((m: any) => 
     !m.sub_status || m.sub_status === "nog-te-benaderen"
   );
   
   const wachtOpStartdatum = unassignedCrew.filter((m: any) => 
-    m.sub_status === "wacht-op-startdatum"
+    m.sub_status === "wacht-op-startdatum" &&
+    m.arbeidsovereenkomst && m.ingeschreven_luxembourg && m.verzekerd
   );
+  
+  const nogAfTeRonden = allCrewWithIncompleteChecklist;
   
   // Wachtlijst verwijderd op verzoek; er is geen aparte wachtlijstcategorie meer
 
@@ -104,6 +114,21 @@ export default function NogInTeDelenPage() {
     };
     return flags[nationality] || "🌍";
   };
+
+  // Helper functie om datum te formatteren naar DD-MM-YYYY
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    } catch (error) {
+      return dateString;
+    }
+  };
+
 
   const assignToShip = async () => {
     if (!selectedMember || !selectedShip || !onBoardDate) {
@@ -266,7 +291,7 @@ export default function NogInTeDelenPage() {
       </div>
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -289,7 +314,17 @@ export default function NogInTeDelenPage() {
             </div>
           </CardContent>
         </Card>
-        {/* Wachtlijst-kaart verwijderd */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-orange-500 rounded-full"></div>
+              <div>
+                <p className="text-sm text-gray-600">Nog af te ronden</p>
+                <p className="text-2xl font-bold text-orange-600">{nogAfTeRonden.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Empty state */}
@@ -491,7 +526,7 @@ export default function NogInTeDelenPage() {
                 {member.expected_start_date && (
                   <div className="text-sm bg-yellow-50 p-2 rounded border border-yellow-200">
                     <span className="font-medium text-yellow-800">📅 Kan starten:</span> 
-                    <span className="ml-2 text-yellow-900">{member.expected_start_date}</span>
+                    <span className="ml-2 text-yellow-900">{formatDate(member.expected_start_date)}</span>
                   </div>
                 )}
 
@@ -565,7 +600,122 @@ export default function NogInTeDelenPage() {
             )}
           </div>
 
-          {/* Wachtlijst sectie volledig verwijderd */}
+          {/* 3. NOG AF TE RONDEN */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">📋 Nog Af Te Ronden</h2>
+              <Badge className="bg-orange-100 text-orange-800">{nogAfTeRonden.length}</Badge>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Aangenomen personeel waarbij de administratieve checklist nog niet volledig is afgerond (ook als ze al aan een schip zijn toegewezen)</p>
+            {nogAfTeRonden.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-center text-gray-500">
+                  Geen personen met incomplete checklist
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {nogAfTeRonden.map((member: any) => (
+            <Card key={member.id} className="hover:shadow-lg transition-shadow border-orange-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback className="bg-orange-100 text-orange-700">
+                        {member.first_name[0]}{member.last_name[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <Link 
+                        href={`/bemanning/${member.id}`}
+                        className="font-medium text-gray-900 hover:text-blue-700"
+                      >
+                        {member.first_name} {member.last_name}
+                      </Link>
+                      <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <span>{getNationalityFlag(member.nationality)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Position */}
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">Functie:</span> {member.position}
+                </div>
+
+                {/* Ship assignment */}
+                {member.ship_id && (
+                  <div className="text-xs bg-green-50 p-2 rounded border border-green-200">
+                    <span className="font-medium text-green-800">🚢 Schip:</span> 
+                    <span className="ml-1 text-green-900">
+                      {ships.find(s => s.id === member.ship_id)?.name || 'Onbekend'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Checklist Status */}
+                <div className="bg-orange-50 p-2 rounded border border-orange-200">
+                  <div className="text-xs font-medium text-orange-800 mb-1">Checklist:</div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span>Contract:</span>
+                      <span className={member.arbeidsovereenkomst ? "text-green-600" : "text-red-600"}>
+                        {member.arbeidsovereenkomst ? "✅" : "❌"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span>Luxembourg:</span>
+                      <span className={member.ingeschreven_luxembourg ? "text-green-600" : "text-red-600"}>
+                        {member.ingeschreven_luxembourg ? "✅" : "❌"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span>Verzekerd:</span>
+                      <span className={member.verzekerd ? "text-green-600" : "text-red-600"}>
+                        {member.verzekerd ? "✅" : "❌"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* In dienst vanaf */}
+                {member.in_dienst_vanaf && (
+                  <div className="text-xs bg-blue-50 p-2 rounded border border-blue-200">
+                    <span className="font-medium text-blue-800">📅 In dienst:</span> 
+                    <span className="ml-1 text-blue-900">{formatDate(member.in_dienst_vanaf)}</span>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 pt-3 border-t">
+                  <Link href={`/bemanning/${member.id}?edit=true`}>
+                    <Button variant="outline" size="sm" className="w-full text-xs">
+                      <span className="mr-1">✏️</span>
+                      Checklist Afronden
+                    </Button>
+                  </Link>
+                  {!member.ship_id && (
+                    <Button 
+                      size="sm"
+                      className="bg-orange-600 hover:bg-orange-700 w-full text-xs"
+                      onClick={() => {
+                        setSelectedMember(member);
+                        setShowAssignmentDialog(true);
+                      }}
+                    >
+                      <span className="mr-1">🚢</span>
+                      Toewijzen aan Schip
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

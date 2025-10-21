@@ -63,6 +63,11 @@ interface NewCrewFormData {
     country: string
   }
   notes: string
+  // Checklist velden
+  in_dienst_vanaf: string
+  arbeidsovereenkomst: boolean
+  ingeschreven_luxembourg: boolean
+  verzekerd: boolean
   // Student velden
   isStudent: boolean
   educationType?: "BBL" | "BOL"
@@ -101,6 +106,12 @@ export function NewCrewForm() {
       country: ""
     },
     notes: "",
+    // Checklist velden
+    in_dienst_vanaf: "",
+    arbeidsovereenkomst: false,
+    ingeschreven_luxembourg: false,
+    verzekerd: false,
+    // Student velden
     isStudent: false,
     educationType: "BBL",
     schoolPeriods: [],
@@ -119,6 +130,7 @@ export function NewCrewForm() {
     if (!formData.position) errors.push("Functie is verplicht")
     if (!formData.phone.trim()) errors.push("Telefoonnummer is verplicht")
     if (!formData.birthDate) errors.push("Geboortedatum is verplicht")
+    if (!formData.in_dienst_vanaf) errors.push("In dienst vanaf is verplicht")
 
     // Validatie voor startdatum als er een schip is geselecteerd (niet voor 'Geen schip' of 'Nog in te delen')
     if (formData.shipId && formData.shipId !== "none" && formData.shipId !== "unassigned" && !formData.startDate) {
@@ -165,6 +177,7 @@ export function NewCrewForm() {
         ship_id: (formData.shipId === "none" || formData.shipId === "unassigned") ? null : formData.shipId,
         regime: formData.regime,
         status: (formData.shipId === "unassigned" ? 'nog-in-te-delen' : status) as "aan-boord" | "thuis" | "ziek" | "uit-dienst" | "nog-in-te-delen",
+        sub_status: (!formData.arbeidsovereenkomst || !formData.ingeschreven_luxembourg || !formData.verzekerd) ? "wacht-op-startdatum" : null,
         on_board_since: onBoardSince || null,
         thuis_sinds: thuisSinds || null,
         expected_start_date: (status === "thuis" && formData.startDate && new Date(formData.startDate) > new Date()) ? formData.startDate : null,
@@ -178,7 +191,12 @@ export function NewCrewForm() {
         experience: formData.experience || null,
         address: formData.address,
         diplomas: formData.diplomas,
-        notes: formData.notes ? [formData.notes] : []
+        notes: formData.notes ? [formData.notes] : [],
+        // Checklist velden
+        in_dienst_vanaf: formData.in_dienst_vanaf || null,
+        arbeidsovereenkomst: formData.arbeidsovereenkomst,
+        ingeschreven_luxembourg: formData.ingeschreven_luxembourg,
+        verzekerd: formData.verzekerd
       }
 
       console.log('Saving crew member to Supabase:', crewMember)
@@ -215,6 +233,12 @@ export function NewCrewForm() {
           country: ""
         },
         notes: "",
+        // Checklist velden
+        in_dienst_vanaf: "",
+        arbeidsovereenkomst: false,
+        ingeschreven_luxembourg: false,
+        verzekerd: false,
+        // Student velden
         isStudent: false,
         educationType: "BBL",
         schoolPeriods: [],
@@ -692,6 +716,78 @@ export function NewCrewForm() {
                 placeholder="Optionele notities..."
                 rows={3}
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Checklist Nieuw Personeel */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              📋 Checklist Nieuw Personeel
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+              <p className="text-sm text-yellow-800">
+                <strong>Let op:</strong> Als de checklist niet volledig is ingevuld, blijft deze persoon zichtbaar in "Nieuw Personeel" → "Nog af te ronden" tot alles is afgerond.
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="in_dienst_vanaf">In dienst vanaf *</Label>
+              <Input
+                id="in_dienst_vanaf"
+                type="date"
+                value={formData.in_dienst_vanaf}
+                onChange={(e) => setFormData(prev => ({ ...prev, in_dienst_vanaf: e.target.value }))}
+                required
+              />
+              <p className="text-xs text-gray-500">Vanaf welke datum is deze persoon officieel in dienst?</p>
+            </div>
+            
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Administratieve Checklist</Label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="arbeidsovereenkomst"
+                    checked={formData.arbeidsovereenkomst}
+                    onChange={(e) => setFormData(prev => ({ ...prev, arbeidsovereenkomst: e.target.checked }))}
+                    className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
+                  />
+                  <label htmlFor="arbeidsovereenkomst" className="text-sm text-gray-700">
+                    ✅ Arbeidsovereenkomst ondertekend
+                  </label>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="ingeschreven_luxembourg"
+                    checked={formData.ingeschreven_luxembourg}
+                    onChange={(e) => setFormData(prev => ({ ...prev, ingeschreven_luxembourg: e.target.checked }))}
+                    className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
+                  />
+                  <label htmlFor="ingeschreven_luxembourg" className="text-sm text-gray-700">
+                    ✅ Ingeschreven in Luxembourg
+                  </label>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="verzekerd"
+                    checked={formData.verzekerd}
+                    onChange={(e) => setFormData(prev => ({ ...prev, verzekerd: e.target.checked }))}
+                    className="w-4 h-4 text-yellow-600 border-yellow-300 rounded focus:ring-yellow-500"
+                  />
+                  <label htmlFor="verzekerd" className="text-sm text-gray-700">
+                    ✅ Verzekerd
+                  </label>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
