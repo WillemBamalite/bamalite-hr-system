@@ -27,36 +27,15 @@ export default function CrewOverviewPage() {
   const [filteredCrew, setFilteredCrew] = useState<any[]>([])
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
 
-  // Lees crew uitsluitend uit localStorage als bron (hook-data is aanvullend maar niet leidend)
-  const buildMergedCrew = (hookCrew: any[]): any[] => {
-    let localCrew: any[] = []
-    if (typeof window !== 'undefined') {
-      try {
-        const map = JSON.parse(localStorage.getItem('crewDatabase') || '{}')
-        localCrew = Object.values(map || {})
-      } catch {}
-    }
-    const normalizedLocal = localCrew
-      .filter((m: any) => m && m.id)
-      .map((m: any) => ({
-        id: m.id,
-        first_name: m.first_name || m.firstName,
-        last_name: m.last_name || m.lastName,
-        nationality: m.nationality,
-        position: m.position,
-        ship_id: m.ship_id ?? m.shipId ?? null,
-        regime: m.regime,
-        status: m.status,
-      }))
-    // Vul eventueel aan met hookCrew voor bestaande leden die nog niet in localStorage staan
-    const byId: Record<string, any> = {}
-    for (const row of normalizedLocal) byId[row.id] = row
-    for (const m of hookCrew || []) if (m?.id && !byId[m.id]) byId[m.id] = m
-    return Object.values(byId)
+  // Gebruik uitsluitend live Supabase data voor het overzicht
+  // Hierdoor worden statuswijzigingen direct zichtbaar en is er geen
+  // afhankelijkheid meer van mogelijk verouderde localStorage data.
+  const buildLiveCrew = (hookCrew: any[]): any[] => {
+    return (hookCrew || []).filter(Boolean)
   }
 
   useEffect(() => {
-    const merged = buildMergedCrew(crew)
+    const merged = buildLiveCrew(crew)
     const visible = merged.filter((c: any) => c.status !== 'uit-dienst')
     setFilteredCrew(visible)
     const groupedData: { [rank: string]: any[] } = {}
@@ -72,7 +51,7 @@ export default function CrewOverviewPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const update = () => {
-      const merged = buildMergedCrew(crew)
+      const merged = buildLiveCrew(crew)
       const visible = merged.filter((c: any) => c.status !== 'uit-dienst')
       setFilteredCrew(visible)
       const groupedData: { [rank: string]: any[] } = {}
