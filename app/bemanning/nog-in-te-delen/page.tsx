@@ -128,6 +128,19 @@ export default function NogInTeDelenPage() {
   
   const nogAfTeRonden = allCrewWithIncompleteChecklist;
   
+  // Nog In Te Delen: aangenomen, checklist compleet, maar geen schip
+  const nogInTeDelen = crew.filter((member: any) => {
+    if (member.is_aflosser || member.status === 'uit-dienst') return false;
+    if (member.recruitment_status !== 'aangenomen') return false;
+    const hasShip = member.ship_id && member.ship_id !== 'none' && member.ship_id !== '';
+    if (hasShip) return false;
+    const contractSigned = member.arbeidsovereenkomst === true;
+    const luxembourgRegistered = member.ingeschreven_luxembourg === true;
+    const insured = member.verzekerd === true;
+    const isChecklistComplete = contractSigned && luxembourgRegistered && insured;
+    return isChecklistComplete;
+  });
+  
   // Wachtlijst verwijderd op verzoek; er is geen aparte wachtlijstcategorie meer
 
   const getNationalityFlag = (nationality: string) => {
@@ -622,6 +635,77 @@ export default function NogInTeDelenPage() {
                 </div>
               </CardContent>
             </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 4. NOG IN TE DELEN (in dienst, checklist compleet, geen schip) */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">🧭 Nog In Te Delen</h2>
+              <Badge className="bg-blue-100 text-blue-800">{nogInTeDelen.length}</Badge>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Aangenomen personeel met volledige checklist maar nog zonder schip (tijdelijk uit rotatie of wacht op toewijzing)</p>
+            {nogInTeDelen.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-center text-gray-500">
+                  Geen personen die nog ingedeeld moeten worden
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {nogInTeDelen.map((member: any) => (
+                  <Card key={member.id} className="hover:shadow-lg transition-shadow border-blue-200">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="w-10 h-10">
+                            <AvatarFallback className="bg-blue-100 text-blue-700">
+                              {member.first_name[0]}{member.last_name[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <Link 
+                              href={`/bemanning/${member.id}`}
+                              className="font-medium text-gray-900 hover:text-blue-700"
+                            >
+                              {member.first_name} {member.last_name}
+                            </Link>
+                            <div className="flex items-center space-x-2 text-sm text-gray-500">
+                              <span>{getNationalityFlag(member.nationality)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="text-sm text-gray-600">
+                        <span className="font-medium">Functie:</span> {member.position}
+                      </div>
+
+                      <div className="bg-blue-50 p-2 rounded border border-blue-200 text-xs">
+                        <div className="font-medium text-blue-800 mb-1">Checklist compleet</div>
+                        <div className="flex items-center justify-between"><span>Contract:</span><span className="text-green-600">✅</span></div>
+                        <div className="flex items-center justify-between"><span>Luxembourg:</span><span className="text-green-600">✅</span></div>
+                        <div className="flex items-center justify-between"><span>Verzekerd:</span><span className="text-green-600">✅</span></div>
+                      </div>
+
+                      <div className="flex flex-col gap-2 pt-3 border-t">
+                        <Button 
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 w-full text-xs"
+                          onClick={() => {
+                            setSelectedMember(member);
+                            setShowAssignmentDialog(true);
+                          }}
+                        >
+                          <span className="mr-1">🚢</span>
+                          Toewijzen aan Schip
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             )}
