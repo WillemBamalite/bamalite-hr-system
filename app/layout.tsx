@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Link from "next/link"
 import { DashboardHeader } from "@/components/dashboard-header"
-import { CrewProvider } from "@/components/crew/CrewProvider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
@@ -39,13 +38,11 @@ export default function RootLayout({
         >
           <AuthProvider>
             <LanguageProvider>
-              <CrewProvider>
-                <DashboardHeader />
-                <div className="app-container">
-                  {children}
-                </div>
-                <Toaster />
-              </CrewProvider>
+              <DashboardHeader />
+              <div className="app-container">
+                {children}
+              </div>
+              <Toaster />
             </LanguageProvider>
           </AuthProvider>
         </ThemeProvider>
