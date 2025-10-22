@@ -278,6 +278,27 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         diplomas: editData.diplomas
       };
 
+      // Update on_board_since and thuis_sinds based on status change
+      const currentStatus = (crewMember as any).status;
+      const newStatus = editData.status;
+      const today = new Date().toISOString().split('T')[0];
+
+      if (currentStatus !== newStatus) {
+        if (newStatus === "aan-boord") {
+          // Going on board: set on_board_since to today, clear thuis_sinds
+          supabaseData.on_board_since = today;
+          supabaseData.thuis_sinds = null;
+          supabaseData.expected_start_date = null;
+        } else if (newStatus === "thuis") {
+          // Going home: set thuis_sinds to today, clear on_board_since
+          supabaseData.thuis_sinds = today;
+          supabaseData.on_board_since = null;
+        } else if (newStatus === "ziek") {
+          // Going sick: keep current on_board_since or thuis_sinds, don't change dates
+          // Don't modify on_board_since or thuis_sinds for sick status
+        }
+      }
+
       // Only include date fields if they have values
       if (editData.birth_date && editData.birth_date.trim() !== "") {
         supabaseData.birth_date = editData.birth_date;
