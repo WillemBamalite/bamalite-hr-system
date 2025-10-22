@@ -13,19 +13,37 @@ export function DashboardStats() {
   
   // Bereken stats uit Supabase data
   const aflossers = crew.filter((c) => 
-    c.position === "Aflosser" || c.position === "aflosser"
+    c.position === "Aflosser" || c.position === "aflosser" || c.is_aflosser === true
   )
   
   const activeCrew = crew.filter((c) => c.status !== 'uit-dienst')
   const stats = {
-    totalCrew: activeCrew.filter((c) => c.position !== 'Aflosser' && c.position !== 'aflosser').length,
+    // Totaal bemanningsleden: alleen actieve vaste bemanning (geen aflossers, geen uit-dienst)
+    totalCrew: activeCrew.filter((c) => 
+      c.position !== 'Aflosser' && 
+      c.position !== 'aflosser' && 
+      c.is_aflosser !== true &&
+      c.status !== 'uit-dienst'
+    ).length,
     aflossers: aflossers.filter((c) => c.status !== 'uit-dienst').length,
     zieken: sickLeave.filter((s: any) => {
       const crewMember = crew.find((c) => c.id === s.crew_member_id)
       return (s.status === "actief" || s.status === "wacht-op-briefje") && crewMember && crewMember.status !== 'uit-dienst'
     }).length,
-    aanBoord: activeCrew.filter((c) => c.status === "aan-boord").length,
-    thuis: activeCrew.filter((c) => c.status === "thuis").length,
+    aanBoord: activeCrew.filter((c) => 
+      c.status === "aan-boord" && 
+      c.position !== 'Aflosser' && 
+      c.position !== 'aflosser' && 
+      c.is_aflosser !== true &&
+      c.status !== 'uit-dienst'
+    ).length,
+    thuis: activeCrew.filter((c) => 
+      c.status === "thuis" && 
+      c.position !== 'Aflosser' && 
+      c.position !== 'aflosser' && 
+      c.is_aflosser !== true &&
+      c.status !== 'uit-dienst'
+    ).length,
     actieveZiekmeldingen: sickLeave.filter((s) => {
       const crewMember = crew.find((c) => c.id === s.crew_member_id)
       return s.status === "actief" && crewMember && crewMember.status !== 'uit-dienst'
@@ -64,7 +82,7 @@ export function DashboardStats() {
           return false;
         }
         
-        // Anders tellen als checklist incompleet is
+        // Tellen als checklist incompleet is (ongeacht of er een schip is toegewezen)
         return !isChecklistComplete;
       });
       

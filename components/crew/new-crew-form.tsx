@@ -221,7 +221,9 @@ export function NewCrewForm() {
         education_type: formData.isStudent ? formData.educationType : null,
         education_start_date: formData.isStudent && formData.educationType === "BOL" ? formData.educationStartDate : null,
         education_end_date: formData.isStudent && formData.educationType === "BOL" ? formData.educationEndDate : null,
-        school_periods: formData.isStudent ? formData.schoolPeriods : []
+        school_periods: formData.isStudent ? formData.schoolPeriods : [],
+        // Recruitment status
+        recruitment_status: "aangenomen"
       }
 
       console.log('Saving crew member to Supabase:', crewMember)

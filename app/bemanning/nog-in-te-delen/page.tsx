@@ -74,7 +74,8 @@ export default function NogInTeDelenPage() {
   // Filter bemanningsleden zonder schip (exclude aflossers en uit dienst)
   const unassignedCrew = crew.filter((member: any) => 
     member.status === "nog-in-te-delen" && 
-    !member.is_aflosser
+    !member.is_aflosser &&
+    member.status !== 'uit-dienst'
   );
 
   // Filter alle bemanningsleden met incomplete checklist (ook die aan schip zijn toegewezen)
@@ -96,19 +97,32 @@ export default function NogInTeDelenPage() {
     const isChecklistComplete = contractSigned && luxembourgRegistered && insured;
     const hasShip = member.ship_id && member.ship_id !== 'none' && member.ship_id !== '';
     
+    // Debug logging
+    console.log(`Member: ${member.first_name} ${member.last_name}`, {
+      recruitment_status: member.recruitment_status,
+      contractSigned,
+      luxembourgRegistered,
+      insured,
+      isChecklistComplete,
+      hasShip,
+      ship_id: member.ship_id,
+      shouldShow: !isChecklistComplete
+    });
+    
     // Als checklist compleet is EN heeft een schip toegewezen, dan niet tonen
     if (isChecklistComplete && hasShip) {
       return false;
     }
     
-    // Anders tonen als checklist incompleet is
+    // Tonen als checklist incompleet is (ongeacht of er een schip is toegewezen)
     return !isChecklistComplete;
   });
 
-  // Categoriseer op basis van sub_status veld
+  // Categoriseer op basis van sub_status veld - alleen kandidaten die nog niet aangenomen zijn
   const nogTeBenaderen = unassignedCrew.filter((m: any) => 
     (!m.sub_status || m.sub_status === "nog-te-benaderen") &&
-    m.status !== 'uit-dienst'
+    m.status !== 'uit-dienst' &&
+    m.recruitment_status !== "aangenomen"
   );
   
   
@@ -331,15 +345,15 @@ export default function NogInTeDelenPage() {
         </Card>
       </div>
 
-      {/* Empty state */}
-      {unassignedCrew.length === 0 ? (
-        <Card>
+      {/* Show message if both columns are empty */}
+      {nogTeBenaderen.length === 0 && nogAfTeRonden.length === 0 && (
+        <Card className="mb-8">
           <CardContent className="p-8 text-center">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <div className="w-8 h-8 bg-green-500 rounded-full"></div>
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">Alle bemanning toegewezen!</h3>
-            <p className="text-gray-500 mb-4">Alle bemanningsleden hebben een schip toegewezen gekregen.</p>
+            <p className="text-gray-500 mb-4">Alle bemanningsleden hebben een schip toegewezen gekregen en hun checklist is afgerond.</p>
             <Link href="/bemanning/nieuw">
               <Button className="bg-green-600 hover:bg-green-700">
                 <span className="mr-2">➕</span>
@@ -348,8 +362,10 @@ export default function NogInTeDelenPage() {
             </Link>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-10">
+      )}
+
+      {/* Always show the columns, even if empty */}
+      <div className="space-y-10">
           {/* 1. NOG TE BENADEREN */}
           <div>
             <div className="flex items-center justify-between mb-4">
@@ -611,7 +627,6 @@ export default function NogInTeDelenPage() {
             )}
           </div>
         </div>
-      )}
 
       {/* New Candidate Dialog */}
       <Dialog open={showNewCandidateDialog} onOpenChange={setShowNewCandidateDialog}>
