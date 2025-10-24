@@ -110,9 +110,25 @@ export default function NieuwAflosserPage() {
       alert("Aflosser succesvol toegevoegd!")
       router.push("/bemanning/aflossers")
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding aflosser:", error)
-      alert("Er is een fout opgetreden bij het toevoegen van de aflosser.")
+      
+      // Meer specifieke foutmeldingen
+      let errorMessage = "Er is een fout opgetreden bij het toevoegen van de aflosser."
+      
+      if (error.message) {
+        if (error.message.includes("duplicate key")) {
+          errorMessage = "Er bestaat al een aflosser met deze gegevens. Controleer de naam en contactgegevens."
+        } else if (error.message.includes("foreign key")) {
+          errorMessage = "Database fout: probeer het opnieuw of neem contact op met de beheerder."
+        } else if (error.message.includes("validation")) {
+          errorMessage = "Controleer of alle verplichte velden correct zijn ingevuld."
+        } else {
+          errorMessage = `Fout: ${error.message}`
+        }
+      }
+      
+      alert(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -301,22 +317,89 @@ export default function NieuwAflosserPage() {
                      
                      <div>
                        <Label htmlFor="vasteDienstInitialBalance">
-                         Startsaldo (positief = voorsprong, negatief = achterstand)
+                         Startsaldo dagen
                        </Label>
-                       <Input
-                         id="vasteDienstInitialBalance"
-                         type="number"
-                         step="0.5"
-                         value={formData.vasteDienstInitialBalance}
-                         onChange={(e) => setFormData({...formData, vasteDienstInitialBalance: parseFloat(e.target.value) || 0})}
-                         placeholder="0"
-                         min="-365"
-                         max="365"
-                       />
-                       <p className="text-sm text-gray-500 mt-1">
-                         Voer een positief getal in als de aflosser al extra dagen heeft gemaakt, 
-                         of een negatief getal als er nog dagen openstaan. Dit wordt het startsaldo.
-                       </p>
+                       <div className="space-y-2">
+                         <div className="flex items-center space-x-2">
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             onClick={() => setFormData({...formData, vasteDienstInitialBalance: Math.max(-365, formData.vasteDienstInitialBalance - 1)})}
+                             className="w-10 h-10 p-0"
+                           >
+                             -
+                           </Button>
+                           <div className="relative flex-1">
+                             <Input
+                               id="vasteDienstInitialBalance"
+                               type="number"
+                               step="0.5"
+                               value={formData.vasteDienstInitialBalance}
+                               onChange={(e) => setFormData({...formData, vasteDienstInitialBalance: parseFloat(e.target.value) || 0})}
+                               placeholder="0"
+                               min="-365"
+                               max="365"
+                               className={`text-center ${
+                                 formData.vasteDienstInitialBalance > 0 
+                                   ? 'border-green-300 bg-green-50 text-green-700' 
+                                   : formData.vasteDienstInitialBalance < 0 
+                                   ? 'border-red-300 bg-red-50 text-red-700' 
+                                   : ''
+                               }`}
+                             />
+                           </div>
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             onClick={() => setFormData({...formData, vasteDienstInitialBalance: Math.min(365, formData.vasteDienstInitialBalance + 1)})}
+                             className="w-10 h-10 p-0"
+                           >
+                             +
+                           </Button>
+                         </div>
+                         <div className="flex justify-center space-x-4">
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             onClick={() => setFormData({...formData, vasteDienstInitialBalance: -5})}
+                             className="text-red-600 hover:bg-red-50"
+                           >
+                             -5 dagen
+                           </Button>
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             onClick={() => setFormData({...formData, vasteDienstInitialBalance: 0})}
+                             className="text-gray-600 hover:bg-gray-50"
+                           >
+                             Reset
+                           </Button>
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             onClick={() => setFormData({...formData, vasteDienstInitialBalance: 5})}
+                             className="text-green-600 hover:bg-green-50"
+                           >
+                             +5 dagen
+                           </Button>
+                         </div>
+                       </div>
+                       <div className="mt-2 space-y-1">
+                         <p className="text-sm text-gray-600">
+                           <span className="font-medium text-green-600">+ (positief):</span> Voorsprong - aflosser heeft al extra dagen gemaakt
+                         </p>
+                         <p className="text-sm text-gray-600">
+                           <span className="font-medium text-red-600">- (negatief):</span> Achterstand - aflosser moet nog dagen inhalen
+                         </p>
+                         <p className="text-sm text-gray-600">
+                           <span className="font-medium text-gray-600">0:</span> Geen voorsprong of achterstand
+                         </p>
+                       </div>
                      </div>
                    </div>
                  )}

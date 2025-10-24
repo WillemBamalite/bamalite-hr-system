@@ -202,7 +202,40 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
     // Update the record with actual days and balance
     if (existingRecord) {
       const requiredDays = 15
-      const balanceDays = totalWorkDays - requiredDays
+      
+      // Bereken het nieuwe saldo: werkdagen - vereiste dagen + saldo van vorige maand
+      // Haal het saldo van de vorige maand op
+      let previousMonthBalance = 0
+      
+      // Probeer het startsaldo uit de notes te halen (alleen voor de eerste maand)
+      if (existingRecord.notes && existingRecord.notes.includes('startsaldo')) {
+        const match = existingRecord.notes.match(/startsaldo van (-?\d+(?:\.\d+)?) dagen/)
+        if (match) {
+          previousMonthBalance = parseFloat(match[1])
+        }
+      } else if (existingRecord.notes && existingRecord.notes.includes('Aflosser toegevoegd met startsaldo')) {
+        // Als het een nieuwe aflosser is met startsaldo, gebruik de huidige balance_days
+        previousMonthBalance = existingRecord.balance_days || 0
+      } else {
+        // Voor volgende maanden: haal het saldo van de vorige maand op
+        const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1
+        const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear
+        
+        const { data: prevRecord } = await supabase
+          .from('vaste_dienst_records')
+          .select('balance_days')
+          .eq('aflosser_id', aflosser.id)
+          .eq('year', prevYear)
+          .eq('month', prevMonth)
+          .single()
+        
+        if (prevRecord) {
+          previousMonthBalance = prevRecord.balance_days || 0
+        }
+      }
+      
+      // Bereken het nieuwe saldo: (werkdagen deze maand - 15) + saldo vorige maand
+      const balanceDays = (totalWorkDays - requiredDays) + previousMonthBalance
       
       // Cap values to fit in DECIMAL(4,1) - max 999.9
       const cappedActualDays = Math.min(totalWorkDays, 999.9)
@@ -436,7 +469,48 @@ async function autoUpdateVasteDienstFromTrip(completedTrip: any) {
     
     // Update the record
     const requiredDays = 15
-    const balanceDays = totalWorkDays - requiredDays
+    
+    // Haal het saldo van de vorige maand op
+    let previousMonthBalance = 0
+    
+    // Probeer het startsaldo uit de notes te halen (alleen voor de eerste maand)
+    const { data: currentRecord, error: fetchError } = await supabase
+      .from('vaste_dienst_records')
+      .select('*')
+      .eq('aflosser_id', completedTrip.aflosser_id)
+      .eq('year', year)
+      .eq('month', month)
+      .single()
+    
+    if (currentRecord && !fetchError) {
+      if (currentRecord.notes && currentRecord.notes.includes('startsaldo')) {
+        const match = currentRecord.notes.match(/startsaldo van (-?\d+(?:\.\d+)?) dagen/)
+        if (match) {
+          previousMonthBalance = parseFloat(match[1])
+        }
+      } else if (currentRecord.notes && currentRecord.notes.includes('Aflosser toegevoegd met startsaldo')) {
+        // Als het een nieuwe aflosser is met startsaldo, gebruik de huidige balance_days
+        previousMonthBalance = currentRecord.balance_days || 0
+      } else {
+        // Voor volgende maanden: haal het saldo van de vorige maand op
+        const prevMonth = month === 1 ? 12 : month - 1
+        const prevYear = month === 1 ? year - 1 : year
+        
+        const { data: prevRecord } = await supabase
+          .from('vaste_dienst_records')
+          .select('balance_days')
+          .eq('aflosser_id', completedTrip.aflosser_id)
+          .eq('year', prevYear)
+          .eq('month', prevMonth)
+          .single()
+        
+        if (prevRecord) {
+          previousMonthBalance = prevRecord.balance_days || 0
+        }
+      }
+    }
+    
+    const balanceDays = totalWorkDays - requiredDays + previousMonthBalance
     
     // Cap values to fit in DECIMAL(4,1) - max 999.9
     const cappedActualDays = Math.min(totalWorkDays, 999.9)
@@ -522,7 +596,39 @@ async function forceRecalculateAllVasteDienstRecords(crewData: any[], tripsData:
         
         // Cap values to fit in DECIMAL(4,1)
         const requiredDays = 15
-        const balanceDays = totalWorkDays - requiredDays
+        
+        // Haal het saldo van de vorige maand op
+        let previousMonthBalance = 0
+        
+        // Probeer het startsaldo uit de notes te halen (alleen voor de eerste maand)
+        if (record.notes && record.notes.includes('startsaldo')) {
+          const match = record.notes.match(/startsaldo van (-?\d+(?:\.\d+)?) dagen/)
+          if (match) {
+            previousMonthBalance = parseFloat(match[1])
+          }
+        } else if (record.notes && record.notes.includes('Aflosser toegevoegd met startsaldo')) {
+          // Als het een nieuwe aflosser is met startsaldo, gebruik de huidige balance_days
+          previousMonthBalance = record.balance_days || 0
+        } else {
+          // Voor volgende maanden: haal het saldo van de vorige maand op
+          const prevMonth = record.month === 1 ? 12 : record.month - 1
+          const prevYear = record.month === 1 ? record.year - 1 : record.year
+          
+          const { data: prevRecord } = await supabase
+            .from('vaste_dienst_records')
+            .select('balance_days')
+            .eq('aflosser_id', record.aflosser_id)
+            .eq('year', prevYear)
+            .eq('month', prevMonth)
+            .single()
+          
+          if (prevRecord) {
+            previousMonthBalance = prevRecord.balance_days || 0
+          }
+        }
+        
+        // Bereken het nieuwe saldo: (werkdagen deze maand - 15) + saldo vorige maand
+      const balanceDays = (totalWorkDays - requiredDays) + previousMonthBalance
         const cappedActualDays = Math.min(totalWorkDays, 999.9)
         const cappedBalanceDays = Math.min(Math.max(balanceDays, -999.9), 999.9)
         
