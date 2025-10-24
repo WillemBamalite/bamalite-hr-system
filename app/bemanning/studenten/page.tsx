@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BackButton } from "@/components/ui/back-button";
+import { DashboardButton } from "@/components/ui/dashboard-button";
 import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle, GraduationCap, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { format } from 'date-fns';
@@ -184,6 +186,9 @@ export default function StudentenManagementPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
+      <BackButton />
+      <DashboardButton />
+      
       {/* Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center">
