@@ -80,8 +80,7 @@ export default function StudentenManagementPage() {
         education_type: null,
         education_start_date: null,
         education_end_date: null,
-        school_periods: null,
-        education_completed_date: completionDate
+        school_periods: null
       });
       
       setShowCompleteEducationDialog(false);
