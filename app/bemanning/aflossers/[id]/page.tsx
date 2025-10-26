@@ -8,6 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { BackButton } from "@/components/ui/back-button"
 import { DashboardButton } from "@/components/ui/dashboard-button"
@@ -94,6 +97,15 @@ export default function AflosserDetailPage() {
   const { crew, ships, trips, vasteDienstRecords, loading, error, updateCrew, deleteAflosser } = useSupabaseData()
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [editedNotes, setEditedNotes] = useState("")
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [editedProfile, setEditedProfile] = useState({
+    first_name: "",
+    last_name: "",
+    phone: "",
+    email: "",
+    nationality: "",
+    status: ""
+  })
   const [mounted, setMounted] = useState(false)
   const [assignmentHistory, setAssignmentHistory] = useState<any[]>([])
 
@@ -166,6 +178,32 @@ export default function AflosserDetailPage() {
       setAssignmentHistory(aflosserTrips)
     }
   }, [aflosser?.id, trips])
+
+  // Initialize edited profile when aflosser data is available
+  useEffect(() => {
+    if (aflosser) {
+      setEditedProfile({
+        first_name: aflosser.first_name || "",
+        last_name: aflosser.last_name || "",
+        phone: aflosser.phone || "",
+        email: aflosser.email || "",
+        nationality: aflosser.nationality || "",
+        status: aflosser.status || ""
+      })
+    }
+  }, [aflosser])
+
+  const handleSaveProfile = async () => {
+    if (!aflosser) return
+
+    try {
+      await updateCrew(aflosser.id, editedProfile)
+      setIsEditingProfile(false)
+    } catch (error) {
+      console.error("Error updating profile:", error)
+      alert("Fout bij het bijwerken van het profiel")
+    }
+  }
 
   // Don't render until mounted
   if (!mounted) {
@@ -268,27 +306,38 @@ export default function AflosserDetailPage() {
               <p className="text-gray-600">Aflosser</p>
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={async () => {
-              if (confirm(`Weet je zeker dat je ${aflosser.first_name} ${aflosser.last_name} definitief wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt en verwijdert ook alle gerelateerde reizen en vaste dienst records.`)) {
-                try {
-                  await deleteAflosser(aflosser.id)
-                  alert('Aflosser succesvol verwijderd!')
-                  // Redirect to aflossers overview
-                  window.location.href = '/bemanning/aflossers'
-                } catch (error) {
-                  console.error('Error deleting aflosser:', error)
-                  alert('Fout bij verwijderen van aflosser')
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsEditingProfile(!isEditingProfile)}
+              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            >
+              <Edit3 className="w-4 h-4 mr-2" />
+              {isEditingProfile ? 'Annuleren' : 'Bewerken'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                if (confirm(`Weet je zeker dat je ${aflosser.first_name} ${aflosser.last_name} definitief wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt en verwijdert ook alle gerelateerde reizen en vaste dienst records.`)) {
+                  try {
+                    await deleteAflosser(aflosser.id)
+                    alert('Aflosser succesvol verwijderd!')
+                    // Redirect to aflossers overview
+                    window.location.href = '/bemanning/aflossers'
+                  } catch (error) {
+                    console.error('Error deleting aflosser:', error)
+                    alert('Fout bij verwijderen van aflosser')
+                  }
                 }
-              }
-            }}
-            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Verwijderen
-          </Button>
+              }}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Verwijderen
+            </Button>
+          </div>
         </div>
         
         {/* Status Badge */}
@@ -436,23 +485,128 @@ export default function AflosserDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-2xl">{getNationalityFlag(aflosser.nationality)}</span>
-                <span className="font-medium">{aflosser.nationality}</span>
-              </div>
-              
-              {aflosser.phone && (
-                <div className="flex items-center space-x-2 text-sm">
-                  <Phone className="w-4 h-4 text-gray-500" />
-                  <span>{aflosser.phone}</span>
+              {isEditingProfile ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="first_name">Voornaam</Label>
+                      <Input
+                        id="first_name"
+                        value={editedProfile.first_name}
+                        onChange={(e) => setEditedProfile({...editedProfile, first_name: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="last_name">Achternaam</Label>
+                      <Input
+                        id="last_name"
+                        value={editedProfile.last_name}
+                        onChange={(e) => setEditedProfile({...editedProfile, last_name: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="phone">Telefoon</Label>
+                    <Input
+                      id="phone"
+                      value={editedProfile.phone}
+                      onChange={(e) => setEditedProfile({...editedProfile, phone: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={editedProfile.email}
+                      onChange={(e) => setEditedProfile({...editedProfile, email: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="nationality">Nationaliteit</Label>
+                    <Select value={editedProfile.nationality} onValueChange={(value) => setEditedProfile({...editedProfile, nationality: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecteer nationaliteit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NL">🇳🇱 Nederland</SelectItem>
+                        <SelectItem value="CZ">🇨🇿 Tsjechië</SelectItem>
+                        <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
+                        <SelectItem value="EG">🇪🇬 Egypte</SelectItem>
+                        <SelectItem value="PO">🇵🇱 Polen</SelectItem>
+                        <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
+                        <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
+                        <SelectItem value="BE">🇧🇪 België</SelectItem>
+                        <SelectItem value="FR">🇫🇷 Frankrijk</SelectItem>
+                        <SelectItem value="DE">🇩🇪 Duitsland</SelectItem>
+                        <SelectItem value="LUX">🇱🇺 Luxemburg</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="status">Status</Label>
+                    <Select value={editedProfile.status} onValueChange={(value) => setEditedProfile({...editedProfile, status: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecteer status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="aan-boord">Aan boord</SelectItem>
+                        <SelectItem value="thuis">Beschikbaar</SelectItem>
+                        <SelectItem value="afwezig">Afwezig</SelectItem>
+                        <SelectItem value="ziek">Ziek</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex gap-2 pt-4">
+                    <Button onClick={handleSaveProfile} className="bg-blue-600 hover:bg-blue-700">
+                      <Save className="w-4 h-4 mr-2" />
+                      Opslaan
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setEditedProfile({
+                          first_name: aflosser.first_name || "",
+                          last_name: aflosser.last_name || "",
+                          phone: aflosser.phone || "",
+                          email: aflosser.email || "",
+                          nationality: aflosser.nationality || "",
+                          status: aflosser.status || ""
+                        })
+                        setIsEditingProfile(false)
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Annuleren
+                    </Button>
+                  </div>
                 </div>
-              )}
-              
-              {aflosser.email && (
-                <div className="flex items-center space-x-2 text-sm">
-                  <Mail className="w-4 h-4 text-gray-500" />
-                  <span>{aflosser.email}</span>
-                </div>
+              ) : (
+                <>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl">{getNationalityFlag(aflosser.nationality)}</span>
+                    <span className="font-medium">{aflosser.nationality}</span>
+                  </div>
+                  
+                  {aflosser.phone && (
+                    <div className="flex items-center space-x-2 text-sm">
+                      <Phone className="w-4 h-4 text-gray-500" />
+                      <span>{aflosser.phone}</span>
+                    </div>
+                  )}
+                  
+                  {aflosser.email && (
+                    <div className="flex items-center space-x-2 text-sm">
+                      <Mail className="w-4 h-4 text-gray-500" />
+                      <span>{aflosser.email}</span>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Diplomas */}
@@ -780,8 +934,8 @@ export default function AflosserDetailPage() {
                                 </span>
                               </div>
                               
-                              <div className="flex items-center space-x-2 text-sm">
-                                <MapPin className="w-4 h-4 text-gray-500" />
+                                <div className="flex items-center space-x-2 text-sm">
+                                  <MapPin className="w-4 h-4 text-gray-500" />
                                 <span>{trip.trip_from} → {trip.trip_to}</span>
                               </div>
                             </div>
@@ -883,10 +1037,10 @@ export default function AflosserDetailPage() {
                                           return format(parseDate(trip.eind_datum), 'dd-MM-yyyy')
                                         })()} {trip.eind_tijd || ''}
                                       </span>
-                                    </div>
-                                  )}
                                 </div>
-                                
+                              )}
+                            </div>
+
                                 {/* Werkdagen berekening */}
                                 {trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd && (
                                   <div className="mt-3 pt-3 border-t border-gray-200">
@@ -901,11 +1055,11 @@ export default function AflosserDetailPage() {
                                             : `${workDays} dag${workDays !== 1 ? 'en' : ''}`
                                         })()}
                                       </span>
-                                    </div>
-                                    
-                                  </div>
-                                )}
                               </div>
+                                    
+                              </div>
+                            )}
+                          </div>
                             )}
 
                             {/* Aflosser opmerkingen for completed trips */}
@@ -913,7 +1067,7 @@ export default function AflosserDetailPage() {
                               <div className="bg-blue-50 p-3 rounded-lg">
                                 <h5 className="text-sm font-medium text-blue-700 mb-1">Opmerkingen over aflosser</h5>
                                 <p className="text-sm text-blue-600 italic">{trip.aflosser_opmerkingen}</p>
-                              </div>
+                            </div>
                             )}
                             
                             {trip.notes && (
@@ -922,7 +1076,7 @@ export default function AflosserDetailPage() {
                               </div>
                             )}
                           </div>
-                        </div>
+                      </div>
                       )
                     })}
                 </div>
