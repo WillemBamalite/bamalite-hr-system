@@ -1442,6 +1442,40 @@ export function useSupabaseData() {
         throw error
       }
       
+      // Check if record already exists for this aflosser/year/month combination
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('vaste_dienst_records')
+        .select('id')
+        .eq('aflosser_id', recordData.aflosser_id)
+        .eq('year', recordData.year)
+        .eq('month', recordData.month)
+        .single()
+      
+      if (existingRecord) {
+        console.log('Record already exists for this aflosser/year/month combination, updating instead')
+        // Update existing record instead of creating new one
+        const { data, error } = await supabase
+          .from('vaste_dienst_records')
+          .update({
+            required_days: recordData.required_days,
+            actual_days: recordData.actual_days,
+            balance_days: recordData.balance_days,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingRecord.id)
+          .select()
+        
+        if (error) {
+          console.error('Error updating existing vaste dienst record:', error)
+          throw error
+        }
+        
+        console.log('Vaste dienst record updated successfully:', data)
+        await loadData() // Reload all data
+        return data
+      }
+      
+      // If no existing record, create new one
       const { data, error } = await supabase
         .from('vaste_dienst_records')
         .insert([recordData])
