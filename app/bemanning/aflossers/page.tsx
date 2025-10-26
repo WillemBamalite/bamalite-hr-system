@@ -79,9 +79,53 @@ export default function ReizenAflossersPage() {
   }
 
   const getVasteDienstBalance = (aflosserId: string) => {
-    const records = vasteDienstRecords.filter((record: any) => record.aflosser_id === aflosserId)
-    if (records.length === 0) return 0
-    return records.sort((a: any, b: any) => b.year - a.year || b.month - a.month)[0]?.balance_days || 0
+    const aflosser = crew.find((c: any) => c.id === aflosserId)
+    if (!aflosser) return 0
+    
+    // Bereken gewerkte dagen deze maand voor ALLE aflossers
+    const today = new Date()
+    const currentYear = today.getFullYear()
+    const currentMonth = today.getMonth() + 1
+    
+    const currentMonthTrips = trips.filter((trip: any) => {
+      if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
+      if (trip.status !== 'voltooid') return false
+      
+      const tripStart = new Date(trip.start_datum)
+      return tripStart.getFullYear() === currentYear && 
+             tripStart.getMonth() + 1 === currentMonth
+    })
+    
+    const gewerktDezeMaand = currentMonthTrips.reduce((total: number, trip: any) => {
+      const start = new Date(trip.start_datum)
+      const end = new Date(trip.eind_datum)
+      const timeDiff = end.getTime() - start.getTime()
+      const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1
+      return total + daysDiff
+    }, 0)
+    
+    // Voor aflossers met startsaldo
+    const startsaldoNote = aflosser.notes?.find((note: any) => 
+      note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
+    )
+    
+    if (startsaldoNote) {
+      const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
+      if (match) {
+        const startsaldo = parseFloat(match[1])
+        const beginsaldo = -15 + startsaldo
+        
+        // Actuele dagen = Beginsaldo + Gewerkt deze maand
+        const actueleDagen = beginsaldo + gewerktDezeMaand
+        console.log(`📊 Aflosser ${aflosser.first_name}: startsaldo ${startsaldo}, beginsaldo ${beginsaldo}, gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
+        return actueleDagen
+      }
+    }
+    
+    // Voor bestaande aflossers zonder startsaldo: -15 + gewerkte dagen
+    const actueleDagen = -15 + gewerktDezeMaand
+    console.log(`📊 Bestaande aflosser ${aflosser.first_name}: gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
+    return actueleDagen
   }
 
   const getShipName = (shipId: string) => {

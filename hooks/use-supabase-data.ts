@@ -202,7 +202,38 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
     // Update the record with actual days and balance
     if (existingRecord) {
       const requiredDays = 15
-      const balanceDays = totalWorkDays - requiredDays
+      
+      // CORRECTE BEREKENING: Eindsaldo = Beginsaldo + (Gewerkt - 15)
+      // Voor eerste maand: Beginsaldo = -15 + startsaldo
+      let beginsaldo = existingRecord.balance_days || 0
+      
+      // Als dit de eerste maand is en er is geen beginsaldo, gebruik -15 + startsaldo
+      if (beginsaldo === 0 && currentMonth === 1) {
+        // Probeer startsaldo uit notes te halen
+        const startsaldoNote = aflosser.notes?.find((note: any) => 
+          note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
+        )
+        if (startsaldoNote) {
+          const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
+          if (match) {
+            const startsaldo = parseFloat(match[1])
+            beginsaldo = -15 + startsaldo
+            console.log(`📊 Eerste maand: startsaldo ${startsaldo}, beginsaldo ${beginsaldo}`)
+          }
+        }
+        if (beginsaldo === 0) beginsaldo = -15 // Fallback
+      }
+      
+      // Voor de eerste maand: toon het beginsaldo als huidig saldo
+      // Voor volgende maanden: bereken het eindsaldo
+      let balanceDays
+      if (currentMonth === 1 && beginsaldo !== -15) {
+        // Eerste maand met startsaldo: toon beginsaldo
+        balanceDays = beginsaldo
+      } else {
+        // Normale berekening: beginsaldo + (gewerkt - 15)
+        balanceDays = beginsaldo + (totalWorkDays - requiredDays)
+      }
       
       // Cap values to fit in DECIMAL(4,1) - max 999.9
       const cappedActualDays = Math.min(totalWorkDays, 999.9)
@@ -436,7 +467,35 @@ async function autoUpdateVasteDienstFromTrip(completedTrip: any) {
     
     // Update the record
     const requiredDays = 15
-    const balanceDays = totalWorkDays - requiredDays
+    
+    // CORRECTE BEREKENING: Eindsaldo = Beginsaldo + (Gewerkt - 15)
+    // Voor eerste maand: Beginsaldo = -15 + startsaldo
+    let beginsaldo = 0
+    
+    // Probeer startsaldo uit notes te halen voor nieuwe aflossers
+    const startsaldoNote = aflosser.notes?.find((note: any) => 
+      note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
+    )
+    if (startsaldoNote) {
+      const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
+      if (match) {
+        const startsaldo = parseFloat(match[1])
+        beginsaldo = -15 + startsaldo
+        console.log(`📊 Nieuwe aflosser: startsaldo ${startsaldo}, beginsaldo ${beginsaldo}`)
+      }
+    }
+    if (beginsaldo === 0) beginsaldo = -15 // Fallback
+    
+    // Voor de eerste maand: toon het beginsaldo als huidig saldo
+    // Voor volgende maanden: bereken het eindsaldo
+    let balanceDays
+    if (month === 1 && beginsaldo !== -15) {
+      // Eerste maand met startsaldo: toon beginsaldo
+      balanceDays = beginsaldo
+    } else {
+      // Normale berekening: beginsaldo + (gewerkt - 15)
+      balanceDays = beginsaldo + (totalWorkDays - requiredDays)
+    }
     
     // Cap values to fit in DECIMAL(4,1) - max 999.9
     const cappedActualDays = Math.min(totalWorkDays, 999.9)
@@ -522,7 +581,38 @@ async function forceRecalculateAllVasteDienstRecords(crewData: any[], tripsData:
         
         // Cap values to fit in DECIMAL(4,1)
         const requiredDays = 15
-        const balanceDays = totalWorkDays - requiredDays
+        
+        // CORRECTE BEREKENING: Eindsaldo = Beginsaldo + (Gewerkt - 15)
+        // Voor eerste maand: Beginsaldo = -15 + startsaldo
+        let beginsaldo = record.balance_days || 0
+        
+        // Als dit de eerste maand is en er is geen beginsaldo, gebruik -15 + startsaldo
+        if (beginsaldo === 0 && record.month === 1) {
+          // Probeer startsaldo uit notes te halen
+          const startsaldoNote = aflosser.notes?.find((note: any) => 
+            note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
+          )
+          if (startsaldoNote) {
+            const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
+            if (match) {
+              const startsaldo = parseFloat(match[1])
+              beginsaldo = -15 + startsaldo
+              console.log(`📊 Eerste maand herberekening: startsaldo ${startsaldo}, beginsaldo ${beginsaldo}`)
+            }
+          }
+          if (beginsaldo === 0) beginsaldo = -15 // Fallback
+        }
+        
+        // Voor de eerste maand: toon het beginsaldo als huidig saldo
+        // Voor volgende maanden: bereken het eindsaldo
+        let balanceDays
+        if (record.month === 1 && beginsaldo !== -15) {
+          // Eerste maand met startsaldo: toon beginsaldo
+          balanceDays = beginsaldo
+        } else {
+          // Normale berekening: beginsaldo + (gewerkt - 15)
+          balanceDays = beginsaldo + (totalWorkDays - requiredDays)
+        }
         const cappedActualDays = Math.min(totalWorkDays, 999.9)
         const cappedBalanceDays = Math.min(Math.max(balanceDays, -999.9), 999.9)
         
@@ -768,14 +858,6 @@ export function useSupabaseData() {
               // Auto-manage vaste dienst records after loading all data
               console.log('🔧 Auto-managing vaste dienst records...')
               await autoManageVasteDienstRecords(crewData || [], vasteDienstData || [], tripsData || [])
-              
-              // Force recalculate all existing records with new logic
-              console.log('🔄 Force recalculating all vaste dienst records...')
-              await forceRecalculateAllVasteDienstRecords(crewData || [], tripsData || [])
-              
-              // Also reset all records to 0 first to ensure clean calculation
-              console.log('🧹 Resetting all vaste dienst records to 0...')
-              await resetAllVasteDienstRecords()
             }
       
       console.log('Data loading completed!')
@@ -865,6 +947,32 @@ export function useSupabaseData() {
   const addCrew = async (crewData: any) => {
     try {
       console.log('Adding crew member to Supabase:', crewData)
+      console.log('Crew data details:', JSON.stringify(crewData, null, 2))
+      
+      // Validate required fields
+      const requiredFields = ['id', 'first_name', 'last_name', 'nationality', 'position']
+      const missingFields = requiredFields.filter(field => !crewData[field])
+      
+      if (missingFields.length > 0) {
+        const error = new Error(`Missing required fields: ${missingFields.join(', ')}`)
+        console.error('Validation error:', error)
+        throw error
+      }
+      
+      // Check for duplicate crew member
+      const { data: existingCrew, error: checkError } = await supabase
+        .from('crew')
+        .select('id')
+        .eq('first_name', crewData.first_name)
+        .eq('last_name', crewData.last_name)
+        .eq('nationality', crewData.nationality)
+        .single()
+      
+      if (existingCrew && !checkError) {
+        const error = new Error(`Crew member with name ${crewData.first_name} ${crewData.last_name} already exists`)
+        console.error('Duplicate crew member:', error)
+        throw error
+      }
       
       const { data, error } = await supabase
         .from('crew')
@@ -875,6 +983,9 @@ export function useSupabaseData() {
       if (error) {
         console.error('Supabase error adding crew:', error)
         console.error('Error details:', JSON.stringify(error, null, 2))
+        console.error('Error code:', error.code)
+        console.error('Error message:', error.message)
+        console.error('Error hint:', error.hint)
         throw error
       }
 
@@ -883,6 +994,7 @@ export function useSupabaseData() {
       return data
     } catch (err) {
       console.error('Error adding crew:', err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
       throw err
     }
   }
@@ -1318,6 +1430,17 @@ export function useSupabaseData() {
   const addVasteDienstRecord = async (recordData: any) => {
     try {
       console.log('Adding vaste dienst record:', recordData)
+      console.log('Record data details:', JSON.stringify(recordData, null, 2))
+      
+      // Validate required fields
+      const requiredFields = ['aflosser_id', 'year', 'month', 'required_days', 'actual_days', 'balance_days']
+      const missingFields = requiredFields.filter(field => recordData[field] === undefined || recordData[field] === null)
+      
+      if (missingFields.length > 0) {
+        const error = new Error(`Missing required fields: ${missingFields.join(', ')}`)
+        console.error('Validation error:', error)
+        throw error
+      }
       
       const { data, error } = await supabase
         .from('vaste_dienst_records')
@@ -1325,7 +1448,11 @@ export function useSupabaseData() {
         .select()
       
       if (error) {
-        console.error('Error adding vaste dienst record:', error)
+        console.error('Supabase error adding vaste dienst record:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        console.error('Error code:', error.code)
+        console.error('Error message:', error.message)
+        console.error('Error hint:', error.hint)
         throw error
       }
       
@@ -1334,6 +1461,7 @@ export function useSupabaseData() {
       return data
     } catch (err) {
       console.error('Error adding vaste dienst record:', err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
       throw err
     }
   }

@@ -47,10 +47,7 @@ export default function NieuwAflosserPage() {
     notes: "",
     selectedDiplomas: [] as string[],
     inVasteDienst: false,
-    vasteDienstStartDate: "",
-    vasteDienstStartMonth: new Date().getMonth() + 1,
-    vasteDienstStartYear: new Date().getFullYear(),
-    vasteDienstInitialBalance: 0,
+    vasteDienstInitialBalance: "0",
     isUitzendbureau: false,
     uitzendbureauNaam: ""
   })
@@ -92,18 +89,36 @@ export default function NieuwAflosserPage() {
         uitzendbureau_naam: formData.isUitzendbureau ? formData.uitzendbureauNaam : null
       }
 
-      await addCrew(newAflosser)
+      // Voeg startsaldo note toe aan crew member
+      const startsaldo = parseFloat(formData.vasteDienstInitialBalance) || 0
+      const startsaldoNote = {
+        id: Date.now().toString(),
+        text: `Startsaldo: ${startsaldo} dagen`,
+        date: new Date().toISOString(),
+        type: 'startsaldo'
+      }
+      
+      const updatedNotes = [...(newAflosser.notes || []), startsaldoNote]
+      newAflosser.notes = updatedNotes
+
+      const addedCrew = await addCrew(newAflosser)
 
       // Voeg vaste dienst record toe aan Supabase als vaste dienst is geselecteerd
       if (formData.inVasteDienst) {
+        const currentDate = new Date()
+        const currentYear = currentDate.getFullYear()
+        const currentMonth = currentDate.getMonth() + 1
+        
+        const startsaldo = parseFloat(formData.vasteDienstInitialBalance) || 0
+        
         await addVasteDienstRecord({
-          aflosser_id: id,
-          year: formData.vasteDienstStartYear,
-          month: formData.vasteDienstStartMonth,
+          aflosser_id: addedCrew.id, // Gebruik de ID van de toegevoegde crew member
+          year: currentYear,
+          month: currentMonth,
           required_days: 15,
           actual_days: 0, // Start met 0 werkdagen
-          balance_days: formData.vasteDienstInitialBalance, // Start met opgegeven saldo
-          notes: `Aflosser toegevoegd met startsaldo van ${formData.vasteDienstInitialBalance} dagen`
+          balance_days: -15 + startsaldo, // CORRECTE BEREKENING: Beginsaldo eerste maand = -15 + startsaldo
+          notes: `Aflosser toegevoegd met startsaldo van ${startsaldo} dagen`
         })
       }
       
@@ -112,7 +127,24 @@ export default function NieuwAflosserPage() {
       
     } catch (error) {
       console.error("Error adding aflosser:", error)
-      alert("Er is een fout opgetreden bij het toevoegen van de aflosser.")
+      console.error("Error details:", JSON.stringify(error, null, 2))
+      
+      // Show more specific error message
+      let errorMessage = "Er is een fout opgetreden bij het toevoegen van de aflosser."
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Missing required fields')) {
+          errorMessage = `Ontbrekende verplichte velden: ${error.message.split(': ')[1]}`
+        } else if (error.message.includes('duplicate key')) {
+          errorMessage = "Een aflosser met deze gegevens bestaat al."
+        } else if (error.message.includes('foreign key')) {
+          errorMessage = "Er is een probleem met de database relaties."
+        } else {
+          errorMessage = `Fout: ${error.message}`
+        }
+      }
+      
+      alert(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -252,8 +284,7 @@ export default function NieuwAflosserPage() {
                      onCheckedChange={(checked) => {
                        setFormData({
                          ...formData,
-                         inVasteDienst: checked as boolean,
-                         vasteDienstStartDate: checked ? formData.vasteDienstStartDate : ""
+                         inVasteDienst: checked as boolean
                        })
                      }}
                    />
@@ -265,57 +296,28 @@ export default function NieuwAflosserPage() {
                    <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                      <h4 className="font-medium text-blue-800">Vaste Dienst Instellingen</h4>
                      
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       <div>
-                         <Label htmlFor="vasteDienstStartYear">Start Jaar *</Label>
-                         <Input
-                           id="vasteDienstStartYear"
-                           type="number"
-                           value={formData.vasteDienstStartYear}
-                           onChange={(e) => setFormData({...formData, vasteDienstStartYear: parseInt(e.target.value) || new Date().getFullYear()})}
-                           min="2020"
-                           max="2030"
-                           required={formData.inVasteDienst}
-                         />
-                       </div>
-                       
-                       <div>
-                         <Label htmlFor="vasteDienstStartMonth">Start Maand *</Label>
-                         <Select
-                           value={formData.vasteDienstStartMonth.toString()}
-                           onValueChange={(value) => setFormData({...formData, vasteDienstStartMonth: parseInt(value)})}
-                         >
-                           <SelectTrigger>
-                             <SelectValue placeholder="Selecteer maand" />
-                           </SelectTrigger>
-                           <SelectContent>
-                             {Array.from({length: 12}, (_, i) => i + 1).map(month => (
-                               <SelectItem key={month} value={month.toString()}>
-                                 {new Date(2024, month - 1).toLocaleString('nl-NL', { month: 'long' })}
-                               </SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
-                       </div>
-                     </div>
-                     
                      <div>
                        <Label htmlFor="vasteDienstInitialBalance">
                          Startsaldo (positief = voorsprong, negatief = achterstand)
                        </Label>
                        <Input
                          id="vasteDienstInitialBalance"
-                         type="number"
-                         step="0.5"
+                         type="text"
                          value={formData.vasteDienstInitialBalance}
-                         onChange={(e) => setFormData({...formData, vasteDienstInitialBalance: parseFloat(e.target.value) || 0})}
+                         onChange={(e) => {
+                           const value = e.target.value
+                           // Alleen cijfers, +, -, en één decimaalpunt toestaan
+                           if (value === '' || /^[+-]?\d*\.?\d*$/.test(value)) {
+                             setFormData({...formData, vasteDienstInitialBalance: value})
+                           }
+                         }}
                          placeholder="0"
                          min="-365"
                          max="365"
                        />
                        <p className="text-sm text-gray-500 mt-1">
                          Voer een positief getal in als de aflosser al extra dagen heeft gemaakt, 
-                         of een negatief getal als er nog dagen openstaan. Dit wordt het startsaldo.
+                         of een negatief getal als er nog dagen openstaan. Dit wordt het startsaldo voor de huidige maand ({new Date().toLocaleString('nl-NL', { month: 'long', year: 'numeric' })}).
                        </p>
                      </div>
                    </div>

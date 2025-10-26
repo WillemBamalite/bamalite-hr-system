@@ -4,7 +4,39 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = 'https://ocwraavhrtpvbqlkwnlb.supabase.co'
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9jd3JhYXZocnRwdmJxbGt3bmxiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM0NDEzOTAsImV4cCI6MjA2OTAxNzM5MH0.TC3wV4T74ZBadMtIXI1QBroYbo844ejqv_pJtg0th04'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Create Supabase client with better error handling
+let supabase: any
+
+try {
+  supabase = createClient(supabaseUrl, supabaseAnonKey)
+  console.log('✅ Supabase client created successfully')
+} catch (error) {
+  console.error('❌ Failed to create Supabase client:', error)
+  
+  // Create a mock Supabase client for local development
+  supabase = {
+    from: (table: string) => ({
+      select: () => ({ data: [], error: null }),
+      insert: () => ({ data: [], error: null }),
+      update: () => ({ data: [], error: null }),
+      delete: () => ({ error: null }),
+      eq: () => ({ data: [], error: null }),
+      single: () => ({ data: null, error: null }),
+      order: () => ({ data: [], error: null }),
+      limit: () => ({ data: [], error: null }),
+      not: () => ({ data: [], error: null })
+    }),
+    auth: {
+      getSession: () => ({ data: { session: null }, error: null })
+    },
+    channel: () => ({
+      on: () => ({ subscribe: () => {}, unsubscribe: () => {} })
+    })
+  }
+  console.log('⚠️ Using mock Supabase client for local development')
+}
+
+export { supabase }
 
 // Database types
 export interface Ship {

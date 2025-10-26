@@ -103,10 +103,55 @@ export default function AflosserDetailPage() {
   // Get vaste dienst records for this aflosser
   const aflosserVasteDienstRecords = vasteDienstRecords.filter((record: any) => record.aflosser_id === aflosser?.id)
   
-  // Calculate current balance
-  const currentBalance = aflosserVasteDienstRecords.length > 0 
-    ? aflosserVasteDienstRecords.sort((a: any, b: any) => b.year - a.year || b.month - a.month)[0]?.balance_days || 0
-    : 0
+  // Calculate current balance - EXACTE KOPIE VAN KAART BEREKENING
+  const currentBalance = (() => {
+    if (!aflosser) return 0
+    
+    // Bereken gewerkte dagen deze maand voor ALLE aflossers
+    const today = new Date()
+    const currentYear = today.getFullYear()
+    const currentMonth = today.getMonth() + 1
+    
+    const currentMonthTrips = trips.filter((trip: any) => {
+      if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
+      if (trip.status !== 'voltooid') return false
+      
+      const tripStart = new Date(trip.start_datum)
+      return tripStart.getFullYear() === currentYear && 
+             tripStart.getMonth() + 1 === currentMonth
+    })
+    
+    const gewerktDezeMaand = currentMonthTrips.reduce((total: number, trip: any) => {
+      const start = new Date(trip.start_datum)
+      const end = new Date(trip.eind_datum)
+      const timeDiff = end.getTime() - start.getTime()
+      const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1
+      return total + daysDiff
+    }, 0)
+    
+    // Voor aflossers met startsaldo
+    const startsaldoNote = aflosser.notes?.find((note: any) => 
+      note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
+    )
+    
+    if (startsaldoNote) {
+      const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
+      if (match) {
+        const startsaldo = parseFloat(match[1])
+        const beginsaldo = -15 + startsaldo
+        
+        // Actuele dagen = Beginsaldo + Gewerkt deze maand
+        const actueleDagen = beginsaldo + gewerktDezeMaand
+        console.log(`📊 Aflosser ${aflosser.first_name}: startsaldo ${startsaldo}, beginsaldo ${beginsaldo}, gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
+        return actueleDagen
+      }
+    }
+    
+    // Voor bestaande aflossers zonder startsaldo: -15 + gewerkte dagen
+    const actueleDagen = -15 + gewerktDezeMaand
+    console.log(`📊 Bestaande aflosser ${aflosser.first_name}: gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
+    return actueleDagen
+  })()
 
 
   // Prevent hydration errors
@@ -263,67 +308,6 @@ export default function AflosserDetailPage() {
                 <div className="ml-auto flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                   <span className="text-sm font-normal text-green-700">Automatisch</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      try {
-                        console.log('🔄 Manually triggering vaste dienst recalculation...')
-                        
-                        // Direct database update for this specific aflosser
-                        const { data: trips, error: tripsError } = await supabase
-                          .from('trips')
-                          .select('*')
-                          .eq('aflosser_id', aflosser.id)
-                          .eq('status', 'voltooid')
-                          .not('eind_datum', 'is', null)
-                        
-                        if (tripsError) {
-                          console.error('Error fetching trips:', tripsError)
-                          return
-                        }
-                        
-                        console.log(`Found ${trips.length} completed trips for ${aflosser.first_name}`)
-                        
-                        // Calculate total work days
-                        let totalWorkDays = 0
-                        for (const trip of trips) {
-                          const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                          console.log(`Trip ${trip.id}: ${workDays} days`)
-                          totalWorkDays += workDays
-                        }
-                        
-                        console.log(`Total work days: ${totalWorkDays}`)
-                        
-                        // Update vaste dienst record
-                        const balanceDays = totalWorkDays - 15
-                        const { error: updateError } = await supabase
-                          .from('vaste_dienst_records')
-                          .update({
-                            actual_days: totalWorkDays,
-                            balance_days: balanceDays
-                          })
-                          .eq('aflosser_id', aflosser.id)
-                        
-                        if (updateError) {
-                          console.error('Error updating record:', updateError)
-                          alert('Fout bij bijwerken van database')
-                        } else {
-                          console.log(`✅ Updated record: ${totalWorkDays} days, balance: ${balanceDays}`)
-                          alert(`✅ Bijgewerkt! ${totalWorkDays} dagen gewerkt, saldo: ${balanceDays}`)
-                          window.location.reload()
-                        }
-                        
-                      } catch (error) {
-                        console.error('Error triggering recalculation:', error)
-                        alert('Fout bij herberekenen van vaste dienst tracking')
-                      }
-                    }}
-                    className="ml-2 text-xs"
-                  >
-                    <RefreshCw className="w-3 h-3 mr-1" />
-                    Herbereken
-                  </Button>
                 </div>
               </CardTitle>
             </CardHeader>
@@ -367,33 +351,71 @@ export default function AflosserDetailPage() {
                       {aflosserVasteDienstRecords
                         .sort((a: any, b: any) => b.year - a.year || b.month - a.month)
                         .slice(0, 3) // Show only last 3 months
-                        .map((record: any) => (
-                        <div key={record.id} className="flex items-center justify-between p-2 border rounded">
-                          <div className="text-sm">
-                            <span className="font-medium">
-                              {new Date(record.year, record.month - 1).toLocaleString('nl-NL', { month: 'short', year: 'numeric' })}
-                            </span>
-                            <span className="text-gray-600 ml-2">
-                              {record.actual_days}/{record.required_days}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <span className={`text-sm font-medium ${record.balance_days > 0 ? 'text-green-600' : record.balance_days < 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                              {record.balance_days > 0 ? '+' : ''}{record.balance_days}
-                            </span>
-                            {record.balance_days > 0 ? (
-                              <TrendingUp className="w-3 h-3 text-green-600" />
-                            ) : record.balance_days < 0 ? (
-                              <TrendingDown className="w-3 h-3 text-red-600" />
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
+                        .map((record: any) => {
+                          // BEREKEN ALLEEN GEWERKTE DAGEN voor deze maand
+                          const monthTrips = trips.filter((trip: any) => {
+                            if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
+                            if (trip.status !== 'voltooid') return false
+                            
+                            const tripStart = new Date(trip.start_datum)
+                            return tripStart.getFullYear() === record.year && 
+                                   tripStart.getMonth() + 1 === record.month
+                          })
+                          
+                          const gewerktDezeMaand = monthTrips.reduce((total: number, trip: any) => {
+                            const start = new Date(trip.start_datum)
+                            const end = new Date(trip.eind_datum)
+                            const timeDiff = end.getTime() - start.getTime()
+                            const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1
+                            return total + daysDiff
+                          }, 0)
+                          
+                          return (
+                            <div key={record.id} className="flex items-center justify-between p-2 border rounded">
+                              <div className="text-sm">
+                                <span className="font-medium">
+                                  {new Date(record.year, record.month - 1).toLocaleString('nl-NL', { month: 'short', year: 'numeric' })}
+                                </span>
+                                <span className="text-gray-600 ml-2">
+                                  {gewerktDezeMaand}/15 dagen
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <span className="text-sm font-medium text-blue-600">
+                                  {gewerktDezeMaand} dagen
+                                </span>
+                                <Calendar className="w-3 h-3 text-blue-600" />
+                              </div>
+                            </div>
+                          )
+                        })}
                       {aflosserVasteDienstRecords.length > 3 && (
                         <p className="text-xs text-gray-500 text-center mt-2">
                           +{aflosserVasteDienstRecords.length - 3} meer maanden
                         </p>
                       )}
+                      
+                      {/* Startsaldo Info onderaan */}
+                      {(() => {
+                        const startsaldoNote = aflosser.notes?.find((note: any) => 
+                          note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
+                        )
+                        
+                        if (startsaldoNote) {
+                          const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
+                          if (match) {
+                            const startsaldo = parseFloat(match[1])
+                            const beginsaldo = -15 + startsaldo
+                            return (
+                              <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600">
+                                <div>Startsaldo: <span className="font-medium">{startsaldo > 0 ? '+' : ''}{startsaldo}</span> dagen</div>
+                                <div>Beginsaldo eerste maand: <span className="font-medium">{beginsaldo}</span> dagen</div>
+                              </div>
+                            )
+                          }
+                        }
+                        return null
+                      })()}
                     </div>
                   )}
                 </div>
