@@ -804,6 +804,7 @@ export default function NogInTeDelenPage() {
                     <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
                     <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
                     <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
+                    <SelectItem value="RO">🇷🇴 Roemenië</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

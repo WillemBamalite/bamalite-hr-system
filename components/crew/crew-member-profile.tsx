@@ -34,7 +34,8 @@ const NATIONALITY_OPTIONS = [
   { value: "BE", label: "🇧🇪 Belgisch" },
   { value: "FR", label: "🇫🇷 Frans" },
   { value: "DE", label: "🇩🇪 Duits" },
-  { value: "LUX", label: "🇱🇺 Luxemburgs" }
+  { value: "LUX", label: "🇱🇺 Luxemburgs" },
+  { value: "RO", label: "🇷🇴 Roemeens" }
 ]
 
 const REGIME_OPTIONS = ["1/1", "2/2", "3/3"]

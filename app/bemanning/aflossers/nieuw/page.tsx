@@ -222,6 +222,7 @@ export default function NieuwAflosserPage() {
                         <SelectItem value="FR">FR Frans</SelectItem>
                         <SelectItem value="DE">DE Duits</SelectItem>
                         <SelectItem value="LUX">LUX Luxemburgs</SelectItem>
+                        <SelectItem value="RO">RO Roemeens</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

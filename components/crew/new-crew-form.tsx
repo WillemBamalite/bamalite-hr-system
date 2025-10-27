@@ -454,6 +454,7 @@ export function NewCrewForm() {
                     <SelectItem value="FR">🇫🇷 Frans</SelectItem>
                     <SelectItem value="DE">🇩🇪 Duits</SelectItem>
                     <SelectItem value="LUX">🇱🇺 Luxemburgs</SelectItem>
+                    <SelectItem value="RO">🇷🇴 Roemeens</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
