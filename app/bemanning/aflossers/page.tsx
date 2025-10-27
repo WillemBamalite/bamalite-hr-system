@@ -170,6 +170,7 @@ export default function ReizenAflossersPage() {
 
     try {
       const newTrip = {
+        trip_name: `${newTripData.trip_from} → ${newTripData.trip_to}`, // Auto-generate trip name
         ship_id: newTripData.ship_id,
         start_date: newTripData.start_date,
         end_date: newTripData.end_date || null,
