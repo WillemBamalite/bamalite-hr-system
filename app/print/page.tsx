@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { BackButton } from "@/components/ui/back-button";
+import { calculateCurrentStatus } from "@/utils/regime-calculator";
 import { 
   Ship, 
   Users, 
@@ -47,6 +48,38 @@ export default function PrintPage() {
   const students = crew.filter((c) => c.is_student && c.status !== 'uit-dienst');
   const outstandingLoans = (loans || []).filter((l: any) => l.status === 'open');
 
+  // Helper function to sort crew by rank (same as ship overview)
+  const sortCrewByRank = (crew: any[]) => {
+    const rankOrder = {
+      'Kapitein': 1,
+      'kapitein': 1,
+      'Stuurman': 2,
+      'stuurman': 2,
+      'Matroos': 3,
+      'matroos': 3,
+      'Deksman': 4,
+      'deksman': 4,
+      'Aflosser': 5,
+      'aflosser': 5
+    };
+    
+    return crew.sort((a, b) => {
+      const rankA = rankOrder[a.position as keyof typeof rankOrder] || 999;
+      const rankB = rankOrder[b.position as keyof typeof rankOrder] || 999;
+      return rankA - rankB;
+    });
+  };
+
+  // Helper function for nationality flags
+  const getNationalityFlag = (nationality: string) => {
+    const flags: { [key: string]: string } = {
+      'NL': '🇳🇱', 'DE': '🇩🇪', 'PL': '🇵🇱', 'RO': '🇷🇴', 'BG': '🇧🇬',
+      'CZ': '🇨🇿', 'SLK': '🇸🇰', 'EG': '🇪🇬', 'SERV': '🇷🇸',
+      'HUN': '🇭🇺', 'FR': '🇫🇷', 'LUX': '🇱🇺', 'PO': '🇵🇱'
+    }
+    return flags[nationality] || '🏳️'
+  }
+
   // Group ships by company
   const shipsByCompany = ships.reduce((acc: any, ship: any) => {
     const company = ship.company || 'Geen Bedrijf';
@@ -66,28 +99,33 @@ export default function PrintPage() {
         <head>
           <title>Print Overzicht</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 12px; }
             .page-break { page-break-before: always; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-            .company-title { font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-            .ship-section { margin-bottom: 30px; }
-            .ship-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #2563eb; }
-            .crew-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 20px; }
-            .crew-card { border: 1px solid #ddd; padding: 15px; border-radius: 8px; }
-            .crew-name { font-weight: bold; font-size: 16px; margin-bottom: 8px; }
-            .crew-details { font-size: 14px; color: #666; }
-            .crew-details div { margin-bottom: 4px; }
-            .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .company-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; }
+            .ship-section { margin-bottom: 25px; }
+            .ship-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #2563eb; }
+            .status-columns { display: flex; gap: 15px; margin-bottom: 15px; }
+            .status-column { flex: 1; }
+            .status-title { font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #374151; }
+            .crew-card { border: 1px solid #ddd; padding: 8px; border-radius: 4px; margin-bottom: 8px; }
+            .crew-name { font-weight: bold; font-size: 13px; margin-bottom: 4px; }
+            .crew-details { font-size: 11px; color: #666; }
+            .crew-details div { margin-bottom: 2px; }
+            .status-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
             .status-aan-boord { background-color: #dcfce7; color: #166534; }
             .status-thuis { background-color: #dbeafe; color: #1e40af; }
             .status-ziek { background-color: #fef2f2; color: #dc2626; }
             .status-nog-in-te-delen { background-color: #fef3c7; color: #d97706; }
-            .section-title { font-size: 20px; font-weight: bold; margin: 30px 0 20px 0; color: #374151; }
-            .list-item { margin-bottom: 15px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; }
-            .list-item-header { font-weight: bold; margin-bottom: 5px; }
-            .list-item-details { font-size: 14px; color: #666; }
-            .no-data { text-align: center; color: #9ca3af; font-style: italic; margin: 20px 0; }
-            .print-date { text-align: right; font-size: 12px; color: #666; margin-bottom: 20px; }
+            .aan-boord-title { color: #166534; }
+            .thuis-title { color: #1e40af; }
+            .ziek-title { color: #dc2626; }
+            .section-title { font-size: 16px; font-weight: bold; margin: 20px 0 15px 0; color: #374151; }
+            .list-item { margin-bottom: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 4px; }
+            .list-item-header { font-weight: bold; margin-bottom: 3px; }
+            .list-item-details { font-size: 11px; color: #666; }
+            .no-data { text-align: center; color: #9ca3af; font-style: italic; margin: 15px 0; font-size: 11px; }
+            .print-date { text-align: right; font-size: 10px; color: #666; margin-bottom: 15px; }
           </style>
         </head>
         <body>
@@ -117,34 +155,221 @@ export default function PrintPage() {
       companyShips.forEach((ship: any) => {
         const shipCrew = activeCrew.filter((member: any) => member.ship_id === ship.id);
         
+        // Use exact same filtering logic as ship overview
+        const aanBoordCrew = shipCrew.filter((member: any) => {
+          if (member.status === "ziek") return false
+          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
+          if (member.expected_start_date) return member.status === "aan-boord"
+          if (!member.regime) return member.status === "aan-boord"
+          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
+          return statusCalculation.currentStatus === "aan-boord"
+        });
+
+        const thuisCrew = shipCrew.filter((member: any) => {
+          if (member.status === "ziek") return false
+          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
+          if (member.expected_start_date) return member.status === "thuis"
+          if (!member.regime) return member.status === "thuis"
+          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
+          return statusCalculation.currentStatus === "thuis"
+        });
+
+        const ziekCrew = shipCrew.filter((member: any) => member.status === "ziek");
+        
         content += `
           <div class="ship-section">
             <div class="ship-title">${ship.name}</div>
-            <div class="crew-grid">
+            <div class="status-columns">
         `;
 
-        if (shipCrew.length === 0) {
-          content += `<div class="no-data">Geen bemanning toegewezen</div>`;
+        // Aan boord column
+        content += `
+          <div class="status-column">
+            <div class="status-title aan-boord-title">Aan Boord (${aanBoordCrew.length})</div>
+        `;
+        if (aanBoordCrew.length === 0) {
+          content += `<div class="no-data">Geen bemanning</div>`;
         } else {
-          shipCrew.forEach((member: any) => {
-            const statusClass = member.status === 'aan-boord' ? 'status-aan-boord' : 
-                              member.status === 'thuis' ? 'status-thuis' : 
-                              member.status === 'ziek' ? 'status-ziek' : 'status-nog-in-te-delen';
-            
+          sortCrewByRank(aanBoordCrew).forEach((member: any) => {
+            // Calculate rotation info (same logic as ship overview)
+            const getRotationInfo = () => {
+              if (member.expected_start_date) {
+                const today = new Date()
+                today.setHours(0, 0, 0, 0)
+                const startDate = new Date(member.expected_start_date)
+                startDate.setHours(0, 0, 0, 0)
+                const daysUntilStart = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                return { text: `Aan boord: ${format(startDate, 'dd-MM-yyyy')}`, isWaitingForStart: true }
+              }
+              
+              if (!member.regime || member.regime === "Altijd") return null
+              
+              const statusCalculation = calculateCurrentStatus(
+                member.regime as "1/1" | "2/2" | "3/3" | "Altijd", 
+                member.thuis_sinds || null, 
+                member.on_board_since || null, 
+                member.status === "ziek"
+              )
+              
+              if (statusCalculation.daysUntilRotation !== null) {
+                const nextRotationDate = statusCalculation.nextRotationDate;
+                return { 
+                  text: `Naar huis: ${nextRotationDate ? format(new Date(nextRotationDate), 'dd-MM-yyyy') : ''}`, 
+                  isWaitingForStart: false 
+                }
+              }
+              
+              return null
+            }
+
+            const rotationInfo = getRotationInfo()
+
             content += `
               <div class="crew-card">
-                <div class="crew-name">${member.first_name} ${member.last_name}</div>
+                <div class="crew-name">${member.first_name} ${member.last_name} ${getNationalityFlag(member.nationality)}</div>
                 <div class="crew-details">
                   <div><strong>Functie:</strong> ${member.position}</div>
-                  <div><strong>Regime:</strong> ${member.regime || 'Niet ingevuld'}</div>
-                  <div><strong>Status:</strong> <span class="status-badge ${statusClass}">${member.status}</span></div>
-                  <div><strong>Telefoon:</strong> ${member.phone || 'Niet ingevuld'}</div>
-                  <div><strong>Email:</strong> ${member.email || 'Niet ingevuld'}</div>
+                  ${member.diplomas && member.diplomas.length > 0 ? `<div><strong>Diploma's:</strong> ${member.diplomas.join(', ')}</div>` : ''}
+                  ${member.position !== "Aflosser" ? `<div><strong>Regime:</strong> ${member.regime || 'Geen'}</div>` : ''}
+                  ${rotationInfo && member.position !== "Aflosser" ? `
+                    <div><strong>${rotationInfo.text}</strong></div>
+                  ` : ''}
+                  ${member.active_notes && member.active_notes.length > 0 ? `
+                    <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #e5e7eb;">
+                      <div style="font-size: 10px; color: #ea580c; font-weight: 500;">Notities:</div>
+                      ${member.active_notes.map((note: any) => `
+                        <div style="font-size: 10px; color: #6b7280; background: #fef3c7; padding: 2px 4px; margin: 1px 0; border-left: 2px solid #f59e0b;">
+                          ${note.content}
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : ''}
                 </div>
               </div>
             `;
           });
         }
+        content += `</div>`;
+
+        // Thuis column
+        content += `
+          <div class="status-column">
+            <div class="status-title thuis-title">Thuis (${thuisCrew.length})</div>
+        `;
+        if (thuisCrew.length === 0) {
+          content += `<div class="no-data">Geen bemanning</div>`;
+        } else {
+          sortCrewByRank(thuisCrew).forEach((member: any) => {
+            // Calculate rotation info (same logic as ship overview)
+            const getRotationInfo = () => {
+              if (member.expected_start_date) {
+                const today = new Date()
+                today.setHours(0, 0, 0, 0)
+                const startDate = new Date(member.expected_start_date)
+                startDate.setHours(0, 0, 0, 0)
+                const daysUntilStart = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                return { text: `Aan boord: ${format(startDate, 'dd-MM-yyyy')}`, isWaitingForStart: true }
+              }
+              
+              if (!member.regime || member.regime === "Altijd") return null
+              
+              const statusCalculation = calculateCurrentStatus(
+                member.regime as "1/1" | "2/2" | "3/3" | "Altijd", 
+                member.thuis_sinds || null, 
+                member.on_board_since || null, 
+                member.status === "ziek"
+              )
+              
+              if (statusCalculation.daysUntilRotation !== null) {
+                const nextRotationDate = statusCalculation.nextRotationDate;
+                return { 
+                  text: `Naar huis: ${nextRotationDate ? format(new Date(nextRotationDate), 'dd-MM-yyyy') : ''}`, 
+                  isWaitingForStart: false 
+                }
+              }
+              
+              return null
+            }
+
+            const rotationInfo = getRotationInfo()
+
+            content += `
+              <div class="crew-card">
+                <div class="crew-name">${member.first_name} ${member.last_name} ${getNationalityFlag(member.nationality)}</div>
+                <div class="crew-details">
+                  <div><strong>Functie:</strong> ${member.position}</div>
+                  ${member.diplomas && member.diplomas.length > 0 ? `<div><strong>Diploma's:</strong> ${member.diplomas.join(', ')}</div>` : ''}
+                  ${member.position !== "Aflosser" ? `<div><strong>Regime:</strong> ${member.regime || 'Geen'}</div>` : ''}
+                  ${rotationInfo && member.position !== "Aflosser" ? `
+                    <div><strong>${rotationInfo.text}</strong></div>
+                  ` : ''}
+                  ${member.active_notes && member.active_notes.length > 0 ? `
+                    <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #e5e7eb;">
+                      <div style="font-size: 10px; color: #ea580c; font-weight: 500;">Notities:</div>
+                      ${member.active_notes.map((note: any) => `
+                        <div style="font-size: 10px; color: #6b7280; background: #fef3c7; padding: 2px 4px; margin: 1px 0; border-left: 2px solid #f59e0b;">
+                          ${note.content}
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          });
+        }
+        content += `</div>`;
+
+        // Ziek column
+        content += `
+          <div class="status-column">
+            <div class="status-title ziek-title">Ziek (${ziekCrew.length})</div>
+        `;
+        if (ziekCrew.length === 0) {
+          content += `<div class="no-data">Geen bemanning</div>`;
+        } else {
+          sortCrewByRank(ziekCrew).forEach((member: any) => {
+            // Get sick info for sick crew members
+            const getSickInfo = () => {
+              if (member.status !== "ziek") return null
+              
+              const sickLeaveRecord = sickLeave.find((sick: any) => 
+                sick.crew_member_id === member.id && 
+                (sick.status === "actief" || sick.status === "wacht-op-briefje")
+              )
+              
+              return sickLeaveRecord
+            }
+
+            const sickInfo = getSickInfo()
+
+            content += `
+              <div class="crew-card">
+                <div class="crew-name">${member.first_name} ${member.last_name} ${getNationalityFlag(member.nationality)}</div>
+                <div class="crew-details">
+                  <div><strong>Functie:</strong> ${member.position}</div>
+                  ${sickInfo ? `
+                    <div><strong>Ziekinformatie:</strong></div>
+                    <div>Ziek vanaf: ${format(new Date(sickInfo.start_date), 'dd-MM-yyyy')}</div>
+                    ${sickInfo.certificate_valid_until ? `<div>Briefje tot: ${format(new Date(sickInfo.certificate_valid_until), 'dd-MM-yyyy')}</div>` : '<div>Geen briefje</div>'}
+                    ${sickInfo.notes ? `<div>Reden: ${sickInfo.notes}</div>` : ''}
+                  ` : ''}
+                  ${member.active_notes && member.active_notes.length > 0 ? `
+                    <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #e5e7eb;">
+                      <div style="font-size: 10px; color: #ea580c; font-weight: 500;">Notities:</div>
+                      ${member.active_notes.map((note: any) => `
+                        <div style="font-size: 10px; color: #6b7280; background: #fef3c7; padding: 2px 4px; margin: 1px 0; border-left: 2px solid #f59e0b;">
+                          ${note.content}
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          });
+        }
+        content += `</div>`;
 
         content += `
             </div>

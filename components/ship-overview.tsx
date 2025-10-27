@@ -234,16 +234,16 @@ export function ShipOverview() {
                   <div className="text-xs text-blue-600 mb-1">
                     {isWaitingForStart ? (
                       <>
-                        Gaat aan boord: {nextRotation === 0 ? "vandaag" : nextRotation === 1 ? "morgen" : `${nextRotation} dagen`} ({format(new Date(member.expected_start_date), 'dd-MM-yyyy')})
+                        Aan boord: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
                       </>
                     ) : (
                       <>
-                        Volgende rotatie: {nextRotation} dagen ({(() => {
+                        Naar huis: {(() => {
                           if (!member.regime || member.regime === "Altijd") return ""
                           const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
                           if (!statusCalculation.nextRotationDate) return ""
                           return format(new Date(statusCalculation.nextRotationDate), 'dd-MM-yyyy')
-                        })()})
+                        })()}
                       </>
                     )}
                   </div>
