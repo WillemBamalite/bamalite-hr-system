@@ -48,7 +48,6 @@ export default function ReizenAflossersPage() {
   // Form states
   const [selectedAflosserId, setSelectedAflosserId] = useState("")
   const [newTripData, setNewTripData] = useState({
-    trip_name: "",
     ship_id: "",
     start_date: "",
     end_date: "",
@@ -164,14 +163,13 @@ export default function ReizenAflossersPage() {
 
   // Create new trip
   const handleCreateTrip = async () => {
-    if (!newTripData.trip_name || !newTripData.ship_id || !newTripData.start_date || !newTripData.trip_from || !newTripData.trip_to) {
+    if (!newTripData.ship_id || !newTripData.start_date || !newTripData.trip_from || !newTripData.trip_to) {
       alert("Vul alle verplichte velden in")
       return
     }
 
     try {
       const newTrip = {
-        trip_name: newTripData.trip_name,
         ship_id: newTripData.ship_id,
         start_date: newTripData.start_date,
         end_date: newTripData.end_date || null,
@@ -186,7 +184,6 @@ export default function ReizenAflossersPage() {
       
       // Reset form
       setNewTripData({
-        trip_name: "",
         ship_id: "",
         start_date: "",
         end_date: "",
@@ -917,16 +914,6 @@ export default function ReizenAflossersPage() {
             <DialogTitle>Nieuwe Reis Aanmaken</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="trip_name">Reis Naam *</Label>
-              <Input
-                id="trip_name"
-                value={newTripData.trip_name}
-                onChange={(e) => setNewTripData({...newTripData, trip_name: e.target.value})}
-                placeholder="Bijv. Rotterdam - Hamburg"
-              />
-            </div>
-            
             <div>
               <Label htmlFor="ship_id">Schip *</Label>
               <Select value={newTripData.ship_id} onValueChange={(value) => setNewTripData({...newTripData, ship_id: value})}>
