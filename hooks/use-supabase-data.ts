@@ -1,6 +1,101 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
+// Function to calculate work days for vaste dienst aflossers based on hours
+// Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
+export function calculateWorkDaysVasteDienst(startDate: string, startTime: string, endDate: string, endTime: string): number {
+  if (!startDate || !endDate || !startTime || !endTime) return 0
+
+  // Parse both DD-MM-YYYY and ISO format dates
+  const parseDate = (dateStr: string): Date => {
+    if (!dateStr || typeof dateStr !== 'string') {
+      console.error('Invalid date string:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    // Check if it's already an ISO date (contains T or has 4-digit year at start)
+    if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      // It's already an ISO date, use it directly
+      const date = new Date(dateStr)
+      if (isNaN(date.getTime())) {
+        console.error('Invalid ISO date:', dateStr)
+        return new Date() // Return current date as fallback
+      }
+      return date
+    }
+    
+    // Otherwise, parse as DD-MM-YYYY format
+    const parts = dateStr.split('-')
+    if (parts.length !== 3) {
+      console.error('Invalid date format:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    const day = parseInt(parts[0], 10)
+    const month = parseInt(parts[1], 10) - 1 // JavaScript months are 0-based
+    const year = parseInt(parts[2], 10)
+    
+    const date = new Date(year, month, day)
+    if (isNaN(date.getTime())) {
+      console.error('Invalid parsed date:', dateStr)
+      return new Date() // Return current date as fallback
+    }
+    
+    return date
+  }
+
+  // Parse time string (HH:MM:SS or HH:MM format)
+  const parseTime = (timeStr: string): number => {
+    if (!timeStr || typeof timeStr !== 'string') {
+      console.error('Invalid time string:', timeStr)
+      return 0
+    }
+    
+    const timeParts = timeStr.split(':')
+    if (timeParts.length < 2) {
+      console.error('Invalid time format:', timeStr)
+      return 0
+    }
+    
+    const hours = parseInt(timeParts[0], 10)
+    const minutes = parseInt(timeParts[1], 10)
+    
+    if (isNaN(hours) || isNaN(minutes)) {
+      console.error('Invalid time values:', timeStr)
+      return 0
+    }
+    
+    return hours + (minutes / 60)
+  }
+
+  const start = parseDate(startDate)
+  const end = parseDate(endDate)
+  const startTimeHours = parseTime(startTime)
+  const endTimeHours = parseTime(endTime)
+
+  if (end < start) {
+    console.error('Error: end date is before start date')
+    return 0
+  }
+
+  // Create full datetime objects
+  const startDateTime = new Date(start)
+  startDateTime.setHours(Math.floor(startTimeHours), (startTimeHours % 1) * 60, 0, 0)
+
+  const endDateTime = new Date(end)
+  endDateTime.setHours(Math.floor(endTimeHours), (endTimeHours % 1) * 60, 0, 0)
+
+  // Calculate duration in hours
+  const timeDiffMs = endDateTime.getTime() - startDateTime.getTime()
+  const totalHours = timeDiffMs / (1000 * 60 * 60)
+
+  // Convert to day credits using 12-hour increments
+  // Formula: credits = ceil(hours / 12) * 0.5
+  const dayCredits = Math.ceil(totalHours / 12) * 0.5
+
+  return dayCredits
+}
+
 // Functie om automatisch crew members te activeren op hun startdatum
 async function autoActivateCrewMembers(crewData: any[]) {
   const today = new Date()

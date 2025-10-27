@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
-import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useSupabaseData, calculateWorkDaysVasteDienst, calculateWorkDays } from "@/hooks/use-supabase-data"
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -134,11 +134,9 @@ export default function AflosserDetailPage() {
     })
     
     const gewerktDezeMaand = currentMonthTrips.reduce((total: number, trip: any) => {
-      const start = new Date(trip.start_datum)
-      const end = new Date(trip.eind_datum)
-      const timeDiff = end.getTime() - start.getTime()
-      const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1
-      return total + daysDiff
+      // Use vaste dienst calculation for vaste dienst aflossers
+      const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+      return total + workDays
     }, 0)
     
     // Voor aflossers met startsaldo
@@ -294,16 +292,16 @@ export default function AflosserDetailPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
-            <Avatar className="w-16 h-16">
-              <AvatarFallback className="bg-blue-100 text-blue-700 text-xl">
-                {aflosser.first_name[0]}{aflosser.last_name[0]}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                {aflosser.first_name} {aflosser.last_name}
-              </h1>
-              <p className="text-gray-600">Aflosser</p>
+          <Avatar className="w-16 h-16">
+            <AvatarFallback className="bg-blue-100 text-blue-700 text-xl">
+              {aflosser.first_name[0]}{aflosser.last_name[0]}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {aflosser.first_name} {aflosser.last_name}
+            </h1>
+            <p className="text-gray-600">Aflosser</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -412,11 +410,9 @@ export default function AflosserDetailPage() {
                           })
                           
                           const gewerktDezeMaand = monthTrips.reduce((total: number, trip: any) => {
-                            const start = new Date(trip.start_datum)
-                            const end = new Date(trip.eind_datum)
-                            const timeDiff = end.getTime() - start.getTime()
-                            const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1
-                            return total + daysDiff
+                            // Use vaste dienst calculation for vaste dienst aflossers
+                            const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                            return total + workDays
                           }, 0)
                           
                           return (
@@ -588,23 +584,23 @@ export default function AflosserDetailPage() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-2xl">{getNationalityFlag(aflosser.nationality)}</span>
-                    <span className="font-medium">{aflosser.nationality}</span>
-                  </div>
-                  
-                  {aflosser.phone && (
-                    <div className="flex items-center space-x-2 text-sm">
-                      <Phone className="w-4 h-4 text-gray-500" />
-                      <span>{aflosser.phone}</span>
-                    </div>
-                  )}
-                  
-                  {aflosser.email && (
-                    <div className="flex items-center space-x-2 text-sm">
-                      <Mail className="w-4 h-4 text-gray-500" />
-                      <span>{aflosser.email}</span>
-                    </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-2xl">{getNationalityFlag(aflosser.nationality)}</span>
+                <span className="font-medium">{aflosser.nationality}</span>
+              </div>
+              
+              {aflosser.phone && (
+                <div className="flex items-center space-x-2 text-sm">
+                  <Phone className="w-4 h-4 text-gray-500" />
+                  <span>{aflosser.phone}</span>
+                </div>
+              )}
+              
+              {aflosser.email && (
+                <div className="flex items-center space-x-2 text-sm">
+                  <Mail className="w-4 h-4 text-gray-500" />
+                  <span>{aflosser.email}</span>
+                </div>
                   )}
                 </>
               )}
@@ -779,7 +775,7 @@ export default function AflosserDetailPage() {
                     let totalWorkDays = 0
                     
                     completedTrips.forEach((trip: any) => {
-                      const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                      const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
                       totalWorkDays += workDays
                     })
                     
@@ -1048,8 +1044,15 @@ export default function AflosserDetailPage() {
                                       <span className="text-sm text-gray-600">Werkdagen:</span>
                                       <span className="font-medium text-blue-600">
                                         {(() => {
-                                          // Use the new calculateWorkDays function
-                                          const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                          // Use different calculation based on whether aflosser is in vaste dienst
+                                          let workDays
+                                          if (aflosser.vaste_dienst) {
+                                            // For vaste dienst aflossers, use hour-based calculation
+                                            workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                          } else {
+                                            // For other aflossers, use simple day calculation
+                                            workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                          }
                                           return workDays === Math.floor(workDays) 
                                             ? `${workDays} dag${workDays !== 1 ? 'en' : ''}`
                                             : `${workDays} dag${workDays !== 1 ? 'en' : ''}`

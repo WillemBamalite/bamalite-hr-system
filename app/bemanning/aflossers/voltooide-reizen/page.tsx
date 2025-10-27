@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MobileHeaderNav } from '@/components/ui/mobile-header-nav'
 import { DashboardButton } from '@/components/ui/dashboard-button'
-import { useSupabaseData } from '@/hooks/use-supabase-data'
+import { useSupabaseData, calculateWorkDaysVasteDienst, calculateWorkDays } from '@/hooks/use-supabase-data'
 import { 
   ArrowLeft, 
   Search, 
@@ -372,7 +372,15 @@ export default function VoltooideReizenPage() {
                               <span className="text-sm text-gray-600">Werkdagen:</span>
                               <span className="font-medium text-blue-600">
                                 {(() => {
-                                  const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                  // Use different calculation based on whether aflosser is in vaste dienst
+                                  let workDays
+                                  if (assignedAflosser?.vaste_dienst) {
+                                    // For vaste dienst aflossers, use hour-based calculation
+                                    workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                  } else {
+                                    // For other aflossers, use simple day calculation
+                                    workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                  }
                                   return workDays === Math.floor(workDays) 
                                     ? `${workDays} dag${workDays !== 1 ? 'en' : ''}`
                                     : `${workDays} dag${workDays !== 1 ? 'en' : ''}`

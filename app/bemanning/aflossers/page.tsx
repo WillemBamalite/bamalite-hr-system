@@ -31,7 +31,7 @@ import {
   MessageSquare,
   Award
 } from 'lucide-react'
-import { useSupabaseData } from '@/hooks/use-supabase-data'
+import { useSupabaseData, calculateWorkDaysVasteDienst } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 export default function ReizenAflossersPage() {
@@ -97,11 +97,9 @@ export default function ReizenAflossersPage() {
     })
     
     const gewerktDezeMaand = currentMonthTrips.reduce((total: number, trip: any) => {
-      const start = new Date(trip.start_datum)
-      const end = new Date(trip.eind_datum)
-      const timeDiff = end.getTime() - start.getTime()
-      const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1
-      return total + daysDiff
+      // Use vaste dienst calculation for vaste dienst aflossers
+      const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+      return total + workDays
     }, 0)
     
     // Voor aflossers met startsaldo
