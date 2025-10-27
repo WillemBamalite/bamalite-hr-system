@@ -1080,11 +1080,29 @@ export default function ReizenAflossersPage() {
                   <SelectValue placeholder="Selecteer aflosser" />
                 </SelectTrigger>
                 <SelectContent>
-                  {aflossers.filter((a: any) => a.status === 'thuis').map((aflosser: any) => (
-                    <SelectItem key={aflosser.id} value={aflosser.id}>
-                      {aflosser.first_name} {aflosser.last_name} ({aflosser.nationality})
-                    </SelectItem>
-                  ))}
+                  {aflossers.map((aflosser: any) => {
+                    // Check if aflosser has an active trip
+                    const hasActiveTrip = trips.some((trip: any) => 
+                      trip.aflosser_id === aflosser.id && trip.status === 'actief'
+                    )
+                    
+                    // Check if aflosser has a future assigned trip
+                    const hasFutureTrip = trips.some((trip: any) => 
+                      trip.aflosser_id === aflosser.id && 
+                      (trip.status === 'ingedeeld' || trip.status === 'gepland') &&
+                      new Date(trip.start_date) > new Date()
+                    )
+                    
+                    const statusText = hasActiveTrip ? ' (Actieve reis)' : 
+                                     hasFutureTrip ? ' (Toekomstige reis)' : 
+                                     aflosser.status === 'thuis' ? ' (Beschikbaar)' : ''
+                    
+                    return (
+                      <SelectItem key={aflosser.id} value={aflosser.id}>
+                        {aflosser.first_name} {aflosser.last_name} ({aflosser.nationality}){statusText}
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
             </div>
