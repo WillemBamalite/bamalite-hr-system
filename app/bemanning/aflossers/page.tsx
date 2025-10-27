@@ -29,7 +29,9 @@ import {
   UserCheck,
   UserX,
   MessageSquare,
-  Award
+  Award,
+  Edit,
+  X
 } from 'lucide-react'
 import { useSupabaseData, calculateWorkDaysVasteDienst } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -44,6 +46,7 @@ export default function ReizenAflossersPage() {
   const [assignAflosserDialog, setAssignAflosserDialog] = useState<string | null>(null)
   const [boardShipDialog, setBoardShipDialog] = useState<string | null>(null)
   const [completeTripDialog, setCompleteTripDialog] = useState<string | null>(null)
+  const [editTripDialog, setEditTripDialog] = useState<string | null>(null)
   
   // Form states
   const [selectedAflosserId, setSelectedAflosserId] = useState("")
@@ -59,6 +62,12 @@ export default function ReizenAflossersPage() {
   const [boardData, setBoardData] = useState({
     start_datum: "",
     start_tijd: ""
+  })
+
+  const [editTripData, setEditTripData] = useState({
+    trip_from: "",
+    trip_to: "",
+    aflosser_id: "none"
   })
   
   const [completeData, setCompleteData] = useState({
@@ -269,8 +278,8 @@ export default function ReizenAflossersPage() {
 
       // Update aflosser status back to 'thuis'
       if (trip.aflosser_id) {
-        await updateCrew(trip.aflosser_id, {
-          status: "thuis",
+    await updateCrew(trip.aflosser_id, {
+      status: "thuis",
           ship_id: null
         })
       }
@@ -291,9 +300,46 @@ export default function ReizenAflossersPage() {
 
     try {
       await deleteTrip(tripId)
-      alert("Reis geannuleerd!")
+    alert("Reis geannuleerd!")
     } catch (error) {
       console.error("Error canceling trip:", error)
+      alert("Fout bij annuleren reis")
+    }
+  }
+
+  // Edit trip (voor ingedeelde trips)
+  const handleEditTrip = async () => {
+    if (!editTripDialog) return
+
+    try {
+      await updateTrip(editTripDialog, {
+        trip_from: editTripData.trip_from,
+        trip_to: editTripData.trip_to,
+        aflosser_id: editTripData.aflosser_id === "none" ? null : editTripData.aflosser_id,
+        trip_name: `${editTripData.trip_from} → ${editTripData.trip_to}` // Update trip name
+      })
+
+      setEditTripDialog(null)
+      setEditTripData({ trip_from: "", trip_to: "", aflosser_id: "none" })
+      alert("Reis bijgewerkt!")
+    } catch (error) {
+      console.error("Error editing trip:", error)
+      alert("Fout bij bewerken reis")
+    }
+  }
+
+  // Cancel assigned trip (voor ingedeelde trips)
+  const handleCancelAssignedTrip = async (tripId: string) => {
+    if (!confirm("Weet je zeker dat je deze reis wilt annuleren? De aflosser wordt verwijderd en de reis gaat terug naar 'gepland'.")) return
+
+    try {
+      await updateTrip(tripId, {
+        status: 'gepland',
+        aflosser_id: null
+      })
+      alert("Reis geannuleerd en terug naar gepland!")
+    } catch (error) {
+      console.error("Error canceling assigned trip:", error)
       alert("Fout bij annuleren reis")
     }
   }
@@ -461,8 +507,8 @@ export default function ReizenAflossersPage() {
                   </div>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+                        </CardContent>
+                      </Card>
 
             {/* Ingedeelde Reizen */}
             <Card>
@@ -482,9 +528,25 @@ export default function ReizenAflossersPage() {
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <h4 className="font-medium">{getShipName(trip.ship_id)}</h4>
-                          <Badge className={getStatusColor(trip.status)}>
-                            {getStatusText(trip.status)}
-                          </Badge>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditTripDialog(trip.id)
+                                setEditTripData({
+                                  trip_from: trip.trip_from,
+                                  trip_to: trip.trip_to,
+                                  aflosser_id: trip.aflosser_id || "none"
+                                })
+                              }}
+                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              title="Reis bewerken"
+                            >
+                              <Edit className="w-4 h-4 text-gray-500 hover:text-gray-700" />
+                            </button>
+                            <Badge className={getStatusColor(trip.status)}>
+                              {getStatusText(trip.status)}
+                            </Badge>
+                          </div>
                               </div>
                         
                         <div className="space-y-2 text-sm text-gray-600">
@@ -500,18 +562,29 @@ export default function ReizenAflossersPage() {
                             <div className="flex items-center space-x-2">
                               <UserPlus className="w-4 h-4" />
                               <span>{assignedAflosser.first_name} {assignedAflosser.last_name}</span>
-                                </div>
-                              )}
+                  </div>
+                )}
                             </div>
                         
-                            <Button 
-                              size="sm"
-                          onClick={() => setBoardShipDialog(trip.id)}
-                          className="bg-green-600 hover:bg-green-700"
-                            >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Aan Boord Melden
-                            </Button>
+                            <div className="flex space-x-2">
+                              <Button 
+                                size="sm"
+                                onClick={() => setBoardShipDialog(trip.id)}
+                                className="bg-blue-600 hover:bg-blue-700 flex-1"
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Aan Boord
+                              </Button>
+                              <Button 
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCancelAssignedTrip(trip.id)}
+                                className="flex-1"
+                              >
+                                <X className="w-4 h-4 mr-1" />
+                                Annuleren
+                              </Button>
+                            </div>
                       </div>
                     </div>
                       )
@@ -532,7 +605,7 @@ export default function ReizenAflossersPage() {
               <CardContent className="space-y-4">
                 {actieveTrips.map((trip: any) => {
                   const assignedAflosser = crew.find((c: any) => c.id === trip.aflosser_id)
-                  return (
+                      return (
                     <div key={trip.id} className="border rounded-lg p-4">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -540,43 +613,43 @@ export default function ReizenAflossersPage() {
                           <Badge className={getStatusColor(trip.status)}>
                             {getStatusText(trip.status)}
                           </Badge>
-                </div>
+                              </div>
                         
                         <div className="space-y-2 text-sm text-gray-600">
                           <div className="flex items-center space-x-2">
                             <MapPin className="w-4 h-4" />
                             <span>{trip.trip_from} → {trip.trip_to}</span>
-                  </div>
+                            </div>
                           <div className="flex items-center space-x-2">
                             <CalendarDays className="w-4 h-4" />
                             <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
-                </div>
+                              </div>
                           {assignedAflosser && (
                             <div className="flex items-center space-x-2">
                               <UserPlus className="w-4 h-4" />
                               <span>{assignedAflosser.first_name} {assignedAflosser.last_name}</span>
-                  </div>
+                              </div>
                           )}
                           {trip.start_datum && (
                             <div className="flex items-center space-x-2">
                               <Clock className="w-4 h-4" />
                               <span>Aan boord: {format(new Date(trip.start_datum), 'dd-MM-yyyy')} {trip.start_tijd}</span>
-                </div>
-                          )}
-          </div>
+                                </div>
+                              )}
+                            </div>
 
-                        <Button 
-                          size="sm" 
+                            <Button 
+                              size="sm"
                           onClick={() => setCompleteTripDialog(trip.id)}
                           className="bg-gray-600 hover:bg-gray-700"
-                        >
+                            >
                           <Clock className="w-4 h-4 mr-1" />
-                          Reis Afsluiten
-              </Button>
+                              Reis Afsluiten
+                            </Button>
             </div>
           </div>
-                  )
-                })}
+                      )
+                    })}
               </CardContent>
             </Card>
           </div>
@@ -586,17 +659,17 @@ export default function ReizenAflossersPage() {
         <TabsContent value="aflossers" className="space-y-6">
           {/* Aflossers Header */}
           <div className="flex items-center justify-between">
-            <div>
+                  <div>
               <h2 className="text-2xl font-bold text-gray-900">Aflossers</h2>
               <p className="text-gray-600">Beheer alle aflossers en hun status</p>
-            </div>
+                  </div>
             <Link href="/bemanning/aflossers/nieuw">
               <Button className="bg-blue-600 hover:bg-blue-700">
                 <UserPlus className="w-4 h-4 mr-2" />
                 Nieuwe Aflosser
               </Button>
             </Link>
-          </div>
+                </div>
 
           {/* Categorized Aflossers */}
           <div className="space-y-8">
@@ -612,25 +685,25 @@ export default function ReizenAflossersPage() {
                     const vasteDienstBalance = getVasteDienstBalance(aflosser.id)
                     return (
                       <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-6">
+              <CardContent className="p-6">
                           <div className="space-y-4">
                             {/* Header */}
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-3">
                                 <Avatar className="h-12 w-12">
                                   <AvatarFallback className="bg-blue-100 text-blue-600">
                                     {aflosser.first_name?.[0] || '?'}{aflosser.last_name?.[0] || '?'}
                                   </AvatarFallback>
                                 </Avatar>
-                                <div>
+                  <div>
                                   <Link href={`/bemanning/aflossers/${aflosser.id}`}>
                                     <h3 className="font-semibold text-blue-600 hover:text-blue-800 cursor-pointer transition-colors">
                                       {aflosser.first_name} {aflosser.last_name}
                                     </h3>
                                   </Link>
                                   <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
-                                </div>
-                              </div>
+                  </div>
+                </div>
                               <Badge className={
                                 aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
                                 aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
@@ -647,7 +720,7 @@ export default function ReizenAflossersPage() {
                               <div className="bg-green-50 p-3 rounded-lg">
                                 <div className="flex items-start space-x-2">
                                   <Award className="w-4 h-4 text-green-600 mt-0.5" />
-                                  <div>
+                  <div>
                                     <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
                                     <div className="flex flex-wrap gap-1">
                                       {aflosser.diplomas.map((diploma: string, index: number) => (
@@ -655,10 +728,10 @@ export default function ReizenAflossersPage() {
                                           {diploma}
                                         </Badge>
                                       ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
+                  </div>
+                </div>
+                  </div>
+                </div>
                             )}
 
                             {/* Contact Info */}
@@ -675,7 +748,7 @@ export default function ReizenAflossersPage() {
                                   <span>{aflosser.email}</span>
                                 </div>
                               )}
-                            </div>
+          </div>
 
                             {/* Vaste Dienst Saldo */}
                             {aflosser.vaste_dienst && (
@@ -689,8 +762,8 @@ export default function ReizenAflossersPage() {
                                   }`}>
                                     {vasteDienstBalance > 0 ? '+' : ''}{vasteDienstBalance} dagen
                                   </span>
-                                </div>
-                              </div>
+            </div>
+          </div>
                             )}
 
                             {/* Algemene Opmerkingen */}
@@ -706,8 +779,8 @@ export default function ReizenAflossersPage() {
                               </div>
                             )}
                           </div>
-                        </CardContent>
-                      </Card>
+              </CardContent>
+            </Card>
                     )
                   })}
                 </div>
@@ -721,28 +794,28 @@ export default function ReizenAflossersPage() {
                   <UserX className="w-5 h-5 mr-2" />
                   Zelfstandige Aflossers ({aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).length})
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).map((aflosser: any) => (
                     <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
+                  <CardContent className="p-6">
                         <div className="space-y-4">
                           {/* Header */}
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
+                      <div className="flex items-center space-x-3">
                               <Avatar className="h-12 w-12">
                                 <AvatarFallback className="bg-green-100 text-green-600">
                                   {aflosser.first_name?.[0] || '?'}{aflosser.last_name?.[0] || '?'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
                                 <Link href={`/bemanning/aflossers/${aflosser.id}`}>
                                   <h3 className="font-semibold text-green-600 hover:text-green-800 cursor-pointer transition-colors">
-                                    {aflosser.first_name} {aflosser.last_name}
+                            {aflosser.first_name} {aflosser.last_name}
                                   </h3>
-                                </Link>
+                          </Link>
                                 <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
-                              </div>
-                            </div>
+                          </div>
+                        </div>
                             <Badge className={
                               aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
                               aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
@@ -752,7 +825,7 @@ export default function ReizenAflossersPage() {
                                aflosser.status === 'aan-boord' ? 'Aan Boord' :
                                aflosser.status}
                             </Badge>
-                          </div>
+                      </div>
 
                           {/* Diploma's */}
                           {aflosser.diplomas && aflosser.diplomas.length > 0 && (
@@ -765,9 +838,9 @@ export default function ReizenAflossersPage() {
                                     {aflosser.diplomas.map((diploma: string, index: number) => (
                                       <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
                                         {diploma}
-                                      </Badge>
+                      </Badge>
                                     ))}
-                                  </div>
+                    </div>
                                 </div>
                               </div>
                             </div>
@@ -775,12 +848,12 @@ export default function ReizenAflossersPage() {
 
                           {/* Contact Info */}
                           <div className="space-y-2">
-                            {aflosser.phone && (
+                    {aflosser.phone && (
                               <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <Phone className="w-4 h-4" />
-                                <span>{aflosser.phone}</span>
-                              </div>
-                            )}
+                        <Phone className="w-4 h-4" />
+                        <span>{aflosser.phone}</span>
+                      </div>
+                    )}
                             {aflosser.email && (
                               <div className="flex items-center space-x-2 text-sm text-gray-600">
                                 <MessageSquare className="w-4 h-4" />
@@ -850,24 +923,24 @@ export default function ReizenAflossersPage() {
                             </Badge>
                           </div>
 
-                          {/* Diploma's */}
-                          {aflosser.diplomas && aflosser.diplomas.length > 0 && (
+                    {/* Diploma's */}
+                    {aflosser.diplomas && aflosser.diplomas.length > 0 && (
                             <div className="bg-green-50 p-3 rounded-lg">
                               <div className="flex items-start space-x-2">
                                 <Award className="w-4 h-4 text-green-600 mt-0.5" />
                                 <div>
                                   <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
-                                  <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1">
                                     {aflosser.diplomas.map((diploma: string, index: number) => (
                                       <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                        {diploma}
-                                      </Badge>
-                                    ))}
+                              {diploma}
+                            </Badge>
+                          ))}
                                   </div>
                                 </div>
-                              </div>
-                            </div>
-                          )}
+                        </div>
+                      </div>
+                    )}
 
                           {/* Contact Info */}
                           <div className="space-y-2">
@@ -875,8 +948,8 @@ export default function ReizenAflossersPage() {
                               <div className="flex items-center space-x-2 text-sm text-gray-600">
                                 <Phone className="w-4 h-4" />
                                 <span>{aflosser.phone}</span>
-                              </div>
-                            )}
+                      </div>
+                    )}
                             {aflosser.email && (
                               <div className="flex items-center space-x-2 text-sm text-gray-600">
                                 <MessageSquare className="w-4 h-4" />
@@ -898,12 +971,12 @@ export default function ReizenAflossersPage() {
                             </div>
                           )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  </CardContent>
+                </Card>
+              ))}
                 </div>
-              </div>
-            )}
+            </div>
+          )}
           </div>
         </TabsContent>
       </Tabs>
@@ -1082,9 +1155,9 @@ export default function ReizenAflossersPage() {
                 value={completeData.eind_datum}
                 onChange={(e) => setCompleteData({...completeData, eind_datum: e.target.value})}
               />
-                  </div>
+            </div>
                   
-                  <div>
+            <div>
               <Label htmlFor="eind_tijd">Afgestapt Tijd *</Label>
               <Input
                 id="eind_tijd"
@@ -1102,13 +1175,67 @@ export default function ReizenAflossersPage() {
                 onChange={(e) => setCompleteData({...completeData, aflosser_opmerkingen: e.target.value})}
                 placeholder="Optionele opmerkingen over gedrag, voorkeuren, etc..."
               />
-                    </div>
+            </div>
             
             <div className="flex space-x-2">
               <Button onClick={handleCompleteTrip} className="flex-1" disabled={!completeData.eind_datum || !completeData.eind_tijd}>
                 Reis Afsluiten
               </Button>
               <Button variant="outline" onClick={() => setCompleteTripDialog(null)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Trip Dialog */}
+      <Dialog open={!!editTripDialog} onOpenChange={() => setEditTripDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reis Bewerken</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit_trip_from">Van</Label>
+              <Input
+                id="edit_trip_from"
+                value={editTripData.trip_from}
+                onChange={(e) => setEditTripData({...editTripData, trip_from: e.target.value})}
+                placeholder="Bijv. Rotterdam"
+              />
+                  </div>
+                  <div>
+              <Label htmlFor="edit_trip_to">Naar</Label>
+              <Input
+                id="edit_trip_to"
+                value={editTripData.trip_to}
+                onChange={(e) => setEditTripData({...editTripData, trip_to: e.target.value})}
+                placeholder="Bijv. Antwerpen"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit_aflosser">Aflosser</Label>
+              <Select value={editTripData.aflosser_id} onValueChange={(value) => setEditTripData({...editTripData, aflosser_id: value})}>
+                      <SelectTrigger>
+                  <SelectValue placeholder="Selecteer aflosser" />
+                      </SelectTrigger>
+                      <SelectContent>
+                  <SelectItem value="none">Geen aflosser</SelectItem>
+                  {aflossers.map((aflosser: any) => (
+                          <SelectItem key={aflosser.id} value={aflosser.id}>
+                      {aflosser.first_name} {aflosser.last_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+            <div className="flex space-x-2">
+              <Button onClick={handleEditTrip} className="flex-1">
+                <Edit className="w-4 h-4 mr-2" />
+                Bijwerken
+              </Button>
+              <Button variant="outline" onClick={() => setEditTripDialog(null)}>
                 Annuleren
               </Button>
             </div>
