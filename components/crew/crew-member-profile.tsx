@@ -118,6 +118,20 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
   // Find the crew member
   const crewMember = crew.find((member: any) => member.id === crewMemberId)
+  
+  // Bereken status één keer en hergebruik (om inconsistenties te voorkomen)
+  const calculatedStatus = useMemo(() => {
+    if (!crewMember || !crewMember.regime || crewMember.regime === "Altijd") return null
+    if (crewMember.status === "ziek" || crewMember.status === "nog-in-te-delen") return null
+    
+    return calculateCurrentStatus(
+      crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", 
+      crewMember.thuis_sinds || null, 
+      crewMember.on_board_since || null, 
+      crewMember.status === "ziek", 
+      (crewMember as any).expected_start_date || null
+    )
+  }, [crewMember])
 
   // Initialize edit data when crew member is found
   useEffect(() => {
@@ -424,15 +438,16 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   // Genereer scheepshistorie op basis van assignment_history
   const shipHistory = crewMember.assignment_history || []
   
-  // Genereer status wijzigingen
-  const statusChanges = []
+  // Genereer status wijzigingen (historisch + toekomstig)
+  const statusChanges: Array<{date: string, action: string, ship: string, type: string, isFuture?: boolean}> = []
   
   if (crewMember.on_board_since) {
     statusChanges.push({
       date: crewMember.on_board_since,
       action: "Aan boord gegaan",
       ship: getShipName(crewMember.ship_id),
-      type: "aan-boord"
+      type: "aan-boord",
+      isFuture: false
     })
   }
   
@@ -441,12 +456,29 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
       date: crewMember.thuis_sinds,
       action: "Naar huis gegaan",
       ship: getShipName(crewMember.ship_id),
-      type: "thuis"
+      type: "thuis",
+      isFuture: false
     })
   }
 
-  // Sorteer op datum (nieuwste eerst)
-  statusChanges.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  // Voeg toekomstige automatisch berekende wijzigingen toe (gebruik calculatedStatus uit useMemo)
+  if (calculatedStatus && calculatedStatus.nextRotationDate) {
+    const rotationAction = calculatedStatus.currentStatus === "aan-boord" ? "Naar huis" : "Aan boord"
+    statusChanges.push({
+      date: calculatedStatus.nextRotationDate,
+      action: rotationAction,
+      ship: getShipName(crewMember.ship_id),
+      type: calculatedStatus.currentStatus === "aan-boord" ? "thuis" : "aan-boord",
+      isFuture: true
+    })
+  }
+
+  // Sorteer op datum (oudste eerst, toekomstige aan het einde)
+  statusChanges.sort((a, b) => {
+    const dateA = new Date(a.date).getTime()
+    const dateB = new Date(b.date).getTime()
+    return dateA - dateB // Oudste eerst
+  })
 
   // Check if checklist is complete
   const isChecklistComplete = () => {
@@ -597,20 +629,28 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                 </div>
               )}
               <Badge className={(() => {
+                // Ziek en nog-in-te-delen: gebruik database status
                 if (crewMember.status === "ziek") return "bg-red-100 text-red-800"
                 if (crewMember.status === "nog-in-te-delen") return "bg-gray-100 text-gray-800"
+                
+                // Als er geen regime is: gebruik database status
                 if (!crewMember.regime) return getStatusColor(crewMember.status)
                 
-                const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
-                return statusCalculation.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                // Voor alle anderen: gebruik BEREKENDE status (uit useMemo)
+                if (!calculatedStatus) return getStatusColor(crewMember.status)
+                return calculatedStatus.currentStatus === "aan-boord" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
               })()}>
                 {(() => {
+                  // Ziek en nog-in-te-delen: gebruik database status
                   if (crewMember.status === "ziek") return "Ziek"
                   if (crewMember.status === "nog-in-te-delen") return "Nog in te delen"
+                  
+                  // Als er geen regime is: gebruik database status
                   if (!crewMember.regime) return crewMember.status === "aan-boord" ? "Aan boord" : "Thuis"
                   
-                  const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
-                  return statusCalculation.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
+                  // Voor alle anderen: gebruik BEREKENDE status (uit useMemo)
+                  if (!calculatedStatus) return crewMember.status === "aan-boord" ? "Aan boord" : "Thuis"
+                  return calculatedStatus.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
                 })()}
             </Badge>
               {(crewMember as any).is_student && (
@@ -664,7 +704,24 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
             <div>
                 <label className="text-sm font-medium text-gray-700">{t('status')} *</label>
-                {renderField(t('status'), crewMember.status, "status", "select")}
+                {isEditing ? (
+                  renderField(t('status'), crewMember.status, "status", "select")
+                ) : (
+                  <p className="mt-1">
+                    {(() => {
+                      // Ziek en nog-in-te-delen: gebruik database status
+                      if (crewMember.status === "ziek") return "Ziek"
+                      if (crewMember.status === "nog-in-te-delen") return "Nog in te delen"
+                      
+                      // Als er geen regime is: gebruik database status
+                      if (!crewMember.regime) return crewMember.status === "aan-boord" ? "Aan boord" : "Thuis"
+                      
+                      // Voor alle anderen: gebruik BEREKENDE status (uit useMemo)
+                      if (!calculatedStatus) return crewMember.status === "aan-boord" ? "Aan boord" : "Thuis"
+                      return calculatedStatus.currentStatus === "aan-boord" ? "Aan boord" : "Thuis"
+                    })()}
+                  </p>
+                )}
                 {crewMember.regime && crewMember.regime !== "Altijd" && (
                   <div className="mt-1 text-xs text-gray-500">
                     {(() => {
@@ -687,9 +744,13 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                         }
                       }
                       
-                      // Anders normale rotatie berekening
-                      const statusCalculation = calculateCurrentStatus(crewMember.regime as "1/1" | "2/2" | "3/3" | "Altijd", crewMember.thuis_sinds || null, crewMember.on_board_since || null)
-                      return `Volgende wijziging: ${statusCalculation.daysUntilRotation} dagen`
+                      // Anders normale rotatie berekening (gebruik calculatedStatus uit useMemo)
+                      if (!calculatedStatus || !calculatedStatus.nextRotationDate) {
+                        return `Geen rotatie informatie`
+                      }
+                      const rotationDate = format(new Date(calculatedStatus.nextRotationDate), 'dd-MM-yyyy')
+                      const rotationText = calculatedStatus.currentStatus === "aan-boord" ? "Naar huis op" : "Aan boord op"
+                      return `${rotationText}: ${rotationDate} (${calculatedStatus.daysUntilRotation} ${calculatedStatus.daysUntilRotation === 1 ? 'dag' : 'dagen'})`
                     })()}
                   </div>
                 )}

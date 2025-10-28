@@ -146,12 +146,19 @@ export function ShipOverview() {
       }
       
       if (!member.regime || member.regime === "Altijd") return null
-      const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
+      const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
       return statusCalculation.daysUntilRotation
     }
 
     const nextRotation = getNextRotation()
-    const isWaitingForStart = !!member.expected_start_date
+    // isWaitingForStart = true alleen als expected_start_date in de toekomst is
+    const isWaitingForStart = member.expected_start_date ? (() => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const startDate = new Date(member.expected_start_date)
+      startDate.setHours(0, 0, 0, 0)
+      return startDate > today
+    })() : false
 
     // Haal ziekinformatie op
     const getSickInfo = () => {
@@ -234,15 +241,21 @@ export function ShipOverview() {
                   <div className="text-xs text-blue-600 mb-1">
                     {isWaitingForStart ? (
                       <>
-                        Aan boord: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
+                        Aan boord op: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
                       </>
                     ) : (
                       <>
-                        Naar huis: {(() => {
+                        {(() => {
                           if (!member.regime || member.regime === "Altijd") return ""
-                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
+                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
                           if (!statusCalculation.nextRotationDate) return ""
-                          return format(new Date(statusCalculation.nextRotationDate), 'dd-MM-yyyy')
+                          const dateStr = format(new Date(statusCalculation.nextRotationDate), 'dd-MM-yyyy')
+                          // Toon juiste tekst op basis van huidige status
+                          if (statusCalculation.currentStatus === "aan-boord") {
+                            return <>Naar huis op: {dateStr}</>
+                          } else {
+                            return <>Aan boord op: {dateStr}</>
+                          }
                         })()}
                       </>
                     )}
@@ -561,10 +574,17 @@ export function ShipOverview() {
                                       <Badge className="bg-green-100 text-green-800 text-xs">
                                         {shipCrew.filter((member: any) => {
                                           if (member.status === "ziek") return false
-                                          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                          if (member.expected_start_date) return member.status === "aan-boord"
+                                          // Als expected_start_date in de toekomst is, zijn ze nog thuis
+                                          if (member.expected_start_date) {
+                                            const startDate = new Date(member.expected_start_date)
+                                            startDate.setHours(0, 0, 0, 0)
+                                            const today = new Date()
+                                            today.setHours(0, 0, 0, 0)
+                                            if (startDate > today) return false // Nog niet aan boord
+                                            // Anders (vandaag of verleden) gebruik berekende status
+                                          }
                                           if (!member.regime) return member.status === "aan-boord"
-                                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
+                                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, false, member.expected_start_date || null)
                                           return statusCalculation.currentStatus === "aan-boord"
                                         }).length}
                                       </Badge>
@@ -572,10 +592,20 @@ export function ShipOverview() {
                                     <div className="space-y-3 min-h-[100px]">
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
                                         if (member.status === "ziek") return false
-                                        // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                        if (member.expected_start_date) return member.status === "aan-boord"
+                                        // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
+                                        if (member.expected_start_date) {
+                                          const startDate = new Date(member.expected_start_date)
+                                          startDate.setHours(0, 0, 0, 0)
+                                          const today = new Date()
+                                          today.setHours(0, 0, 0, 0)
+                                          // Als startdatum nog in de toekomst is, zijn ze nog thuis
+                                          if (startDate > today) {
+                                            return false // Nog niet aan boord
+                                          }
+                                          // Anders (vandaag of verleden) gebruik berekende status
+                                        }
                                         if (!member.regime) return member.status === "aan-boord"
-                                        const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
+                                        const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
                                         return statusCalculation.currentStatus === "aan-boord"
                                       })).map((member: any) => (
                                         <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
@@ -591,10 +621,17 @@ export function ShipOverview() {
                                       <Badge className="bg-blue-100 text-blue-800 text-xs">
                                         {shipCrew.filter((member: any) => {
                                           if (member.status === "ziek") return false
-                                          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                          if (member.expected_start_date) return member.status === "thuis"
+                                          // Als expected_start_date in de toekomst is, zijn ze nog thuis
+                                          if (member.expected_start_date) {
+                                            const startDate = new Date(member.expected_start_date)
+                                            startDate.setHours(0, 0, 0, 0)
+                                            const today = new Date()
+                                            today.setHours(0, 0, 0, 0)
+                                            if (startDate > today) return true // Nog thuis (wachten)
+                                            // Anders (vandaag of verleden) gebruik berekende status
+                                          }
                                           if (!member.regime) return member.status === "thuis"
-                                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
+                                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, false, member.expected_start_date || null)
                                           return statusCalculation.currentStatus === "thuis"
                                         }).length}
                                       </Badge>
@@ -602,10 +639,17 @@ export function ShipOverview() {
                                     <div className="space-y-3 min-h-[100px]">
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
                                         if (member.status === "ziek") return false
-                                        // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-                                        if (member.expected_start_date) return member.status === "thuis"
+                                        // Als expected_start_date in de toekomst is, zijn ze nog thuis
+                                        if (member.expected_start_date) {
+                                          const startDate = new Date(member.expected_start_date)
+                                          startDate.setHours(0, 0, 0, 0)
+                                          const today = new Date()
+                                          today.setHours(0, 0, 0, 0)
+                                          if (startDate > today) return true // Nog thuis (wachten)
+                                          // Anders (vandaag of verleden) gebruik berekende status
+                                        }
                                         if (!member.regime) return member.status === "thuis"
-                                        const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
+                                        const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
                                         return statusCalculation.currentStatus === "thuis"
                                       })).map((member: any) => (
                                         <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />

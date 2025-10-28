@@ -158,19 +158,33 @@ export default function PrintPage() {
         // Use exact same filtering logic as ship overview
         const aanBoordCrew = shipCrew.filter((member: any) => {
           if (member.status === "ziek") return false
-          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-          if (member.expected_start_date) return member.status === "aan-boord"
+          // Als expected_start_date in de toekomst is, zijn ze nog thuis
+          if (member.expected_start_date) {
+            const startDate = new Date(member.expected_start_date)
+            startDate.setHours(0, 0, 0, 0)
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            if (startDate > today) return false // Nog niet aan boord
+            // Anders (vandaag of verleden) gebruik berekende status
+          }
           if (!member.regime) return member.status === "aan-boord"
-          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
+          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, false, member.expected_start_date || null)
           return statusCalculation.currentStatus === "aan-boord"
         });
 
         const thuisCrew = shipCrew.filter((member: any) => {
           if (member.status === "ziek") return false
-          // Als expected_start_date bestaat, gebruik database status (wacht op startdatum)
-          if (member.expected_start_date) return member.status === "thuis"
+          // Als expected_start_date in de toekomst is, zijn ze nog thuis
+          if (member.expected_start_date) {
+            const startDate = new Date(member.expected_start_date)
+            startDate.setHours(0, 0, 0, 0)
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            if (startDate > today) return true // Nog thuis (wachten)
+            // Anders (vandaag of verleden) gebruik berekende status
+          }
           if (!member.regime) return member.status === "thuis"
-          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null)
+          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, false, member.expected_start_date || null)
           return statusCalculation.currentStatus === "thuis"
         });
 
@@ -199,7 +213,7 @@ export default function PrintPage() {
                 const startDate = new Date(member.expected_start_date)
                 startDate.setHours(0, 0, 0, 0)
                 const daysUntilStart = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                return { text: `Aan boord: ${format(startDate, 'dd-MM-yyyy')}`, isWaitingForStart: true }
+                return { text: `Aan boord op: ${format(startDate, 'dd-MM-yyyy')}`, isWaitingForStart: true }
               }
               
               if (!member.regime || member.regime === "Altijd") return null
@@ -208,14 +222,24 @@ export default function PrintPage() {
                 member.regime as "1/1" | "2/2" | "3/3" | "Altijd", 
                 member.thuis_sinds || null, 
                 member.on_board_since || null, 
-                member.status === "ziek"
+                member.status === "ziek",
+                member.expected_start_date || null
               )
               
-              if (statusCalculation.daysUntilRotation !== null) {
+              if (statusCalculation.nextRotationDate) {
                 const nextRotationDate = statusCalculation.nextRotationDate;
-                return { 
-                  text: `Naar huis: ${nextRotationDate ? format(new Date(nextRotationDate), 'dd-MM-yyyy') : ''}`, 
-                  isWaitingForStart: false 
+                const dateStr = format(new Date(nextRotationDate), 'dd-MM-yyyy');
+                // Toon juiste tekst op basis van huidige status
+                if (statusCalculation.currentStatus === "aan-boord") {
+                  return { 
+                    text: `Naar huis op: ${dateStr}`, 
+                    isWaitingForStart: false 
+                  }
+                } else {
+                  return { 
+                    text: `Aan boord op: ${dateStr}`, 
+                    isWaitingForStart: false 
+                  }
                 }
               }
               
@@ -268,7 +292,7 @@ export default function PrintPage() {
                 const startDate = new Date(member.expected_start_date)
                 startDate.setHours(0, 0, 0, 0)
                 const daysUntilStart = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                return { text: `Aan boord: ${format(startDate, 'dd-MM-yyyy')}`, isWaitingForStart: true }
+                return { text: `Aan boord op: ${format(startDate, 'dd-MM-yyyy')}`, isWaitingForStart: true }
               }
               
               if (!member.regime || member.regime === "Altijd") return null
@@ -277,14 +301,24 @@ export default function PrintPage() {
                 member.regime as "1/1" | "2/2" | "3/3" | "Altijd", 
                 member.thuis_sinds || null, 
                 member.on_board_since || null, 
-                member.status === "ziek"
+                member.status === "ziek",
+                member.expected_start_date || null
               )
               
-              if (statusCalculation.daysUntilRotation !== null) {
+              if (statusCalculation.nextRotationDate) {
                 const nextRotationDate = statusCalculation.nextRotationDate;
-                return { 
-                  text: `Naar huis: ${nextRotationDate ? format(new Date(nextRotationDate), 'dd-MM-yyyy') : ''}`, 
-                  isWaitingForStart: false 
+                const dateStr = format(new Date(nextRotationDate), 'dd-MM-yyyy');
+                // Toon juiste tekst op basis van huidige status
+                if (statusCalculation.currentStatus === "aan-boord") {
+                  return { 
+                    text: `Naar huis op: ${dateStr}`, 
+                    isWaitingForStart: false 
+                  }
+                } else {
+                  return { 
+                    text: `Aan boord op: ${dateStr}`, 
+                    isWaitingForStart: false 
+                  }
                 }
               }
               
