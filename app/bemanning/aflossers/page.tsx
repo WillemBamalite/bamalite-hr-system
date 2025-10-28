@@ -750,6 +750,20 @@ export default function ReizenAflossersPage() {
                               )}
           </div>
 
+                            {/* Dagtarief (alleen voor uitzendbureau en zelfstandige aflossers) */}
+                            {(aflosser.is_uitzendbureau || aflosser.is_zelfstandig) && aflosser.dag_tarief && (
+                              <div className="bg-orange-50 p-3 rounded-lg">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-orange-800">
+                                    Tarief
+                                  </span>
+                                  <span className="text-sm font-bold text-orange-600">
+                                    €{parseFloat(aflosser.dag_tarief).toFixed(2)}/dag
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Vaste Dienst Saldo */}
                             {aflosser.vaste_dienst && (
                               <div className="bg-blue-50 p-3 rounded-lg">
@@ -862,6 +876,20 @@ export default function ReizenAflossersPage() {
                             )}
                           </div>
 
+                          {/* Dagtarief (voor zelfstandige aflossers) */}
+                          {aflosser.is_zelfstandig && aflosser.dag_tarief && (
+                            <div className="bg-orange-50 p-3 rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-orange-800">
+                                  Tarief
+                                </span>
+                                <span className="text-sm font-bold text-orange-600">
+                                  €{parseFloat(aflosser.dag_tarief).toFixed(2)}/dag
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Algemene Opmerkingen */}
                           {aflosser.aflosser_opmerkingen && (
                             <div className="bg-gray-50 p-3 rounded-lg">
@@ -957,6 +985,20 @@ export default function ReizenAflossersPage() {
                               </div>
                             )}
                           </div>
+
+                          {/* Dagtarief (voor uitzendbureau aflossers) */}
+                          {aflosser.is_uitzendbureau && aflosser.dag_tarief && (
+                            <div className="bg-orange-50 p-3 rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-orange-800">
+                                  Tarief
+                                </span>
+                                <span className="text-sm font-bold text-orange-600">
+                                  €{parseFloat(aflosser.dag_tarief).toFixed(2)}/dag
+                                </span>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Algemene Opmerkingen */}
                           {aflosser.aflosser_opmerkingen && (

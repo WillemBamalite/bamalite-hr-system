@@ -97,6 +97,8 @@ export default function AflosserDetailPage() {
   const { crew, ships, trips, vasteDienstRecords, loading, error, updateCrew, deleteAflosser } = useSupabaseData()
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [editedNotes, setEditedNotes] = useState("")
+  const [isEditingTarief, setIsEditingTarief] = useState(false)
+  const [editedTarief, setEditedTarief] = useState("")
   const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [editedProfile, setEditedProfile] = useState({
     first_name: "",
@@ -470,6 +472,123 @@ export default function AflosserDetailPage() {
         </div>
       )}
 
+      {/* Tarief - Prominent Position voor uitzendbureau/zelfstandige aflossers */}
+      {aflosser?.position === "Aflosser" && (aflosser?.is_uitzendbureau || aflosser?.is_zelfstandig || (!aflosser?.vaste_dienst && !aflosser?.is_uitzendbureau)) && (
+        <div className="mb-8">
+          <Card className="border-2 border-orange-200 bg-gradient-to-r from-orange-50 to-yellow-50">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between text-orange-800">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="w-6 h-6" />
+                  <span>Tarief</span>
+                </div>
+                {!isEditingTarief && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditedTarief(aflosser?.dag_tarief?.toString() || "")
+                      setIsEditingTarief(true)
+                    }}
+                    className="text-orange-600 hover:bg-orange-50 border-orange-300"
+                  >
+                    <Edit3 className="w-3 h-3 mr-1" />
+                    {aflosser?.dag_tarief ? 'Bewerken' : 'Toevoegen'}
+                  </Button>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isEditingTarief ? (
+                <div className="p-6 rounded-lg border-2 bg-white shadow-sm">
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="dagTarief" className="text-sm font-medium text-gray-700 mb-2 block">
+                        Dagtarief (€)
+                      </Label>
+                      <Input
+                        id="dagTarief"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editedTarief}
+                        onChange={(e) => setEditedTarief(e.target.value)}
+                        placeholder="Bijv. 150.00"
+                        className="text-lg"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Tarief per dag in euro's
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await updateCrew(aflosser.id, {
+                              dag_tarief: editedTarief ? parseFloat(editedTarief) : null
+                            })
+                            setIsEditingTarief(false)
+                            // Reload data
+                            window.location.reload()
+                          } catch (error) {
+                            console.error("Error updating tarief:", error)
+                            alert("Fout bij bijwerken tarief")
+                          }
+                        }}
+                        className="bg-orange-600 hover:bg-orange-700"
+                      >
+                        <Save className="w-3 h-3 mr-1" />
+                        Opslaan
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditedTarief(aflosser?.dag_tarief?.toString() || "")
+                          setIsEditingTarief(false)
+                        }}
+                      >
+                        <X className="w-3 h-3 mr-1" />
+                        Annuleren
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 rounded-lg border-2 bg-white shadow-sm text-center">
+                  {aflosser?.dag_tarief ? (
+                    <>
+                      <div className="flex items-center justify-center space-x-3 mb-2">
+                        <TrendingUp className="w-8 h-8 text-orange-600" />
+                        <span className="text-4xl font-bold text-orange-600">
+                          €{parseFloat(aflosser.dag_tarief).toFixed(2)}/dag
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-2">
+                        Dagtarief voor reizen
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-center space-x-3 mb-2">
+                        <TrendingUp className="w-8 h-8 text-gray-400" />
+                        <span className="text-lg text-gray-500">
+                          Nog geen tarief ingesteld
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-2">
+                        Klik op "Toevoegen" om een tarief in te stellen
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Personal Information */}
         <div className="lg:col-span-1">
@@ -621,14 +740,26 @@ export default function AflosserDetailPage() {
 
 
               {/* Notes */}
-              {aflosser.notes && aflosser.notes.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-sm text-gray-700 mb-2">Notities:</h4>
-                  <div className="text-sm text-gray-600">
-                    {typeof aflosser.notes[0] === 'string' ? aflosser.notes[0] : aflosser.notes[0]?.text || 'Geen notitie'}
+              {(() => {
+                // Filter out startsaldo notes
+                const filteredNotes = aflosser.notes?.filter((note: any) => {
+                  const noteText = typeof note === 'string' ? note : note?.text || ''
+                  return !noteText.toLowerCase().includes('startsaldo')
+                }) || []
+                
+                return filteredNotes.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-sm text-gray-700 mb-2">Notities:</h4>
+                    <div className="text-sm text-gray-600">
+                      {filteredNotes.map((note: any, index: number) => (
+                        <div key={index} className="mb-1">
+                          {typeof note === 'string' ? note : note?.text || 'Geen notitie'}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* Algemene Opmerkingen */}
               <div>

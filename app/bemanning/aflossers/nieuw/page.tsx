@@ -49,7 +49,9 @@ export default function NieuwAflosserPage() {
     inVasteDienst: false,
     vasteDienstInitialBalance: "0",
     isUitzendbureau: false,
-    uitzendbureauNaam: ""
+    uitzendbureauNaam: "",
+    dagTarief: "",
+    isZelfstandig: false
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,6 +62,11 @@ export default function NieuwAflosserPage() {
       // Validatie
       if (formData.selectedDiplomas.length === 0) {
         alert("Selecteer minimaal 1 diploma")
+        return
+      }
+
+      if (formData.isUitzendbureau && !formData.uitzendbureauNaam) {
+        alert("Vul de naam van het uitzendbureau in")
         return
       }
 
@@ -86,7 +93,11 @@ export default function NieuwAflosserPage() {
         notes: formData.notes ? [formData.notes] : [],
         vaste_dienst: formData.inVasteDienst, // Voeg vaste_dienst veld toe
         is_uitzendbureau: formData.isUitzendbureau,
-        uitzendbureau_naam: formData.isUitzendbureau ? formData.uitzendbureauNaam : null
+        uitzendbureau_naam: formData.isUitzendbureau ? formData.uitzendbureauNaam : null,
+        is_zelfstandig: formData.isZelfstandig,
+        dag_tarief: (formData.isUitzendbureau || formData.isZelfstandig) && formData.dagTarief && formData.dagTarief.trim() !== '' 
+          ? parseFloat(formData.dagTarief) 
+          : null
       }
 
       // Voeg startsaldo note toe aan crew member
@@ -360,6 +371,62 @@ export default function NieuwAflosserPage() {
                          placeholder="Bijv. Randstad, Tempo-Team, etc."
                          required={formData.isUitzendbureau}
                        />
+                     </div>
+                     
+                     <div>
+                       <Label htmlFor="dagTarief">Dagtarief (€)</Label>
+                       <Input
+                         id="dagTarief"
+                         type="number"
+                         step="0.01"
+                         min="0"
+                         value={formData.dagTarief}
+                         onChange={(e) => setFormData({...formData, dagTarief: e.target.value})}
+                         placeholder="Bijv. 150.00"
+                       />
+                       <p className="text-xs text-gray-500 mt-1">Tarief per dag in euro's</p>
+                     </div>
+                   </div>
+                 )}
+               </div>
+             </div>
+
+             {/* Zelfstandige Aflosser */}
+             <div>
+               <h3 className="text-lg font-semibold mb-4">Zelfstandige Aflosser</h3>
+               <div className="space-y-4">
+                 <div className="flex items-center space-x-2">
+                   <Checkbox
+                     id="isZelfstandig"
+                     checked={formData.isZelfstandig}
+                     onCheckedChange={(checked) => {
+                       setFormData({
+                         ...formData,
+                         isZelfstandig: checked as boolean,
+                         dagTarief: checked ? formData.dagTarief : ""
+                       })
+                     }}
+                   />
+                   <Label htmlFor="isZelfstandig" className="text-sm cursor-pointer">
+                     Zelfstandige aflosser
+                   </Label>
+                 </div>
+                 {formData.isZelfstandig && (
+                   <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                     <h4 className="font-medium text-green-800">Zelfstandige Aflosser Informatie</h4>
+                     
+                     <div>
+                       <Label htmlFor="dagTariefZelfstandig">Dagtarief (€)</Label>
+                       <Input
+                         id="dagTariefZelfstandig"
+                         type="number"
+                         step="0.01"
+                         min="0"
+                         value={formData.dagTarief}
+                         onChange={(e) => setFormData({...formData, dagTarief: e.target.value})}
+                         placeholder="Bijv. 200.00"
+                       />
+                       <p className="text-xs text-gray-500 mt-1">Tarief per dag in euro's</p>
                      </div>
                    </div>
                  )}
