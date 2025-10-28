@@ -750,8 +750,8 @@ export default function ReizenAflossersPage() {
                               )}
           </div>
 
-                            {/* Dagtarief (alleen voor uitzendbureau en zelfstandige aflossers) */}
-                            {(aflosser.is_uitzendbureau || aflosser.is_zelfstandig) && aflosser.dag_tarief && (
+                            {/* Dagtarief (voor uitzendbureau, zelfstandige en bestaande aflossers met tarief, maar niet voor vaste-dienst) */}
+                            {!aflosser.vaste_dienst && aflosser.dag_tarief && (
                               <div className="bg-orange-50 p-3 rounded-lg">
                                 <div className="flex items-center justify-between">
                                   <span className="text-sm font-medium text-orange-800">
@@ -876,8 +876,8 @@ export default function ReizenAflossersPage() {
                             )}
                           </div>
 
-                          {/* Dagtarief (voor zelfstandige aflossers) */}
-                          {aflosser.is_zelfstandig && aflosser.dag_tarief && (
+                          {/* Dagtarief (voor zelfstandige, uitzendbureau en bestaande aflossers met tarief) */}
+                          {aflosser.dag_tarief && (
                             <div className="bg-orange-50 p-3 rounded-lg">
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium text-orange-800">
@@ -986,8 +986,8 @@ export default function ReizenAflossersPage() {
                             )}
                           </div>
 
-                          {/* Dagtarief (voor uitzendbureau aflossers) */}
-                          {aflosser.is_uitzendbureau && aflosser.dag_tarief && (
+                          {/* Dagtarief (voor uitzendbureau en bestaande aflossers met tarief) */}
+                          {aflosser.dag_tarief && (
                             <div className="bg-orange-50 p-3 rounded-lg">
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium text-orange-800">
