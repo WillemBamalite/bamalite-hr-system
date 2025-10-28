@@ -360,7 +360,77 @@ export default function ReizenAflossersPage() {
       
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('tripsAndReliefCrewManagement')}</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-3xl font-bold text-gray-900">{t('tripsAndReliefCrewManagement')}</h1>
+          <div className="flex flex-col items-center gap-1">
+            <a 
+              href="https://fleet.tresco.eu/map" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="cursor-pointer hover:opacity-80 transition-opacity border-2 border-gray-300 rounded-lg p-2 hover:border-blue-500 hover:bg-blue-50"
+              title="Bekijk live scheeps locaties op Tresco Fleet"
+            >
+              <svg 
+                width="48" 
+                height="64" 
+                viewBox="0 0 48 64" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Schaduw onder de pin - elliptisch */}
+                <ellipse cx="24" cy="60" rx="10" ry="3" fill="#D1D5DB" opacity="0.5"/>
+                
+                {/* Locatiepin - hoofdvorm */}
+                <path 
+                  d="M24 4C16.268 4 10 10.268 10 18C10 24 24 46 24 46C24 46 38 24 38 18C38 10.268 31.732 4 24 4Z" 
+                  fill="#DC2626"
+                />
+                
+                {/* Schaduw op pin (donkerder rechts en onder) */}
+                <path 
+                  d="M24 4C16.268 4 10 10.268 10 18C10 22.5 17 38 24 46C31 38 38 22.5 38 18C38 10.268 31.732 4 24 4Z" 
+                  fill="#991B1B"
+                  opacity="0.4"
+                />
+                
+                {/* Witte cirkel voor kompas */}
+                <circle cx="24" cy="20" r="12" fill="white"/>
+                
+                {/* Kompasroos - 8 punten */}
+                <g stroke="#6B7280" strokeWidth="1.2" fill="none" opacity="0.8">
+                  {/* Hoofdrichtingen (N, S, E, W) */}
+                  <line x1="24" y1="8" x2="24" y2="12"/>
+                  <line x1="24" y1="28" x2="24" y2="32"/>
+                  <line x1="12" y1="20" x2="16" y2="20"/>
+                  <line x1="32" y1="20" x2="36" y2="20"/>
+                  {/* Tussenrichtingen */}
+                  <line x1="16.83" y1="15.17" x2="18.71" y2="17.05"/>
+                  <line x1="31.17" y1="15.17" x2="29.29" y2="17.05"/>
+                  <line x1="16.83" y1="24.83" x2="18.71" y2="22.95"/>
+                  <line x1="31.17" y1="24.83" x2="29.29" y2="22.95"/>
+                </g>
+                
+                {/* Kompasnaald - rood deel (wijst rechtsonder) */}
+                <path 
+                  d="M24 12L18 20L24 28L30 20Z" 
+                  fill="#DC2626"
+                />
+                {/* Kompasnaald - blauw deel (wijst linksboven) */}
+                <path 
+                  d="M24 12L30 20L24 28L18 20Z" 
+                  fill="#2563EB"
+                />
+                
+                {/* Draaipunt van kompasnaald */}
+                <circle cx="24" cy="20" r="2.5" fill="#374151"/>
+                
+                {/* Subtiele highlight op pin */}
+                <ellipse cx="20" cy="14" rx="4" ry="6" fill="white" opacity="0.2"/>
+              </svg>
+            </a>
+            <span className="text-xs text-gray-600 font-medium">Live locatie</span>
+          </div>
+        </div>
         <p className="text-gray-600">{t('fourStepWorkflow')}</p>
       </div>
 
