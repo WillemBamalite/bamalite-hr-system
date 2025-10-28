@@ -680,9 +680,25 @@ export default function ReizenAflossersPage() {
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <h4 className="font-medium">{getShipName(trip.ship_id)}</h4>
-                          <Badge className={getStatusColor(trip.status)}>
-                            {getStatusText(trip.status)}
-                          </Badge>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditTripDialog(trip.id)
+                                setEditTripData({
+                                  trip_from: trip.trip_from,
+                                  trip_to: trip.trip_to,
+                                  aflosser_id: trip.aflosser_id || "none"
+                                })
+                              }}
+                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              title="Reis bewerken"
+                            >
+                              <Edit className="w-4 h-4 text-gray-500 hover:text-gray-700" />
+                            </button>
+                            <Badge className={getStatusColor(trip.status)}>
+                              {getStatusText(trip.status)}
+                            </Badge>
+                          </div>
                               </div>
                         
                         <div className="space-y-2 text-sm text-gray-600">
