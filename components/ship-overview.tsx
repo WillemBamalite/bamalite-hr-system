@@ -37,7 +37,7 @@ const sortCrewByRank = (crew: any[]) => {
 }
 
 export function ShipOverview() {
-  const { ships, crew, sickLeave, loading, error, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
+  const { ships, crew, sickLeave, trips, loading, error, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false);
   
@@ -507,32 +507,37 @@ export function ShipOverview() {
                           if (member.status === "uit-dienst") return false
                           // Verberg leden die nog niet gestart zijn
                           if (member.status === "nog-in-te-delen") return false
-                          // Only show crew members assigned to this ship
-                          if (member.ship_id !== ship.id) return false
                           
-                          // For aflossers, check if they have an active assignment
+                          // For aflossers, check if they have an active trip for this ship FIRST
                           if (member.position === "Aflosser") {
-                            // Simple check: if aflosser status is "thuis", don't show in ship overview
-                            if (member.status === "thuis") {
-                              console.log(`Filtering out ${member.first_name} ${member.last_name} - status is thuis`)
+                            // Check for active trips for this aflosser and ship
+                            const activeTrips = trips?.filter((trip: any) => 
+                              trip.aflosser_id === member.id &&
+                              trip.status === 'actief' &&
+                              trip.ship_id === ship.id
+                            ) || []
+                            
+                            // Als er een actieve reis is voor dit schip, toon de aflosser (ongeacht ship_id)
+                            if (activeTrips.length > 0) {
+                              return true
+                            }
+                            
+                            // Als er geen actieve reis is, check of crew member is assigned to this ship
+                            if (member.ship_id !== ship.id) {
                               return false
                             }
                             
-                            // Additional check: look for completed trips
-                            if (typeof window !== 'undefined') {
-                              const plannedTrips = JSON.parse(localStorage.getItem('plannedTrips') || '[]')
-                              const completedTrips = plannedTrips.filter((trip: any) => 
-                                trip.ship_id === ship.id && 
-                                trip.aflosser_id === member.id &&
-                                trip.status === 'voltooid'
-                              )
-                              
-                              if (completedTrips.length > 0) {
-                                console.log(`Filtering out ${member.first_name} ${member.last_name} - has completed trips`)
-                                return false
-                              }
+                            // Als er geen actieve reis is, check de status
+                            // Alleen tonen als status "aan-boord" is (niet "thuis")
+                            if (member.status !== "aan-boord") {
+                              return false
                             }
+                            
+                            return true
                           }
+                          
+                          // For non-aflossers: Only show crew members assigned to this ship
+                          if (member.ship_id !== ship.id) return false
                           
                           return true
                         })
