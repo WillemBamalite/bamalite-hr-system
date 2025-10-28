@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import Link from "next/link"
@@ -94,12 +94,66 @@ export function DashboardStats() {
     })(),
     oudMedewerkers: crew.filter((c) => c.status === 'uit-dienst').length,
     openLeningen: (loans || []).filter((l: any) => l.status === 'open').length,
-    studenten: crew.filter((c) => c.is_student && c.status !== 'uit-dienst').length
+    studenten: crew.filter((c) => c.is_student && c.status !== 'uit-dienst').length,
+    medischeKeuringen: (() => {
+      // Tel aantal actieve bemanningsleden die binnenkort een keuring nodig hebben of verlopen zijn
+      const activeCrewForMedical = activeCrew.filter((c) => 
+        c.position !== 'Aflosser' && 
+        c.position !== 'aflosser' && 
+        c.is_aflosser !== true
+      )
+      
+      let count = 0
+      const today = new Date()
+      
+      activeCrewForMedical.forEach((member: any) => {
+        // Voor nieuwe medewerkers: check of deadline verstreken is
+        if (!member.laatste_keuring_datum && member.proeftijd_datum) {
+          const proeftijdStart = new Date(member.proeftijd_datum)
+          // Proeftijd 3 maanden + 1 jaar voor keuring
+          const deadline = new Date(proeftijdStart)
+          deadline.setMonth(deadline.getMonth() + 3)
+          deadline.setFullYear(deadline.getFullYear() + 1)
+          
+          if (deadline <= today || deadline.getTime() - today.getTime() <= 90 * 24 * 60 * 60 * 1000) {
+            count++
+          }
+          return
+        }
+        
+        // Als geen keuring datum en geen proeftijd, tel als "nodig"
+        if (!member.laatste_keuring_datum) {
+          count++
+          return
+        }
+        
+        // Bereken volgende keuring datum
+        const laatsteKeuring = new Date(member.laatste_keuring_datum)
+        let nextKeuring: Date
+        
+        // Als niet fit verklaard, dan 1 jaar, anders 3 jaar
+        if (member.fit_verklaard === false) {
+          nextKeuring = new Date(laatsteKeuring)
+          nextKeuring.setFullYear(nextKeuring.getFullYear() + 1)
+        } else {
+          nextKeuring = new Date(laatsteKeuring)
+          nextKeuring.setFullYear(nextKeuring.getFullYear() + 3)
+        }
+        
+        // Check of binnen 3 maanden (90 dagen) of verlopen
+        const daysUntil = Math.floor((nextKeuring.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        if (daysUntil <= 90) {
+          count++
+        }
+      })
+      
+      return count
+    })()
   }
 
   return (
     <div className="space-y-4 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
         <Link href="/bemanning/overzicht" className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
           <div className='text-xs text-blue-700 mt-1'>{t('totalCrewMembers')}</div>
@@ -119,6 +173,13 @@ export function DashboardStats() {
         <Link href="/bemanning/nog-in-te-delen" className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center hover:bg-gray-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-gray-800">{stats.nogInTeDelen}</div>
           <div className='text-xs text-gray-700 mt-1'>{t('newPersonnelMembers')}</div>
+        </Link>
+        <Link href="/bemanning/medische-keuringen" className="bg-teal-50 border border-teal-200 rounded-lg p-4 text-center hover:bg-teal-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-teal-800">{stats.medischeKeuringen}</div>
+          <div className='text-xs text-teal-700 mt-1 flex items-center justify-center gap-1'>
+            <Cloud className="w-3 h-3" />
+            <span>Medische Keuringen</span>
+          </div>
         </Link>
         <Link href="/bemanning/leningen" className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>

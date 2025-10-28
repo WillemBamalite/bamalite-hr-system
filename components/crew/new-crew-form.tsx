@@ -213,6 +213,7 @@ export function NewCrewForm() {
         notes: formData.notes ? [formData.notes] : [],
         // Checklist velden
         in_dienst_vanaf: formData.in_dienst_vanaf || null,
+        proeftijd_datum: formData.in_dienst_vanaf || null, // Automatisch gelijk aan in_dienst_vanaf voor nieuwe medewerkers
         arbeidsovereenkomst: formData.arbeidsovereenkomst,
         ingeschreven_luxembourg: formData.ingeschreven_luxembourg,
         verzekerd: formData.verzekerd,
