@@ -17,6 +17,27 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { supabase } from "@/lib/supabase"
 
+// Helper functie om lokale datum + tijd te parsen (geen UTC conversie)
+function parseLocalDateTime(dateStr: string, timeStr: string): Date {
+  const parts = dateStr.split(/[-/]/)
+  let year: number, month: number, day: number
+  
+  if (parts[0].length === 4) {
+    year = parseInt(parts[0])
+    month = parseInt(parts[1]) - 1
+    day = parseInt(parts[2])
+  } else {
+    day = parseInt(parts[0])
+    month = parseInt(parts[1]) - 1
+    year = parseInt(parts[2])
+  }
+  
+  const [hours, minutes, seconds] = (timeStr || '00:00:00').split(':').map(Number)
+  
+  const date = new Date(year, month, day, hours || 0, minutes || 0, seconds || 0, 0)
+  return date
+}
+
 // Sorteringsfunctie voor bemanningsleden op rang
 const sortCrewByRank = (crew: any[]) => {
   const rankOrder = {
@@ -511,13 +532,26 @@ export function ShipOverview() {
                           // For aflossers, check if they have an active trip for this ship FIRST
                           if (member.position === "Aflosser") {
                             // Check for active trips for this aflosser and ship
-                            const activeTrips = trips?.filter((trip: any) => 
-                              trip.aflosser_id === member.id &&
-                              trip.status === 'actief' &&
-                              trip.ship_id === ship.id
-                            ) || []
+                            const activeTrips = trips?.filter((trip: any) => {
+                              if (trip.aflosser_id !== member.id || trip.status !== 'actief' || trip.ship_id !== ship.id) {
+                                return false
+                              }
+                              
+                              // Check if start date/time has been reached
+                              if (!trip.start_datum || !trip.start_tijd) {
+                                return false
+                              }
+                              
+                              // Parse start date and time (lokaal, geen UTC)
+                              const startDateTime = parseLocalDateTime(trip.start_datum, trip.start_tijd)
+                              
+                              const now = new Date()
+                              
+                              // Alleen tonen als start datum/tijd is aangebroken (vandaag of verleden)
+                              return startDateTime <= now
+                            }) || []
                             
-                            // Als er een actieve reis is voor dit schip, toon de aflosser (ongeacht ship_id)
+                            // Als er een actieve reis is voor dit schip EN de start tijd is aangebroken, toon de aflosser
                             if (activeTrips.length > 0) {
                               return true
                             }
