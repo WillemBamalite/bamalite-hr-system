@@ -42,12 +42,14 @@ function parseLocalDateTime(dateStr: string, timeStr: string): Date {
 const sortCrewByRank = (crew: any[]) => {
   const rankOrder = {
     'Kapitein': 1,
-    'Stuurman': 2,
-    'Vol Matroos': 3,
-    'Matroos': 4,
-    'Licht Matroos': 5,
-    'Deksman': 6,
-    'Aflosser': 7
+    '2e kapitein': 2,
+    'Stuurman': 3,
+    'Vol Matroos': 4,
+    'Matroos': 5,
+    'Lichtmatroos': 6,
+    'Licht Matroos': 6,
+    'Deksman': 7,
+    'Aflosser': 8
   }
   
   return crew.sort((a, b) => {

@@ -53,14 +53,18 @@ export default function PrintPage() {
     const rankOrder = {
       'Kapitein': 1,
       'kapitein': 1,
-      'Stuurman': 2,
-      'stuurman': 2,
-      'Matroos': 3,
-      'matroos': 3,
-      'Deksman': 4,
-      'deksman': 4,
-      'Aflosser': 5,
-      'aflosser': 5
+      '2e kapitein': 2,
+      '2e Kapitein': 2,
+      'Stuurman': 3,
+      'stuurman': 3,
+      'Matroos': 4,
+      'matroos': 4,
+      'Lichtmatroos': 5,
+      'lichtmatroos': 5,
+      'Deksman': 6,
+      'deksman': 6,
+      'Aflosser': 7,
+      'aflosser': 7
     };
     
     return crew.sort((a, b) => {

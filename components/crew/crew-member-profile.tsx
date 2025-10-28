@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 
 const POSITION_OPTIONS = [
   "Kapitein",
+  "2e kapitein",
   "Stuurman",
   "Lichtmatroos",
   "Matroos",

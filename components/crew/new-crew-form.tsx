@@ -466,6 +466,7 @@ export function NewCrewForm() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Kapitein">Kapitein</SelectItem>
+                    <SelectItem value="2e kapitein">2e kapitein</SelectItem>
                     <SelectItem value="Stuurman">Stuurman</SelectItem>
                     <SelectItem value="Lichtmatroos">Lichtmatroos</SelectItem>
                     <SelectItem value="Matroos">Matroos</SelectItem>
