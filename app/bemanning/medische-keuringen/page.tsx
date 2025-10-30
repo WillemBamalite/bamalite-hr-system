@@ -154,16 +154,16 @@ export default function MedischeKeuringenPage() {
                 {proeftijdEinddatum && (
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">Proeftijd afloopt:</span>
-                    <span>{format(proeftijdEinddatum, 'dd-MM-yyyy', { locale: nl })}</span>
+                    <span className="font-semibold">{format(proeftijdEinddatum, 'dd-MM-yyyy', { locale: nl })}</span>
                   </div>
                 )}
                 {newMemberDeadline && (
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">Deadline:</span>
-                    <span className={isNewMemberPastDeadline ? "text-red-600 font-bold" : ""}>
+                    <span className={isNewMemberPastDeadline ? "text-red-700 font-extrabold" : "text-yellow-800 font-semibold"}>
                       {format(newMemberDeadline, 'dd-MM-yyyy', { locale: nl })}
                     </span>
-                    {isNewMemberPastDeadline && <span className="text-red-600">⚠️</span>}
+                    {isNewMemberPastDeadline && <span className="text-red-700">⚠️</span>}
                   </div>
                 )}
               </>
@@ -171,7 +171,7 @@ export default function MedischeKeuringenPage() {
               <>
                 <div className="flex items-center gap-1.5">
                   <span className="font-medium">Laatste keuring:</span>
-                  <span>{format(new Date(member.laatste_keuring_datum), 'dd-MM-yyyy', { locale: nl })}</span>
+                  <span className="font-semibold">{format(new Date(member.laatste_keuring_datum), 'dd-MM-yyyy', { locale: nl })}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="font-medium">Fit verklaard:</span>
@@ -182,7 +182,10 @@ export default function MedischeKeuringenPage() {
                 {nextExaminationDate && (
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">Volgende:</span>
-                    <span>{format(nextExaminationDate, 'dd-MM-yyyy', { locale: nl })}</span>
+                    <span className={isOverdue ? "text-red-700 font-extrabold" : isDueSoon ? "text-orange-700 font-semibold" : "text-green-700 font-semibold"}>
+                      {format(nextExaminationDate, 'dd-MM-yyyy', { locale: nl })}
+                    </span>
+                    {isOverdue && <span className="text-red-700">⚠️</span>}
                   </div>
                 )}
               </>
