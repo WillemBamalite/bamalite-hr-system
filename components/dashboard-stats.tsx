@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Ship, Users, AlertTriangle, FileText, Cloud } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
@@ -96,58 +97,54 @@ export function DashboardStats() {
     openLeningen: (loans || []).filter((l: any) => l.status === 'open').length,
     studenten: crew.filter((c) => c.is_student && c.status !== 'uit-dienst').length,
     medischeKeuringen: (() => {
-      // Tel aantal actieve bemanningsleden die binnenkort een keuring nodig hebben of verlopen zijn
-      const activeCrewForMedical = activeCrew.filter((c) => 
+      // Zelfde logica als pagina Medische Keuringen: som van Verlopen + Binnenkort (3 mnd)
+      const activeCrewForMedical = activeCrew.filter((c: any) => 
+        c.status !== 'uit-dienst' &&
         c.position !== 'Aflosser' && 
         c.position !== 'aflosser' && 
-        c.is_aflosser !== true
+        c.is_aflosser !== true &&
+        !(c.is_student && c.education_type === 'BOL')
       )
-      
-      let count = 0
-      const today = new Date()
-      
+
+      let overdue = 0
+      let dueSoon = 0
+
       activeCrewForMedical.forEach((member: any) => {
-        // Voor nieuwe medewerkers: check of deadline verstreken is
-        if (!member.laatste_keuring_datum && member.proeftijd_datum) {
-          const proeftijdStart = new Date(member.proeftijd_datum)
-          // Proeftijd 3 maanden + 1 jaar voor keuring
-          const deadline = new Date(proeftijdStart)
-          deadline.setMonth(deadline.getMonth() + 3)
-          deadline.setFullYear(deadline.getFullYear() + 1)
-          
-          if (deadline <= today || deadline.getTime() - today.getTime() <= 90 * 24 * 60 * 60 * 1000) {
-            count++
+        const isNewMember = !member.laatste_keuring_datum && !!member.proeftijd_datum
+
+        if (isNewMember) {
+          const proeftijdStart = new Date(member.proeftijd_datum as string)
+          const deadline = addYears(addMonths(proeftijdStart, 3), 1)
+          const diffDays = differenceInDays(deadline, new Date())
+          if (isBefore(deadline, new Date())) {
+            overdue++
+          } else if (diffDays <= 90 && diffDays >= 0) {
+            dueSoon++
           }
           return
         }
-        
-        // Als geen keuring datum en geen proeftijd, tel als "nodig"
-        if (!member.laatste_keuring_datum) {
-          count++
+
+        // Oude medewerkers zonder keuring/proeftijd: niet meetellen
+        if (!member.laatste_keuring_datum && !member.proeftijd_datum) {
           return
         }
-        
-        // Bereken volgende keuring datum
-        const laatsteKeuring = new Date(member.laatste_keuring_datum)
-        let nextKeuring: Date
-        
-        // Als niet fit verklaard, dan 1 jaar, anders 3 jaar
-        if (member.fit_verklaard === false) {
-          nextKeuring = new Date(laatsteKeuring)
-          nextKeuring.setFullYear(nextKeuring.getFullYear() + 1)
-        } else {
-          nextKeuring = new Date(laatsteKeuring)
-          nextKeuring.setFullYear(nextKeuring.getFullYear() + 3)
-        }
-        
-        // Check of binnen 3 maanden (90 dagen) of verlopen
-        const daysUntil = Math.floor((nextKeuring.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-        if (daysUntil <= 90) {
-          count++
+
+        if (member.laatste_keuring_datum) {
+          const last = new Date(member.laatste_keuring_datum)
+          const years = typeof member.fit_verklaard_jaren === 'number' && member.fit_verklaard_jaren
+            ? member.fit_verklaard_jaren
+            : (member.fit_verklaard === false ? 1 : 3)
+          const next = addYears(last, years)
+          const diffDays = differenceInDays(next, new Date())
+          if (isBefore(next, new Date())) {
+            overdue++
+          } else if (diffDays <= 90 && diffDays >= 0) {
+            dueSoon++
+          }
         }
       })
-      
-      return count
+
+      return overdue + dueSoon
     })()
   }
 
