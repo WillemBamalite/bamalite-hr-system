@@ -801,6 +801,7 @@ export function useSupabaseData() {
   const [vasteDienstRecords, setVasteDienstRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [crewColorTags, setCrewColorTags] = useState<Record<string, string>>({})
 
   // Load all data from Supabase
   const loadData = async () => {
@@ -956,6 +957,27 @@ export function useSupabaseData() {
             }
       
       console.log('Data loading completed!')
+
+      // Load crew color tags last, non-blocking for main data
+      try {
+        const { data: colorRows, error: colorErr } = await supabase
+          .from('crew_color_tags')
+          .select('crew_id, color')
+        if (colorErr) {
+          const msg = (colorErr as any)?.message || String(colorErr)
+          console.warn('Skipping crew_color_tags (table missing or no access):', msg)
+          setCrewColorTags({})
+        } else {
+          const map: Record<string, string> = {}
+          for (const row of colorRows || []) {
+            if (row.crew_id && row.color) map[row.crew_id] = row.color
+          }
+          setCrewColorTags(map)
+        }
+      } catch (e) {
+        console.warn('Error loading crew_color_tags:', (e as any)?.message || e)
+        setCrewColorTags({})
+      }
 
     } catch (err) {
       console.error('Error in loadData:', err)
@@ -1789,6 +1811,42 @@ export function useSupabaseData() {
     loading,
     error,
     loadData,
+    crewColorTags,
+    async setCrewColorTag(crewId: string, color: string | null) {
+      try {
+        if (!crewId) return
+        if (color) {
+          // upsert color
+          const { error: upsertError } = await supabase
+            .from('crew_color_tags')
+            .upsert({ crew_id: crewId, color }, { onConflict: 'crew_id' })
+          if (upsertError) throw upsertError
+        } else {
+          // delete color
+          const { error: delError } = await supabase
+            .from('crew_color_tags')
+            .delete()
+            .eq('crew_id', crewId)
+          if (delError) throw delError
+        }
+        // update local state
+        setCrewColorTags((prev) => {
+          const next = { ...prev }
+          if (color) next[crewId] = color
+          else delete next[crewId]
+          return next
+        })
+      } catch (e) {
+        const err: any = e
+        const msg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err))
+        console.error('Error setting crew color tag:', msg)
+        // If table missing, surface a clear hint once
+        if (msg?.includes('relation') && msg?.includes('crew_color_tags')) {
+          console.warn('Hint: create table crew_color_tags (crew_id uuid primary key references crew(id), color text not null)')
+        }
+        throw e
+      }
+    },
     addCrew,
     updateCrew,
     deleteCrew,

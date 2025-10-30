@@ -60,7 +60,7 @@ const sortCrewByRank = (crew: any[]) => {
 }
 
 export function ShipOverview() {
-  const { ships, crew, sickLeave, trips, loading, error, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
+  const { ships, crew, sickLeave, trips, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag } = useSupabaseData()
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false);
   
@@ -156,7 +156,15 @@ export function ShipOverview() {
   }
 
   // Crew Card Component
-  const CrewCard = ({ member, onDoubleClick, sickLeave }: { member: any; onDoubleClick: (id: string, name: string) => void; sickLeave: any[] }) => {
+  const CrewCard = ({ member, onDoubleClick, sickLeave, borderColor }: { member: any; onDoubleClick: (id: string, name: string) => void; sickLeave: any[]; borderColor?: string }) => {
+    const [paletteOpen, setPaletteOpen] = useState(false)
+    const COLOR_OPTIONS = [
+      "#FEE2E2", // red-100
+      "#FFEDD5", // orange-100
+      "#FEF3C7", // amber-100
+      "#E0E7FF", // indigo-100
+      "#F3E8FF", // purple-100
+    ]
     const getNextRotation = () => {
       // Als er een expected_start_date is, bereken dagen tot startdatum
       if (member.expected_start_date) {
@@ -200,12 +208,29 @@ export function ShipOverview() {
 
     return (
       <div
-        className="p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative"
+        className="p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative"
+        style={{
+          backgroundColor: crewColorTags[member.id] || undefined,
+          boxShadow: crewColorTags[member.id] ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
+          borderColor: borderColor || "#e5e7eb",
+          borderWidth: "2px"
+        }}
         onDoubleClick={() => onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
       >
-        {/* Student Education Type Badge */}
-        {member.is_student && member.education_type && (
-          <div className="absolute top-2 right-2">
+        {/* Top-right controls: color button + optional student badge */}
+        <div className="absolute top-2 right-2 flex items-center gap-2">
+          <button
+            type="button"
+            className="w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm"
+            title="Kleur instellen"
+            onClick={(e) => { e.stopPropagation(); setPaletteOpen((v) => !v) }}
+          >
+            <span
+              className="inline-block w-4 h-4 rounded-sm border"
+              style={{ backgroundColor: crewColorTags[member.id] || '#ffffff' }}
+            />
+          </button>
+          {member.is_student && member.education_type && (
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${
               member.education_type === 'BOL' 
                 ? 'bg-blue-100 text-blue-800' 
@@ -213,6 +238,30 @@ export function ShipOverview() {
             }`}>
               {member.education_type}
             </span>
+          )}
+        </div>
+
+        {paletteOpen && (
+          <div className="absolute top-10 right-2 bg-white shadow-lg border rounded-md p-2 z-10">
+            <div className="flex items-center gap-2">
+              {COLOR_OPTIONS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="w-5 h-5 rounded-full border"
+                  style={{ backgroundColor: c }}
+                  onClick={(e) => { e.stopPropagation(); setCrewColorTag(member.id, c); setPaletteOpen(false) }}
+                  title="Kleur instellen"
+                />
+              ))}
+              <button
+                type="button"
+                className="text-xs px-2 py-1 border rounded"
+                onClick={(e) => { e.stopPropagation(); setCrewColorTag(member.id, null); setPaletteOpen(false) }}
+              >
+                Geen
+              </button>
+            </div>
           </div>
         )}
         
@@ -649,7 +698,13 @@ export function ShipOverview() {
                                         const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
                                         return statusCalculation.currentStatus === "aan-boord"
                                       })).map((member: any) => (
-                                        <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#22c55e" /* Aan boord = groen */
+                                        />
                                       ))}
                                     </div>
                                   </div>
@@ -693,7 +748,13 @@ export function ShipOverview() {
                                         const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
                                         return statusCalculation.currentStatus === "thuis"
                                       })).map((member: any) => (
-                                        <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#3b82f6" /* Thuis = blauw */
+                                        />
                                       ))}
                                     </div>
                                   </div>
@@ -709,7 +770,13 @@ export function ShipOverview() {
                                     </div>
                                     <div className="space-y-3 min-h-[100px]">
                                       {sortCrewByRank(shipCrew.filter((member: any) => member.status === "ziek")).map((member: any) => (
-                                        <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#ef4444" /* Ziek = rood */
+                                        />
                                       ))}
                                     </div>
                                   </div>

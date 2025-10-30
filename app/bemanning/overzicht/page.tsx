@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { BackButton } from "@/components/ui/back-button"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 
@@ -22,10 +22,20 @@ const RANK_ORDER = [
 ];
 
 export default function CrewOverviewPage() {
-  const { crew, ships, loading, error } = useSupabaseData()
+  const { crew, ships, loading, error, crewColorTags, setCrewColorTag } = useSupabaseData()
   const { t } = useLanguage()
   const [filteredCrew, setFilteredCrew] = useState<any[]>([])
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
+  // Colors are persisted in Supabase via hook
+  const [paletteFor, setPaletteFor] = useState<string | null>(null)
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const COLOR_OPTIONS = [
+    "#FEE2E2", // red-100
+    "#FFEDD5", // orange-100
+    "#FEF3C7", // amber-100
+    "#E0E7FF", // indigo-100
+    "#F3E8FF", // purple-100
+  ]
 
   // Gebruik uitsluitend live Supabase data voor het overzicht
   // Hierdoor worden statuswijzigingen direct zichtbaar en is er geen
@@ -94,6 +104,22 @@ export default function CrewOverviewPage() {
     return ship ? ship.name : "Geen schip"
   }
 
+  const startLongPress = (memberId: string) => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current)
+    }
+    pressTimerRef.current = setTimeout(() => {
+      setPaletteFor(memberId)
+    }, 500)
+  }
+
+  const cancelLongPress = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -146,7 +172,30 @@ export default function CrewOverviewPage() {
               {grouped[rank] && grouped[rank].length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {grouped[rank].map((member) => (
-                    <div key={member.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div
+                      key={member.id}
+                      className="border rounded-lg p-4 hover:shadow-md transition-shadow relative"
+                      style={{
+                        backgroundColor: crewColorTags[member.id] || undefined,
+                        boxShadow: crewColorTags[member.id] ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
+                        borderColor: member.status === 'ziek' ? '#ef4444' : member.status === 'aan-boord' ? '#22c55e' : member.status === 'thuis' ? '#3b82f6' : undefined,
+                        borderWidth: member.status ? '2px' : undefined,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="absolute top-2 right-2 w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm"
+                        title="Kleur instellen"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setPaletteFor((cur) => (cur === member.id ? null : member.id))
+                        }}
+                      >
+                        <span
+                          className="inline-block w-4 h-4 rounded-sm border"
+                          style={{ backgroundColor: crewColorTags[member.id] || '#ffffff' }}
+                        />
+                      </button>
                       <div className="flex items-center space-x-3 mb-3">
                         <Avatar className="w-10 h-10">
                           <AvatarFallback className="bg-blue-100 text-blue-700">
@@ -219,6 +268,38 @@ export default function CrewOverviewPage() {
                           </div>
                         )}
                       </div>
+
+                      {paletteFor === member.id && (
+                        <div className="absolute top-2 right-2 bg-white shadow-lg border rounded-md p-2 z-10">
+                          <div className="flex items-center gap-2">
+                            {COLOR_OPTIONS.map((c) => (
+                              <button
+                                key={c}
+                                type="button"
+                                className="w-5 h-5 rounded-full border"
+                                style={{ backgroundColor: c }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setCrewColorTag(member.id, c)
+                                  setPaletteFor(null)
+                                }}
+                                title="Kleur instellen"
+                              />
+                            ))}
+                            <button
+                              type="button"
+                              className="text-xs px-2 py-1 border rounded"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setCrewColorTag(member.id, null)
+                                setPaletteFor(null)
+                              }}
+                            >
+                              Geen
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -245,7 +326,30 @@ export default function CrewOverviewPage() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {grouped["Overig"].map((member) => (
-                  <div key={member.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div
+                    key={member.id}
+                    className="border rounded-lg p-4 hover:shadow-md transition-shadow relative"
+                    style={{
+                      backgroundColor: crewColorTags[member.id] || undefined,
+                      boxShadow: crewColorTags[member.id] ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
+                      borderColor: member.status === 'ziek' ? '#ef4444' : member.status === 'aan-boord' ? '#22c55e' : member.status === 'thuis' ? '#3b82f6' : undefined,
+                      borderWidth: member.status ? '2px' : undefined,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="absolute top-2 right-2 w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm"
+                      title="Kleur instellen"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPaletteFor((cur) => (cur === member.id ? null : member.id))
+                      }}
+                    >
+                      <span
+                        className="inline-block w-4 h-4 rounded-sm border"
+                        style={{ backgroundColor: crewColorTags[member.id] || '#ffffff' }}
+                      />
+                    </button>
                     <div className="flex items-center space-x-3 mb-3">
                       <Avatar className="w-10 h-10">
                         <AvatarFallback className="bg-blue-100 text-blue-700">
@@ -288,6 +392,38 @@ export default function CrewOverviewPage() {
                         <span className="font-medium">{getShipName(member.ship_id)}</span>
                       </div>
                     </div>
+
+                    {paletteFor === member.id && (
+                      <div className="absolute top-2 right-2 bg-white shadow-lg border rounded-md p-2 z-10">
+                        <div className="flex items-center gap-2">
+                          {COLOR_OPTIONS.map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              className="w-5 h-5 rounded-full border"
+                              style={{ backgroundColor: c }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setCrewColorTag(member.id, c)
+                                setPaletteFor(null)
+                              }}
+                              title="Kleur instellen"
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            className="text-xs px-2 py-1 border rounded"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setCrewColorTag(member.id, null)
+                              setPaletteFor(null)
+                            }}
+                          >
+                            Geen
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
