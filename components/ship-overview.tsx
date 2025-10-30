@@ -3,15 +3,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus, Search } from "lucide-react"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -63,6 +63,8 @@ export function ShipOverview() {
   const { ships, crew, sickLeave, trips, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag } = useSupabaseData()
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("")
+  const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null)
   
   // Notes functionality state
   const [notesDialog, setNotesDialog] = useState(false);
@@ -138,6 +140,35 @@ export function ShipOverview() {
     );
   }
 
+  const performSearch = () => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return
+    // Try ship first
+    const shipMatch = ships.find((s: any) => (s.name || "").toLowerCase().includes(q))
+    if (shipMatch) {
+      const elId = `ship-${shipMatch.id}`
+      const el = typeof window !== 'undefined' ? document.getElementById(elId) : null
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        setHighlightTargetId(elId)
+        setTimeout(() => setHighlightTargetId(null), 2000)
+      }
+      return
+    }
+    // Then crew by full name
+    const crewMatch = crew.find((m: any) => `${m.first_name || ''} ${m.last_name || ''}`.toLowerCase().includes(q))
+    if (crewMatch) {
+      const elId = `crew-${crewMatch.id}`
+      const el = typeof window !== 'undefined' ? document.getElementById(elId) : null
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setHighlightTargetId(elId)
+        setTimeout(() => setHighlightTargetId(null), 2000)
+      }
+      return
+    }
+  }
+
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
       NL: "🇳🇱",
@@ -208,12 +239,14 @@ export function ShipOverview() {
 
     return (
       <div
+        id={`crew-${member.id}`}
         className="p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative"
         style={{
           backgroundColor: crewColorTags[member.id] || undefined,
           boxShadow: crewColorTags[member.id] ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
-          borderColor: borderColor || "#e5e7eb",
-          borderWidth: "2px"
+          borderColor: highlightTargetId === `crew-${member.id}` ? "#f59e0b" : (borderColor || "#e5e7eb"),
+          borderWidth: "2px",
+          transition: 'border-color 0.2s ease'
         }}
         onDoubleClick={() => onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
       >
@@ -542,6 +575,19 @@ export function ShipOverview() {
               <Ship className="w-5 h-5" />
               <span>Schepen Overzicht</span>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') performSearch() }}
+                  placeholder="Zoek schip of bemanningslid..."
+                  className="pl-8 w-64"
+                />
+                <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2" />
+              </div>
+              <Button size="sm" onClick={performSearch}>Zoek</Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -629,7 +675,11 @@ export function ShipOverview() {
                         const crewDetails = getCrewDetails(shipCrew)
 
                         return (
-                          <div key={ship.id} className="border rounded-lg p-6 bg-white shadow-sm">
+                          <div key={ship.id} id={`ship-${ship.id}`} className="border rounded-lg p-6 bg-white shadow-sm" style={{
+                            borderColor: highlightTargetId === `ship-${ship.id}` ? '#f59e0b' : '#e5e7eb',
+                            borderWidth: '2px',
+                            transition: 'border-color 0.2s ease'
+                          }}>
                             <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center space-x-3">
                                 <Ship className="w-6 h-6 text-blue-600" />
