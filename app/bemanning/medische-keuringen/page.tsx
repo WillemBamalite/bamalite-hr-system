@@ -295,31 +295,32 @@ export default function MedischeKeuringenPage() {
     !(member.is_student && member.education_type === 'BOL')
   )
 
-  // Bereken statistieken
+  // Bereken statistieken (exact gelijk aan de filters van de lijsten)
   const stats = {
     total: activeCrew.length,
     needsExamination: 0,
     dueSoon: 0,
     overdue: 0,
-    newMembersNeedExamination: 0
+    newMembersNeedExamination: 0,
   }
 
   activeCrew.forEach((member: any) => {
     const nextDate = calculateNextExaminationDate(member)
-    if (!member.laatste_keuring_datum) {
-      stats.needsExamination++
-      // Check if new member and past deadline
-      const newMemberDeadline = calculateNewMemberDeadline(member)
-      if (newMemberDeadline && isBefore(newMemberDeadline, new Date())) {
-        stats.newMembersNeedExamination++
-      }
-    } else if (nextDate) {
-      if (isExaminationOverdue(nextDate)) {
-        stats.overdue++
-      } else if (isExaminationDueSoon(nextDate)) {
-        stats.dueSoon++
-      }
-    }
+    const newMemberDeadline = calculateNewMemberDeadline(member)
+    const isOverdueVal = nextDate ? isExaminationOverdue(nextDate) : false
+    const isDueSoonVal = nextDate ? isExaminationDueSoon(nextDate) : false
+    const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
+    const hasNoExamination = !member.laatste_keuring_datum
+
+    // Zelfde logica als 'Verlopen' lijst (geen oude medewerkers zonder proeftijd)
+    const countsAsOverdue = isOverdueVal || (isNewMember(member) && isNewMemberPastDeadline)
+    if (countsAsOverdue) stats.overdue++
+
+    // Zelfde logica als 'Binnenkort' lijst (niet-overdue en binnen 3 maanden)
+    if (isDueSoonVal && !isOverdueVal) stats.dueSoon++
+
+    // Nog niet gekeurd (alleen nieuwe medewerkers, niet verlopen)
+    if (hasNoExamination && isNewMember(member) && !isNewMemberPastDeadline) stats.needsExamination++
   })
 
   return (
@@ -383,10 +384,10 @@ export default function MedischeKeuringenPage() {
         </Card>
         <Card className="border-orange-200 bg-orange-50">
           <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2">
               <AlertTriangle className="w-5 h-5 text-orange-600" />
               <div>
-                <p className="text-sm text-gray-600">Binnenkort (30 dagen)</p>
+                <p className="text-sm text-gray-600">Binnenkort (3 maanden)</p>
                 <p className="text-2xl font-bold text-orange-600">{stats.dueSoon}</p>
               </div>
             </div>
@@ -417,8 +418,7 @@ export default function MedischeKeuringenPage() {
               const isOverdue = nextExaminationDate ? isExaminationOverdue(nextExaminationDate) : false
               const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
               // Verlopen: heeft verlopen keuring OF nieuwe medewerker met verlopen deadline OF geen keuringsgegevens (oude medewerker zonder keuring)
-              const hasNoExaminationAndNoProeftijd = !member.laatste_keuring_datum && !member.proeftijd_datum
-              return isOverdue || (isNewMember(member) && isNewMemberPastDeadline) || hasNoExaminationAndNoProeftijd
+              return isOverdue || (isNewMember(member) && isNewMemberPastDeadline)
             }).length}</Badge>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -429,8 +429,7 @@ export default function MedischeKeuringenPage() {
                 const isOverdue = nextExaminationDate ? isExaminationOverdue(nextExaminationDate) : false
                 const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
                 // Verlopen: heeft verlopen keuring OF nieuwe medewerker met verlopen deadline OF geen keuringsgegevens (oude medewerker zonder keuring)
-                const hasNoExaminationAndNoProeftijd = !member.laatste_keuring_datum && !member.proeftijd_datum
-                return isOverdue || (isNewMember(member) && isNewMemberPastDeadline) || hasNoExaminationAndNoProeftijd
+                return isOverdue || (isNewMember(member) && isNewMemberPastDeadline)
               })
               .map((member: any) => renderMemberCard(member, "verlopen"))}
           </div>
@@ -440,8 +439,7 @@ export default function MedischeKeuringenPage() {
             const newMemberDeadline = calculateNewMemberDeadline(member)
             const isOverdue = nextExaminationDate ? isExaminationOverdue(nextExaminationDate) : false
             const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
-            const hasNoExaminationAndNoProeftijd = !member.laatste_keuring_datum && !member.proeftijd_datum
-            return isOverdue || (isNewMember(member) && isNewMemberPastDeadline) || hasNoExaminationAndNoProeftijd
+            return isOverdue || (isNewMember(member) && isNewMemberPastDeadline)
           }).length === 0 && (
             <div className="col-span-full text-sm text-gray-500 italic text-center py-4">Geen verlopen keuringen</div>
           )}
