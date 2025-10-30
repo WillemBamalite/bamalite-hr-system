@@ -286,11 +286,13 @@ export default function MedischeKeuringenPage() {
     )
   }
 
-  // Filter alleen actieve bemanningsleden (geen aflossers, geen uit-dienst)
-  const activeCrew = crew.filter((member: any) => 
-    member.status !== 'uit-dienst' && 
-    !member.is_aflosser && 
-    member.position !== 'Aflosser'
+  // Filter alleen relevante bemanningsleden (geen aflossers, geen uit-dienst)
+  // BOL-studenten hoeven niet medisch gekeurd te worden -> uitsluiten
+  const activeCrew = crew.filter((member: any) =>
+    member.status !== 'uit-dienst' &&
+    !member.is_aflosser &&
+    member.position !== 'Aflosser' &&
+    !(member.is_student && member.education_type === 'BOL')
   )
 
   // Bereken statistieken
