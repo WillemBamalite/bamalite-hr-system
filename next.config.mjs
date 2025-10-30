@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
+const isVercel = process.env.VERCEL === '1'
+
 const nextConfig = {
-  // Move Next build output away from default .next to avoid OneDrive file locks on Windows
-  distDir: '.next-build',
+  // Use custom build dir locally to avoid OneDrive locks; keep default on Vercel
+  ...(isVercel ? {} : { distDir: '.next-build' }),
   eslint: {
     ignoreDuringBuilds: true,
   },
