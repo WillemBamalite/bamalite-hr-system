@@ -40,6 +40,23 @@ export default function ReizenAflossersPage() {
   const { crew, ships, trips, vasteDienstRecords, loading, updateCrew, addTrip, updateTrip, deleteTrip, addVasteDienstRecord } = useSupabaseData()
   const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState('reizen')
+  const DIPLOMA_OPTIONS = [
+    "Vaarbewijs",
+    "Rijnpatent tot Wesel",
+    "Rijnpatent Ruhrort",
+    "Rijnpatent Duisburg",
+    "Rijnpatent Düsseldorf",
+    "Rijnpatent Keulen",
+    "Rijnpatent Koblenz",
+    "Rijnpatent Bovenrijn",
+    "Radarpatent",
+    "Marifoon",
+    "ADN Basis",
+    "ADN Tankvaart",
+    "Basisveiligheid",
+    "EHBO/BHV",
+    "VCA",
+  ]
   
   // Dialogs
   const [newTripDialog, setNewTripDialog] = useState(false)
@@ -47,6 +64,7 @@ export default function ReizenAflossersPage() {
   const [boardShipDialog, setBoardShipDialog] = useState<string | null>(null)
   const [completeTripDialog, setCompleteTripDialog] = useState<string | null>(null)
   const [editTripDialog, setEditTripDialog] = useState<string | null>(null)
+  const [editDiplomasDialog, setEditDiplomasDialog] = useState<{ id: string; name: string } | null>(null)
   
   // Form states
   const [selectedAflosserId, setSelectedAflosserId] = useState("")
@@ -69,6 +87,7 @@ export default function ReizenAflossersPage() {
     trip_to: "",
     aflosser_id: "none"
   })
+  const [editDiplomas, setEditDiplomas] = useState<string[]>([])
   
   const [completeData, setCompleteData] = useState({
     eind_datum: "",
@@ -613,6 +632,7 @@ export default function ReizenAflossersPage() {
                             >
                               <Edit className="w-4 h-4 text-gray-500 hover:text-gray-700" />
                             </button>
+                          
                             <Badge className={getStatusColor(trip.status)}>
                               {getStatusText(trip.status)}
                             </Badge>
@@ -695,6 +715,7 @@ export default function ReizenAflossersPage() {
                             >
                               <Edit className="w-4 h-4 text-gray-500 hover:text-gray-700" />
                             </button>
+                          
                             <Badge className={getStatusColor(trip.status)}>
                               {getStatusText(trip.status)}
                             </Badge>
@@ -1383,6 +1404,46 @@ export default function ReizenAflossersPage() {
               </Button>
               <Button variant="outline" onClick={() => setEditTripDialog(null)}>
                 Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Edit Diplomas Dialog */}
+      <Dialog open={!!editDiplomasDialog} onOpenChange={() => setEditDiplomasDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Diploma's bewerken {editDiplomasDialog ? `– ${editDiplomasDialog.name}` : ''}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {DIPLOMA_OPTIONS.map((d) => (
+                <Button
+                  key={d}
+                  variant={editDiplomas.includes(d) ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setEditDiplomas((prev) => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+                  }}
+                >
+                  {d}
+                </Button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditDiplomasDialog(null)}>Annuleren</Button>
+              <Button
+                onClick={async () => {
+                  if (!editDiplomasDialog) return
+                  try {
+                    await updateCrew(editDiplomasDialog.id, { diplomas: editDiplomas })
+                    setEditDiplomasDialog(null)
+                  } catch (e) {
+                    alert('Fout bij opslaan diploma\'s')
+                  }
+                }}
+              >
+                Opslaan
               </Button>
             </div>
           </div>

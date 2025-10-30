@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
-import { useSupabaseData, calculateWorkDaysVasteDienst, calculateWorkDays } from "@/hooks/use-supabase-data"
+import { useSupabaseData, calculateWorkDaysVasteDienst } from "@/hooks/use-supabase-data"
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,19 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 
+const DIPLOMA_OPTIONS = [
+  "Vaarbewijs",
+  "Rijnpatent tot Wesel",
+  "Rijnpatent tot Koblenz",
+  "Rijnpatent tot Mannheim",
+  "Rijnpatent tot Iffezheim",
+  "Elbepatent",
+  "Donaupatent",
+  "ADN",
+  "ADN C",
+  "Radar",
+  "Marifoon"
+]
 // Helper function to calculate work days from trip data
 // SIMPLE LOGIC: tel kalenderdagen van start tot eind (inclusief beide)
 function calculateWorkDays(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -100,6 +113,8 @@ export default function AflosserDetailPage() {
   const [isEditingTarief, setIsEditingTarief] = useState(false)
   const [editedTarief, setEditedTarief] = useState("")
   const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [isEditingDiplomas, setIsEditingDiplomas] = useState(false)
+  const [editedDiplomas, setEditedDiplomas] = useState<string[]>([])
   const [editedProfile, setEditedProfile] = useState({
     first_name: "",
     last_name: "",
@@ -725,18 +740,86 @@ export default function AflosserDetailPage() {
               )}
 
               {/* Diplomas */}
-              {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-sm text-gray-700 mb-2">Diploma's:</h4>
-                  <div className="flex flex-wrap gap-1">
-                    {aflosser.diplomas.map((diploma: string, index: number) => (
-                      <Badge key={index} variant="outline" className="text-xs">
-                        {diploma}
-                      </Badge>
-                    ))}
-                  </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-sm text-gray-700">Diploma's</h4>
+                  {!isEditingDiplomas && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const current = (aflosser.diplomas || []).filter((d: string) => DIPLOMA_OPTIONS.includes(d))
+                        setEditedDiplomas(current)
+                        setIsEditingDiplomas(true)
+                      }}
+                      className="text-blue-600 hover:bg-blue-50"
+                    >
+                      <Edit3 className="w-3 h-3 mr-1" />
+                      Bewerken
+                    </Button>
+                  )}
                 </div>
-              )}
+
+                {isEditingDiplomas ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {DIPLOMA_OPTIONS.map((d) => (
+                        <Button
+                          key={d}
+                          size="sm"
+                          variant={editedDiplomas.includes(d) ? 'default' : 'outline'}
+                          onClick={() => {
+                            setEditedDiplomas((prev) => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+                          }}
+                        >
+                          {d}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const toSave = editedDiplomas.filter((d) => DIPLOMA_OPTIONS.includes(d))
+                            await updateCrew(aflosser.id, { diplomas: toSave })
+                            setIsEditingDiplomas(false)
+                          } catch (e) {
+                            alert("Fout bij opslaan diploma's")
+                          }
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Save className="w-3 h-3 mr-1" />
+                        Opslaan
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditingDiplomas(false)
+                          setEditedDiplomas(aflosser.diplomas || [])
+                        }}
+                      >
+                        <X className="w-3 h-3 mr-1" />
+                        Annuleren
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {aflosser.diplomas && aflosser.diplomas.length > 0 ? (
+                      aflosser.diplomas.map((diploma: string, index: number) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {diploma}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-gray-500">Geen diploma's toegevoegd</span>
+                    )}
+                  </div>
+                )}
+              </div>
 
 
               {/* Notes */}
