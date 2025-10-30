@@ -26,7 +26,7 @@ export default function MedischeKeuringenPage() {
   const [editingMember, setEditingMember] = useState<any>(null)
   const [editForm, setEditForm] = useState({
     laatste_keuring_datum: "",
-    fit_verklaard: "",
+    fit_verklaard_jaren: "", // "3" | "2" | "1"
     proeftijd_datum: ""
   })
 
@@ -40,13 +40,12 @@ export default function MedischeKeuringenPage() {
     if (!member.laatste_keuring_datum) return null
 
     const keuringDatum = new Date(member.laatste_keuring_datum)
-    
-    // Als niet fit verklaard, moet over 1 jaar opnieuw gekeurd worden
-    if (member.fit_verklaard === false) {
-      return addYears(keuringDatum, 1)
+    // Als expliciete geldigheid in jaren is ingesteld, gebruik die
+    if (member.fit_verklaard_jaren && typeof member.fit_verklaard_jaren === 'number') {
+      return addYears(keuringDatum, member.fit_verklaard_jaren)
     }
-    
-    // Anders: elke 3 jaar
+    // Fallback op oud gedrag: false = 1 jaar, true = 3 jaar
+    if (member.fit_verklaard === false) return addYears(keuringDatum, 1)
     return addYears(keuringDatum, 3)
   }
 
@@ -213,7 +212,7 @@ export default function MedischeKeuringenPage() {
     setEditingMember(member)
     setEditForm({
       laatste_keuring_datum: member.laatste_keuring_datum ? format(new Date(member.laatste_keuring_datum), 'yyyy-MM-dd') : "",
-      fit_verklaard: member.fit_verklaard === null ? "" : (member.fit_verklaard ? "true" : "false"),
+      fit_verklaard_jaren: member.fit_verklaard_jaren ? String(member.fit_verklaard_jaren) : "",
       proeftijd_datum: member.proeftijd_datum ? format(new Date(member.proeftijd_datum), 'yyyy-MM-dd') : ""
     })
     setEditDialogOpen(true)
@@ -231,9 +230,12 @@ export default function MedischeKeuringenPage() {
         updateData.laatste_keuring_datum = null
       }
 
-      if (editForm.fit_verklaard !== "") {
-        updateData.fit_verklaard = editForm.fit_verklaard === "true"
+      if (editForm.fit_verklaard_jaren !== "") {
+        updateData.fit_verklaard_jaren = parseInt(editForm.fit_verklaard_jaren as string, 10)
+        updateData.fit_verklaard = true // als jaren gekozen is, beschouw als fit
       } else {
+        updateData.fit_verklaard_jaren = null
+        // laat oude boolean onaangeroerd of zet naar null
         updateData.fit_verklaard = null
       }
 
@@ -558,20 +560,22 @@ export default function MedischeKeuringenPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="fit_verklaard">Fit verklaard</Label>
+              <Label htmlFor="fit_verklaard_jaren">Geldigheid keuring</Label>
               <Select 
-                value={editForm.fit_verklaard || "none"} 
-                onValueChange={(value) => setEditForm({...editForm, fit_verklaard: value === "none" ? "" : value})}
+                value={editForm.fit_verklaard_jaren || "none"}
+                onValueChange={(value) => setEditForm({...editForm, fit_verklaard_jaren: value === "none" ? "" : value})}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecteer status" />
+                  <SelectValue placeholder="Kies geldigheid (jaren)" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Niet ingevuld</SelectItem>
-                  <SelectItem value="true">Ja, fit verklaard</SelectItem>
-                  <SelectItem value="false">Nee, niet fit verklaard</SelectItem>
+                  <SelectItem value="3">3 jaar</SelectItem>
+                  <SelectItem value="2">2 jaar</SelectItem>
+                  <SelectItem value="1">1 jaar</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-gray-500">Volgende keuring wordt automatisch berekend op basis van deze geldigheid.</p>
             </div>
 
             <div className="space-y-2">
