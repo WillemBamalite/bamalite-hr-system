@@ -35,6 +35,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/bemanning/nog-in-te-delen/page.js"
+    ],
+    "/bemanning/studenten/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/bemanning/studenten/page.js"
     ]
   }
 }

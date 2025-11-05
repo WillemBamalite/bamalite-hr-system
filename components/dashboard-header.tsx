@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
+import Link from "next/link"
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import { nl, de, fr } from "date-fns/locale"
@@ -50,9 +51,9 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   }
 
   return (
-    <div className="space-y-4 p-6 bg-white border-b">
+      <div className="space-y-4 p-6 bg-white border-b">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <Link href="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer">
           <div className="w-16 h-16 bg-[#1e3a8a] rounded-full flex items-center justify-center shadow-lg border-4 border-[#1e3a8a]">
             <span className="text-4xl font-bold text-yellow-400">B</span>
           </div>
@@ -60,7 +61,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
             <h1 className="text-3xl font-bold text-gray-900">Bemanningslijst</h1>
             <p className="text-gray-600">Beheer bemanning en schepen</p>
           </div>
-        </div>
+        </Link>
 
         {/* Live Datum & Tijd - Midden */}
         <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200">
