@@ -11,20 +11,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/taken/page": [
+    "/bemanning/overzicht/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/taken/page.js"
+      "static/chunks/app/bemanning/overzicht/page.js"
     ],
-    "/bemanning/aflossers/page": [
+    "/print/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/bemanning/aflossers/page.js"
+      "static/chunks/app/print/page.js"
     ],
-    "/bemanning/aflossers/[id]/page": [
+    "/ziekte/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/bemanning/aflossers/[id]/page.js"
+      "static/chunks/app/ziekte/page.js"
     ]
   }
 }

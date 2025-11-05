@@ -150,7 +150,7 @@ export function AISearchBar() {
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-center space-x-2 max-w-2xl mx-auto">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
@@ -174,7 +174,7 @@ export function AISearchBar() {
           </Button>
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2 justify-center">
           {suggestions.map((suggestion) => (
             <Button
               key={suggestion}

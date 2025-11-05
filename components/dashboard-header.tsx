@@ -100,7 +100,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open('/print', '_blank')}
+                onClick={() => window.print()}
                 className="flex items-center gap-2"
               >
                 <Printer className="w-4 h-4" />

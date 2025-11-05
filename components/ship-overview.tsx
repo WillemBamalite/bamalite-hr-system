@@ -709,25 +709,25 @@ export function ShipOverview() {
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
               <Ship className="w-5 h-5" />
               <span>Schepen Overzicht</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') performSearch() }}
-                  placeholder="Zoek schip of bemanningslid..."
-                  className="pl-8 w-64"
-                />
-                <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2" />
-              </div>
-              <Button size="sm" onClick={performSearch}>Zoek</Button>
-            </div>
           </CardTitle>
+          <div className="flex items-center justify-center gap-2">
+            <div className="relative">
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') performSearch() }}
+                placeholder="Zoek schip of bemanningslid..."
+                className="pl-8 w-64"
+              />
+              <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2" />
+            </div>
+            <Button size="sm" onClick={performSearch}>Zoek</Button>
+          </div>
         </CardHeader>
         <CardContent>
           {ships.length === 0 ? (
@@ -748,8 +748,8 @@ export function ShipOverview() {
                   return acc
                 }, {})
 
-                return Object.entries(shipsByCompany).map(([company, companyShips]: [string, any]) => (
-                  <div key={company} className="space-y-4">
+                return Object.entries(shipsByCompany).map(([company, companyShips]: [string, any], index: number) => (
+                  <div key={company} className={`space-y-4 company-section ${index > 0 ? 'print-new-page' : ''}`}>
                     {/* Company Header */}
                     <div className="border-b pb-3 text-center">
                       <h3 className="text-2xl font-bold text-gray-900">{company}</h3>

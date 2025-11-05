@@ -106,4 +106,66 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Print styles - print exact wat er op het scherm staat */
+@media print {
+  /* Verberg alleen knoppen en navigatie elementen, maar behoud header */
+  button[class*="print"],
+  button[class*="logout"],
+  button[onclick*="signOut"],
+  nav,
+  [class*="navigation"],
+  [class*="back-button"],
+  [class*="dashboard-button"] {
+    display: none !important;
+  }
+
+  /* Behoud header maar verberg actie knoppen */
+  [class*="dashboard-header"] button {
+    display: none !important;
+  }
+
+  /* Zorg dat de content full width is */
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Print alle content inclusief achtergrond kleuren */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Geen pagina breaks binnen cards/sections */
+  .card,
+  [class*="card"] {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Zorg dat header en eerste content op eerste pagina */
+  [class*="dashboard-header"] {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Elke firma/company op een nieuwe pagina (behalve de eerste) */
+  .company-section.print-new-page {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  /* Zorg dat company header niet alleen op laatste regel van pagina staat */
+  .company-section > div:first-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Print achtergrond kleuren */
+  @page {
+    margin: 1cm;
+  }
 } 
