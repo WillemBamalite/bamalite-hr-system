@@ -3,14 +3,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Ship, Users, CheckCircle, Clock, UserX } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Ship, Users, CheckCircle, Clock, UserX, Cake } from "lucide-react"
 import { ShipOverview } from "@/components/ship-overview"
 import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import { format, isToday } from "date-fns"
 
 export default function Dashboard() {
   return (
@@ -26,6 +28,31 @@ function DashboardContent() {
   
   // Gebruik Supabase data
   const { ships, crew, sickLeave, loading, error } = useSupabaseData()
+
+  // Check voor verjaardagen
+  const birthdaysToday = useMemo(() => {
+    if (!crew || crew.length === 0) return []
+    
+    const today = new Date()
+    const todayMonth = today.getMonth() + 1 // JavaScript months are 0-based
+    const todayDay = today.getDate()
+    
+    return crew.filter((member: any) => {
+      if (!member.birth_date) return false
+      
+      try {
+        // Parse birth date (kan verschillende formaten hebben)
+        const birthDate = new Date(member.birth_date)
+        const birthMonth = birthDate.getMonth() + 1
+        const birthDay = birthDate.getDate()
+        
+        // Check of maand en dag overeenkomen
+        return birthMonth === todayMonth && birthDay === todayDay
+      } catch {
+        return false
+      }
+    })
+  }, [crew])
 
   // Prevent hydration errors
   useEffect(() => {
@@ -68,6 +95,22 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full py-8 px-4">
+        {/* Verjaardagsmelding */}
+        {birthdaysToday.length > 0 && (
+          <Alert className="mb-6 bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
+            <Cake className="h-5 w-5 text-pink-600" />
+            <AlertDescription className="text-base font-medium">
+              🎉 {birthdaysToday.map((member: any, index: number) => (
+                <span key={member.id}>
+                  <strong>{member.first_name} {member.last_name}</strong>
+                  {index < birthdaysToday.length - 1 && ", "}
+                  {index === birthdaysToday.length - 2 && " en "}
+                </span>
+              ))} {birthdaysToday.length === 1 ? "is" : "zijn"} vandaag jarig! 🎂
+            </AlertDescription>
+          </Alert>
+        )}
+        
         {/* Single column flow: stats → quick actions → ships */}
         <div className="grid grid-cols-1 gap-6">
           {/* Stats */}
