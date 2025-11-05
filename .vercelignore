@@ -1,0 +1,9 @@
+# Ignore backup folder to prevent build errors
+backup-hr-system-2025-07-29-1655
+backup-hr-system-2025-07-29-1655/**
+
+# Ignore other unnecessary files
+*.html
+fix-willem.html
+
+

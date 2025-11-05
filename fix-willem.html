@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear All Data</title>
+</head>
+<body>
+    <h1>Clearing all data...</h1>
+    <script>
+        // Clear ALL existing data
+        localStorage.removeItem('crewDatabase');
+        localStorage.removeItem('ships');
+        localStorage.removeItem('sickLeaveHistoryDatabase');
+        localStorage.removeItem('loansLocal');
+        localStorage.removeItem('standBackRecords');
+        localStorage.removeItem('bamalite-out-of-service-crew');
+        localStorage.removeItem('bamalite-crew-documents_');
+        
+        console.log('✅ ALL localStorage data cleared!');
+        console.log('✅ Ready for fresh start');
+        
+        alert('All data has been cleared!\n\n✅ No crew members\n✅ No ships\n✅ Clean slate\n\nYou can now add everything fresh via the forms!');
+        
+        // Redirect to main app
+        setTimeout(() => {
+            window.location.href = 'http://localhost:3000';
+        }, 2000);
+    </script>
+</body>
+</html>

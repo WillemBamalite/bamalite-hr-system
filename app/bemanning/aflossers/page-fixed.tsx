@@ -1,0 +1,858 @@
+"use client"
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { format } from 'date-fns'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MobileHeaderNav } from '@/components/ui/mobile-header-nav'
+import { DashboardButton } from '@/components/ui/dashboard-button'
+import { 
+  UserPlus, 
+  CheckCircle, 
+  CalendarDays, 
+  Ship, 
+  Phone,
+  MapPin,
+  Users,
+  ArrowLeft,
+  Plus,
+  Clock,
+  UserCheck,
+  UserX,
+  MessageSquare
+} from 'lucide-react'
+import { useSupabaseData } from '@/hooks/use-supabase-data'
+
+export default function ReizenAflossersPage() {
+  const { crew, ships, trips, vasteDienstRecords, loading, updateCrew, addTrip, updateTrip, deleteTrip, addVasteDienstRecord } = useSupabaseData()
+  const [activeTab, setActiveTab] = useState('reizen')
+  
+  // Dialogs
+  const [newTripDialog, setNewTripDialog] = useState(false)
+  const [assignAflosserDialog, setAssignAflosserDialog] = useState<string | null>(null)
+  const [boardShipDialog, setBoardShipDialog] = useState<string | null>(null)
+  const [completeTripDialog, setCompleteTripDialog] = useState<string | null>(null)
+  
+  // Form states
+  const [selectedAflosserId, setSelectedAflosserId] = useState("")
+  const [newTripData, setNewTripData] = useState({
+    trip_name: "",
+    ship_id: "",
+    start_date: "",
+    end_date: "",
+    trip_from: "",
+    trip_to: "",
+    notes: ""
+  })
+  
+  const [boardData, setBoardData] = useState({
+    start_datum: "",
+    start_tijd: ""
+  })
+  
+  const [completeData, setCompleteData] = useState({
+    eind_datum: "",
+    eind_tijd: "",
+    aflosser_opmerkingen: ""
+  })
+
+  // Helper functions
+  const getNationalityFlag = (nationality: string) => {
+    const flags: { [key: string]: string } = {
+      'NL': '🇳🇱', 'DE': '🇩🇪', 'PL': '🇵🇱', 'RO': '🇷🇴', 'BG': '🇧🇬',
+      'CZ': '🇨🇿', 'SLK': '🇸🇰', 'EG': '🇪🇬', 'SERV': '🇷🇸',
+      'HUN': '🇭🇺', 'FR': '🇫🇷', 'LUX': '🇱🇺', 'PO': '🇵🇱'
+    }
+    return flags[nationality] || '🏳️'
+  }
+
+  const getVasteDienstBalance = (aflosserId: string) => {
+    const records = vasteDienstRecords.filter((record: any) => record.aflosser_id === aflosserId)
+    if (records.length === 0) return 0
+    return records.sort((a: any, b: any) => b.year - a.year || b.month - a.month)[0]?.balance_days || 0
+  }
+
+  const getShipName = (shipId: string) => {
+    const ship = ships.find((s: any) => s.id === shipId)
+    return ship ? ship.name : 'Onbekend schip'
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'gepland': return 'bg-orange-100 text-orange-800'
+      case 'ingedeeld': return 'bg-blue-100 text-blue-800'
+      case 'actief': return 'bg-green-100 text-green-800'
+      case 'voltooid': return 'bg-gray-100 text-gray-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'gepland': return 'Gepland'
+      case 'ingedeeld': return 'Ingedeeld'
+      case 'actief': return 'Actief'
+      case 'voltooid': return 'Voltooid'
+      default: return status
+    }
+  }
+
+  // Filter aflossers (exclude "uit-dienst")
+  const aflossers = crew.filter((member: any) => 
+    member.position === "Aflosser" && member.status !== "uit-dienst"
+  )
+
+  // Filter trips by status
+  const geplandeTrips = trips.filter((trip: any) => trip.status === 'gepland')
+  const ingedeeldeTrips = trips.filter((trip: any) => trip.status === 'ingedeeld')
+  const actieveTrips = trips.filter((trip: any) => trip.status === 'actief')
+  const voltooideTrips = trips.filter((trip: any) => trip.status === 'voltooid')
+
+  // Create new trip
+  const handleCreateTrip = async () => {
+    if (!newTripData.trip_name || !newTripData.ship_id || !newTripData.start_date || !newTripData.trip_from || !newTripData.trip_to) {
+      alert("Vul alle verplichte velden in")
+      return
+    }
+
+    try {
+      const newTrip = {
+        trip_name: newTripData.trip_name,
+        ship_id: newTripData.ship_id,
+        start_date: newTripData.start_date,
+        end_date: newTripData.end_date || null,
+        trip_from: newTripData.trip_from,
+        trip_to: newTripData.trip_to,
+        notes: newTripData.notes || null,
+        status: 'gepland' as const
+      }
+
+      await addTrip(newTrip)
+      alert("Reis succesvol aangemaakt!")
+      
+      // Reset form
+      setNewTripData({
+        trip_name: "",
+        ship_id: "",
+        start_date: "",
+        end_date: "",
+        trip_from: "",
+        trip_to: "",
+        notes: ""
+      })
+      setNewTripDialog(false)
+    } catch (error) {
+      console.error("Error creating trip:", error)
+      alert("Fout bij aanmaken reis")
+    }
+  }
+
+  // Assign aflosser to trip (gepland → ingedeeld)
+  const handleAssignAflosser = async () => {
+    if (!assignAflosserDialog || !selectedAflosserId) return
+
+    try {
+      await updateTrip(assignAflosserDialog, {
+        status: 'ingedeeld',
+        aflosser_id: selectedAflosserId
+      })
+
+      setAssignAflosserDialog(null)
+      setSelectedAflosserId("")
+      alert("Aflosser succesvol toegewezen!")
+    } catch (error) {
+      console.error("Error assigning aflosser:", error)
+      alert("Fout bij toewijzen aflosser")
+    }
+  }
+
+  // Board ship (ingedeeld → actief)
+  const handleBoardShip = async () => {
+    if (!boardShipDialog) return
+
+    try {
+      const trip = trips.find((t: any) => t.id === boardShipDialog)
+      if (!trip) return
+
+      // Update trip status to 'actief' with boarding time
+      await updateTrip(boardShipDialog, {
+        status: 'actief',
+        start_datum: boardData.start_datum,
+        start_tijd: boardData.start_tijd
+      })
+
+      // Update aflosser status to 'aan-boord'
+      if (trip.aflosser_id) {
+        await updateCrew(trip.aflosser_id, {
+          status: "aan-boord",
+          ship_id: trip.ship_id
+        })
+      }
+
+      setBoardShipDialog(null)
+      setBoardData({ start_datum: "", start_tijd: "" })
+      alert("Aflosser succesvol aan boord gemeld!")
+      
+    } catch (error) {
+      console.error("Error boarding ship:", error)
+      alert("Fout bij aan boord melden")
+    }
+  }
+
+  // Complete trip (actief → voltooid)
+  const handleCompleteTrip = async () => {
+    if (!completeTripDialog) return
+
+    try {
+      const trip = trips.find((t: any) => t.id === completeTripDialog)
+      if (!trip) return
+
+      // Update trip status to 'voltooid' with completion time and notes
+      await updateTrip(completeTripDialog, {
+        status: 'voltooid',
+        eind_datum: completeData.eind_datum,
+        eind_tijd: completeData.eind_tijd,
+        aflosser_opmerkingen: completeData.aflosser_opmerkingen || null
+      })
+
+      // Update aflosser status back to 'thuis'
+      if (trip.aflosser_id) {
+        await updateCrew(trip.aflosser_id, {
+          status: "thuis",
+          ship_id: null
+        })
+      }
+
+      setCompleteTripDialog(null)
+      setCompleteData({ eind_datum: "", eind_tijd: "", aflosser_opmerkingen: "" })
+      alert("Reis succesvol afgesloten!")
+      
+    } catch (error) {
+      console.error("Error completing trip:", error)
+      alert("Fout bij afsluiten reis")
+    }
+  }
+
+  // Cancel trip
+  const handleCancelTrip = async (tripId: string) => {
+    if (!confirm("Weet je zeker dat je deze reis wilt annuleren?")) return
+
+    try {
+      await deleteTrip(tripId)
+      alert("Reis geannuleerd!")
+    } catch (error) {
+      console.error("Error canceling trip:", error)
+      alert("Fout bij annuleren reis")
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto py-8 px-4">
+        <MobileHeaderNav />
+        <div className="text-center">Laden...</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto py-8 px-4">
+      <MobileHeaderNav />
+      <DashboardButton />
+      
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Reizen & Aflossers Beheer</h1>
+        <p className="text-gray-600">4-stappen workflow: Gepland → Ingedeeld → Actief → Voltooid</p>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
+          <TabsTrigger value="reizen" className="text-base">
+            <Ship className="w-4 h-4 mr-2" />
+            Reizen
+          </TabsTrigger>
+          <TabsTrigger value="aflossers" className="text-base">
+            <Users className="w-4 h-4 mr-2" />
+            Aflossers
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Reizen Tab */}
+        <TabsContent value="reizen" className="space-y-6">
+          {/* Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <CalendarDays className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Geplande Reizen</p>
+                    <p className="text-2xl font-bold text-orange-600">{geplandeTrips.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <UserCheck className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Ingedeelde Reizen</p>
+                    <p className="text-2xl font-bold text-blue-600">{ingedeeldeTrips.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Actieve Reizen</p>
+                    <p className="text-2xl font-bold text-green-600">{actieveTrips.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 bg-gray-100 rounded-lg">
+                    <Clock className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Voltooide Reizen</p>
+                    <p className="text-2xl font-bold text-gray-600">{voltooideTrips.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-4 mb-8">
+            <Button onClick={() => setNewTripDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Nieuwe Reis
+            </Button>
+            <Link href="/bemanning/aflossers/voltooide-reizen">
+              <Button variant="outline">
+                <Clock className="w-4 h-4 mr-2" />
+                Voltooide Reizen ({voltooideTrips.length})
+              </Button>
+            </Link>
+          </div>
+
+          {/* Trips Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {/* Geplande Reizen */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <CalendarDays className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <span>Geplande Reizen ({geplandeTrips.length})</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {geplandeTrips.map((trip: any) => (
+                  <div key={trip.id} className="border rounded-lg p-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium">{getShipName(trip.ship_id)}</h4>
+                        <Badge className={getStatusColor(trip.status)}>
+                          {getStatusText(trip.status)}
+                        </Badge>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex items-center space-x-2">
+                          <MapPin className="w-4 h-4" />
+                          <span>{trip.trip_from} → {trip.trip_to}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <CalendarDays className="w-4 h-4" />
+                          <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex space-x-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => setAssignAflosserDialog(trip.id)}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          <UserPlus className="w-4 h-4 mr-1" />
+                          Toewijzen
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleCancelTrip(trip.id)}
+                        >
+                          <UserX className="w-4 h-4 mr-1" />
+                          Annuleren
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Ingedeelde Reizen */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <UserCheck className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <span>Ingedeelde Reizen ({ingedeeldeTrips.length})</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {ingedeeldeTrips.map((trip: any) => {
+                  const assignedAflosser = crew.find((c: any) => c.id === trip.aflosser_id)
+                  return (
+                    <div key={trip.id} className="border rounded-lg p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium">{getShipName(trip.ship_id)}</h4>
+                          <Badge className={getStatusColor(trip.status)}>
+                            {getStatusText(trip.status)}
+                          </Badge>
+                        </div>
+                        
+                        <div className="space-y-2 text-sm text-gray-600">
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="w-4 h-4" />
+                            <span>{trip.trip_from} → {trip.trip_to}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <CalendarDays className="w-4 h-4" />
+                            <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
+                          </div>
+                          {assignedAflosser && (
+                            <div className="flex items-center space-x-2">
+                              <UserPlus className="w-4 h-4" />
+                              <span>{assignedAflosser.first_name} {assignedAflosser.last_name}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <Button 
+                          size="sm" 
+                          onClick={() => setBoardShipDialog(trip.id)}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <CheckCircle className="w-4 h-4 mr-1" />
+                          Aan Boord Melden
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+
+            {/* Actieve Reizen */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <span>Actieve Reizen ({actieveTrips.length})</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {actieveTrips.map((trip: any) => {
+                  const assignedAflosser = crew.find((c: any) => c.id === trip.aflosser_id)
+                  return (
+                    <div key={trip.id} className="border rounded-lg p-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium">{getShipName(trip.ship_id)}</h4>
+                          <Badge className={getStatusColor(trip.status)}>
+                            {getStatusText(trip.status)}
+                          </Badge>
+                        </div>
+                        
+                        <div className="space-y-2 text-sm text-gray-600">
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="w-4 h-4" />
+                            <span>{trip.trip_from} → {trip.trip_to}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <CalendarDays className="w-4 h-4" />
+                            <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
+                          </div>
+                          {assignedAflosser && (
+                            <div className="flex items-center space-x-2">
+                              <UserPlus className="w-4 h-4" />
+                              <span>{assignedAflosser.first_name} {assignedAflosser.last_name}</span>
+                            </div>
+                          )}
+                          {trip.start_datum && (
+                            <div className="flex items-center space-x-2">
+                              <Clock className="w-4 h-4" />
+                              <span>Aan boord: {format(new Date(trip.start_datum), 'dd-MM-yyyy')} {trip.start_tijd}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <Button 
+                          size="sm" 
+                          onClick={() => setCompleteTripDialog(trip.id)}
+                          className="bg-gray-600 hover:bg-gray-700"
+                        >
+                          <Clock className="w-4 h-4 mr-1" />
+                          Reis Afsluiten
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Aflossers Tab */}
+        <TabsContent value="aflossers" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {aflossers.map((aflosser: any) => {
+              const vasteDienstBalance = getVasteDienstBalance(aflosser.id)
+              return (
+                <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="space-y-4">
+                      {/* Header */}
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="h-12 w-12">
+                          <AvatarFallback className="bg-blue-100 text-blue-600">
+                            {aflosser.first_name?.[0] || '?'}{aflosser.last_name?.[0] || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900">
+                            {aflosser.first_name} {aflosser.last_name}
+                          </h3>
+                          <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
+                        </div>
+                      </div>
+
+                      {/* Contact Info */}
+                      <div className="space-y-2">
+                        {aflosser.phone && (
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <Phone className="w-4 h-4" />
+                            <span>{aflosser.phone}</span>
+                          </div>
+                        )}
+                        {aflosser.email && (
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <MessageSquare className="w-4 h-4" />
+                            <span>{aflosser.email}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex items-center justify-between">
+                        <Badge className={
+                          aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
+                          aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-800'
+                        }>
+                          {aflosser.status === 'thuis' ? 'Thuis' :
+                           aflosser.status === 'aan-boord' ? 'Aan Boord' :
+                           aflosser.status}
+                        </Badge>
+                        <Link href={`/bemanning/aflossers/${aflosser.id}`}>
+                          <Button size="sm" variant="outline">
+                            <ArrowLeft className="w-4 h-4 mr-1" />
+                            Bekijk
+                          </Button>
+                        </Link>
+                      </div>
+
+                      {/* Vaste Dienst Saldo */}
+                      {aflosser.vaste_dienst && (
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-blue-800">Vaste Dienst Saldo</span>
+                            <span className={`text-sm font-bold ${
+                              vasteDienstBalance > 0 ? 'text-green-600' :
+                              vasteDienstBalance < 0 ? 'text-red-600' :
+                              'text-gray-600'
+                            }`}>
+                              {vasteDienstBalance > 0 ? '+' : ''}{vasteDienstBalance} dagen
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Algemene Opmerkingen */}
+                      {aflosser.aflosser_opmerkingen && (
+                        <div className="bg-gray-50 p-3 rounded-lg">
+                          <div className="flex items-start space-x-2">
+                            <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
+                              <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* New Trip Dialog */}
+      <Dialog open={newTripDialog} onOpenChange={setNewTripDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nieuwe Reis Aanmaken</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="trip_name">Reis Naam *</Label>
+              <Input
+                id="trip_name"
+                value={newTripData.trip_name}
+                onChange={(e) => setNewTripData({...newTripData, trip_name: e.target.value})}
+                placeholder="Bijv. Rotterdam - Hamburg"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="ship_id">Schip *</Label>
+              <Select value={newTripData.ship_id} onValueChange={(value) => setNewTripData({...newTripData, ship_id: value})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer schip" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ships.map((ship: any) => (
+                    <SelectItem key={ship.id} value={ship.id}>
+                      {ship.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="start_date">Start Datum *</Label>
+              <Input
+                id="start_date"
+                type="date"
+                value={newTripData.start_date}
+                onChange={(e) => setNewTripData({...newTripData, start_date: e.target.value})}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="end_date">Eind Datum</Label>
+              <Input
+                id="end_date"
+                type="date"
+                value={newTripData.end_date}
+                onChange={(e) => setNewTripData({...newTripData, end_date: e.target.value})}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="trip_from">Van *</Label>
+              <Input
+                id="trip_from"
+                value={newTripData.trip_from}
+                onChange={(e) => setNewTripData({...newTripData, trip_from: e.target.value})}
+                placeholder="Bijv. Rotterdam"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="trip_to">Naar *</Label>
+              <Input
+                id="trip_to"
+                value={newTripData.trip_to}
+                onChange={(e) => setNewTripData({...newTripData, trip_to: e.target.value})}
+                placeholder="Bijv. Hamburg"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="notes">Notities</Label>
+              <Textarea
+                id="notes"
+                value={newTripData.notes}
+                onChange={(e) => setNewTripData({...newTripData, notes: e.target.value})}
+                placeholder="Optionele notities..."
+              />
+            </div>
+            
+            <div className="flex space-x-2">
+              <Button onClick={handleCreateTrip} className="flex-1">
+                Aanmaken
+              </Button>
+              <Button variant="outline" onClick={() => setNewTripDialog(false)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Aflosser Dialog */}
+      <Dialog open={!!assignAflosserDialog} onOpenChange={() => setAssignAflosserDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Aflosser Toewijzen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="aflosser">Selecteer Aflosser *</Label>
+              <Select value={selectedAflosserId} onValueChange={setSelectedAflosserId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer aflosser" />
+                </SelectTrigger>
+                <SelectContent>
+                  {aflossers.filter((a: any) => a.status === 'thuis').map((aflosser: any) => (
+                    <SelectItem key={aflosser.id} value={aflosser.id}>
+                      {aflosser.first_name} {aflosser.last_name} ({aflosser.nationality})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex space-x-2">
+              <Button onClick={handleAssignAflosser} className="flex-1" disabled={!selectedAflosserId}>
+                Toewijzen
+              </Button>
+              <Button variant="outline" onClick={() => setAssignAflosserDialog(null)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Board Ship Dialog */}
+      <Dialog open={!!boardShipDialog} onOpenChange={() => setBoardShipDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Aan Boord Melden</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="start_datum">Aan Boord Datum *</Label>
+              <Input
+                id="start_datum"
+                type="date"
+                value={boardData.start_datum}
+                onChange={(e) => setBoardData({...boardData, start_datum: e.target.value})}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="start_tijd">Aan Boord Tijd *</Label>
+              <Input
+                id="start_tijd"
+                type="time"
+                value={boardData.start_tijd}
+                onChange={(e) => setBoardData({...boardData, start_tijd: e.target.value})}
+              />
+            </div>
+            
+            <div className="flex space-x-2">
+              <Button onClick={handleBoardShip} className="flex-1" disabled={!boardData.start_datum || !boardData.start_tijd}>
+                Aan Boord Melden
+              </Button>
+              <Button variant="outline" onClick={() => setBoardShipDialog(null)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Trip Dialog */}
+      <Dialog open={!!completeTripDialog} onOpenChange={() => setCompleteTripDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reis Afsluiten</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="eind_datum">Afgestapt Datum *</Label>
+              <Input
+                id="eind_datum"
+                type="date"
+                value={completeData.eind_datum}
+                onChange={(e) => setCompleteData({...completeData, eind_datum: e.target.value})}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="eind_tijd">Afgestapt Tijd *</Label>
+              <Input
+                id="eind_tijd"
+                type="time"
+                value={completeData.eind_tijd}
+                onChange={(e) => setCompleteData({...completeData, eind_tijd: e.target.value})}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="aflosser_opmerkingen">Opmerkingen over Aflosser</Label>
+              <Textarea
+                id="aflosser_opmerkingen"
+                value={completeData.aflosser_opmerkingen}
+                onChange={(e) => setCompleteData({...completeData, aflosser_opmerkingen: e.target.value})}
+                placeholder="Optionele opmerkingen over gedrag, voorkeuren, etc..."
+              />
+            </div>
+            
+            <div className="flex space-x-2">
+              <Button onClick={handleCompleteTrip} className="flex-1" disabled={!completeData.eind_datum || !completeData.eind_tijd}>
+                Reis Afsluiten
+              </Button>
+              <Button variant="outline" onClick={() => setCompleteTripDialog(null)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+

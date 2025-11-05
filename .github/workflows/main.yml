@@ -1,0 +1,28 @@
+name: HR cron mails
+
+on:
+  schedule:
+    # Wekelijks: elke maandag 06:00 UTC ≈ 07:00 NL (zomer/winter kan 1 uur afwijken)
+    - cron: "0 6 * * 1"
+    # Maandelijks: 1e van de maand 06:00 UTC
+    - cron: "0 6 1 * *"
+  # Handmatig starten vanuit Actions → HR cron mails → Run workflow
+  workflow_dispatch: {}
+
+jobs:
+  run-crons:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sick weekly (alleen op maandag)
+        if: ${{ github.event.schedule == '0 6 * * 1' }}
+        run: |
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/send-sick-email" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" || true
+
+      - name: Medical monthly (alleen op de 1e)
+        if: ${{ github.event.schedule == '0 6 1 * *' }}
+        run: |
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/send-medical-email" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" || true

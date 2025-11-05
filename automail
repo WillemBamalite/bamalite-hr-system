@@ -1,0 +1,69 @@
+name: Scheduled Supabase Edge Function Calls (HMAC)
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+    - cron: '0 8 1-7 * 1'
+
+jobs:
+  call_send_crew_email:
+    name: Call Send-crew-email (HMAC)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Send-crew-email Edge Function with HMAC
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HMAC_SECRET: ${{ secrets.HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+          endpoint="${SUPABASE_URL}/functions/v1/Send-crew-email"
+          body='{}'
+          ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          sig=$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$HMAC_SECRET" -binary | openssl base64 -A)
+          echo "Calling $endpoint"
+          resp=$(curl -sS -o /tmp/response_sendcrew.txt -w "%{http_code}" \
+            -X POST "$endpoint" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "X-Timestamp: $ts" \
+            -H "X-Signature: $sig" \
+            -d "$body")
+          echo "HTTP status: $resp"
+          if [[ "$resp" -lt 200 || "$resp" -ge 300 ]]; then
+            echo "Request failed. Response body:"
+            cat /tmp/response_sendcrew.txt
+            exit 1
+          fi
+          echo "Send-crew-email called successfully."
+
+  call_quick_responder:
+    name: Call quick-responder (HMAC)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call quick-responder Edge Function with HMAC
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HMAC_SECRET: ${{ secrets.HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+          endpoint="${SUPABASE_URL}/functions/v1/quick-responder"
+          body='{}'
+          ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          sig=$(printf '%s.%s' "$ts" "$body" | openssl dgst -sha256 -hmac "$HMAC_SECRET" -binary | openssl base64 -A)
+          echo "Calling $endpoint"
+          resp=$(curl -sS -o /tmp/response_quick.txt -w "%{http_code}" \
+            -X POST "$endpoint" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "X-Timestamp: $ts" \
+            -H "X-Signature: $sig" \
+            -d "$body")
+          echo "HTTP status: $resp"
+          if [[ "$resp" -lt 200 || "$resp" -ge 300 ]]; then
+            echo "Request failed. Response body:"
+            cat /tmp/response_quick.txt
+            exit 1
+          fi
+          echo "quick-responder called successfully."
