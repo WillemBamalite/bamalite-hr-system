@@ -1,6 +1,7 @@
 {
   "/page": "app/page.js",
-  "/bemanning/nieuw/page": "app/bemanning/nieuw/page.js",
   "/print/page": "app/print/page.js",
+  "/bemanning/nog-in-te-delen/page": "app/bemanning/nog-in-te-delen/page.js",
+  "/bemanning/nieuw/page": "app/bemanning/nieuw/page.js",
   "/ziekte/page": "app/ziekte/page.js"
 }

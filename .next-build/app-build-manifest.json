@@ -30,6 +30,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/bemanning/nieuw/page.js"
+    ],
+    "/bemanning/nog-in-te-delen/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/bemanning/nog-in-te-delen/page.js"
     ]
   }
 }
