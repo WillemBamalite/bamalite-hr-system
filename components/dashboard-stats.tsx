@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
 import Link from "next/link"
 
 export function DashboardStats() {
-  const { crew, ships, sickLeave, loans } = useSupabaseData()
+  const { crew, ships, sickLeave, loans, tasks } = useSupabaseData()
+  const { t } = useLanguage()
+  
+  // Count open tasks from Supabase
+  const tasksCount = tasks.filter((t: any) => !t.completed).length
   
   // Bereken stats uit Supabase data
   const aflossers = crew.filter((c) => 
@@ -30,7 +35,7 @@ export function DashboardStats() {
 
   return (
     <div className="space-y-4 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-4">
         <Link href="/bemanning/overzicht" className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
           <div className="text-xs text-blue-700 mt-1">Totaal bemanningsleden</div>
@@ -46,6 +51,13 @@ export function DashboardStats() {
         <Link href="/bemanning/nog-in-te-delen" className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center hover:bg-gray-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-gray-800">{stats.nogInTeDelen}</div>
           <div className="text-xs text-gray-700 mt-1">Nog in te delen</div>
+        </Link>
+        <Link href="/taken" className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center hover:bg-amber-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-amber-800">{tasksCount}</div>
+          <div className='text-xs text-amber-700 mt-1 flex items-center justify-center gap-1'>
+            <ListTodo className="w-3 h-3" />
+            <span>Taken</span>
+          </div>
         </Link>
         <Link href="/bemanning/leningen" className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>

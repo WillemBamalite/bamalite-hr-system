@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus, Search, AlertCircle } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
@@ -36,7 +37,12 @@ const sortCrewByRank = (crew: any[]) => {
 }
 
 export function ShipOverview() {
+<<<<<<< HEAD
   const { ships, crew, sickLeave, loading, error, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
+=======
+  const { ships, crew, sickLeave, trips, tasks, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag } = useSupabaseData()
+  const { t } = useLanguage()
+>>>>>>> 4a6f749 (Add taken (tasks) system with 3-column layout, birthday notifications, and task indicators)
   const [mounted, setMounted] = useState(false);
   
   // Notes functionality state
@@ -131,7 +137,19 @@ export function ShipOverview() {
   }
 
   // Crew Card Component
+<<<<<<< HEAD
   const CrewCard = ({ member, onDoubleClick, sickLeave }: { member: any; onDoubleClick: (id: string, name: string) => void; sickLeave: any[] }) => {
+=======
+  const CrewCard = ({ member, onDoubleClick, sickLeave, borderColor, tasks }: { member: any; onDoubleClick: (id: string, name: string) => void; sickLeave: any[]; borderColor?: string; tasks: any[] }) => {
+    const [paletteOpen, setPaletteOpen] = useState(false)
+    const COLOR_OPTIONS = [
+      "#FEE2E2", // red-100
+      "#FFEDD5", // orange-100
+      "#FEF3C7", // amber-100
+      "#E0E7FF", // indigo-100
+      "#F3E8FF", // purple-100
+    ]
+>>>>>>> 4a6f749 (Add taken (tasks) system with 3-column layout, birthday notifications, and task indicators)
     const getNextRotation = () => {
       // Als er een expected_start_date is, bereken dagen tot startdatum
       if (member.expected_start_date) {
@@ -188,6 +206,38 @@ export function ShipOverview() {
                 {member.first_name} {member.last_name}
               </Link>
               <span className="text-sm">{getNationalityFlag(member.nationality)}</span>
+              {(() => {
+                const crewTasks = tasks.filter((t: any) => !t.completed && t.related_crew_id === member.id)
+                if (crewTasks.length === 0) return null
+                return (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="focus:outline-none">
+                        <AlertCircle className="w-6 h-6 text-red-600 animate-pulse cursor-pointer flex-shrink-0" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="right" className="max-w-sm">
+                      <div className="space-y-2">
+                        <div className="font-semibold text-sm mb-2">Openstaande taken ({crewTasks.length}):</div>
+                        {crewTasks.map((task: any) => (
+                          <div key={task.id} className="border-l-2 border-orange-500 pl-2 text-xs mb-2">
+                            <div className="font-medium">{task.title}</div>
+                            {task.priority && (
+                              <div className="text-gray-600">Prioriteit: {task.priority}</div>
+                            )}
+                            {task.assigned_to && (
+                              <div className="text-gray-600">Toegewezen aan: {task.assigned_to}</div>
+                            )}
+                            {task.deadline && (
+                              <div className="text-gray-600">Deadline: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )
+              })()}
             </div>
 
             {/* Function */}
@@ -515,8 +565,40 @@ export function ShipOverview() {
                             <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center space-x-3">
                                 <Ship className="w-6 h-6 text-blue-600" />
-                                <div>
+                                <div className="flex items-center gap-2">
                                   <h3 className="text-lg font-semibold">{ship.name}</h3>
+                                  {(() => {
+                                    const shipTasks = tasks.filter((t: any) => !t.completed && t.related_ship_id === ship.id)
+                                    if (shipTasks.length === 0) return null
+                                    return (
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <button type="button" className="focus:outline-none">
+                                            <AlertCircle className="w-7 h-7 text-red-600 animate-pulse cursor-pointer" />
+                                          </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent side="right" className="max-w-sm">
+                                          <div className="space-y-2">
+                                            <div className="font-semibold text-sm mb-2">Openstaande taken ({shipTasks.length}):</div>
+                                            {shipTasks.map((task: any) => (
+                                              <div key={task.id} className="border-l-2 border-orange-500 pl-2 text-xs mb-2">
+                                                <div className="font-medium">{task.title}</div>
+                                                {task.priority && (
+                                                  <div className="text-gray-600">Prioriteit: {task.priority}</div>
+                                                )}
+                                                {task.assigned_to && (
+                                                  <div className="text-gray-600">Toegewezen aan: {task.assigned_to}</div>
+                                                )}
+                                                {task.deadline && (
+                                                  <div className="text-gray-600">Deadline: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </PopoverContent>
+                                      </Popover>
+                                    )
+                                  })()}
                                 </div>
                               </div>
                               <div className="flex items-center space-x-2">
@@ -563,7 +645,18 @@ export function ShipOverview() {
                                         const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
                                         return statusCalculation.currentStatus === "aan-boord"
                                       })).map((member: any) => (
+<<<<<<< HEAD
                                         <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
+=======
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#22c55e" /* Aan boord = groen */
+                                          tasks={tasks}
+                                        />
+>>>>>>> 4a6f749 (Add taken (tasks) system with 3-column layout, birthday notifications, and task indicators)
                                       ))}
                                     </div>
                                   </div>
@@ -593,7 +686,18 @@ export function ShipOverview() {
                                         const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek")
                                         return statusCalculation.currentStatus === "thuis"
                                       })).map((member: any) => (
+<<<<<<< HEAD
                                         <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
+=======
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#3b82f6" /* Thuis = blauw */
+                                          tasks={tasks}
+                                        />
+>>>>>>> 4a6f749 (Add taken (tasks) system with 3-column layout, birthday notifications, and task indicators)
                                       ))}
                                     </div>
                                   </div>
@@ -609,7 +713,18 @@ export function ShipOverview() {
                                     </div>
                                     <div className="space-y-3 min-h-[100px]">
                                       {sortCrewByRank(shipCrew.filter((member: any) => member.status === "ziek")).map((member: any) => (
+<<<<<<< HEAD
                                         <CrewCard key={member.id} member={member} onDoubleClick={handleDoubleClick} sickLeave={sickLeave} />
+=======
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#ef4444" /* Ziek = rood */
+                                          tasks={tasks}
+                                        />
+>>>>>>> 4a6f749 (Add taken (tasks) system with 3-column layout, birthday notifications, and task indicators)
                                       ))}
                                     </div>
                                   </div>

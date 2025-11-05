@@ -614,6 +614,7 @@ export function useSupabaseData() {
   const [loans, setLoans] = useState<any[]>([])
   const [trips, setTrips] = useState<any[]>([])
   const [vasteDienstRecords, setVasteDienstRecords] = useState<any[]>([])
+  const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -637,6 +638,7 @@ export function useSupabaseData() {
         setLoans([])
         setTrips([])
         setVasteDienstRecords([])
+        setTasks([])
         setLoading(false)
         return
       }
@@ -777,6 +779,21 @@ export function useSupabaseData() {
               console.log('🧹 Resetting all vaste dienst records to 0...')
               await resetAllVasteDienstRecords()
             }
+
+      // Load tasks
+      console.log('Loading tasks...')
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (tasksError) {
+        console.error('Error loading tasks:', tasksError)
+        setTasks([])
+      } else {
+        console.log('Tasks loaded:', tasksData?.length || 0)
+        setTasks(tasksData || [])
+      }
       
       console.log('Data loading completed!')
 
@@ -851,6 +868,14 @@ export function useSupabaseData() {
       })
       .subscribe()
 
+    // Subscribe to tasks changes
+    const tasksSubscription = supabase
+      .channel('tasks-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+        loadData()
+      })
+      .subscribe()
+
     return () => {
       shipsSubscription.unsubscribe()
       crewSubscription.unsubscribe()
@@ -858,6 +883,7 @@ export function useSupabaseData() {
       standBackSubscription.unsubscribe()
       loansSubscription.unsubscribe()
       tripsSubscription.unsubscribe()
+      tasksSubscription.unsubscribe()
     }
   }, [])
 
@@ -1522,6 +1548,75 @@ export function useSupabaseData() {
     }
   };
 
+  // Add task
+  const addTask = async (taskData: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert([taskData])
+        .select()
+        .single()
+      
+      if (error) throw error
+      await loadData()
+      return data
+    } catch (err) {
+      console.error('Error adding task:', err)
+      throw err
+    }
+  }
+
+  // Update task
+  const updateTask = async (taskId: string, updates: any) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update(updates)
+        .eq('id', taskId)
+      
+      if (error) throw error
+      await loadData()
+    } catch (err) {
+      console.error('Error updating task:', err)
+      throw err
+    }
+  }
+
+  // Delete task
+  const deleteTask = async (taskId: string) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId)
+      
+      if (error) throw error
+      await loadData()
+    } catch (err) {
+      console.error('Error deleting task:', err)
+      throw err
+    }
+  }
+
+  // Complete task
+  const completeTask = async (taskId: string) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ 
+          completed: true,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', taskId)
+      
+      if (error) throw error
+      await loadData()
+    } catch (err) {
+      console.error('Error completing task:', err)
+      throw err
+    }
+  }
+
   return {
     ships,
     crew,
@@ -1529,6 +1624,7 @@ export function useSupabaseData() {
     standBackRecords,
     loans,
     trips,
+    tasks,
     loading,
     error,
     loadData,
@@ -1554,6 +1650,10 @@ export function useSupabaseData() {
     updateVasteDienstRecord,
     deleteVasteDienstRecord,
     addNoteToCrew,
-    removeNoteFromCrew
+    removeNoteFromCrew,
+    addTask,
+    updateTask,
+    deleteTask,
+    completeTask
   }
 } 
