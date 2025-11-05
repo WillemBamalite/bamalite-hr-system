@@ -15,8 +15,9 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 const RANK_ORDER = [
   "Kapitein",
   "Stuurman",
-  "Lichtmatroos",
+  "Volmatroos",
   "Matroos",
+  "Lichtmatroos",
   "Deksman",
   "Aflosser"
 ];

@@ -45,6 +45,7 @@ const sortCrewByRank = (crew: any[]) => {
     'Kapitein': 1,
     '2e kapitein': 2,
     'Stuurman': 3,
+    'Volmatroos': 4,
     'Vol Matroos': 4,
     'Matroos': 5,
     'Lichtmatroos': 6,

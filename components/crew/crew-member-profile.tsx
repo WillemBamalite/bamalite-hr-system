@@ -18,8 +18,9 @@ const POSITION_OPTIONS = [
   "Kapitein",
   "2e kapitein",
   "Stuurman",
-  "Lichtmatroos",
+  "Volmatroos",
   "Matroos",
+  "Lichtmatroos",
   "Deksman",
   "Aflosser"
 ]

@@ -1,5 +1,6 @@
 {
   "/page": "app/page.js",
+  "/bemanning/nieuw/page": "app/bemanning/nieuw/page.js",
   "/print/page": "app/print/page.js",
   "/ziekte/page": "app/ziekte/page.js"
 }

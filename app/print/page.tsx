@@ -57,14 +57,17 @@ export default function PrintPage() {
       '2e Kapitein': 2,
       'Stuurman': 3,
       'stuurman': 3,
-      'Matroos': 4,
-      'matroos': 4,
-      'Lichtmatroos': 5,
-      'lichtmatroos': 5,
-      'Deksman': 6,
-      'deksman': 6,
-      'Aflosser': 7,
-      'aflosser': 7
+      'Volmatroos': 4,
+      'volmatroos': 4,
+      'Vol Matroos': 4,
+      'Matroos': 5,
+      'matroos': 5,
+      'Lichtmatroos': 6,
+      'lichtmatroos': 6,
+      'Deksman': 7,
+      'deksman': 7,
+      'Aflosser': 8,
+      'aflosser': 8
     };
     
     return crew.sort((a, b) => {
