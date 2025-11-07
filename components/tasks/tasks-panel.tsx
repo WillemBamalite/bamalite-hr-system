@@ -22,7 +22,7 @@ export function TasksPanel() {
   const [selectedCrewId, setSelectedCrewId] = useState<string>("")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [assignedTo, setAssignedTo] = useState<"Leo" | "Jos" | "Willem">("Leo")
+  const [assignedTo, setAssignedTo] = useState<"Nautic" | "Leo" | "Jos" | "Willem">("Nautic")
   const [priority, setPriority] = useState<"laag" | "normaal" | "hoog" | "urgent">("normaal")
   const [deadline, setDeadline] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -35,6 +35,7 @@ export function TasksPanel() {
 
   // Group tasks by assigned person
   const tasksByPerson = {
+    Nautic: filteredTasks.filter((t: any) => t.assigned_to === "Nautic"),
     Leo: filteredTasks.filter((t: any) => t.assigned_to === "Leo"),
     Willem: filteredTasks.filter((t: any) => t.assigned_to === "Willem"),
     Jos: filteredTasks.filter((t: any) => t.assigned_to === "Jos")
@@ -46,7 +47,7 @@ export function TasksPanel() {
     setSelectedCrewId("")
     setTitle("")
     setDescription("")
-    setAssignedTo("Leo")
+    setAssignedTo("Nautic")
     setPriority("normaal")
     setDeadline("")
   }
@@ -96,11 +97,60 @@ export function TasksPanel() {
       }
 
       await addTask(taskData)
+      
+      // Verstuur e-mail notificatie (stil falen - taak is al aangemaakt)
+      try {
+        const relatedShip = selectedTaskType === "ship" && selectedShipId
+          ? ships.find((s: any) => s.id === selectedShipId)
+          : null
+        const relatedCrew = selectedTaskType === "crew" && selectedCrewId
+          ? crew.find((c: any) => c.id === selectedCrewId)
+          : null
+
+        const emailResponse = await fetch('/api/send-task-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            assignedTo,
+            title: taskData.title,
+            description: taskData.description || '',
+            priority: taskData.priority,
+            deadline: taskData.deadline || null,
+            relatedShipName: relatedShip ? relatedShip.name : null,
+            relatedCrewName: relatedCrew ? `${relatedCrew.first_name} ${relatedCrew.last_name}` : null,
+          }),
+        })
+
+        if (!emailResponse.ok) {
+          try {
+            const emailResult = await emailResponse.json()
+            const errorMsg = emailResult.message || emailResult.error || 'Onbekende fout'
+            console.warn('⚠️ E-mail niet verstuurd:', errorMsg)
+            console.warn('⚠️ Response status:', emailResponse.status)
+            console.warn('⚠️ Full response:', emailResult)
+          } catch (parseError) {
+            const text = await emailResponse.text()
+            console.warn('⚠️ E-mail niet verstuurd (status:', emailResponse.status, ')')
+            console.warn('⚠️ Response text:', text)
+          }
+        } else {
+          const emailResult = await emailResponse.json()
+          console.log('✅ E-mail succesvol verstuurd!', emailResult)
+        }
+      } catch (emailError) {
+        // E-mail fout mag niet voorkomen dat de taak wordt aangemaakt
+        // Gebruik console.warn in plaats van console.error om Next.js error boundary niet te triggeren
+        console.warn('E-mail kon niet worden verstuurd:', emailError)
+      }
+      
       resetForm()
       setShowDialog(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating task:", error)
-      alert("Fout bij aanmaken taak")
+      const errorMessage = error?.message || error?.error?.message || JSON.stringify(error)
+      alert(`Fout bij aanmaken taak: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -196,9 +246,9 @@ export function TasksPanel() {
         </Button>
       </div>
 
-      {/* Taken lijst in 3 kolommen */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {(["Leo", "Willem", "Jos"] as const).map((person) => {
+      {/* Taken lijst in 4 kolommen */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {(["Nautic", "Leo", "Willem", "Jos"] as const).map((person) => {
           const personTasks = tasksByPerson[person]
           const openCount = personTasks.filter((t: any) => !t.completed).length
           const completedCount = personTasks.filter((t: any) => t.completed).length
@@ -419,12 +469,13 @@ export function TasksPanel() {
               <Label>Toegewezen aan *</Label>
               <Select
                 value={assignedTo}
-                onValueChange={(value: "Leo" | "Jos" | "Willem") => setAssignedTo(value)}
+                onValueChange={(value: "Nautic" | "Leo" | "Jos" | "Willem") => setAssignedTo(value)}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="Nautic">Nautic</SelectItem>
                   <SelectItem value="Leo">Leo</SelectItem>
                   <SelectItem value="Jos">Jos</SelectItem>
                   <SelectItem value="Willem">Willem</SelectItem>
