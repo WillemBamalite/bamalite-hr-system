@@ -40,10 +40,17 @@ export async function POST(request: NextRequest) {
     // Check if Resend is configured
     if (!resend || !resendApiKey) {
       console.error('📧 RESEND_API_KEY niet ingesteld')
+      console.error('📧 Environment check:', {
+        hasResend: !!resend,
+        hasApiKey: !!resendApiKey,
+        apiKeyLength: resendApiKey?.length || 0,
+        nodeEnv: process.env.NODE_ENV
+      })
       return NextResponse.json(
         { 
           error: 'E-mail service niet geconfigureerd',
-          message: 'RESEND_API_KEY ontbreekt in environment variables. Zie EMAIL_SETUP.md voor instructies.'
+          message: 'RESEND_API_KEY ontbreekt in environment variables. Voeg deze toe in Vercel Settings → Environment Variables. Zie EMAIL_SETUP.md voor instructies.',
+          hint: 'Voor Vercel: Ga naar Project Settings → Environment Variables en voeg RESEND_API_KEY toe'
         },
         { status: 503 }
       )
@@ -104,9 +111,12 @@ export async function POST(request: NextRequest) {
     console.log('📧 Verstuur e-mail van:', fromEmail, 'naar:', recipientEmails)
     
     // Verstuur naar alle ontvangers
+    console.log(`📧 Gaat ${recipientEmails.length} e-mail(s) versturen naar:`, recipientEmails.join(', '))
     const results = []
+    
     for (const recipientEmail of recipientEmails) {
       try {
+        console.log(`📧 Verstuur nu naar: ${recipientEmail}`)
         const { data, error } = await resend.emails.send({
           from: `Bamalite HR <${fromEmail}>`,
           to: recipientEmail,
@@ -115,17 +125,20 @@ export async function POST(request: NextRequest) {
         })
 
         if (error) {
-          console.error(`📧 Error sending email to ${recipientEmail}:`, error)
-          results.push({ recipient: recipientEmail, success: false, error })
+          console.error(`❌ Error sending email to ${recipientEmail}:`, JSON.stringify(error, null, 2))
+          results.push({ recipient: recipientEmail, success: false, error: error })
         } else {
-          console.log(`📧 E-mail succesvol verstuurd naar ${recipientEmail}! Message ID:`, data?.id)
+          console.log(`✅ E-mail succesvol verstuurd naar ${recipientEmail}! Message ID:`, data?.id)
           results.push({ recipient: recipientEmail, success: true, messageId: data?.id })
         }
       } catch (err) {
-        console.error(`📧 Exception sending email to ${recipientEmail}:`, err)
-        results.push({ recipient: recipientEmail, success: false, error: err instanceof Error ? err.message : String(err) })
+        console.error(`❌ Exception sending email to ${recipientEmail}:`, err)
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        results.push({ recipient: recipientEmail, success: false, error: errorMsg })
       }
     }
+    
+    console.log(`📧 Verstuur resultaten:`, JSON.stringify(results, null, 2))
 
     // Check of alle e-mails zijn verstuurd
     const allSuccess = results.every(r => r.success)

@@ -136,8 +136,28 @@ export function TasksPanel() {
             console.warn('⚠️ Response text:', text)
           }
         } else {
-          const emailResult = await emailResponse.json()
-          console.log('✅ E-mail succesvol verstuurd!', emailResult)
+          try {
+            const emailResult = await emailResponse.json()
+            console.log('✅ E-mail response:', emailResult)
+            
+            // Als het naar meerdere personen gaat, toon details
+            if (emailResult.results && Array.isArray(emailResult.results)) {
+              const successCount = emailResult.results.filter((r: any) => r.success).length
+              const totalCount = emailResult.results.length
+              console.log(`✅ ${successCount}/${totalCount} e-mails succesvol verstuurd`)
+              emailResult.results.forEach((result: any) => {
+                if (result.success) {
+                  console.log(`  ✅ ${result.recipient}: Message ID ${result.messageId}`)
+                } else {
+                  console.log(`  ❌ ${result.recipient}: ${result.error?.message || result.error || 'Onbekende fout'}`)
+                }
+              })
+            } else {
+              console.log('✅ E-mail succesvol verstuurd!', emailResult)
+            }
+          } catch (parseError) {
+            console.log('✅ E-mail verstuurd (response kon niet worden geparsed)')
+          }
         }
       } catch (emailError) {
         // E-mail fout mag niet voorkomen dat de taak wordt aangemaakt
