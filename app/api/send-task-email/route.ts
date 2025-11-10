@@ -7,10 +7,15 @@ const resend = resendApiKey ? new Resend(resendApiKey) : null
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('📧 E-mail API route aangeroepen')
+    console.log('📧 ===== E-mail API route aangeroepen =====')
     const body = await request.json()
-    console.log('📧 Request body:', body)
+    console.log('📧 Request body:', JSON.stringify(body, null, 2))
     const { assignedTo, title, description, priority, deadline, relatedShipName, relatedCrewName } = body
+    
+    // Log de assignedTo waarde expliciet
+    console.log('📧 assignedTo waarde:', assignedTo)
+    console.log('📧 assignedTo type:', typeof assignedTo)
+    console.log('📧 assignedTo === "Nautic":', assignedTo === 'Nautic')
 
     // Map naam naar e-mailadres (kleine letters)
     const emailMap: { [key: string]: string } = {
@@ -21,21 +26,25 @@ export async function POST(request: NextRequest) {
 
     // Voor Nautic: stuur naar alle drie
     let recipientEmails: string[]
-    if (assignedTo === 'Nautic') {
+    if (assignedTo === 'Nautic' || assignedTo?.toLowerCase() === 'nautic') {
       recipientEmails = ['leo@bamalite.com', 'willem@bamalite.com', 'jos@bamalite.com']
-      console.log('📧 Nautic taak -> verstuur naar alle drie:', recipientEmails)
+      console.log('📧 ✅ NAUTIC TAAK GEDETECTEERD -> verstuur naar alle drie:', recipientEmails)
     } else {
       const recipientEmail = emailMap[assignedTo]
       if (!recipientEmail) {
-        console.error('📧 Onbekende ontvanger:', assignedTo)
+        console.error('📧 ❌ Onbekende ontvanger:', assignedTo)
+        console.error('📧 Beschikbare opties:', Object.keys(emailMap).join(', '))
         return NextResponse.json(
           { error: 'Onbekende ontvanger', message: `Geen e-mailadres gevonden voor: ${assignedTo}` },
           { status: 400 }
         )
       }
       recipientEmails = [recipientEmail]
-      console.log('📧 Ontvanger:', assignedTo, '->', recipientEmail)
+      console.log('📧 Enkele ontvanger:', assignedTo, '->', recipientEmail)
     }
+    
+    console.log('📧 Finale recipientEmails array:', recipientEmails)
+    console.log('📧 Aantal ontvangers:', recipientEmails.length)
 
     // Check if Resend is configured
     if (!resend || !resendApiKey) {
