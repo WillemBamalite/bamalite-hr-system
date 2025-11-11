@@ -17,30 +17,33 @@ export async function POST(request: NextRequest) {
     console.log('📧 assignedTo type:', typeof assignedTo)
     console.log('📧 assignedTo === "Nautic":', assignedTo === 'Nautic')
 
-    // Map naam naar e-mailadres (kleine letters)
+    // Map naam naar e-mailadres (case-insensitive)
     const emailMap: { [key: string]: string } = {
-      'Leo': 'leo@bamalite.com',
-      'Willem': 'willem@bamalite.com',
-      'Jos': 'jos@bamalite.com'
+      'leo': 'leo@bamalite.com',
+      'willem': 'willem@bamalite.com',
+      'jos': 'jos@bamalite.com'
     }
 
-    // Voor Nautic: stuur naar alle drie
+    // Normaliseer assignedTo naar lowercase voor case-insensitive matching
+    const assignedToLower = assignedTo?.toLowerCase().trim()
+
+    // Voor Nautic: stuur naar alle vier (willem, leo, jos en bart)
     let recipientEmails: string[]
-    if (assignedTo === 'Nautic' || assignedTo?.toLowerCase() === 'nautic') {
-      recipientEmails = ['leo@bamalite.com', 'willem@bamalite.com', 'jos@bamalite.com']
-      console.log('📧 ✅ NAUTIC TAAK GEDETECTEERD -> verstuur naar alle drie:', recipientEmails)
+    if (assignedToLower === 'nautic') {
+      recipientEmails = ['willem@bamalite.com', 'leo@bamalite.com', 'jos@bamalite.com', 'bart@bamalite.com']
+      console.log('📧 ✅ NAUTIC TAAK GEDETECTEERD -> verstuur naar alle vier:', recipientEmails)
     } else {
-      const recipientEmail = emailMap[assignedTo]
+      const recipientEmail = emailMap[assignedToLower || '']
       if (!recipientEmail) {
-        console.error('📧 ❌ Onbekende ontvanger:', assignedTo)
-        console.error('📧 Beschikbare opties:', Object.keys(emailMap).join(', '))
+        console.error('📧 ❌ Onbekende ontvanger:', assignedTo, '(normalized:', assignedToLower, ')')
+        console.error('📧 Beschikbare opties:', Object.keys(emailMap).join(', '), 'of Nautic')
         return NextResponse.json(
           { error: 'Onbekende ontvanger', message: `Geen e-mailadres gevonden voor: ${assignedTo}` },
           { status: 400 }
         )
       }
       recipientEmails = [recipientEmail]
-      console.log('📧 Enkele ontvanger:', assignedTo, '->', recipientEmail)
+      console.log('📧 Enkele ontvanger:', assignedTo, '(normalized:', assignedToLower, ') ->', recipientEmail)
     }
     
     console.log('📧 Finale recipientEmails array:', recipientEmails)

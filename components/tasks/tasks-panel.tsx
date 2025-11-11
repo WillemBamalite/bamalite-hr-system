@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag } from "lucide-react"
+import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag, Edit } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { format, isPast, isToday, differenceInDays } from "date-fns"
 import { nl } from "date-fns/locale"
@@ -27,6 +27,8 @@ export function TasksPanel() {
   const [deadline, setDeadline] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [filter, setFilter] = useState<"open" | "completed">("open")
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingTaskId, setEditingTaskId] = useState<string>("")
 
   // Filter tasks - standaard alleen openstaande taken
   const openTasks = tasks.filter((t: any) => !t.completed)
@@ -50,6 +52,8 @@ export function TasksPanel() {
     setAssignedTo("Nautic")
     setPriority("normaal")
     setDeadline("")
+    setIsEditing(false)
+    setEditingTaskId("")
   }
 
   const handleSubmit = async () => {
@@ -96,81 +100,101 @@ export function TasksPanel() {
         taskData.deadline = deadline
       }
 
-      await addTask(taskData)
-      
-      // Verstuur e-mail notificatie (stil falen - taak is al aangemaakt)
-      try {
-        const relatedShip = selectedTaskType === "ship" && selectedShipId
-          ? ships.find((s: any) => s.id === selectedShipId)
-          : null
-        const relatedCrew = selectedTaskType === "crew" && selectedCrewId
-          ? crew.find((c: any) => c.id === selectedCrewId)
-          : null
-
-        const emailResponse = await fetch('/api/send-task-email', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            assignedTo,
-            title: taskData.title,
-            description: taskData.description || '',
-            priority: taskData.priority,
-            deadline: taskData.deadline || null,
-            relatedShipName: relatedShip ? relatedShip.name : null,
-            relatedCrewName: relatedCrew ? `${relatedCrew.first_name} ${relatedCrew.last_name}` : null,
-          }),
-        })
-
-        if (!emailResponse.ok) {
-          try {
-            const emailResult = await emailResponse.json()
-            const errorMsg = emailResult.message || emailResult.error || 'Onbekende fout'
-            console.warn('⚠️ E-mail niet verstuurd:', errorMsg)
-            console.warn('⚠️ Response status:', emailResponse.status)
-            console.warn('⚠️ Full response:', emailResult)
-          } catch (parseError) {
-            const text = await emailResponse.text()
-            console.warn('⚠️ E-mail niet verstuurd (status:', emailResponse.status, ')')
-            console.warn('⚠️ Response text:', text)
-          }
-        } else {
-          try {
-            const emailResult = await emailResponse.json()
-            console.log('✅ E-mail response:', emailResult)
-            
-            // Als het naar meerdere personen gaat, toon details
-            if (emailResult.results && Array.isArray(emailResult.results)) {
-              const successCount = emailResult.results.filter((r: any) => r.success).length
-              const totalCount = emailResult.results.length
-              console.log(`✅ ${successCount}/${totalCount} e-mails succesvol verstuurd`)
-              emailResult.results.forEach((result: any) => {
-                if (result.success) {
-                  console.log(`  ✅ ${result.recipient}: Message ID ${result.messageId}`)
-                } else {
-                  console.log(`  ❌ ${result.recipient}: ${result.error?.message || result.error || 'Onbekende fout'}`)
-                }
-              })
-            } else {
-              console.log('✅ E-mail succesvol verstuurd!', emailResult)
-            }
-          } catch (parseError) {
-            console.log('✅ E-mail verstuurd (response kon niet worden geparsed)')
-          }
+      if (isEditing && editingTaskId) {
+        // Update bestaande taak
+        const updates: any = {
+          title: taskData.title,
+          task_type: selectedTaskType,
+          assigned_to: assignedTo,
+          priority: priority,
+          description: taskData.description || null
         }
-      } catch (emailError) {
-        // E-mail fout mag niet voorkomen dat de taak wordt aangemaakt
-        // Gebruik console.warn in plaats van console.error om Next.js error boundary niet te triggeren
-        console.warn('E-mail kon niet worden verstuurd:', emailError)
+        if (deadline) updates.deadline = deadline
+        if (selectedTaskType === "ship") {
+          updates.related_ship_id = selectedShipId
+          updates.related_crew_id = null
+        } else {
+          updates.related_ship_id = null
+          updates.related_crew_id = selectedCrewId
+        }
+        await updateTask(editingTaskId, updates)
+      } else {
+        // Nieuwe taak
+        await addTask(taskData)
+      }
+      
+      // Verstuur e-mail alleen bij nieuwe taken, niet bij bewerken
+      if (!isEditing) {
+        try {
+          const relatedShip = selectedTaskType === "ship" && selectedShipId
+            ? ships.find((s: any) => s.id === selectedShipId)
+            : null
+          const relatedCrew = selectedTaskType === "crew" && selectedCrewId
+            ? crew.find((c: any) => c.id === selectedCrewId)
+            : null
+
+          const emailResponse = await fetch('/api/send-task-email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              assignedTo,
+              title: taskData.title,
+              description: taskData.description || '',
+              priority: taskData.priority,
+              deadline: taskData.deadline || null,
+              relatedShipName: relatedShip ? relatedShip.name : null,
+              relatedCrewName: relatedCrew ? `${relatedCrew.first_name} ${relatedCrew.last_name}` : null,
+            }),
+          })
+
+          if (!emailResponse.ok) {
+            try {
+              const emailResult = await emailResponse.json()
+              const errorMsg = emailResult.message || emailResult.error || 'Onbekende fout'
+              console.warn('⚠️ E-mail niet verstuurd:', errorMsg)
+              console.warn('⚠️ Response status:', emailResponse.status)
+              console.warn('⚠️ Full response:', emailResult)
+            } catch (parseError) {
+              const text = await emailResponse.text()
+              console.warn('⚠️ E-mail niet verstuurd (status:', emailResponse.status, ')')
+              console.warn('⚠️ Response text:', text)
+            }
+          } else {
+            try {
+              const emailResult = await emailResponse.json()
+              console.log('✅ E-mail response:', emailResult)
+              
+              if (emailResult.results && Array.isArray(emailResult.results)) {
+                const successCount = emailResult.results.filter((r: any) => r.success).length
+                const totalCount = emailResult.results.length
+                console.log(`✅ ${successCount}/${totalCount} e-mails succesvol verstuurd`)
+                emailResult.results.forEach((result: any) => {
+                  if (result.success) {
+                    console.log(`  ✅ ${result.recipient}: Message ID ${result.messageId}`)
+                  } else {
+                    console.log(`  ❌ ${result.recipient}: ${result.error?.message || result.error || 'Onbekende fout'}`)
+                  }
+                })
+              } else {
+                console.log('✅ E-mail succesvol verstuurd!', emailResult)
+              }
+            } catch (parseError) {
+              console.log('✅ E-mail verstuurd (response kon niet worden geparsed)')
+            }
+          }
+        } catch (emailError) {
+          console.warn('E-mail kon niet worden verstuurd:', emailError)
+        }
       }
       
       resetForm()
       setShowDialog(false)
     } catch (error: any) {
-      console.error("Error creating task:", error)
+      console.error(`Error ${isEditing ? "updating" : "creating"} task:`, error)
       const errorMessage = error?.message || error?.error?.message || JSON.stringify(error)
-      alert(`Fout bij aanmaken taak: ${errorMessage}`)
+      alert(`Fout bij ${isEditing ? "bijwerken" : "aanmaken"} taak: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -359,30 +383,53 @@ export function TasksPanel() {
                                 )}
                               </div>
 
-                              <div className="flex items-center justify-between pt-3 border-t">
-                                <div>{getPriorityBadge(task.priority)}</div>
-                                <div className="flex items-center gap-2">
-                                  {!task.completed && (
+                              <div className="flex flex-col gap-3 pt-3 border-t">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <div>{getPriorityBadge(task.priority)}</div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {!task.completed && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setIsEditing(true)
+                                          setEditingTaskId(task.id)
+                                          setShowDialog(true)
+                                          setSelectedTaskType(task.task_type)
+                                          setSelectedShipId(task.related_ship_id || "")
+                                          setSelectedCrewId(task.related_crew_id || "")
+                                          setTitle(task.title || "")
+                                          setDescription(task.description || "")
+                                          setAssignedTo(task.assigned_to)
+                                          setPriority(task.priority)
+                                          setDeadline(task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : "")
+                                        }}
+                                        className="flex items-center gap-1.5"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                        Bewerken
+                                      </Button>
+                                    )}
+                                    {!task.completed && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleComplete(task.id)}
+                                        className="flex items-center gap-1.5"
+                                      >
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        Voltooien
+                                      </Button>
+                                    )}
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() => handleComplete(task.id)}
-                                      className="gap-2"
-                                      title="Voltooien"
+                                      onClick={() => handleDelete(task.id)}
+                                      className="text-red-600 hover:text-red-700 hover:border-red-300"
                                     >
-                                      <CheckCircle2 className="w-4 h-4" />
-                                      Voltooien
+                                      <X className="w-4 h-4" />
                                     </Button>
-                                  )}
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleDelete(task.id)}
-                                    className="text-red-600 hover:text-red-700 hover:border-red-300"
-                                    title="Verwijderen"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </Button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -399,10 +446,15 @@ export function TasksPanel() {
       </div>
 
       {/* Nieuwe taak dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => {
+        setShowDialog(open)
+        if (!open) {
+          resetForm()
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Nieuwe Taak Aanmaken</DialogTitle>
+            <DialogTitle>{isEditing ? "Taak Bewerken" : "Nieuwe Taak Aanmaken"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -533,14 +585,11 @@ export function TasksPanel() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setShowDialog(false)
-              resetForm()
-            }}>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>
               Annuleren
             </Button>
             <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? "Aanmaken..." : "Taak Aanmaken"}
+              {isSubmitting ? (isEditing ? "Opslaan..." : "Aanmaken...") : (isEditing ? "Opslaan" : "Taak Aanmaken")}
             </Button>
           </DialogFooter>
         </DialogContent>
