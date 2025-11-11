@@ -335,8 +335,162 @@ export default function ZiektePage() {
   const activeSick = activeSickLeaves.length
   const waitingForCertificate = activeSickLeaves.filter((r: any) => r.status === "wacht-op-briefje").length
 
+  // Categoriseer records in drie groepen
+  const noCertificateOrExpired = sickLeaveRecords.filter((record: any) => {
+    // Status "wacht-op-briefje" gaat NIET naar deze kolom
+    if (record.status === "wacht-op-briefje") return false
+    
+    // Geen briefje
+    if (!record.certificate_valid_until) return true
+    
+    // Verlopen briefje (meer dan 0 dagen geleden verlopen)
+    const validUntil = new Date(record.certificate_valid_until)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    validUntil.setHours(0, 0, 0, 0)
+    
+    const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    // Al verlopen (meer dan 0 dagen geleden)
+    return daysUntilExpiry < 0
+  })
+
+  const waitingOrExpiringSoon = sickLeaveRecords.filter((record: any) => {
+    // Wacht op briefje status (altijd in deze kolom)
+    if (record.status === "wacht-op-briefje") return true
+    
+    // Bijna verlopen briefjes (verloopt over 3 dagen of minder, maar nog niet verlopen)
+    // Moet een briefje hebben
+    if (!record.certificate_valid_until) return false
+    
+    const validUntil = new Date(record.certificate_valid_until)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    validUntil.setHours(0, 0, 0, 0)
+    
+    const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    // Verloopt over 3 dagen of minder, maar nog niet verlopen (0-3 dagen)
+    // Kan zowel "actief" als andere statussen zijn, zolang het briefje bijna verloopt
+    return daysUntilExpiry >= 0 && daysUntilExpiry <= 3
+  })
+
+  const validCertificates = sickLeaveRecords.filter((record: any) => {
+    // Moet status "actief" zijn
+    if (record.status !== "actief") return false
+    
+    // Moet een geldig briefje hebben
+    if (!record.certificate_valid_until) return false
+    
+    const validUntil = new Date(record.certificate_valid_until)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    validUntil.setHours(0, 0, 0, 0)
+    
+    const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    // Briefje geldig voor meer dan 3 dagen EN niet al in waitingOrExpiringSoon
+    // (om dubbelingen te voorkomen)
+    return daysUntilExpiry > 3
+  })
+
+  // Helper functie om een record card te renderen
+  const renderRecordCard = (record: any) => {
+    const certificateStatus = getCertificateStatus(record)
+    return (
+      <Card key={record.id} className="hover:shadow-lg transition-shadow">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Avatar className="w-10 h-10">
+                <AvatarFallback className="bg-blue-100 text-blue-700">
+                  {record.crewMember.first_name[0]}{record.crewMember.last_name[0]}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <Link href={`/bemanning/${record.crewMember.id}`} className="font-medium text-gray-900 hover:text-blue-700">
+                    {record.crewMember.first_name} {record.crewMember.last_name}
+                  </Link>
+                  <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
+                </div>
+                <p className="text-sm text-gray-500">{record.crewMember.position}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge className={getStatusColor(record.status)}>
+                {getStatusText(record.status)}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleEdit(record)}
+                className="h-8 w-8 p-0"
+              >
+                <Edit className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-500">Start datum:</span>
+              <div className="flex items-center space-x-1 mt-1">
+                <Calendar className="w-3 h-3 text-gray-400" />
+                <span className="font-medium">{format(new Date(record.start_date), "dd-MM-yyyy")}</span>
+              </div>
+            </div>
+            <div>
+              <span className='text-gray-500'>{t('daysSick')}:</span>
+              <p className="font-medium mt-1">{record.daysCount} dagen</p>
+            </div>
+            <div>
+              <span className="text-gray-500">Salaris:</span>
+              <div className="flex items-center space-x-1 mt-1">
+                <Euro className="w-3 h-3 text-gray-400" />
+                <span className="font-medium">{record.salary_percentage || 100}%</span>
+              </div>
+            </div>
+            <div>
+              <span className="text-gray-500">Betaald door:</span>
+              <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
+            </div>
+          </div>
+
+          {/* Ziektebriefje status */}
+          <div className="flex items-center justify-between pt-3 border-t">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-4 h-4 text-gray-400" />
+              <span className='text-sm text-gray-600'>{t('sickCertificate')}:</span>
+            </div>
+            <Badge className={certificateStatus.color}>
+              {certificateStatus.text}
+            </Badge>
+          </div>
+
+          {/* Schip info */}
+          {record.ship && (
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <Ship className="w-4 h-4" />
+              <span>{record.ship.name}</span>
+            </div>
+          )}
+
+          {/* Notities */}
+          {record.notes && (
+            <div className="pt-3 border-t">
+              <span className="text-gray-500 text-sm">Notities:</span>
+              <p className="text-sm text-gray-700 mt-1 italic">{record.notes}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
-    <div className="max-w-4xl mx-auto py-8 px-2">
+    <div className="max-w-7xl mx-auto py-8 px-2">
       <MobileHeaderNav />
       <DashboardButton />
 
@@ -386,104 +540,60 @@ export default function ZiektePage() {
         </Card>
       </div>
 
-      {/* Desktop weergave */}
-      <div className="hidden md:block">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {sickLeaveRecords.map((record: any) => {
-                const certificateStatus = getCertificateStatus(record)
-                return (
-              <Card key={record.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-blue-100 text-blue-700">
-                            {record.crewMember.first_name[0]}{record.crewMember.last_name[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <Link href={`/bemanning/${record.crewMember.id}`} className="font-medium text-gray-900 hover:text-blue-700">
-                          {record.crewMember.first_name} {record.crewMember.last_name}
-                        </Link>
-                        <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
-                        </div>
-                        <p className="text-sm text-gray-500">{record.crewMember.position}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge className={getStatusColor(record.status)}>
-                        {getStatusText(record.status)}
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(record)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* {t('sickLeaveDetails')} */}
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">Start datum:</span>
-                      <div className="flex items-center space-x-1 mt-1">
-                        <Calendar className="w-3 h-3 text-gray-400" />
-                        <span className="font-medium">{format(new Date(record.start_date), "dd-MM-yyyy")}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <span className='text-gray-500'>{t('daysSick')}:</span>
-                      <p className="font-medium mt-1">{record.daysCount} dagen</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Salaris:</span>
-                      <div className="flex items-center space-x-1 mt-1">
-                        <Euro className="w-3 h-3 text-gray-400" />
-                        <span className="font-medium">{record.salary_percentage || 100}%</span>
-                      </div>
-                    </div>
+      {/* Desktop weergave - 3 secties onder elkaar, elk met 3 kaarten naast elkaar */}
+      <div className="hidden md:block space-y-8">
+        {/* Sectie 1: Geen ziektebriefje en verlopen ziektebriefjes */}
+        <div className="space-y-4">
+          <div className="pb-4 border-b">
+            <h2 className="text-lg font-semibold text-gray-900">Geen ziektebriefje en verlopen ziektebriefjes</h2>
+            <p className="text-sm text-gray-500 mt-1">{noCertificateOrExpired.length} {noCertificateOrExpired.length === 1 ? 'record' : 'records'}</p>
+          </div>
+          {noCertificateOrExpired.length > 0 ? (
+            <div className="grid grid-cols-3 gap-6">
+              {noCertificateOrExpired.map((record: any) => renderRecordCard(record))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p>Geen records</p>
+            </div>
+          )}
+        </div>
 
-                    <div>
-                      <span className="text-gray-500">Betaald door:</span>
-                      <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
-                    </div>
-                  </div>
+        {/* Sectie 2: Wacht op briefje en bijna verlopen briefjes */}
+        <div className="space-y-4">
+          <div className="pb-4 border-b">
+            <h2 className="text-lg font-semibold text-orange-800">Wacht op briefje en bijna verlopen briefjes</h2>
+            <p className="text-sm text-gray-500 mt-1">{waitingOrExpiringSoon.length} {waitingOrExpiringSoon.length === 1 ? 'record' : 'records'}</p>
+          </div>
+          {waitingOrExpiringSoon.length > 0 ? (
+            <div className="grid grid-cols-3 gap-6">
+              {waitingOrExpiringSoon.map((record: any) => renderRecordCard(record))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p>Geen records</p>
+            </div>
+          )}
+        </div>
 
-                  {/* Ziektebriefje status */}
-                  <div className="flex items-center justify-between pt-3 border-t">
-                    <div className="flex items-center space-x-2">
-                      <FileText className="w-4 h-4 text-gray-400" />
-                      <span className='text-sm text-gray-600'>{t('sickCertificate')}:</span>
-                    </div>
-                      <Badge className={certificateStatus.color}>
-                        {certificateStatus.text}
-                      </Badge>
-                  </div>
-
-                  {/* Schip info */}
-                  {record.ship && (
-                    <div className="flex items-center space-x-2 text-sm text-gray-600">
-                      <Ship className="w-4 h-4" />
-                      <span>{record.ship.name}</span>
-                    </div>
-                  )}
-
-                  {/* Notities */}
-                  {record.notes && (
-                    <div className="pt-3 border-t">
-                      <span className="text-gray-500 text-sm">Notities:</span>
-                      <p className="text-sm text-gray-700 mt-1 italic">{record.notes}</p>
-                    </div>
-                      )}
-                </CardContent>
-              </Card>
-                )
-              })}
+        {/* Sectie 3: Geldige ziektebriefjes */}
+        <div className="space-y-4">
+          <div className="pb-4 border-b">
+            <h2 className="text-lg font-semibold text-green-800">Geldige ziektebriefjes</h2>
+            <p className="text-sm text-gray-500 mt-1">{validCertificates.length} {validCertificates.length === 1 ? 'record' : 'records'}</p>
+          </div>
+          {validCertificates.length > 0 ? (
+            <div className="grid grid-cols-3 gap-6">
+              {validCertificates.map((record: any) => renderRecordCard(record))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <CheckCircle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p>Geen records</p>
+            </div>
+          )}
         </div>
       </div>
 
