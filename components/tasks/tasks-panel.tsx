@@ -282,6 +282,21 @@ export function TasksPanel() {
     )
   }
 
+  // Sorteer taken op prioriteit: urgent > hoog > normaal > laag
+  const sortTasksByPriority = (tasks: any[]) => {
+    const priorityOrder: { [key: string]: number } = {
+      urgent: 0,
+      hoog: 1,
+      normaal: 2,
+      laag: 3
+    }
+    return [...tasks].sort((a, b) => {
+      const priorityA = priorityOrder[a.priority] ?? 99
+      const priorityB = priorityOrder[b.priority] ?? 99
+      return priorityA - priorityB
+    })
+  }
+
   const getDeadlineStatus = (deadline: string | null) => {
     if (!deadline) return null
     const deadlineDate = new Date(deadline)
@@ -360,7 +375,7 @@ export function TasksPanel() {
                       Geen taken
                     </div>
                   ) : (
-                    personTasks.map((task: any) => {
+                    sortTasksByPriority(personTasks).map((task: any) => {
                       const relatedShip = task.related_ship_id
                         ? ships.find((s: any) => s.id === task.related_ship_id)
                         : null
