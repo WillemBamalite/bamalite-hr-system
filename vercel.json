@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/check-expiring-certificates",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
+
