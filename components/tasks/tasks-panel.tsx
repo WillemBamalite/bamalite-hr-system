@@ -11,11 +11,13 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag, Edit } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useAuth } from "@/contexts/AuthContext"
 import { format, isPast, isToday, differenceInDays } from "date-fns"
 import { nl } from "date-fns/locale"
 
 export function TasksPanel() {
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
+  const { user } = useAuth()
   const [showDialog, setShowDialog] = useState(false)
   const [selectedTaskType, setSelectedTaskType] = useState<"ship" | "crew" | "">("")
   const [selectedShipId, setSelectedShipId] = useState<string>("")
@@ -85,6 +87,7 @@ export function TasksPanel() {
         assigned_to: assignedTo,
         priority: priority,
         created_date: new Date().toISOString().split('T')[0],
+        created_by: user?.email || null,
         description: description.trim() || null,
       }
 
@@ -368,10 +371,23 @@ export function TasksPanel() {
 
                                 <div className="flex items-center gap-2">
                                   <Calendar className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                                  <span className="text-gray-600">
-                                    {format(new Date(task.created_date), "d MMM yyyy", { locale: nl })}
+                                  <span className="text-gray-600 text-xs">
+                                    {task.created_at 
+                                      ? format(new Date(task.created_at), "d MMM yyyy, HH:mm", { locale: nl })
+                                      : task.created_date 
+                                        ? format(new Date(task.created_date), "d MMM yyyy", { locale: nl })
+                                        : "Onbekende datum"}
                                   </span>
                                 </div>
+
+                                {task.created_by && (
+                                  <div className="flex items-center gap-2">
+                                    <User className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                    <span className="text-gray-600 text-xs">
+                                      Door: {task.created_by}
+                                    </span>
+                                  </div>
+                                )}
 
                                 {task.deadline && (
                                   <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${deadlineStatus?.bg || "bg-gray-50"}`}>
