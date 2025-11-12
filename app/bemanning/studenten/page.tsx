@@ -63,6 +63,21 @@ export default function StudentenManagementPage() {
   // Filter studenten from crew (only active students)
   const studenten = crew.filter((member: any) => member.is_student && member.status !== 'uit-dienst');
   
+  // Split studenten into two groups: with ship and without ship
+  const studentenMetSchip = studenten.filter((student: any) => 
+    student.ship_id && 
+    student.ship_id !== 'none' && 
+    student.ship_id !== '' && 
+    student.ship_id !== null
+  );
+  
+  const studentenZonderSchip = studenten.filter((student: any) => 
+    !student.ship_id || 
+    student.ship_id === 'none' || 
+    student.ship_id === '' || 
+    student.ship_id === null
+  );
+  
   // Filter bestaande bemanningsleden die nog geen student zijn
   const availableCrewMembers = crew.filter((member: any) => 
     !member.is_student && 
@@ -262,7 +277,7 @@ export default function StudentenManagementPage() {
         </Card>
       </div>
 
-      {/* Students List */}
+      {/* Students List - 2 Sections stacked vertically */}
       {studenten.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
@@ -275,126 +290,278 @@ export default function StudentenManagementPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {studenten.map((student: any) => (
-            <Card key={student.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                      <GraduationCap className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <Link 
-                        href={`/bemanning/${student.id}`}
-                        className="font-medium text-gray-900 hover:text-blue-700"
-                      >
-                        {student.first_name} {student.last_name}
-                      </Link>
-                      <div className="flex items-center space-x-2 text-sm text-gray-500">
-                        <span>{getNationalityFlag(student.nationality)}</span>
-                        <span>•</span>
-                        <span>{student.nationality}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <Badge className={getStatusColor(student.status)}>
-                    {getStatusText(student.status)}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Education Type */}
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <GraduationCap className="w-4 h-4" />
-                  <span>Opleiding: {student.education_type}</span>
-                </div>
-
-                {/* Ship Assignment */}
-                {student.ship_id && (
-                  <div className="flex items-center space-x-2 text-sm text-gray-600">
-                    <MapPin className="w-4 h-4" />
-                    <span>Schip: {getShipName(student.ship_id)}</span>
-                  </div>
-                )}
-
-                {/* Education Dates for BOL */}
-                {student.education_type === "BOL" && (
-                  <>
-                    {student.education_start_date && (
-                      <div className="flex items-center space-x-2 text-sm text-gray-600">
-                        <Calendar className="w-4 h-4" />
-                        <span>Start: {format(new Date(student.education_start_date), 'dd-MM-yyyy')}</span>
-                      </div>
-                    )}
-                    {student.education_end_date && (
-                      <div className="flex items-center space-x-2 text-sm text-gray-600">
-                        <Calendar className="w-4 h-4" />
-                        <span>Eind: {format(new Date(student.education_end_date), 'dd-MM-yyyy')}</span>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* School Periods for BBL */}
-                {student.education_type === "BBL" && student.school_periods && student.school_periods.length > 0 && (
-                  <div className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">{t('schoolPeriods')}:</span>
-                    <div className="space-y-1">
-                      {student.school_periods.slice(0, 2).map((period: any, index: number) => (
-                        <div key={index} className="text-xs text-gray-600">
-                          {format(new Date(period.fromDate), 'dd-MM-yyyy')} - {format(new Date(period.toDate), 'dd-MM-yyyy')}
+        <div className="space-y-8">
+          {/* Studenten met Schip */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-300">
+              <h2 className="text-xl font-semibold text-gray-900">Studenten met Schip</h2>
+              <Badge className="bg-green-100 text-green-800">
+                {studentenMetSchip.length}
+              </Badge>
+            </div>
+            {studentenMetSchip.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <MapPin className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-500">Geen studenten met schip ingedeeld</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {studentenMetSchip.map((student: any) => (
+                  <Card key={student.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                            <GraduationCap className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <Link 
+                              href={`/bemanning/${student.id}`}
+                              className="font-medium text-gray-900 hover:text-blue-700"
+                            >
+                              {student.first_name} {student.last_name}
+                            </Link>
+                            <div className="flex items-center space-x-2 text-sm text-gray-500">
+                              <span>{getNationalityFlag(student.nationality)}</span>
+                              <span>•</span>
+                              <span>{student.nationality}</span>
+                            </div>
+                          </div>
                         </div>
-                      ))}
-                      {student.school_periods.length > 2 && (
-                        <div className="text-xs text-gray-500">
-                          +{student.school_periods.length - 2} meer...
+                        <Badge className={getStatusColor(student.status)}>
+                          {getStatusText(student.status)}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {/* Education Type */}
+                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                        <GraduationCap className="w-4 h-4" />
+                        <span>Opleiding: {student.education_type}</span>
+                      </div>
+
+                      {/* Ship Assignment */}
+                      {student.ship_id && (
+                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                          <MapPin className="w-4 h-4" />
+                          <span>Schip: {getShipName(student.ship_id)}</span>
                         </div>
                       )}
-                    </div>
-                  </div>
-                )}
 
-                {/* Contact Info */}
-                <div className="space-y-2 text-sm">
-                  {student.phone && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Telefoon:</span> {student.phone}
-                    </div>
-                  )}
-                  {student.email && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Email:</span> {student.email}
-                    </div>
-                  )}
-                </div>
+                      {/* Education Dates for BOL */}
+                      {student.education_type === "BOL" && (
+                        <>
+                          {student.education_start_date && (
+                            <div className="flex items-center space-x-2 text-sm text-gray-600">
+                              <Calendar className="w-4 h-4" />
+                              <span>Start: {format(new Date(student.education_start_date), 'dd-MM-yyyy')}</span>
+                            </div>
+                          )}
+                          {student.education_end_date && (
+                            <div className="flex items-center space-x-2 text-sm text-gray-600">
+                              <Calendar className="w-4 h-4" />
+                              <span>Eind: {format(new Date(student.education_end_date), 'dd-MM-yyyy')}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
 
-                {/* Notes */}
-                {student.notes && student.notes.length > 0 && (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Notities:</span>
-                    <p className="italic mt-1">{student.notes[0]}</p>
-                  </div>
-                )}
+                      {/* School Periods for BBL */}
+                      {student.education_type === "BBL" && student.school_periods && student.school_periods.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-sm font-medium text-gray-700">{t('schoolPeriods')}:</span>
+                          <div className="space-y-1">
+                            {student.school_periods.slice(0, 2).map((period: any, index: number) => (
+                              <div key={index} className="text-xs text-gray-600">
+                                {format(new Date(period.fromDate), 'dd-MM-yyyy')} - {format(new Date(period.toDate), 'dd-MM-yyyy')}
+                              </div>
+                            ))}
+                            {student.school_periods.length > 2 && (
+                              <div className="text-xs text-gray-500">
+                                +{student.school_periods.length - 2} meer...
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
-                {/* Actions */}
-                <div className="flex justify-end pt-3 border-t">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-green-600 border-green-200 hover:bg-green-50"
-                    onClick={() => {
-                      setSelectedStudent(student);
-                      setShowCompleteEducationDialog(true);
-                    }}
-                  >
-                    <CheckCircle className="w-4 h-4 mr-1" />
-                    Opleiding Afsluiten
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                      {/* Contact Info */}
+                      <div className="space-y-2 text-sm">
+                        {student.phone && (
+                          <div className="text-gray-600">
+                            <span className="font-medium">Telefoon:</span> {student.phone}
+                          </div>
+                        )}
+                        {student.email && (
+                          <div className="text-gray-600">
+                            <span className="font-medium">Email:</span> {student.email}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Notes */}
+                      {student.notes && student.notes.length > 0 && (
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Notities:</span>
+                          <p className="italic mt-1">{student.notes[0]}</p>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex justify-end pt-3 border-t">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-green-600 border-green-200 hover:bg-green-50"
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setShowCompleteEducationDialog(true);
+                          }}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-1" />
+                          Opleiding Afsluiten
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Studenten zonder Schip */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-300">
+              <h2 className="text-xl font-semibold text-gray-900">Studenten zonder schip</h2>
+              <Badge className="bg-orange-100 text-orange-800">
+                {studentenZonderSchip.length}
+              </Badge>
+            </div>
+            {studentenZonderSchip.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-500">Geen studenten zonder schip</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {studentenZonderSchip.map((student: any) => (
+                  <Card key={student.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                            <GraduationCap className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <Link 
+                              href={`/bemanning/${student.id}`}
+                              className="font-medium text-gray-900 hover:text-blue-700"
+                            >
+                              {student.first_name} {student.last_name}
+                            </Link>
+                            <div className="flex items-center space-x-2 text-sm text-gray-500">
+                              <span>{getNationalityFlag(student.nationality)}</span>
+                              <span>•</span>
+                              <span>{student.nationality}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <Badge className={getStatusColor(student.status)}>
+                          {getStatusText(student.status)}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {/* Education Type */}
+                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                        <GraduationCap className="w-4 h-4" />
+                        <span>Opleiding: {student.education_type}</span>
+                      </div>
+
+                      {/* Education Dates for BOL */}
+                      {student.education_type === "BOL" && (
+                        <>
+                          {student.education_start_date && (
+                            <div className="flex items-center space-x-2 text-sm text-gray-600">
+                              <Calendar className="w-4 h-4" />
+                              <span>Start: {format(new Date(student.education_start_date), 'dd-MM-yyyy')}</span>
+                            </div>
+                          )}
+                          {student.education_end_date && (
+                            <div className="flex items-center space-x-2 text-sm text-gray-600">
+                              <Calendar className="w-4 h-4" />
+                              <span>Eind: {format(new Date(student.education_end_date), 'dd-MM-yyyy')}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* School Periods for BBL */}
+                      {student.education_type === "BBL" && student.school_periods && student.school_periods.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-sm font-medium text-gray-700">{t('schoolPeriods')}:</span>
+                          <div className="space-y-1">
+                            {student.school_periods.slice(0, 2).map((period: any, index: number) => (
+                              <div key={index} className="text-xs text-gray-600">
+                                {format(new Date(period.fromDate), 'dd-MM-yyyy')} - {format(new Date(period.toDate), 'dd-MM-yyyy')}
+                              </div>
+                            ))}
+                            {student.school_periods.length > 2 && (
+                              <div className="text-xs text-gray-500">
+                                +{student.school_periods.length - 2} meer...
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Contact Info */}
+                      <div className="space-y-2 text-sm">
+                        {student.phone && (
+                          <div className="text-gray-600">
+                            <span className="font-medium">Telefoon:</span> {student.phone}
+                          </div>
+                        )}
+                        {student.email && (
+                          <div className="text-gray-600">
+                            <span className="font-medium">Email:</span> {student.email}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Notes */}
+                      {student.notes && student.notes.length > 0 && (
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Notities:</span>
+                          <p className="italic mt-1">{student.notes[0]}</p>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex justify-end pt-3 border-t">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-green-600 border-green-200 hover:bg-green-50"
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setShowCompleteEducationDialog(true);
+                          }}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-1" />
+                          Opleiding Afsluiten
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
