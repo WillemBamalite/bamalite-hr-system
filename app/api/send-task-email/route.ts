@@ -29,10 +29,12 @@ export async function POST(request: NextRequest) {
     const assignedToLower = assignedTo?.toLowerCase().trim()
 
     // Voor Nautic: stuur naar alle vier (willem, leo, jos en bart)
+    // Check ook op "nautic@bamalite.com" voor het geval dat een e-mailadres wordt doorgegeven
     let recipientEmails: string[]
-    if (assignedToLower === 'nautic') {
+    if (assignedToLower === 'nautic' || assignedToLower === 'nautic@bamalite.com') {
       recipientEmails = ['willem@bamalite.com', 'leo@bamalite.com', 'jos@bamalite.com', 'bart@bamalite.com']
       console.log('📧 ✅ NAUTIC TAAK GEDETECTEERD -> verstuur naar alle vier:', recipientEmails)
+      console.log('📧 ✅ Original assignedTo:', assignedTo, '-> normalized:', assignedToLower)
     } else {
       const recipientEmail = emailMap[assignedToLower || '']
       if (!recipientEmail) {
