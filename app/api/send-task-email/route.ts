@@ -59,6 +59,20 @@ export async function POST(request: NextRequest) {
     if (useGmail) {
       // Gebruik Gmail SMTP
       console.log('📧 ✅ Gmail mode geactiveerd, verstuur via Gmail SMTP...')
+      
+      // Check of Gmail credentials aanwezig zijn
+      if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+        console.error('📧 ❌ Gmail credentials ontbreken op Vercel!')
+        return NextResponse.json(
+          { 
+            error: 'Gmail credentials niet ingesteld op Vercel',
+            message: 'GMAIL_USER en/of GMAIL_APP_PASSWORD ontbreken in Vercel environment variables. Ga naar Vercel Project Settings → Environment Variables en voeg deze toe.',
+            hint: 'Voeg toe: USE_GMAIL_EMAIL=true, GMAIL_USER=bamalite.hr@gmail.com, GMAIL_APP_PASSWORD=kkzhweidxylinhdy'
+          },
+          { status: 503 }
+        )
+      }
+      
       const gmailResult = await sendViaGmail({
         assignedTo,
         title,
@@ -78,7 +92,11 @@ export async function POST(request: NextRequest) {
       } else {
         console.error('📧 ❌ Gmail sending failed:', gmailResult.error)
         return NextResponse.json(
-          { error: gmailResult.error, message: gmailResult.message, results: gmailResult.results },
+          { 
+            error: gmailResult.error || 'Gmail verzending gefaald', 
+            message: gmailResult.message || 'E-mail kon niet worden verstuurd via Gmail. Check de Vercel logs voor details.',
+            results: gmailResult.results || []
+          },
           { status: 500 }
         )
       }
@@ -100,8 +118,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           error: 'E-mail service niet geconfigureerd',
-          message: 'RESEND_API_KEY ontbreekt in environment variables. Voeg deze toe in Vercel Settings → Environment Variables. Zie EMAIL_SETUP.md voor instructies.',
-          hint: 'Voor Vercel: Ga naar Project Settings → Environment Variables en voeg RESEND_API_KEY toe. OF: Zet USE_GMAIL_EMAIL=true voor Gmail.'
+          message: 'Geen e-mail service geconfigureerd. Voeg toe in Vercel Settings → Environment Variables: USE_GMAIL_EMAIL=true, GMAIL_USER=bamalite.hr@gmail.com, GMAIL_APP_PASSWORD=kkzhweidxylinhdy',
+          hint: 'OF: Voeg RESEND_API_KEY toe als je Resend wilt gebruiken.'
         },
         { status: 503 }
       )
