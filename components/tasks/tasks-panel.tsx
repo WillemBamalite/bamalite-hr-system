@@ -384,7 +384,7 @@ export function TasksPanel() {
                                     {task.title}
                                   </h3>
                                   {task.description && (
-                                    <p className="text-sm text-gray-600 mt-2 line-clamp-3">{task.description}</p>
+                                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
                                   )}
                                 </div>
                               </div>

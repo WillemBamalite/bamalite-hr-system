@@ -254,33 +254,35 @@ export async function sendViaGmail(params: EmailParams): Promise<EmailResult> {
     const emailBody = buildEmailBody(params)
     const results = []
 
-    for (const recipientEmail of recipientEmails) {
+    // Stuur e-mails één voor één met een kleine delay om rate limiting te voorkomen
+    // En om betere deliverability te krijgen
+    for (let i = 0; i < recipientEmails.length; i++) {
+      const recipientEmail = recipientEmails[i]
       try {
-        console.log(`📧 [sendViaGmail] Verstuur e-mail naar: ${recipientEmail}`)
+        console.log(`📧 [sendViaGmail] [${i + 1}/${recipientEmails.length}] Verstuur e-mail naar: ${recipientEmail}`)
         console.log(`📧 [sendViaGmail] From: ${gmailUser}`)
         console.log(`📧 [sendViaGmail] To: ${recipientEmail}`)
         
-        // Gebruik exact het Gmail adres als "from" - Gmail kan streng zijn hierover
-        // Voeg ook een reply-to header toe voor betere deliverability
+        // Unieke Message-ID voor elke e-mail
+        const messageId = `<${Date.now()}-${i}-${Math.random().toString(36).substring(7)}@bamalite-hr-system>`
+        
+        // Gebruik een eenvoudigere "from" header voor betere deliverability
+        // Geen display naam, alleen het e-mailadres (dit kan helpen bij spam filters)
         const info = await transporter.sendMail({
-          from: `Bamalite HR System <${gmailUser}>`, // Gebruik display naam + e-mailadres
-          replyTo: gmailUser, // Reply-to naar hetzelfde adres
+          from: gmailUser, // Geen display naam - dit kan spam triggers voorkomen
+          replyTo: gmailUser,
           to: recipientEmail,
           subject: `Nieuwe taak: ${title}`,
           html: emailBody,
-          text: `Nieuwe taak: ${title}\n\n${descriptionText}\n\nPrioriteit: ${priorityText}\nToegewezen aan: ${assignedTo}${relatedShipName ? `\nSchip: ${relatedShipName}` : ''}${relatedCrewName ? `\nBemanningslid: ${relatedCrewName}` : ''}${deadline ? `\nDeadline: ${deadlineText}` : ''}${createdBy ? `\n\nTaak aangemaakt door: ${createdBy.split('@')[0]}` : ''}\n\nJe kunt deze taak bekijken in het taken overzicht: ${process.env.NEXT_PUBLIC_APP_URL || 'https://bamalite-hr-system.vercel.app'}/taken`, // Voeg ook plain text versie toe (zonder HTML tags)
-          // Voeg extra headers toe voor betere deliverability en om spam te voorkomen
+          text: `Nieuwe taak: ${title}\n\n${descriptionText}\n\nPrioriteit: ${priorityText}\nToegewezen aan: ${assignedTo}${relatedShipName ? `\nSchip: ${relatedShipName}` : ''}${relatedCrewName ? `\nBemanningslid: ${relatedCrewName}` : ''}${deadline ? `\nDeadline: ${deadlineText}` : ''}${createdBy ? `\n\nTaak aangemaakt door: ${createdBy.split('@')[0]}` : ''}\n\nJe kunt deze taak bekijken in het taken overzicht: ${process.env.NEXT_PUBLIC_APP_URL || 'https://bamalite-hr-system.vercel.app'}/taken`,
+          // Minimaliseer headers - verwijder verdachte headers die spam kunnen triggeren
           headers: {
-            'X-Priority': '3',
-            'X-MSMail-Priority': 'Normal',
-            'Importance': 'normal',
-            'Message-ID': `<${Date.now()}-${Math.random().toString(36).substring(7)}@bamalite-hr-system>`,
-            'X-Mailer': 'Bamalite HR System',
-            'X-Auto-Response-Suppress': 'All',
-            'Precedence': 'bulk',
-            // Verwijder List-Unsubscribe header - dit kan spam triggers activeren
+            'Message-ID': messageId,
+            'Date': new Date().toUTCString(),
+            // Verwijder Precedence: bulk - dit kan spam triggers activeren
+            // Verwijder X-Priority - dit kan spam filters activeren
+            // Verwijder X-MSMail-Priority - dit kan spam filters activeren
           },
-          // Voeg extra opties toe voor betere deliverability
           date: new Date(),
           encoding: 'utf8',
         })
@@ -292,11 +294,23 @@ export async function sendViaGmail(params: EmailParams): Promise<EmailResult> {
         console.log(`📧 [sendViaGmail] Rejected: ${info.rejected?.join(', ')}`)
         
         results.push({ recipient: recipientEmail, success: true, messageId: info.messageId })
+        
+        // Voeg een kleine delay toe tussen e-mails (behalve voor de laatste)
+        // Dit helpt om rate limiting te voorkomen en geeft betere deliverability
+        if (i < recipientEmails.length - 1) {
+          console.log(`📧 [sendViaGmail] Wacht 2 seconden voordat volgende e-mail wordt verstuurd...`)
+          await new Promise(resolve => setTimeout(resolve, 2000)) // 2 seconden delay
+        }
       } catch (err) {
         console.error(`📧 [sendViaGmail] ❌ Fout bij versturen naar ${recipientEmail}:`, err)
         const errorMsg = err instanceof Error ? err.message : String(err)
         console.error(`📧 [sendViaGmail] Error details:`, JSON.stringify(err, null, 2))
         results.push({ recipient: recipientEmail, success: false, error: errorMsg })
+        
+        // Bij een fout, wacht ook even voordat we doorgaan
+        if (i < recipientEmails.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
       }
     }
 

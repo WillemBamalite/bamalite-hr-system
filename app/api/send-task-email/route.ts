@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
 
     // Map naam naar e-mailadres (case-insensitive)
     const emailMap: { [key: string]: string } = {
+      'nautic': 'nautic@bamalite.com',
       'leo': 'leo@bamalite.com',
       'willem': 'willem@bamalite.com',
       'jos': 'jos@bamalite.com'
@@ -28,26 +29,19 @@ export async function POST(request: NextRequest) {
     // Normaliseer assignedTo naar lowercase voor case-insensitive matching
     const assignedToLower = assignedTo?.toLowerCase().trim()
 
-    // Voor Nautic: stuur naar alle vier (willem, leo, jos en bart)
-    // Check ook op "nautic@bamalite.com" voor het geval dat een e-mailadres wordt doorgegeven
-    let recipientEmails: string[]
-    if (assignedToLower === 'nautic' || assignedToLower === 'nautic@bamalite.com') {
-      recipientEmails = ['willem@bamalite.com', 'leo@bamalite.com', 'jos@bamalite.com', 'bart@bamalite.com']
-      console.log('📧 ✅ NAUTIC TAAK GEDETECTEERD -> verstuur naar alle vier:', recipientEmails)
-      console.log('📧 ✅ Original assignedTo:', assignedTo, '-> normalized:', assignedToLower)
-    } else {
-      const recipientEmail = emailMap[assignedToLower || '']
-      if (!recipientEmail) {
-        console.error('📧 ❌ Onbekende ontvanger:', assignedTo, '(normalized:', assignedToLower, ')')
-        console.error('📧 Beschikbare opties:', Object.keys(emailMap).join(', '), 'of Nautic')
-        return NextResponse.json(
-          { error: 'Onbekende ontvanger', message: `Geen e-mailadres gevonden voor: ${assignedTo}` },
-          { status: 400 }
-        )
-      }
-      recipientEmails = [recipientEmail]
-      console.log('📧 Enkele ontvanger:', assignedTo, '(normalized:', assignedToLower, ') ->', recipientEmail)
+    // Haal e-mailadres op uit de map
+    const recipientEmail = emailMap[assignedToLower || '']
+    if (!recipientEmail) {
+      console.error('📧 ❌ Onbekende ontvanger:', assignedTo, '(normalized:', assignedToLower, ')')
+      console.error('📧 Beschikbare opties:', Object.keys(emailMap).join(', '))
+      return NextResponse.json(
+        { error: 'Onbekende ontvanger', message: `Geen e-mailadres gevonden voor: ${assignedTo}` },
+        { status: 400 }
+      )
     }
+    
+    const recipientEmails = [recipientEmail]
+    console.log('📧 Enkele ontvanger:', assignedTo, '(normalized:', assignedToLower, ') ->', recipientEmail)
     
     console.log('📧 Finale recipientEmails array:', recipientEmails)
     console.log('📧 Aantal ontvangers:', recipientEmails.length)
