@@ -129,6 +129,7 @@ export function TasksPanel() {
       // Verstuur e-mail alleen bij nieuwe taken, niet bij bewerken
       if (!isEditing) {
         try {
+          console.log('📧 ===== START E-MAIL VERSTUREN =====')
           const relatedShip = selectedTaskType === "ship" && selectedShipId
             ? ships.find((s: any) => s.id === selectedShipId)
             : null
@@ -136,59 +137,94 @@ export function TasksPanel() {
             ? crew.find((c: any) => c.id === selectedCrewId)
             : null
 
+          const emailPayload = {
+            assignedTo,
+            title: taskData.title,
+            description: taskData.description || '',
+            priority: taskData.priority,
+            deadline: taskData.deadline || null,
+            relatedShipName: relatedShip ? relatedShip.name : null,
+            relatedCrewName: relatedCrew ? `${relatedCrew.first_name} ${relatedCrew.last_name}` : null,
+            createdBy: user?.email || null,
+          }
+          
+          console.log('📧 E-mail payload:', JSON.stringify(emailPayload, null, 2))
+          console.log('📧 Verstuur naar API: /api/send-task-email')
+
+          // Probeer eerst Resend, fallback naar Gmail als Resend niet werkt
+          // Dit gebeurt automatisch in de API route - hier gebruiken we gewoon de normale route
           const emailResponse = await fetch('/api/send-task-email', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              assignedTo,
-              title: taskData.title,
-              description: taskData.description || '',
-              priority: taskData.priority,
-              deadline: taskData.deadline || null,
-              relatedShipName: relatedShip ? relatedShip.name : null,
-              relatedCrewName: relatedCrew ? `${relatedCrew.first_name} ${relatedCrew.last_name}` : null,
-            }),
+            body: JSON.stringify(emailPayload),
           })
+
+          console.log('📧 E-mail API response status:', emailResponse.status)
+          console.log('📧 E-mail API response ok:', emailResponse.ok)
 
           if (!emailResponse.ok) {
             try {
               const emailResult = await emailResponse.json()
               const errorMsg = emailResult.message || emailResult.error || 'Onbekende fout'
-              console.warn('⚠️ E-mail niet verstuurd:', errorMsg)
-              console.warn('⚠️ Response status:', emailResponse.status)
-              console.warn('⚠️ Full response:', emailResult)
+              console.error('❌ E-mail niet verstuurd:', errorMsg)
+              console.error('❌ Response status:', emailResponse.status)
+              console.error('❌ Full response:', JSON.stringify(emailResult, null, 2))
+              
+              // Toon foutmelding aan gebruiker (optioneel - niet blokkerend)
+              alert(`⚠️ Taak aangemaakt, maar e-mail kon niet worden verstuurd: ${errorMsg}`)
             } catch (parseError) {
               const text = await emailResponse.text()
-              console.warn('⚠️ E-mail niet verstuurd (status:', emailResponse.status, ')')
-              console.warn('⚠️ Response text:', text)
+              console.error('❌ E-mail niet verstuurd (status:', emailResponse.status, ')')
+              console.error('❌ Response text:', text)
+              alert(`⚠️ Taak aangemaakt, maar e-mail kon niet worden verstuurd (status: ${emailResponse.status})`)
             }
           } else {
             try {
               const emailResult = await emailResponse.json()
-              console.log('✅ E-mail response:', emailResult)
+              console.log('✅ E-mail response:', JSON.stringify(emailResult, null, 2))
               
               if (emailResult.results && Array.isArray(emailResult.results)) {
                 const successCount = emailResult.results.filter((r: any) => r.success).length
                 const totalCount = emailResult.results.length
                 console.log(`✅ ${successCount}/${totalCount} e-mails succesvol verstuurd`)
+                
                 emailResult.results.forEach((result: any) => {
                   if (result.success) {
                     console.log(`  ✅ ${result.recipient}: Message ID ${result.messageId}`)
                   } else {
-                    console.log(`  ❌ ${result.recipient}: ${result.error?.message || result.error || 'Onbekende fout'}`)
+                    console.error(`  ❌ ${result.recipient}: ${result.error?.message || result.error || 'Onbekende fout'}`)
                   }
                 })
-              } else {
+                
+                if (successCount === 0) {
+                  console.error('❌ Geen e-mails succesvol verstuurd!')
+                  alert(`⚠️ Taak aangemaakt, maar e-mails konden niet worden verstuurd. Check de console voor details.`)
+                } else if (successCount < totalCount) {
+                  console.warn(`⚠️ Slechts ${successCount}/${totalCount} e-mails succesvol verstuurd`)
+                } else {
+                  console.log('✅ Alle e-mails succesvol verstuurd!')
+                }
+              } else if (emailResult.success) {
                 console.log('✅ E-mail succesvol verstuurd!', emailResult)
+              } else {
+                console.error('❌ E-mail versturen gefaald:', emailResult.error || emailResult.message)
+                alert(`⚠️ Taak aangemaakt, maar e-mail kon niet worden verstuurd: ${emailResult.error || emailResult.message}`)
               }
             } catch (parseError) {
-              console.log('✅ E-mail verstuurd (response kon niet worden geparsed)')
+              console.error('❌ Kon e-mail response niet parsen:', parseError)
+              const text = await emailResponse.text()
+              console.error('❌ Response text:', text)
             }
           }
+          
+          console.log('📧 ===== EINDE E-MAIL VERSTUREN =====')
         } catch (emailError) {
-          console.warn('E-mail kon niet worden verstuurd:', emailError)
+          console.error('❌ Exception bij versturen e-mail:', emailError)
+          console.error('❌ Error details:', JSON.stringify(emailError, null, 2))
+          // Toon foutmelding aan gebruiker (optioneel - niet blokkerend)
+          alert(`⚠️ Taak aangemaakt, maar e-mail kon niet worden verstuurd: ${emailError instanceof Error ? emailError.message : 'Onbekende fout'}`)
         }
       }
       
