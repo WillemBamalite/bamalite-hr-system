@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Calendar, Globe, Printer } from "lucide-react"
+import { LogOut, User, Calendar, Globe, Printer, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -8,8 +8,9 @@ import { usePathname } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import { format } from "date-fns"
+import { format, formatDistanceToNow } from "date-fns"
 import { nl, de, fr } from "date-fns/locale"
+import { useLastActivity } from "@/hooks/use-last-activity"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -21,6 +22,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const pathname = usePathname()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
+  const { lastActivity, loading: activityLoading } = useLastActivity()
   
   // Prevent hydration errors
   useEffect(() => {
@@ -77,6 +79,22 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         </div>
         
         <div className="flex items-center gap-4">
+          {/* Last activity indicator */}
+          {user && !activityLoading && lastActivity.timestamp && (
+            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
+              <Clock className="w-4 h-4 text-gray-600 flex-shrink-0" />
+              <div className="text-xs text-gray-600 whitespace-nowrap">
+                <span className="font-medium">Laatst gewijzigd</span>
+                {lastActivity.user && (
+                  <span className="ml-1">door {lastActivity.user}</span>
+                )}
+                <span className="ml-1 text-gray-500">
+                  {formatDistanceToNow(lastActivity.timestamp, { addSuffix: true, locale: nl })}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Language switch */}
           {user && (
             <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-2 py-1">
