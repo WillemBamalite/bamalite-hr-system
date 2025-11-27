@@ -38,6 +38,8 @@ function DashboardContent() {
     const todayDay = today.getDate()
     
     return crew.filter((member: any) => {
+      // Dummy's hebben geen verjaardag
+      if (member.is_dummy === true) return false
       if (!member.birth_date) return false
       
       try {

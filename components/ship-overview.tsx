@@ -14,6 +14,7 @@ import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { supabase } from "@/lib/supabase"
@@ -93,6 +94,24 @@ export function ShipOverview() {
     noteId: "",
     noteContent: ""
   });
+
+  // Dummy functionality state
+  const [dummyDialog, setDummyDialog] = useState<{
+    isOpen: boolean;
+    shipId: string;
+    shipName: string;
+  }>({
+    isOpen: false,
+    shipId: "",
+    shipName: ""
+  });
+  const [dummyForm, setDummyForm] = useState({
+    position: "",
+    nationality: "",
+    diplomas: "",
+    notes: ""
+  });
+  const [isCreatingDummy, setIsCreatingDummy] = useState(false);
 
   // Prevent hydration errors
   useEffect(() => {
@@ -238,32 +257,52 @@ export function ShipOverview() {
 
     const sickInfo = getSickInfo()
 
+    const isDummy = member.is_dummy === true
+
     return (
       <div
         id={`crew-${member.id}`}
-        className="p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative"
+        className={`p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative ${isDummy ? 'opacity-75 border-dashed' : ''}`}
         style={{
-          backgroundColor: crewColorTags[member.id] || undefined,
-          boxShadow: crewColorTags[member.id] ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
+          backgroundColor: isDummy ? '#f9fafb' : (crewColorTags[member.id] || undefined),
+          boxShadow: crewColorTags[member.id] && !isDummy ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
           borderColor: highlightTargetId === `crew-${member.id}` ? "#f59e0b" : (borderColor || "#e5e7eb"),
           borderWidth: "2px",
-          transition: 'border-color 0.2s ease'
+          transition: 'border-color 0.2s ease',
+          backgroundImage: isDummy ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)' : undefined
         }}
-        onDoubleClick={() => onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
+        onDoubleClick={() => !isDummy && onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
       >
-        {/* Top-right controls: color button + optional student badge */}
+        {/* Top-right controls: color button + optional student badge + dummy delete button */}
         <div className="absolute top-2 right-2 flex items-center gap-2">
-          <button
-            type="button"
-            className="w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm"
-            title="Kleur instellen"
-            onClick={(e) => { e.stopPropagation(); setPaletteOpen((v) => !v) }}
-          >
-            <span
-              className="inline-block w-4 h-4 rounded-sm border"
-              style={{ backgroundColor: crewColorTags[member.id] || '#ffffff' }}
-            />
-          </button>
+          {isDummy && (
+            <button
+              type="button"
+              className="w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm text-red-600 hover:bg-red-50"
+              title="Dummy verwijderen"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm('Weet je zeker dat je deze dummy wilt verwijderen?')) {
+                  handleDeleteDummy(member.id);
+                }
+              }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+          {!isDummy && (
+            <button
+              type="button"
+              className="w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm"
+              title="Kleur instellen"
+              onClick={(e) => { e.stopPropagation(); setPaletteOpen((v) => !v) }}
+            >
+              <span
+                className="inline-block w-4 h-4 rounded-sm border"
+                style={{ backgroundColor: crewColorTags[member.id] || '#ffffff' }}
+              />
+            </button>
+          )}
           {member.is_student && member.education_type && (
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${
               member.education_type === 'BOL' 
@@ -301,21 +340,30 @@ export function ShipOverview() {
         
         <div className="flex items-start space-x-3">
           <Avatar className="w-8 h-8 flex-shrink-0">
-            <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-              {member.first_name[0]}{member.last_name[0]}
+            <AvatarFallback className={`text-xs ${isDummy ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
+              {isDummy ? '?' : (member.first_name[0] || '') + (member.last_name[0] || '')}
             </AvatarFallback>
           </Avatar>
           
           <div className="flex-1 min-w-0">
             {/* Name and Nationality */}
             <div className="flex items-center space-x-2 mb-1">
-              <Link 
-                href={`/bemanning/${member.id}`}
-                className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
-              >
-                {member.first_name} {member.last_name}
-              </Link>
-              <span className="text-sm">{getNationalityFlag(member.nationality)}</span>
+              {isDummy ? (
+                <span className="font-medium text-gray-500 italic text-sm">
+                  Ontbreekt: {member.position || 'Onbekende functie'}
+                  {member.nationality && ` (${member.nationality})`}
+                </span>
+              ) : (
+                <>
+                  <Link 
+                    href={`/bemanning/${member.id}`}
+                    className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
+                  >
+                    {member.first_name} {member.last_name}
+                  </Link>
+                  <span className="text-sm">{getNationalityFlag(member.nationality)}</span>
+                </>
+              )}
               {(() => {
                 const crewTasks = tasks.filter((t: any) => !t.completed && t.related_crew_id === member.id)
                 if (crewTasks.length === 0) return null
@@ -350,13 +398,47 @@ export function ShipOverview() {
               })()}
             </div>
 
-            {/* Function */}
-            <div className="text-xs text-gray-600 mb-1">
-              {member.position}
-            </div>
+            {/* Function - alleen tonen als geen dummy */}
+            {!isDummy && (
+              <div className="text-xs text-gray-600 mb-1">
+                {member.position}
+              </div>
+            )}
+            
+            {/* Dummy specifieke info */}
+            {isDummy && (
+              <>
+                {member.diplomas && member.diplomas.length > 0 && (
+                  <div className="mb-1">
+                    <div className="text-xs text-gray-500 font-medium mb-1">Gevraagde diploma's:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {member.diplomas.map((diploma: string, index: number) => (
+                        <span key={index} className="text-xs text-gray-600 bg-gray-200 px-2 py-0.5 rounded border border-dashed">
+                          {diploma}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Dummy opmerking */}
+                {member.active_notes && member.active_notes.length > 0 && (
+                  <div className="mt-2 space-y-1 border-t pt-2">
+                    <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
+                      <MessageSquare className="w-3 h-3" />
+                      Opmerking:
+                    </div>
+                    {member.active_notes.map((note: any) => (
+                      <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200">
+                        {note.content}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
 
-            {/* Diplomas (alleen voor niet-zieke bemanningsleden) */}
-            {!sickInfo && member.diplomas && member.diplomas.length > 0 && (
+            {/* Diplomas (alleen voor niet-zieke bemanningsleden en geen dummy's) */}
+            {!sickInfo && !isDummy && member.diplomas && member.diplomas.length > 0 && (
               <div className="mb-1">
                 <div className="flex flex-wrap gap-1">
                   {member.diplomas.map((diploma: string, index: number) => (
@@ -368,8 +450,8 @@ export function ShipOverview() {
               </div>
             )}
 
-            {/* Regime en Next Rotation (alleen voor niet-zieke bemanningsleden en geen aflossers) */}
-            {!sickInfo && member.position !== "Aflosser" && (
+            {/* Regime en Next Rotation (alleen voor niet-zieke bemanningsleden, geen aflossers en geen dummy's) */}
+            {!sickInfo && !isDummy && member.position !== "Aflosser" && (
               <>
                 <div className="text-xs text-gray-500 mb-1">
                   Regime: {member.regime || "Geen"}
@@ -599,6 +681,127 @@ export function ShipOverview() {
     }
   }
 
+  async function handleCreateDummy() {
+    if (!dummyForm.position.trim()) {
+      alert('Selecteer een functie')
+      return
+    }
+
+    setIsCreatingDummy(true)
+    try {
+      // Parse diplomas from comma-separated string
+      const diplomasArray = dummyForm.diplomas
+        ? dummyForm.diplomas.split(',').map(d => d.trim()).filter(d => d.length > 0)
+        : []
+
+      // Create notes array if notes are provided
+      const notesArray = dummyForm.notes.trim()
+        ? [{
+            id: Date.now().toString(),
+            content: dummyForm.notes.trim(),
+            created_at: new Date().toISOString(),
+            created_by: 'System'
+          }]
+        : []
+
+      // Generate UUID for the dummy
+      const dummyId = crypto.randomUUID()
+      
+      const dummyData = {
+        id: dummyId,
+        first_name: 'DUMMY',
+        last_name: '',
+        position: dummyForm.position,
+        nationality: dummyForm.nationality || null,
+        ship_id: dummyDialog.shipId,
+        status: 'nog-in-te-delen',
+        is_dummy: true,
+        diplomas: diplomasArray,
+        regime: 'Altijd', // Dummy's hebben geen specifiek regime, gebruik 'Altijd' als default
+        birth_date: '1900-01-01', // Dummy's hebben geen echte geboortedatum, gebruik een neutrale oude datum
+        address: {},
+        assignment_history: [],
+        notes: notesArray,
+        active_notes: notesArray
+      }
+      
+      console.log('Creating dummy with data:', JSON.stringify(dummyData, null, 2))
+      
+      const { data, error } = await supabase
+        .from('crew')
+        .insert([dummyData])
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error creating dummy:', error)
+        console.error('Error code:', error.code)
+        console.error('Error details:', error.details)
+        console.error('Error hint:', error.hint)
+        console.error('Error message:', error.message)
+        
+        let errorMsg = error.message || 'Onbekende fout'
+        if (error.code === '42703' || error.message?.includes('is_dummy') || error.details?.includes('is_dummy') || error.hint?.includes('is_dummy')) {
+          errorMsg = 'De is_dummy kolom bestaat nog niet in de database. Voeg deze toe in Supabase SQL Editor:\n\nALTER TABLE crew ADD COLUMN IF NOT EXISTS is_dummy BOOLEAN DEFAULT FALSE;'
+        }
+        
+        alert(`Fout bij het aanmaken van dummy: ${errorMsg}`)
+        return
+      }
+
+      // Success - close dialog and reload
+      setDummyDialog({
+        isOpen: false,
+        shipId: "",
+        shipName: ""
+      })
+      setDummyForm({
+        position: "",
+        nationality: "",
+        diplomas: "",
+        notes: ""
+      })
+
+      // Reload the data
+      window.location.reload()
+    } catch (err: any) {
+      console.error('Error creating dummy:', err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
+      
+      let errorMsg = 'Er is een fout opgetreden bij het aanmaken van de dummy.'
+      if (err?.message?.includes('is_dummy') || err?.code === '42703') {
+        errorMsg = 'De is_dummy kolom bestaat nog niet in de database. Voeg deze toe in Supabase SQL Editor met:\n\nALTER TABLE crew ADD COLUMN IF NOT EXISTS is_dummy BOOLEAN DEFAULT FALSE;'
+      } else if (err?.message) {
+        errorMsg = `Fout: ${err.message}`
+      }
+      
+      alert(errorMsg)
+    } finally {
+      setIsCreatingDummy(false)
+    }
+  }
+
+  async function handleDeleteDummy(crewId: string) {
+    try {
+      const { error } = await supabase
+        .from('crew')
+        .delete()
+        .eq('id', crewId)
+
+      if (error) {
+        console.error('Error deleting dummy:', error)
+        alert(`Fout bij het verwijderen van dummy: ${error.message}`)
+        return
+      }
+
+      // Reload the data
+      window.location.reload()
+    } catch (err) {
+      console.error('Error deleting dummy:', err)
+      alert('Er is een fout opgetreden bij het verwijderen van de dummy.')
+    }
+  }
+
   return (
     <>
       <Card>
@@ -654,10 +857,15 @@ export function ShipOverview() {
                     <div className="space-y-6">
                       {companyShips.map((ship: any) => {
                         const shipCrew = crew.filter((member: any) => {
+                          // Toon dummy's alleen als ze bij dit schip horen
+                          if (member.is_dummy === true) {
+                            return member.ship_id === ship.id
+                          }
+                          
                           // Verberg leden die uit dienst zijn
                           if (member.status === "uit-dienst") return false
-                          // Verberg leden die nog niet gestart zijn
-                          if (member.status === "nog-in-te-delen") return false
+                          // Verberg leden die nog niet gestart zijn (behalve dummy's)
+                          if (member.status === "nog-in-te-delen" && !member.is_dummy) return false
                           
                           // For aflossers, check if they have an active trip for this ship FIRST
                           if (member.position === "Aflosser") {
@@ -756,6 +964,27 @@ export function ShipOverview() {
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  onClick={() => {
+                                    setDummyDialog({
+                                      isOpen: true,
+                                      shipId: ship.id,
+                                      shipName: ship.name
+                                    });
+                                    setDummyForm({
+                                      position: "",
+                                      nationality: "",
+                                      diplomas: "",
+                                      notes: ""
+                                    });
+                                  }}
+                                  className="text-blue-600 hover:text-blue-700"
+                                >
+                                  <Plus className="w-4 h-4 mr-1" />
+                                  Dummy toevoegen
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
                                   onClick={() => handleDeleteShip(ship.id, ship.name)}
                                   className="text-red-600 hover:text-red-700"
                                 >
@@ -778,6 +1007,8 @@ export function ShipOverview() {
                                       <h5 className="font-medium text-green-700">Aan Boord</h5>
                                       <Badge className="bg-green-100 text-green-800 text-xs">
                                         {shipCrew.filter((member: any) => {
+                                          // Dummy's mogen niet in "Aan Boord" kolom
+                                          if (member.is_dummy === true) return false
                                           if (member.status === "ziek") return false
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
@@ -796,6 +1027,8 @@ export function ShipOverview() {
                                     </div>
                                     <div className="space-y-3 min-h-[100px]">
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
+                                        // Dummy's mogen niet in "Aan Boord" kolom
+                                        if (member.is_dummy === true) return false
                                         if (member.status === "ziek") return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
                                         if (member.expected_start_date) {
@@ -832,6 +1065,8 @@ export function ShipOverview() {
                                       <h5 className="font-medium text-blue-700">Thuis</h5>
                                       <Badge className="bg-blue-100 text-blue-800 text-xs">
                                         {shipCrew.filter((member: any) => {
+                                          // Tel dummy's mee
+                                          if (member.is_dummy === true) return true
                                           if (member.status === "ziek") return false
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
@@ -849,7 +1084,10 @@ export function ShipOverview() {
                                       </Badge>
                                     </div>
                                     <div className="space-y-3 min-h-[100px]">
+                                      {/* Normale crew (thuis) */}
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
+                                        // Geen dummy's hier
+                                        if (member.is_dummy === true) return false
                                         if (member.status === "ziek") return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                         if (member.expected_start_date) {
@@ -864,6 +1102,17 @@ export function ShipOverview() {
                                         const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
                                         return statusCalculation.currentStatus === "thuis"
                                       })).map((member: any) => (
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#3b82f6" /* Thuis = blauw */
+                                          tasks={tasks}
+                                        />
+                                      ))}
+                                      {/* Dummy's onderaan */}
+                                      {shipCrew.filter((member: any) => member.is_dummy === true).map((member: any) => (
                                         <CrewCard
                                           key={member.id}
                                           member={member}
@@ -955,6 +1204,80 @@ export function ShipOverview() {
             </Button>
             <Button variant="destructive" onClick={handleConfirmDeleteNote}>
               {t('delete')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dummy Dialog */}
+      <Dialog open={dummyDialog.isOpen} onOpenChange={(open) => setDummyDialog(prev => ({ ...prev, isOpen: open }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dummy toevoegen - {dummyDialog.shipName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="dummy-position">Functie *</Label>
+              <Select
+                value={dummyForm.position}
+                onValueChange={(value) => setDummyForm(prev => ({ ...prev, position: value }))}
+              >
+                <SelectTrigger id="dummy-position" className="mt-2">
+                  <SelectValue placeholder="Selecteer functie" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Kapitein">Kapitein</SelectItem>
+                  <SelectItem value="2e kapitein">2e kapitein</SelectItem>
+                  <SelectItem value="Stuurman">Stuurman</SelectItem>
+                  <SelectItem value="Vol Matroos">Vol Matroos</SelectItem>
+                  <SelectItem value="Matroos">Matroos</SelectItem>
+                  <SelectItem value="Lichtmatroos">Lichtmatroos</SelectItem>
+                  <SelectItem value="Deksman">Deksman</SelectItem>
+                  <SelectItem value="Aflosser">Aflosser</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="dummy-nationality">Nationaliteit (optioneel)</Label>
+              <Input
+                id="dummy-nationality"
+                value={dummyForm.nationality}
+                onChange={(e) => setDummyForm(prev => ({ ...prev, nationality: e.target.value }))}
+                placeholder="Bijv: NL, BE, DE"
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="dummy-diplomas">Diploma's (optioneel, gescheiden door komma's)</Label>
+              <Input
+                id="dummy-diplomas"
+                value={dummyForm.diplomas}
+                onChange={(e) => setDummyForm(prev => ({ ...prev, diplomas: e.target.value }))}
+                placeholder="Bijv: Binnenvaartdiploma, VCA"
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="dummy-notes">Opmerking (optioneel)</Label>
+              <Textarea
+                id="dummy-notes"
+                value={dummyForm.notes}
+                onChange={(e) => setDummyForm(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Bijv: Zoeken naar iemand met ervaring in tankvaart"
+                rows={3}
+                className="mt-2"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2 mt-6">
+            <Button variant="outline" onClick={() => setDummyDialog(prev => ({ ...prev, isOpen: false }))}>
+              Annuleren
+            </Button>
+            <Button onClick={handleCreateDummy} disabled={isCreatingDummy || !dummyForm.position}>
+              {isCreatingDummy ? 'Aanmaken...' : 'Dummy toevoegen'}
             </Button>
           </div>
         </DialogContent>
