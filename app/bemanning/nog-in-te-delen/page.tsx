@@ -71,10 +71,11 @@ export default function NogInTeDelenPage() {
     );
   }
 
-  // Filter bemanningsleden zonder schip (exclude aflossers en uit dienst)
+  // Filter bemanningsleden zonder schip (exclude aflossers, uit dienst en dummy's)
   const unassignedCrew = crew.filter((member: any) => 
     member.status === "nog-in-te-delen" && 
     !member.is_aflosser &&
+    !member.is_dummy &&
     member.status !== 'uit-dienst'
   );
 
@@ -103,7 +104,7 @@ export default function NogInTeDelenPage() {
   
   // Nog Af Te Ronden: alleen mensen MET schip EN incomplete checklist
   const nogAfTeRonden = crew.filter((member: any) => {
-    if (member.is_aflosser || member.status === 'uit-dienst') {
+    if (member.is_aflosser || member.status === 'uit-dienst' || member.is_dummy) {
       return false;
     }
     
@@ -124,7 +125,7 @@ export default function NogInTeDelenPage() {
   // Nog In Te Delen: aangenomen, ZONDER schip (ongeacht checklist status)
   // Dit bevat zowel mensen met complete als incomplete checklist
   const nogInTeDelen = crew.filter((member: any) => {
-    if (member.is_aflosser || member.status === 'uit-dienst') return false;
+    if (member.is_aflosser || member.status === 'uit-dienst' || member.is_dummy) return false;
     if (member.recruitment_status !== 'aangenomen') return false;
     
     // Moet GEEN schip hebben
@@ -391,7 +392,7 @@ export default function NogInTeDelenPage() {
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
                       <AvatarFallback className="bg-orange-100 text-orange-700">
-                        {member.first_name[0]}{member.last_name[0]}
+                        {(member.first_name?.[0] || "?")}{(member.last_name?.[0] || "")}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -455,12 +456,17 @@ export default function NogInTeDelenPage() {
                 )}
 
                 {/* Notes */}
-                {member.notes && member.notes.length > 0 && (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Notities:</span>
-                    <p className="italic mt-1">{member.notes[0]}</p>
-                  </div>
-                )}
+                {member.notes && member.notes.length > 0 && (() => {
+                  const firstNote = member.notes[0];
+                  const noteText = typeof firstNote === "string" ? firstNote : (firstNote?.content || "");
+                  if (!noteText) return null;
+                  return (
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium">Notities:</span>
+                      <p className="italic mt-1">{noteText}</p>
+                    </div>
+                  );
+                })()}
 
                 {/* Actions */}
                 <div className="space-y-2 pt-3 border-t">
@@ -528,7 +534,7 @@ export default function NogInTeDelenPage() {
                         <div className="flex items-center space-x-3">
                           <Avatar className="w-10 h-10">
                             <AvatarFallback className="bg-blue-100 text-blue-700">
-                              {member.first_name[0]}{member.last_name[0]}
+                              {(member.first_name?.[0] || "?")}{(member.last_name?.[0] || "")}
                             </AvatarFallback>
                           </Avatar>
                           <div>
@@ -644,7 +650,7 @@ export default function NogInTeDelenPage() {
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
                       <AvatarFallback className="bg-orange-100 text-orange-700">
-                        {member.first_name[0]}{member.last_name[0]}
+                        {(member.first_name?.[0] || "?")}{(member.last_name?.[0] || "")}
                       </AvatarFallback>
                     </Avatar>
                     <div>
