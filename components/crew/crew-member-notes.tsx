@@ -38,9 +38,25 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
   // Find crew member from Supabase data
   const crewMember = crew.find(member => member.id === crewMemberId)
   
-  // Get active and archived notes
-  const activeNotes: Note[] = crewMember?.active_notes || []
-  const archivedNotes: Note[] = crewMember?.archived_notes || []
+  // Get active and archived notes (filter out system notes)
+  const activeNotes: Note[] = (crewMember?.active_notes || []).filter((note: any) => 
+    !note.content?.startsWith('DUMMY_LOCATION:') && 
+    !note.content?.startsWith('CREW_AB_DESIGNATION:')
+  ).map((note: any) => ({
+    id: note.id,
+    content: note.content,
+    createdAt: note.created_at || note.createdAt || new Date().toISOString(),
+    createdBy: note.created_by || note.createdBy || 'System',
+    archivedAt: note.archived_at || note.archivedAt
+  }))
+  
+  const archivedNotes: Note[] = (crewMember?.archived_notes || []).map((note: any) => ({
+    id: note.id,
+    content: note.content,
+    createdAt: note.created_at || note.createdAt || new Date().toISOString(),
+    createdBy: note.created_by || note.createdBy || 'System',
+    archivedAt: note.archived_at || note.archivedAt
+  }))
 
   const handleSaveNote = async () => {
     if (newNote.trim()) {
@@ -149,7 +165,15 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
                   <div className="flex-1">
                     <p className="text-sm text-gray-700 mb-1">{note.content}</p>
                     <p className="text-xs text-gray-500">
-                      Toegevoegd: {format(new Date(note.createdAt), 'dd-MM-yyyy HH:mm')}
+                      Toegevoegd: {(() => {
+                        try {
+                          const date = new Date(note.createdAt)
+                          if (isNaN(date.getTime())) return 'Onbekende datum'
+                          return format(date, 'dd-MM-yyyy HH:mm')
+                        } catch {
+                          return 'Onbekende datum'
+                        }
+                      })()}
                     </p>
                   </div>
                   <button
@@ -173,10 +197,26 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
               <div key={note.id} className="bg-gray-50 p-3 rounded border-l-4 border-gray-300">
                 <p className="text-sm text-gray-600 mb-1">{note.content}</p>
                 <p className="text-xs text-gray-500">
-                  Toegevoegd: {format(new Date(note.createdAt), 'dd-MM-yyyy HH:mm')}
+                  Toegevoegd: {(() => {
+                    try {
+                      const date = new Date(note.createdAt)
+                      if (isNaN(date.getTime())) return 'Onbekende datum'
+                      return format(date, 'dd-MM-yyyy HH:mm')
+                    } catch {
+                      return 'Onbekende datum'
+                    }
+                  })()}
                   {note.archivedAt && (
                     <span className="ml-2">
-                      • Gearchiveerd: {format(new Date(note.archivedAt), 'dd-MM-yyyy HH:mm')}
+                      • Gearchiveerd: {(() => {
+                        try {
+                          const date = new Date(note.archivedAt)
+                          if (isNaN(date.getTime())) return 'Onbekende datum'
+                          return format(date, 'dd-MM-yyyy HH:mm')
+                        } catch {
+                          return 'Onbekende datum'
+                        }
+                      })()}
                     </span>
                   )}
                 </p>
