@@ -112,11 +112,38 @@ export function ShipOverview() {
     notes: ""
   });
   const [isCreatingDummy, setIsCreatingDummy] = useState(false);
+  
+  // Drag and drop state for dummies
+  const [draggedDummyId, setDraggedDummyId] = useState<string | null>(null);
+  const [dummyLocations, setDummyLocations] = useState<Record<string, 'thuis' | 'aan-boord'>>({});
 
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Initialize dummy locations from crew data (check notes for stored location)
+  useEffect(() => {
+    if (crew) {
+      const locations: Record<string, 'thuis' | 'aan-boord'> = {}
+      crew.forEach((member: any) => {
+        if (member.is_dummy) {
+          // Check if location is stored in notes
+          const locationNote = member.active_notes?.find((n: any) => 
+            n.content?.startsWith('DUMMY_LOCATION:')
+          )
+          if (locationNote) {
+            const location = locationNote.content.replace('DUMMY_LOCATION:', '') as 'thuis' | 'aan-boord'
+            locations[member.id] = location || 'thuis'
+          } else {
+            // Default to 'thuis'
+            locations[member.id] = 'thuis'
+          }
+        }
+      })
+      setDummyLocations(locations)
+    }
+  }, [crew])
 
   // Don't render until mounted
   if (!mounted) {
@@ -207,7 +234,25 @@ export function ShipOverview() {
   }
 
   // Crew Card Component
-  const CrewCard = ({ member, onDoubleClick, sickLeave, borderColor, tasks }: { member: any; onDoubleClick: (id: string, name: string) => void; sickLeave: any[]; borderColor?: string; tasks: any[] }) => {
+  const CrewCard = ({ 
+    member, 
+    onDoubleClick, 
+    sickLeave, 
+    borderColor, 
+    tasks,
+    draggedDummyId,
+    onDragStart,
+    onDragEnd
+  }: { 
+    member: any; 
+    onDoubleClick: (id: string, name: string) => void; 
+    sickLeave: any[]; 
+    borderColor?: string; 
+    tasks: any[];
+    draggedDummyId?: string | null;
+    onDragStart?: (e: React.DragEvent, id: string) => void;
+    onDragEnd?: () => void;
+  }) => {
     const [paletteOpen, setPaletteOpen] = useState(false)
     const COLOR_OPTIONS = [
       "#FEE2E2", // red-100
@@ -262,7 +307,7 @@ export function ShipOverview() {
     return (
       <div
         id={`crew-${member.id}`}
-        className={`p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative ${isDummy ? 'opacity-75 border-dashed' : ''}`}
+        className={`p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative ${isDummy ? 'opacity-75 border-dashed cursor-move' : ''} ${draggedDummyId === member.id ? 'opacity-50' : ''}`}
         style={{
           backgroundColor: isDummy ? '#f9fafb' : (crewColorTags[member.id] || undefined),
           boxShadow: crewColorTags[member.id] && !isDummy ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
@@ -272,6 +317,9 @@ export function ShipOverview() {
           backgroundImage: isDummy ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)' : undefined
         }}
         onDoubleClick={() => !isDummy && onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
+        draggable={isDummy}
+        onDragStart={(e) => isDummy && onDragStart && onDragStart(e, member.id)}
+        onDragEnd={isDummy ? onDragEnd : undefined}
       >
         {/* Top-right controls: color button + optional student badge + dummy delete button */}
         <div className="absolute top-2 right-2 flex items-center gap-2">
@@ -421,13 +469,13 @@ export function ShipOverview() {
                   </div>
                 )}
                 {/* Dummy opmerking */}
-                {member.active_notes && member.active_notes.length > 0 && (
+                {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).length > 0 && (
                   <div className="mt-2 space-y-1 border-t pt-2">
                     <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
                       Opmerking:
                     </div>
-                    {member.active_notes.map((note: any) => (
+                    {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).map((note: any) => (
                       <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200">
                         {note.content}
                       </div>
@@ -555,13 +603,13 @@ export function ShipOverview() {
             })()}
 
             {/* Active Notes */}
-            {member.active_notes && member.active_notes.length > 0 && (
+            {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).length > 0 && (
               <div className="mt-2 space-y-1 border-t pt-2">
                 <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />
                   Notities:
                 </div>
-                {member.active_notes.map((note: any) => (
+                {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).map((note: any) => (
                   <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200 flex items-start justify-between gap-2">
                     <span className="flex-1">{note.content}</span>
                     <button
@@ -782,24 +830,111 @@ export function ShipOverview() {
   }
 
   async function handleDeleteDummy(crewId: string) {
+    if (confirm('Weet je zeker dat je deze dummy wilt verwijderen?')) {
+      try {
+        const { error } = await supabase
+          .from('crew')
+          .delete()
+          .eq('id', crewId)
+
+        if (error) {
+          console.error('Error deleting dummy:', error)
+          alert(`Fout bij het verwijderen van dummy: ${error.message}`)
+          return
+        }
+        
+        // Remove from dummyLocations state
+        setDummyLocations(prev => {
+          const newLocations = { ...prev }
+          delete newLocations[crewId]
+          return newLocations
+        })
+
+        // Reload the data
+        window.location.reload()
+      } catch (err) {
+        console.error('Error deleting dummy:', err)
+        alert('Er is een fout opgetreden bij het verwijderen van de dummy.')
+      }
+    }
+  }
+
+  // Handle dummy drag start
+  function handleDummyDragStart(e: React.DragEvent, dummyId: string) {
+    setDraggedDummyId(dummyId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', dummyId)
+  }
+
+  // Handle dummy drag end
+  function handleDummyDragEnd() {
+    setDraggedDummyId(null)
+  }
+
+  // Handle drop on column
+  async function handleDummyDrop(e: React.DragEvent, targetColumn: 'thuis' | 'aan-boord') {
+    e.preventDefault()
+    
+    if (!draggedDummyId) return
+
+    // Update location in state immediately for UI feedback
+    setDummyLocations(prev => ({
+      ...prev,
+      [draggedDummyId]: targetColumn
+    }))
+
+    // Update database - we'll store this in a note or metadata
+    // For now, we can store it in active_notes as a special marker
     try {
+      const dummy = crew.find((m: any) => m.id === draggedDummyId && m.is_dummy)
+      if (!dummy) return
+
+      // Store location in notes as metadata (or we could add a field later)
+      const existingNotes = dummy.active_notes || []
+      const locationNote = existingNotes.find((n: any) => n.content?.startsWith('DUMMY_LOCATION:'))
+      
+      let updatedNotes = [...existingNotes]
+      if (locationNote) {
+        updatedNotes = updatedNotes.filter((n: any) => n.id !== locationNote.id)
+      }
+      
+      updatedNotes.push({
+        id: crypto.randomUUID(),
+        content: `DUMMY_LOCATION:${targetColumn}`,
+        created_at: new Date().toISOString(),
+        created_by: 'System'
+      })
+
       const { error } = await supabase
         .from('crew')
-        .delete()
-        .eq('id', crewId)
+        .update({ active_notes: updatedNotes })
+        .eq('id', draggedDummyId)
 
       if (error) {
-        console.error('Error deleting dummy:', error)
-        alert(`Fout bij het verwijderen van dummy: ${error.message}`)
-        return
+        console.error('Error updating dummy location:', error)
+        // Revert state on error
+        setDummyLocations(prev => ({
+          ...prev,
+          [draggedDummyId]: prev[draggedDummyId] === 'thuis' ? 'aan-boord' : 'thuis'
+        }))
+        alert('Fout bij het verplaatsen van de dummy')
       }
-
-      // Reload the data
-      window.location.reload()
     } catch (err) {
-      console.error('Error deleting dummy:', err)
-      alert('Er is een fout opgetreden bij het verwijderen van de dummy.')
+      console.error('Error updating dummy location:', err)
+      // Revert state on error
+      setDummyLocations(prev => ({
+        ...prev,
+        [draggedDummyId]: prev[draggedDummyId] === 'thuis' ? 'aan-boord' : 'thuis'
+      }))
+    } finally {
+      setDraggedDummyId(null)
     }
+  }
+
+  // Handle drag over (to allow drop)
+  function handleDummyDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
   }
 
   return (
@@ -845,16 +980,19 @@ export function ShipOverview() {
                   return acc
                 }, {})
 
-                return Object.entries(shipsByCompany).map(([company, companyShips]: [string, any]) => (
-                  <div key={company} className="space-y-4">
+                return Object.entries(shipsByCompany).map(([company, companyShips]: [string, any], companyIndex: number) => (
+                  <div 
+                    key={company} 
+                    className={`space-y-4 company-section ${companyIndex > 0 ? 'print-new-page' : ''}`}
+                  >
                     {/* Company Header */}
-                    <div className="border-b pb-3 text-center">
+                    <div className="border-b pb-3 text-center company-header">
                       <h3 className="text-2xl font-bold text-gray-900">{company}</h3>
                       <p className="text-sm text-gray-600 mt-1">{companyShips.length} {companyShips.length === 1 ? 'schip' : 'schepen'}</p>
                     </div>
 
                     {/* Ships for this company */}
-                    <div className="space-y-6">
+                    <div className="space-y-6 company-ships">
                       {companyShips.map((ship: any) => {
                         const shipCrew = crew.filter((member: any) => {
                           // Toon dummy's alleen als ze bij dit schip horen
@@ -916,7 +1054,7 @@ export function ShipOverview() {
                         const crewDetails = getCrewDetails(shipCrew)
 
                         return (
-                          <div key={ship.id} id={`ship-${ship.id}`} className="border rounded-lg p-6 bg-white shadow-sm" style={{
+                          <div key={ship.id} id={`ship-${ship.id}`} className="border rounded-lg p-6 bg-white shadow-sm ship-card" style={{
                             borderColor: highlightTargetId === `ship-${ship.id}` ? '#f59e0b' : '#e5e7eb',
                             borderWidth: '2px',
                             transition: 'border-color 0.2s ease'
@@ -1007,8 +1145,10 @@ export function ShipOverview() {
                                       <h5 className="font-medium text-green-700">Aan Boord</h5>
                                       <Badge className="bg-green-100 text-green-800 text-xs">
                                         {shipCrew.filter((member: any) => {
-                                          // Dummy's mogen niet in "Aan Boord" kolom
-                                          if (member.is_dummy === true) return false
+                                          // Dummy's met location 'aan-boord'
+                                          if (member.is_dummy === true) {
+                                            return dummyLocations[member.id] === 'aan-boord'
+                                          }
                                           if (member.status === "ziek") return false
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
@@ -1025,9 +1165,14 @@ export function ShipOverview() {
                                         }).length}
                                       </Badge>
                                     </div>
-                                    <div className="space-y-3 min-h-[100px]">
+                                    <div 
+                                      className="space-y-3 min-h-[100px] border-2 border-dashed border-transparent hover:border-green-300 transition-colors rounded-lg p-2"
+                                      onDragOver={handleDummyDragOver}
+                                      onDrop={(e) => handleDummyDrop(e, 'aan-boord')}
+                                    >
+                                      {/* Normale crew */}
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
-                                        // Dummy's mogen niet in "Aan Boord" kolom
+                                        // Geen dummy's hier (die worden apart getoond)
                                         if (member.is_dummy === true) return false
                                         if (member.status === "ziek") return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
@@ -1055,6 +1200,23 @@ export function ShipOverview() {
                                           tasks={tasks}
                                         />
                                       ))}
+                                      {/* Dummy's in "aan-boord" kolom */}
+                                      {shipCrew.filter((member: any) => 
+                                        member.is_dummy === true && 
+                                        dummyLocations[member.id] === 'aan-boord'
+                                      ).map((member: any) => (
+                                        <CrewCard
+                                          key={member.id}
+                                          member={member}
+                                          onDoubleClick={handleDoubleClick}
+                                          sickLeave={sickLeave}
+                                          borderColor="#22c55e" /* Aan boord = groen */
+                                          tasks={tasks}
+                                          draggedDummyId={draggedDummyId}
+                                          onDragStart={handleDummyDragStart}
+                                          onDragEnd={handleDummyDragEnd}
+                                        />
+                                      ))}
                                     </div>
                                   </div>
 
@@ -1065,8 +1227,10 @@ export function ShipOverview() {
                                       <h5 className="font-medium text-blue-700">Thuis</h5>
                                       <Badge className="bg-blue-100 text-blue-800 text-xs">
                                         {shipCrew.filter((member: any) => {
-                                          // Tel dummy's mee
-                                          if (member.is_dummy === true) return true
+                                          // Dummy's met location 'thuis' (of niet ingesteld, default naar thuis)
+                                          if (member.is_dummy === true) {
+                                            return !dummyLocations[member.id] || dummyLocations[member.id] === 'thuis'
+                                          }
                                           if (member.status === "ziek") return false
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
@@ -1083,10 +1247,14 @@ export function ShipOverview() {
                                         }).length}
                                       </Badge>
                                     </div>
-                                    <div className="space-y-3 min-h-[100px]">
+                                    <div 
+                                      className="space-y-3 min-h-[100px] border-2 border-dashed border-transparent hover:border-blue-300 transition-colors rounded-lg p-2"
+                                      onDragOver={handleDummyDragOver}
+                                      onDrop={(e) => handleDummyDrop(e, 'thuis')}
+                                    >
                                       {/* Normale crew (thuis) */}
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
-                                        // Geen dummy's hier
+                                        // Geen dummy's hier (die worden apart getoond)
                                         if (member.is_dummy === true) return false
                                         if (member.status === "ziek") return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis
@@ -1111,8 +1279,11 @@ export function ShipOverview() {
                                           tasks={tasks}
                                         />
                                       ))}
-                                      {/* Dummy's onderaan */}
-                                      {shipCrew.filter((member: any) => member.is_dummy === true).map((member: any) => (
+                                      {/* Dummy's in "thuis" kolom */}
+                                      {shipCrew.filter((member: any) => 
+                                        member.is_dummy === true && 
+                                        (!dummyLocations[member.id] || dummyLocations[member.id] === 'thuis')
+                                      ).map((member: any) => (
                                         <CrewCard
                                           key={member.id}
                                           member={member}
@@ -1120,6 +1291,9 @@ export function ShipOverview() {
                                           sickLeave={sickLeave}
                                           borderColor="#3b82f6" /* Thuis = blauw */
                                           tasks={tasks}
+                                          draggedDummyId={draggedDummyId}
+                                          onDragStart={handleDummyDragStart}
+                                          onDragEnd={handleDummyDragEnd}
                                         />
                                       ))}
                                     </div>
