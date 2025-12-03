@@ -9,7 +9,7 @@ import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageS
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { format } from "date-fns"
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -303,6 +303,28 @@ export function ShipOverview() {
     const sickInfo = getSickInfo()
 
     const isDummy = member.is_dummy === true
+    const isAflosser = member.position === "Aflosser" || member.is_aflosser === true
+    
+    // Get A/B designation
+    const abDesignation = !isAflosser ? getCrewABDesignation(member) : null
+    const [abSelectorOpen, setAbSelectorOpen] = useState(false)
+    const abSelectorRef = useRef<HTMLDivElement>(null)
+
+    // Close A/B selector when clicking outside
+    useEffect(() => {
+      function handleClickOutside(event: MouseEvent) {
+        if (abSelectorRef.current && !abSelectorRef.current.contains(event.target as Node)) {
+          setAbSelectorOpen(false)
+        }
+      }
+
+      if (abSelectorOpen) {
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => {
+          document.removeEventListener('mousedown', handleClickOutside)
+        }
+      }
+    }, [abSelectorOpen])
 
     return (
       <div
@@ -321,8 +343,67 @@ export function ShipOverview() {
         onDragStart={(e) => isDummy && onDragStart && onDragStart(e, member.id)}
         onDragEnd={isDummy ? onDragEnd : undefined}
       >
-        {/* Top-right controls: color button + optional student badge + dummy delete button */}
+        {/* Top-right controls: A/B designation + color button + optional student badge + dummy delete button */}
         <div className="absolute top-2 right-2 flex items-center gap-2">
+          {/* A/B Designation - Prominent indicator */}
+          {!isAflosser && (
+            <div ref={abSelectorRef} className="z-10">
+              {abSelectorOpen ? (
+                <div className="bg-white shadow-lg border-2 border-gray-300 rounded-lg p-2 flex gap-2">
+                  <button
+                    type="button"
+                    className={`w-12 h-12 rounded-lg font-bold text-xl border-2 transition-all flex items-center justify-center ${
+                      abDesignation === 'A'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-md'
+                        : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-100 hover:border-blue-400'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleABDesignationChange(member.id, abDesignation === 'A' ? null : 'A');
+                      setAbSelectorOpen(false);
+                    }}
+                    title={abDesignation === 'A' ? 'A verwijderen' : 'A selecteren'}
+                  >
+                    A
+                  </button>
+                  <button
+                    type="button"
+                    className={`w-12 h-12 rounded-lg font-bold text-xl border-2 transition-all flex items-center justify-center ${
+                      abDesignation === 'B'
+                        ? 'bg-yellow-500 text-white border-yellow-600 shadow-md'
+                        : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-yellow-100 hover:border-yellow-400'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleABDesignationChange(member.id, abDesignation === 'B' ? null : 'B');
+                      setAbSelectorOpen(false);
+                    }}
+                    title={abDesignation === 'B' ? 'B verwijderen' : 'B selecteren'}
+                  >
+                    B
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAbSelectorOpen(true);
+                  }}
+                  className={`w-12 h-12 rounded-lg font-bold text-xl border-2 flex items-center justify-center shadow-md transition-all ${
+                    abDesignation === 'A'
+                      ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700'
+                      : abDesignation === 'B'
+                      ? 'bg-yellow-500 text-white border-yellow-600 hover:bg-yellow-600'
+                      : 'bg-gray-200 text-gray-600 border-gray-400 hover:bg-gray-300'
+                  }`}
+                  title={abDesignation ? `${abDesignation} - Klik om te wijzigen` : 'A/B selecteren'}
+                >
+                  {abDesignation || '?'}
+                </button>
+              )}
+            </div>
+          )}
           {isDummy && (
             <button
               type="button"
@@ -385,7 +466,7 @@ export function ShipOverview() {
             </div>
           </div>
         )}
-        
+
         <div className="flex items-start space-x-3">
           <Avatar className="w-8 h-8 flex-shrink-0">
             <AvatarFallback className={`text-xs ${isDummy ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
@@ -469,13 +550,13 @@ export function ShipOverview() {
                   </div>
                 )}
                 {/* Dummy opmerking */}
-                {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).length > 0 && (
+                {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).length > 0 && (
                   <div className="mt-2 space-y-1 border-t pt-2">
                     <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
                       Opmerking:
                     </div>
-                    {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).map((note: any) => (
+                    {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).map((note: any) => (
                       <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200">
                         {note.content}
                       </div>
@@ -603,13 +684,13 @@ export function ShipOverview() {
             })()}
 
             {/* Active Notes */}
-            {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).length > 0 && (
+            {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).length > 0 && (
               <div className="mt-2 space-y-1 border-t pt-2">
                 <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />
                   Notities:
                 </div>
-                {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:')).map((note: any) => (
+                {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).map((note: any) => (
                   <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200 flex items-start justify-between gap-2">
                     <span className="flex-1">{note.content}</span>
                     <button
@@ -684,6 +765,63 @@ export function ShipOverview() {
       noteId,
       noteContent
     });
+  }
+
+  // Get A/B designation from crew member notes
+  function getCrewABDesignation(member: any): 'A' | 'B' | null {
+    if (!member.active_notes) return null
+    const abNote = member.active_notes.find((n: any) => 
+      n.content?.startsWith('CREW_AB_DESIGNATION:')
+    )
+    if (abNote) {
+      const designation = abNote.content.replace('CREW_AB_DESIGNATION:', '').trim() as 'A' | 'B'
+      return (designation === 'A' || designation === 'B') ? designation : null
+    }
+    return null
+  }
+
+  // Handle A/B designation change
+  async function handleABDesignationChange(crewId: string, designation: 'A' | 'B' | null) {
+    try {
+      const member = crew.find((m: any) => m.id === crewId)
+      if (!member) return
+
+      const existingNotes = member.active_notes || []
+      const abNote = existingNotes.find((n: any) => n.content?.startsWith('CREW_AB_DESIGNATION:'))
+      
+      let updatedNotes = [...existingNotes]
+      
+      // Remove existing A/B note if it exists
+      if (abNote) {
+        updatedNotes = updatedNotes.filter((n: any) => n.id !== abNote.id)
+      }
+      
+      // Add new A/B note if designation is provided
+      if (designation) {
+        updatedNotes.push({
+          id: crypto.randomUUID(),
+          content: `CREW_AB_DESIGNATION:${designation}`,
+          created_at: new Date().toISOString(),
+          created_by: 'System'
+        })
+      }
+
+      const { error } = await supabase
+        .from('crew')
+        .update({ active_notes: updatedNotes })
+        .eq('id', crewId)
+
+      if (error) {
+        console.error('Error updating A/B designation:', error)
+        alert('Fout bij het bijwerken van A/B aanduiding')
+      } else {
+        // Reload to reflect changes
+        window.location.reload()
+      }
+    } catch (err) {
+      console.error('Error updating A/B designation:', err)
+      alert('Er is een fout opgetreden bij het bijwerken van A/B aanduiding')
+    }
   }
 
   async function handleConfirmDeleteNote() {
