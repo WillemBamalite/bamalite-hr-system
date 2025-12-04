@@ -22,9 +22,9 @@ export function DashboardStats() {
   
   const activeCrew = crew.filter((c) => c.status !== 'uit-dienst')
   
-  // Tel geplande en ingedeelde reizen (status: 'gepland' of 'ingedeeld')
+  // Tel geplande, ingedeelde én actieve reizen
   const geplandeEnIngedeeldeReizen = trips.filter((trip: any) => 
-    trip.status === 'gepland' || trip.status === 'ingedeeld'
+    trip.status === 'gepland' || trip.status === 'ingedeeld' || trip.status === 'actief'
   ).length
   
   const stats = {
