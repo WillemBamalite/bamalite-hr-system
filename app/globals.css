@@ -159,10 +159,34 @@ body {
     break-before: page;
   }
 
-  /* Zorg dat company header niet alleen op laatste regel van pagina staat */
-  .company-section > div:first-child {
+  /* Zorg dat company header bovenaan pagina blijft */
+  .company-header {
     page-break-after: avoid;
     break-after: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+
+  /* Company sectie container - laat splitsen als nodig, maar header blijft bovenaan */
+  .company-section {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  /* Schepen container - laat splitsen indien nodig */
+  .company-ships {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  /* Zorg dat een schip niet over meerdere pagina's split en verklein voor print */
+  .ship-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    padding: 0.75rem !important;
   }
 
   /* Print achtergrond kleuren */

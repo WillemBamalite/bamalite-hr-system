@@ -117,10 +117,132 @@ export function ShipOverview() {
   const [draggedDummyId, setDraggedDummyId] = useState<string | null>(null);
   const [dummyLocations, setDummyLocations] = useState<Record<string, 'thuis' | 'aan-boord'>>({});
 
+  // Scroll position preservation
+  const scrollPositionRef = useRef<number>(0);
+  const lastScrollTimeRef = useRef<number>(Date.now());
+  const isUserScrollingRef = useRef(false);
+  const restoreTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true);
+    
+    // Restore scroll position after page reload
+    const savedScrollPosition = sessionStorage.getItem('shipOverviewScrollPosition')
+    if (savedScrollPosition) {
+      scrollPositionRef.current = parseInt(savedScrollPosition, 10)
+      sessionStorage.removeItem('shipOverviewScrollPosition')
+      
+      // Restore scroll position after content loads
+      const restoreScroll = () => {
+        if (scrollPositionRef.current > 0 && typeof window !== 'undefined') {
+          window.scrollTo({ top: scrollPositionRef.current, behavior: 'instant' })
+        }
+      }
+      
+      // Try multiple times with increasing delays
+      [0, 50, 150, 300, 500, 800].forEach((delay, index) => {
+        setTimeout(() => {
+          restoreScroll()
+          if (index === 5) scrollPositionRef.current = 0 // Clear after last attempt
+        }, delay)
+      })
+    }
   }, []);
+
+  // Continuously track and preserve scroll position
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    let scrollTimeout: NodeJS.Timeout | null = null
+
+    const handleScroll = () => {
+      isUserScrollingRef.current = true
+      lastScrollTimeRef.current = Date.now()
+      
+      // Save current scroll position
+      scrollPositionRef.current = window.scrollY
+      
+      // Clear any pending restore
+      if (restoreTimeoutRef.current) {
+        clearTimeout(restoreTimeoutRef.current)
+        restoreTimeoutRef.current = null
+      }
+      
+      // Mark user scrolling as done after a short delay
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+      scrollTimeout = setTimeout(() => {
+        isUserScrollingRef.current = false
+      }, 150)
+    }
+
+    const handleClick = () => {
+      // Save scroll position on any click (before potential updates)
+      scrollPositionRef.current = window.scrollY
+    }
+
+    // Watch for unexpected scroll resets
+    const checkScrollPosition = () => {
+      const currentScroll = window.scrollY
+      const timeSinceLastScroll = Date.now() - lastScrollTimeRef.current
+      
+      // If scroll jumped to top unexpectedly (not user action and not during restore)
+      if (currentScroll === 0 && scrollPositionRef.current > 100 && !isUserScrollingRef.current && timeSinceLastScroll > 500) {
+        // Restore scroll position
+        if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current)
+        restoreTimeoutRef.current = setTimeout(() => {
+          window.scrollTo({ top: scrollPositionRef.current, behavior: 'instant' })
+        }, 50)
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('click', handleClick, true)
+    
+    // Check scroll position periodically
+    const scrollCheckInterval = setInterval(checkScrollPosition, 100)
+
+    // Save scroll position before unload
+    const handleBeforeUnload = () => {
+      sessionStorage.setItem('shipOverviewScrollPosition', window.scrollY.toString())
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('click', handleClick, true)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      clearInterval(scrollCheckInterval)
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+      if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current)
+    }
+  }, [])
+
+  // Restore scroll after data updates - more aggressive
+  useEffect(() => {
+    if (loading || !mounted) return
+    
+    const savedPos = scrollPositionRef.current
+    if (savedPos > 0) {
+      // Multiple attempts to restore scroll position
+      const restoreAttempts = [50, 150, 300, 500, 800, 1200]
+      const timeouts = restoreAttempts.map((delay, index) => 
+        setTimeout(() => {
+          if (!isUserScrollingRef.current && window.scrollY !== savedPos && savedPos > 0) {
+            window.scrollTo({ top: savedPos, behavior: 'instant' })
+            // Clear saved position after last attempt
+            if (index === restoreAttempts.length - 1) {
+              scrollPositionRef.current = 0
+            }
+          }
+        }, delay)
+      )
+      
+      return () => {
+        timeouts.forEach(clearTimeout)
+      }
+    }
+  }, [loading, crew, ships, mounted])
 
   // Initialize dummy locations from crew data (check notes for stored location)
   useEffect(() => {
@@ -144,6 +266,31 @@ export function ShipOverview() {
       setDummyLocations(locations)
     }
   }, [crew])
+
+  // Helper function to reload page while preserving scroll position
+  const reloadWithScrollPosition = () => {
+    if (typeof window !== 'undefined') {
+      const currentScroll = window.scrollY
+      sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString())
+      scrollPositionRef.current = currentScroll
+      window.location.reload()
+    }
+  }
+
+  // Helper function to preserve scroll position during async operations
+  const preserveScrollPosition = (asyncOperation: () => Promise<void>) => {
+    const savedScroll = window.scrollY
+    scrollPositionRef.current = savedScroll
+    
+    return asyncOperation().finally(() => {
+      // Restore scroll after operation completes
+      setTimeout(() => {
+        if (scrollPositionRef.current > 0) {
+          window.scrollTo({ top: scrollPositionRef.current, behavior: 'instant' })
+        }
+      }, 100)
+    })
+  }
 
   // Don't render until mounted
   if (!mounted) {
@@ -782,6 +929,11 @@ export function ShipOverview() {
 
   // Handle A/B designation change
   async function handleABDesignationChange(crewId: string, designation: 'A' | 'B' | null) {
+    // Save scroll position before update
+    if (typeof window !== 'undefined') {
+      scrollPositionRef.current = window.scrollY
+    }
+    
     try {
       const member = crew.find((m: any) => m.id === crewId)
       if (!member) return
@@ -815,8 +967,8 @@ export function ShipOverview() {
         console.error('Error updating A/B designation:', error)
         alert('Fout bij het bijwerken van A/B aanduiding')
       } else {
-        // Reload to reflect changes
-        window.location.reload()
+        // Reload to reflect changes while preserving scroll position
+        reloadWithScrollPosition()
       }
     } catch (err) {
       console.error('Error updating A/B designation:', err)
@@ -858,8 +1010,8 @@ export function ShipOverview() {
         // Success message
         alert(`Schip "${shipName}" is succesvol verwijderd.`)
         
-        // Reload the data
-        window.location.reload()
+        // Reload the data while preserving scroll position
+        reloadWithScrollPosition()
       } catch (err) {
         console.error('Error deleting ship:', err)
         alert('Er is een fout opgetreden bij het verwijderen van het schip.')
@@ -948,8 +1100,8 @@ export function ShipOverview() {
         notes: ""
       })
 
-      // Reload the data
-      window.location.reload()
+      // Reload the data while preserving scroll position
+      reloadWithScrollPosition()
     } catch (err: any) {
       console.error('Error creating dummy:', err)
       console.error('Error details:', JSON.stringify(err, null, 2))
@@ -988,8 +1140,8 @@ export function ShipOverview() {
           return newLocations
         })
 
-        // Reload the data
-        window.location.reload()
+        // Reload the data while preserving scroll position
+        reloadWithScrollPosition()
       } catch (err) {
         console.error('Error deleting dummy:', err)
         alert('Er is een fout opgetreden bij het verwijderen van de dummy.')
