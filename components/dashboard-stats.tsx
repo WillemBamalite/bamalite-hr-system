@@ -23,12 +23,13 @@ export function DashboardStats() {
   const activeCrew = crew.filter((c) => c.status !== 'uit-dienst')
   
   const stats = {
-    // Totaal bemanningsleden: alleen actieve vaste bemanning (geen aflossers, geen uit-dienst)
+    // Totaal bemanningsleden: alleen actieve vaste bemanning (geen aflossers, geen uit-dienst, geen dummy's)
     totalCrew: activeCrew.filter((c) => 
       c.position !== 'Aflosser' && 
       c.position !== 'aflosser' && 
       c.is_aflosser !== true &&
-      c.status !== 'uit-dienst'
+      c.status !== 'uit-dienst' &&
+      !c.is_dummy
     ).length,
     reizenStats: {
       gepland: trips.filter((trip: any) => trip.status === 'gepland').length,
@@ -95,14 +96,16 @@ export function DashboardStats() {
       c.position !== 'Aflosser' && 
       c.position !== 'aflosser' && 
       c.is_aflosser !== true &&
-      c.status !== 'uit-dienst'
+      c.status !== 'uit-dienst' &&
+      !c.is_dummy
     ).length,
     thuis: activeCrew.filter((c) => 
       c.status === "thuis" && 
       c.position !== 'Aflosser' && 
       c.position !== 'aflosser' && 
       c.is_aflosser !== true &&
-      c.status !== 'uit-dienst'
+      c.status !== 'uit-dienst' &&
+      !c.is_dummy
     ).length,
     actieveZiekmeldingen: sickLeave.filter((s) => {
       const crewMember = crew.find((c) => c.id === s.crew_member_id)
