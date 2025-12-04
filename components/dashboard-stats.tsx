@@ -225,10 +225,18 @@ export function DashboardStats() {
 
         if (member.laatste_keuring_datum) {
           const last = new Date(member.laatste_keuring_datum)
-          const years = typeof member.fit_verklaard_jaren === 'number' && member.fit_verklaard_jaren
+          const geldigheid = typeof member.fit_verklaard_jaren === 'number' && member.fit_verklaard_jaren !== null && member.fit_verklaard_jaren !== undefined
             ? member.fit_verklaard_jaren
             : (member.fit_verklaard === false ? 1 : 3)
-          const next = addYears(last, years)
+          
+          // Bereken volgende keuringsdatum (ondersteun zowel jaren als 0.5 voor 6 maanden)
+          let next: Date
+          if (geldigheid === 0.5) {
+            next = addMonths(last, 6)
+          } else {
+            next = addYears(last, geldigheid)
+          }
+          
           const diffDays = differenceInDays(next, new Date())
           if (isBefore(next, new Date())) {
             overdue++

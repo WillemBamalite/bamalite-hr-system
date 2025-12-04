@@ -112,10 +112,18 @@ serve(async () => {
     }
     if (m.laatste_keuring_datum) {
       const last = new Date(m.laatste_keuring_datum)
-      const years = typeof m.fit_verklaard_jaren === 'number' && m.fit_verklaard_jaren
+      const geldigheid = typeof m.fit_verklaard_jaren === 'number' && m.fit_verklaard_jaren !== null && m.fit_verklaard_jaren !== undefined
         ? m.fit_verklaard_jaren
         : (m.fit_verklaard === false ? 1 : 3)
-      const next = addYears(last, years)
+      
+      // Bereken volgende keuringsdatum (ondersteun zowel jaren als 0.5 voor 6 maanden)
+      let next: Date
+      if (geldigheid === 0.5) {
+        next = addMonths(last, 6)
+      } else {
+        next = addYears(last, geldigheid)
+      }
+      
       const diff = differenceInDays(next, today)
       if (diff >= 0 && diff <= 90) {
         medicalDueSoon.push({ id: m.id, name: `${m.first_name || ''} ${m.last_name || ''}`.trim(), nextDate: next })

@@ -26,7 +26,7 @@ export default function MedischeKeuringenPage() {
   const [editingMember, setEditingMember] = useState<any>(null)
   const [editForm, setEditForm] = useState({
     laatste_keuring_datum: "",
-    fit_verklaard_jaren: "", // "3" | "2" | "1"
+    fit_verklaard_jaren: "", // "3" | "2" | "1" | "0.5"
     proeftijd_datum: ""
   })
 
@@ -41,8 +41,17 @@ export default function MedischeKeuringenPage() {
 
     const keuringDatum = new Date(member.laatste_keuring_datum)
     // Als expliciete geldigheid in jaren is ingesteld, gebruik die
-    if (member.fit_verklaard_jaren && typeof member.fit_verklaard_jaren === 'number') {
-      return addYears(keuringDatum, member.fit_verklaard_jaren)
+    if (member.fit_verklaard_jaren !== null && member.fit_verklaard_jaren !== undefined) {
+      const geldigheid = typeof member.fit_verklaard_jaren === 'number' 
+        ? member.fit_verklaard_jaren 
+        : parseFloat(member.fit_verklaard_jaren)
+      
+      // Als het 0.5 is (6 maanden), gebruik addMonths
+      if (geldigheid === 0.5) {
+        return addMonths(keuringDatum, 6)
+      }
+      // Anders gebruik addYears
+      return addYears(keuringDatum, geldigheid)
     }
     // Fallback op oud gedrag: false = 1 jaar, true = 3 jaar
     if (member.fit_verklaard === false) return addYears(keuringDatum, 1)
@@ -234,7 +243,8 @@ export default function MedischeKeuringenPage() {
       }
 
       if (editForm.fit_verklaard_jaren !== "") {
-        updateData.fit_verklaard_jaren = parseInt(editForm.fit_verklaard_jaren as string, 10)
+        // Gebruik parseFloat om zowel hele jaren (3, 2, 1) als 6 maanden (0.5) te ondersteunen
+        updateData.fit_verklaard_jaren = parseFloat(editForm.fit_verklaard_jaren as string)
         updateData.fit_verklaard = true // als jaren gekozen is, beschouw als fit
       } else {
         updateData.fit_verklaard_jaren = null
@@ -569,13 +579,14 @@ export default function MedischeKeuringenPage() {
                 onValueChange={(value) => setEditForm({...editForm, fit_verklaard_jaren: value === "none" ? "" : value})}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Kies geldigheid (jaren)" />
+                  <SelectValue placeholder="Kies geldigheid" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Niet ingevuld</SelectItem>
                   <SelectItem value="3">3 jaar</SelectItem>
                   <SelectItem value="2">2 jaar</SelectItem>
                   <SelectItem value="1">1 jaar</SelectItem>
+                  <SelectItem value="0.5">6 maanden</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-500">Volgende keuring wordt automatisch berekend op basis van deze geldigheid.</p>
