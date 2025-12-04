@@ -29,7 +29,8 @@ import {
   TrendingUp,
   TrendingDown,
   RefreshCw,
-  Trash2
+  Trash2,
+  Check
 } from "lucide-react"
 import Link from "next/link"
 
@@ -107,7 +108,7 @@ function calculateWorkDays(startDate: string, startTime: string, endDate: string
 
 export default function AflosserDetailPage() {
   const params = useParams()
-  const { crew, ships, trips, vasteDienstRecords, loading, error, updateCrew, deleteAflosser } = useSupabaseData()
+  const { crew, ships, trips, vasteDienstRecords, loading, error, updateCrew, deleteAflosser, updateTrip } = useSupabaseData()
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [editedNotes, setEditedNotes] = useState("")
   const [isEditingTarief, setIsEditingTarief] = useState(false)
@@ -1285,6 +1286,39 @@ export default function AflosserDetailPage() {
                                 <h5 className="text-sm font-medium text-blue-700 mb-1">Opmerkingen over aflosser</h5>
                                 <p className="text-sm text-blue-600 italic">{trip.aflosser_opmerkingen}</p>
                             </div>
+                            )}
+
+                            {/* Betaald status voor zelfstandige aflossers */}
+                            {trip.status === 'voltooid' && (aflosser.is_zelfstandig || (!aflosser.vaste_dienst && !aflosser.is_uitzendbureau)) && (
+                              <div className="mt-3 pt-3 border-t border-gray-200">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm text-gray-600">Betaald:</span>
+                                  <Button
+                                    size="sm"
+                                    variant={trip.paid ? "default" : "outline"}
+                                    onClick={async () => {
+                                      try {
+                                        await updateTrip(trip.id, { paid: !trip.paid })
+                                        // Reload data to show updated status
+                                        window.location.reload()
+                                      } catch (error) {
+                                        console.error("Error updating paid status:", error)
+                                        alert("Fout bij bijwerken betaald status")
+                                      }
+                                    }}
+                                    className={trip.paid ? "bg-green-600 hover:bg-green-700" : ""}
+                                  >
+                                    {trip.paid ? (
+                                      <>
+                                        <Check className="w-4 h-4 mr-2" />
+                                        Ja
+                                      </>
+                                    ) : (
+                                      "Nee"
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
                             )}
                             
                             {trip.notes && (
