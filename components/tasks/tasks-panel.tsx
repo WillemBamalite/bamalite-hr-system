@@ -32,9 +32,10 @@ export function TasksPanel() {
   const [isEditing, setIsEditing] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string>("")
 
-  // Filter tasks - standaard alleen openstaande taken
-  const openTasks = tasks.filter((t: any) => !t.completed)
-  const completedTasks = tasks.filter((t: any) => t.completed)
+  // Filter tasks - standaard alleen openstaande taken (niet voltooid)
+  // Open tasks include both 'open' and 'in_progress' status
+  const openTasks = tasks.filter((t: any) => !t.completed && t.status !== 'completed')
+  const completedTasks = tasks.filter((t: any) => t.completed || t.status === 'completed')
   const filteredTasks = filter === "open" ? openTasks : completedTasks
 
   // Group tasks by assigned person
@@ -89,6 +90,8 @@ export function TasksPanel() {
         created_date: new Date().toISOString().split('T')[0],
         created_by: user?.email || null,
         description: description.trim() || null,
+        status: 'open', // Default status for new tasks
+        completed: false
       }
 
       if (selectedTaskType === "ship") {
@@ -241,10 +244,68 @@ export function TasksPanel() {
 
   const handleComplete = async (taskId: string) => {
     try {
-      await completeTask(taskId)
+      await updateTask(taskId, {
+        status: 'completed',
+        completed: true,
+        completed_at: new Date().toISOString()
+      })
     } catch (error) {
       console.error("Error completing task:", error)
       alert("Fout bij voltooien taak")
+    }
+  }
+
+  const handleTakeTask = async (taskId: string) => {
+    try {
+      const currentUser = user?.email || 'Onbekend'
+      await updateTask(taskId, {
+        status: 'in_progress',
+        taken_by: currentUser,
+        taken_at: new Date().toISOString()
+      })
+    } catch (error) {
+      console.error("Error taking task:", error)
+      alert("Fout bij oppakken taak")
+    }
+  }
+
+  const handleReleaseTask = async (taskId: string) => {
+    try {
+      await updateTask(taskId, {
+        status: 'open',
+        taken_by: null,
+        taken_at: null
+      })
+    } catch (error) {
+      console.error("Error releasing task:", error)
+      alert("Fout bij vrijgeven taak")
+    }
+  }
+
+  const getStatusBadge = (status: string | null, completed: boolean) => {
+    // If task is completed, always show completed status
+    if (completed || status === 'completed') {
+      return (
+        <Badge className="bg-green-100 text-green-800 border-green-300 border">
+          Voltooid
+        </Badge>
+      )
+    }
+    
+    switch (status) {
+      case 'in_progress':
+        return (
+          <Badge className="bg-blue-100 text-blue-800 border-blue-300 border">
+            In Behandeling
+          </Badge>
+        )
+      case 'open':
+      default:
+        return (
+          <Badge className="bg-gray-100 text-gray-800 border-gray-300 border">
+            Open
+          </Badge>
+        )
     }
   }
 
@@ -405,6 +466,26 @@ export function TasksPanel() {
                               </div>
 
                               <div className="space-y-2 text-sm">
+                                {/* Status Badge */}
+                                <div className="flex items-center gap-2">
+                                  {getStatusBadge(task.status, task.completed)}
+                                </div>
+
+                                {/* Opgepakt door */}
+                                {task.taken_by && task.status === 'in_progress' && (
+                                  <div className="flex items-center gap-2 px-3 py-2 rounded bg-blue-50 text-sm">
+                                    <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                    <span className="text-blue-800 font-medium">
+                                      Opgepakt door: {task.taken_by}
+                                    </span>
+                                    {task.taken_at && (
+                                      <span className="text-blue-600 text-xs">
+                                        ({format(new Date(task.taken_at), "d MMM, HH:mm", { locale: nl })})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
                                 <div className="flex items-center gap-2">
                                   {task.task_type === "ship" ? (
                                     <ShipIcon className="w-4 h-4 text-blue-600 flex-shrink-0" />
@@ -477,7 +558,51 @@ export function TasksPanel() {
                                         Bewerken
                                       </Button>
                                     )}
-                                    {!task.completed && (
+                                  </div>
+                                </div>
+                                
+                                {/* Status actie knoppen */}
+                                {!task.completed && (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {task.status === 'open' && (
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => handleTakeTask(task.id)}
+                                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700"
+                                      >
+                                        <User className="w-4 h-4" />
+                                        Ik pak dit op
+                                      </Button>
+                                    )}
+                                    {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                      <>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleReleaseTask(task.id)}
+                                          className="flex items-center gap-1.5"
+                                        >
+                                          <X className="w-4 h-4" />
+                                          Vrijgeven
+                                        </Button>
+                                        <Button
+                                          variant="default"
+                                          size="sm"
+                                          onClick={() => handleComplete(task.id)}
+                                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
+                                        >
+                                          <CheckCircle2 className="w-4 h-4" />
+                                          Voltooien
+                                        </Button>
+                                      </>
+                                    )}
+                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && (
+                                      <span className="text-xs text-gray-500 italic">
+                                        Wordt behandeld door {task.taken_by}
+                                      </span>
+                                    )}
+                                    {(!task.status || task.status === 'open') && (
                                       <Button
                                         variant="outline"
                                         size="sm"
@@ -497,7 +622,7 @@ export function TasksPanel() {
                                       <X className="w-4 h-4" />
                                     </Button>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             </div>
                           </CardContent>
