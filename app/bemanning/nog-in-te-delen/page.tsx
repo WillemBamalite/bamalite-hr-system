@@ -28,6 +28,8 @@ export default function NogInTeDelenPage() {
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [newSubStatus, setNewSubStatus] = useState<string>("");
   const [showNewCandidateDialog, setShowNewCandidateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingMember, setEditingMember] = useState<any>(null);
   const [candidateForm, setCandidateForm] = useState({
     firstName: "",
     lastName: "",
@@ -36,7 +38,17 @@ export default function NogInTeDelenPage() {
     position: "",
     nationality: "NL",
     diplomas: [] as string[],
-    notes: ""
+    notes: "",
+    contactVia: "",
+    geplaatstDoor: "",
+    isStudent: false,
+    educationType: "",
+    smoking: false,
+    drivingLicense: false,
+    residence: "",
+    birthDate: "",
+    startMogelijkheid: "",
+    datumGeplaatst: ""
   });
 
   // Prevent hydration errors
@@ -98,6 +110,14 @@ export default function NogInTeDelenPage() {
   // Categoriseer op basis van sub_status veld - alleen kandidaten die nog niet aangenomen zijn
   const nogTeBenaderen = unassignedCrew.filter((m: any) => 
     (!m.sub_status || m.sub_status === "nog-te-benaderen") &&
+    m.status !== 'uit-dienst' &&
+    m.recruitment_status !== "aangenomen" &&
+    m.sub_status !== "later-terugkomen"
+  );
+
+  // Later terugkomen: kandidaten die later terug kunnen komen
+  const laterTerugkomen = unassignedCrew.filter((m: any) => 
+    m.sub_status === "later-terugkomen" &&
     m.status !== 'uit-dienst' &&
     m.recruitment_status !== "aangenomen"
   );
@@ -233,6 +253,78 @@ export default function NogInTeDelenPage() {
     }
   };
 
+  const handleLaterTerugkomen = async (member: any) => {
+    try {
+      await updateCrew(member.id, {
+        sub_status: "later-terugkomen"
+      });
+    } catch (error) {
+      console.error("Fout bij verplaatsen naar later terugkomen:", error);
+      alert("Er is een fout opgetreden.");
+    }
+  };
+
+  const handleEdit = (member: any) => {
+    setEditingMember(member);
+    setCandidateForm({
+      firstName: member.first_name || "",
+      lastName: member.last_name || "",
+      phone: member.phone || "",
+      email: member.email || "",
+      position: member.position || "",
+      nationality: member.nationality || "NL",
+      diplomas: member.diplomas || [],
+      notes: member.notes && member.notes.length > 0 
+        ? (typeof member.notes[0] === "string" ? member.notes[0] : member.notes[0]?.content || "")
+        : "",
+      contactVia: member.contact_via || "",
+      geplaatstDoor: member.geplaatst_door || "",
+      isStudent: member.is_student || false,
+      educationType: member.education_type || "",
+      smoking: member.smoking || false,
+      drivingLicense: member.driving_license || false,
+      residence: member.residence || "",
+      birthDate: member.birth_date || "",
+      startMogelijkheid: member.start_mogelijkheid || "",
+      datumGeplaatst: member.datum_geplaatst || ""
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMember) return;
+
+    try {
+      const updateData: any = {
+        first_name: candidateForm.firstName,
+        last_name: candidateForm.lastName,
+        phone: candidateForm.phone || null,
+        email: candidateForm.email || null,
+        position: candidateForm.position || null,
+        nationality: candidateForm.nationality,
+        diplomas: candidateForm.diplomas,
+        notes: candidateForm.notes ? [candidateForm.notes] : [],
+        contact_via: candidateForm.contactVia || null,
+        geplaatst_door: candidateForm.geplaatstDoor || null,
+        is_student: candidateForm.isStudent || false,
+        education_type: candidateForm.isStudent ? candidateForm.educationType : null,
+        smoking: candidateForm.smoking || false,
+        driving_license: candidateForm.drivingLicense || false,
+        residence: candidateForm.residence || null,
+        birth_date: candidateForm.birthDate || null,
+        start_mogelijkheid: candidateForm.startMogelijkheid || null,
+        datum_geplaatst: candidateForm.datumGeplaatst || null
+      };
+
+      await updateCrew(editingMember.id, updateData);
+      setShowEditDialog(false);
+      setEditingMember(null);
+    } catch (error) {
+      console.error("Fout bij bijwerken:", error);
+      alert("Er is een fout opgetreden bij het bijwerken.");
+    }
+  };
+
   const handleChecklistToggle = async (memberId: string, field: string, value: boolean) => {
     try {
       await updateCrew(memberId, {
@@ -250,7 +342,7 @@ export default function NogInTeDelenPage() {
     }
 
     try {
-      const newCandidate = {
+      const newCandidate: any = {
         id: `crew-${Date.now()}`,
         first_name: candidateForm.firstName,
         last_name: candidateForm.lastName,
@@ -263,7 +355,17 @@ export default function NogInTeDelenPage() {
         regime: "",
         notes: candidateForm.notes ? [candidateForm.notes] : [],
         diplomas: candidateForm.diplomas,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        contact_via: candidateForm.contactVia || null,
+        geplaatst_door: candidateForm.geplaatstDoor || null,
+        is_student: candidateForm.isStudent || false,
+        education_type: candidateForm.isStudent ? candidateForm.educationType : null,
+        smoking: candidateForm.smoking || false,
+        driving_license: candidateForm.drivingLicense || false,
+        residence: candidateForm.residence || null,
+        birth_date: candidateForm.birthDate || null,
+        start_mogelijkheid: candidateForm.startMogelijkheid || null,
+        datum_geplaatst: candidateForm.datumGeplaatst || null
       };
 
       console.log('Adding candidate via Supabase:', newCandidate);
@@ -281,7 +383,17 @@ export default function NogInTeDelenPage() {
         position: "",
         nationality: "NL",
         diplomas: [],
-        notes: ""
+        notes: "",
+        contactVia: "",
+        geplaatstDoor: "",
+        isStudent: false,
+        educationType: "",
+        smoking: false,
+        drivingLicense: false,
+        residence: "",
+        birthDate: "",
+        startMogelijkheid: "",
+        datumGeplaatst: ""
       });
     } catch (error) {
       console.error("Fout bij toevoegen kandidaat:", error);
@@ -324,7 +436,7 @@ export default function NogInTeDelenPage() {
       </div>
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
@@ -332,6 +444,30 @@ export default function NogInTeDelenPage() {
               <div>
                 <p className="text-sm text-gray-600">Nog te benaderen</p>
                 <p className="text-2xl font-bold text-red-600">{nogTeBenaderen.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        {laterTerugkomen.length > 0 && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-5 h-5 bg-gray-500 rounded-full"></div>
+                <div>
+                  <p className="text-sm text-gray-600">Later terugkomen</p>
+                  <p className="text-2xl font-bold text-gray-600">{laterTerugkomen.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-blue-500 rounded-full"></div>
+              <div>
+                <p className="text-sm text-gray-600">Nog in te delen</p>
+                <p className="text-2xl font-bold text-blue-600">{nogInTeDelen.length}</p>
               </div>
             </div>
           </CardContent>
@@ -469,12 +605,21 @@ export default function NogInTeDelenPage() {
                 })()}
 
                 {/* Actions */}
-                <div className="space-y-2 pt-3 border-t">
-                  <div className="grid grid-cols-1 gap-2">
+                <div className="pt-3 border-t">
+                  <div className="flex flex-wrap gap-2">
                     <Button 
                       size="sm"
                       variant="outline"
-                      className="text-green-600 border-green-200 hover:bg-green-50"
+                      className="text-blue-600 border-blue-200 hover:bg-blue-50 flex-1 min-w-[140px]"
+                      onClick={() => handleEdit(member)}
+                    >
+                      <span className="mr-1">✏️</span>
+                      Bewerken
+                    </Button>
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="text-green-600 border-green-200 hover:bg-green-50 flex-1 min-w-[140px]"
                       onClick={async () => {
                         try {
                           // Zet status naar aangenomen
@@ -492,15 +637,26 @@ export default function NogInTeDelenPage() {
                       Aangenomen
                     </Button>
                   </div>
-                  <Button 
-                    size="sm"
-                    variant="outline"
-                    className="w-full text-red-600 border-red-200 hover:bg-red-50"
-                    onClick={() => handleNoInterest(member.id, `${member.first_name} ${member.last_name}`)}
-                  >
-                    <span className="mr-1">✕</span>
-                    {t('noInterest')}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="text-orange-600 border-orange-200 hover:bg-orange-50 flex-1 min-w-[140px]"
+                      onClick={() => handleLaterTerugkomen(member)}
+                    >
+                      <span className="mr-1">⏰</span>
+                      Later terugkomen
+                    </Button>
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="text-red-600 border-red-200 hover:bg-red-50 flex-1 min-w-[140px]"
+                      onClick={() => handleNoInterest(member.id, `${member.first_name} ${member.last_name}`)}
+                    >
+                      <span className="mr-1">✕</span>
+                      {t('noInterest')}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -732,6 +888,85 @@ export default function NogInTeDelenPage() {
               </div>
             )}
           </div>
+
+          {/* 5. LATER TERUGKOMEN */}
+          {laterTerugkomen.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">⏰ Later Terugkomen</h2>
+                <Badge className="bg-gray-100 text-gray-800">{laterTerugkomen.length}</Badge>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">Kandidaten waar we later op terug kunnen komen</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {laterTerugkomen.map((member: any) => (
+                  <Card key={member.id} className="hover:shadow-lg transition-shadow border-gray-200">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="w-10 h-10">
+                            <AvatarFallback className="bg-gray-100 text-gray-700">
+                              {(member.first_name?.[0] || "?")}{(member.last_name?.[0] || "")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <Link 
+                              href={`/bemanning/${member.id}`}
+                              className="font-medium text-gray-900 hover:text-blue-700"
+                            >
+                              {member.first_name} {member.last_name}
+                            </Link>
+                            <div className="flex items-center space-x-2 text-sm text-gray-500">
+                              <span>{getNationalityFlag(member.nationality)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="text-sm text-gray-600">
+                        <span className="font-medium">Functie:</span> {member.position}
+                      </div>
+                      {member.phone && (
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Telefoon:</span> {member.phone}
+                        </div>
+                      )}
+                      <div className="pt-3 border-t">
+                        <div className="flex flex-wrap gap-2">
+                          <Button 
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50 flex-1 min-w-[140px]"
+                            onClick={() => handleEdit(member)}
+                          >
+                            <span className="mr-1">✏️</span>
+                            Bewerken
+                          </Button>
+                          <Button 
+                            size="sm"
+                            variant="outline"
+                            className="text-green-600 border-green-200 hover:bg-green-50 flex-1 min-w-[140px]"
+                            onClick={async () => {
+                              try {
+                                await updateCrew(member.id, {
+                                  sub_status: "nog-te-benaderen"
+                                });
+                              } catch (error) {
+                                console.error('Error updating status:', error);
+                              }
+                            }}
+                          >
+                            <span className="mr-1">↩️</span>
+                            Terug naar benaderen
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
       {/* New Candidate Dialog */}
@@ -875,6 +1110,116 @@ export default function NogInTeDelenPage() {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="contactVia">Contact via</Label>
+                <Input
+                  id="contactVia"
+                  value={candidateForm.contactVia}
+                  onChange={(e) => setCandidateForm({...candidateForm, contactVia: e.target.value})}
+                  placeholder="Bijv: Email, Telefoon, Website, Referral..."
+                />
+              </div>
+              <div>
+                <Label htmlFor="geplaatstDoor">Geplaatst door</Label>
+                <Select value={candidateForm.geplaatstDoor} onValueChange={(value) => setCandidateForm({...candidateForm, geplaatstDoor: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Willem">Willem</SelectItem>
+                    <SelectItem value="Leo">Leo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="residence">Woonplaats</Label>
+                <Input
+                  id="residence"
+                  value={candidateForm.residence}
+                  onChange={(e) => setCandidateForm({...candidateForm, residence: e.target.value})}
+                  placeholder="Woonplaats"
+                />
+              </div>
+              <div>
+                <Label htmlFor="birthDate">Geboortedatum</Label>
+                <Input
+                  id="birthDate"
+                  type="date"
+                  value={candidateForm.birthDate}
+                  onChange={(e) => setCandidateForm({...candidateForm, birthDate: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="startMogelijkheid">Start mogelijkheid</Label>
+                <Input
+                  id="startMogelijkheid"
+                  type="date"
+                  value={candidateForm.startMogelijkheid}
+                  onChange={(e) => setCandidateForm({...candidateForm, startMogelijkheid: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label htmlFor="datumGeplaatst">Datum geplaatst</Label>
+                <Input
+                  id="datumGeplaatst"
+                  type="date"
+                  value={candidateForm.datumGeplaatst}
+                  onChange={(e) => setCandidateForm({...candidateForm, datumGeplaatst: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="isStudent"
+                  checked={candidateForm.isStudent}
+                  onCheckedChange={(checked) => setCandidateForm({...candidateForm, isStudent: checked === true})}
+                />
+                <Label htmlFor="isStudent" className="cursor-pointer">Eventueel leerling</Label>
+              </div>
+              {candidateForm.isStudent && (
+                <div>
+                  <Label htmlFor="educationType">Type leerling</Label>
+                  <Select value={candidateForm.educationType} onValueChange={(value) => setCandidateForm({...candidateForm, educationType: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecteer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BBL">BBL</SelectItem>
+                      <SelectItem value="BOL">BOL</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="smoking"
+                  checked={candidateForm.smoking}
+                  onCheckedChange={(checked) => setCandidateForm({...candidateForm, smoking: checked === true})}
+                />
+                <Label htmlFor="smoking" className="cursor-pointer">Roken?</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="drivingLicense"
+                  checked={candidateForm.drivingLicense}
+                  onCheckedChange={(checked) => setCandidateForm({...candidateForm, drivingLicense: checked === true})}
+                />
+                <Label htmlFor="drivingLicense" className="cursor-pointer">Rijbewijs?</Label>
+              </div>
+            </div>
+
             <div>
               <Label htmlFor="notes">Notities</Label>
               <Input
@@ -900,6 +1245,275 @@ export default function NogInTeDelenPage() {
         </DialogContent>
       </Dialog>
 
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Kandidaat Bewerken - {editingMember?.first_name} {editingMember?.last_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="editFirstName">Voornaam *</Label>
+                <Input
+                  id="editFirstName"
+                  value={candidateForm.firstName}
+                  onChange={(e) => setCandidateForm({...candidateForm, firstName: e.target.value})}
+                  placeholder="Voornaam"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="editLastName">Achternaam *</Label>
+                <Input
+                  id="editLastName"
+                  value={candidateForm.lastName}
+                  onChange={(e) => setCandidateForm({...candidateForm, lastName: e.target.value})}
+                  placeholder="Achternaam"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="editPhone">Telefoonnummer</Label>
+                <Input
+                  id="editPhone"
+                  value={candidateForm.phone}
+                  onChange={(e) => setCandidateForm({...candidateForm, phone: e.target.value})}
+                  placeholder="+31 6 12345678"
+                />
+              </div>
+              <div>
+                <Label htmlFor="editEmail">Email</Label>
+                <Input
+                  id="editEmail"
+                  type="email"
+                  value={candidateForm.email}
+                  onChange={(e) => setCandidateForm({...candidateForm, email: e.target.value})}
+                  placeholder="email@voorbeeld.nl"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="editPosition">Functie</Label>
+                <Select value={candidateForm.position} onValueChange={(value) => setCandidateForm({...candidateForm, position: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer functie" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Kapitein">Kapitein</SelectItem>
+                    <SelectItem value="2e kapitein">2e kapitein</SelectItem>
+                    <SelectItem value="Stuurman">Stuurman</SelectItem>
+                    <SelectItem value="Matroos">Matroos</SelectItem>
+                    <SelectItem value="Lichtmatroos">Lichtmatroos</SelectItem>
+                    <SelectItem value="Deksman">Deksman</SelectItem>
+                    <SelectItem value="Kok">Kok</SelectItem>
+                    <SelectItem value="Onbekend">Onbekend</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="editNationality">Nationaliteit</Label>
+                <Select value={candidateForm.nationality} onValueChange={(value) => setCandidateForm({...candidateForm, nationality: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer nationaliteit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NL">🇳🇱 Nederland</SelectItem>
+                    <SelectItem value="BE">🇧🇪 België</SelectItem>
+                    <SelectItem value="DE">🇩🇪 Duitsland</SelectItem>
+                    <SelectItem value="PO">🇵🇱 Polen</SelectItem>
+                    <SelectItem value="CZ">🇨🇿 Tsjechië</SelectItem>
+                    <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
+                    <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
+                    <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
+                    <SelectItem value="RO">🇷🇴 Roemenië</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="editContactVia">Contact via</Label>
+                <Input
+                  id="editContactVia"
+                  value={candidateForm.contactVia}
+                  onChange={(e) => setCandidateForm({...candidateForm, contactVia: e.target.value})}
+                  placeholder="Bijv: Email, Telefoon, Website, Referral..."
+                />
+              </div>
+              <div>
+                <Label htmlFor="editGeplaatstDoor">Geplaatst door</Label>
+                <Select value={candidateForm.geplaatstDoor} onValueChange={(value) => setCandidateForm({...candidateForm, geplaatstDoor: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Willem">Willem</SelectItem>
+                    <SelectItem value="Leo">Leo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="editResidence">Woonplaats</Label>
+                <Input
+                  id="editResidence"
+                  value={candidateForm.residence}
+                  onChange={(e) => setCandidateForm({...candidateForm, residence: e.target.value})}
+                  placeholder="Woonplaats"
+                />
+              </div>
+              <div>
+                <Label htmlFor="editBirthDate">Geboortedatum</Label>
+                <Input
+                  id="editBirthDate"
+                  type="date"
+                  value={candidateForm.birthDate}
+                  onChange={(e) => setCandidateForm({...candidateForm, birthDate: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="editStartMogelijkheid">Start mogelijkheid</Label>
+                <Input
+                  id="editStartMogelijkheid"
+                  type="date"
+                  value={candidateForm.startMogelijkheid}
+                  onChange={(e) => setCandidateForm({...candidateForm, startMogelijkheid: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label htmlFor="editDatumGeplaatst">Datum geplaatst</Label>
+                <Input
+                  id="editDatumGeplaatst"
+                  type="date"
+                  value={candidateForm.datumGeplaatst}
+                  onChange={(e) => setCandidateForm({...candidateForm, datumGeplaatst: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="editIsStudent"
+                  checked={candidateForm.isStudent}
+                  onCheckedChange={(checked) => setCandidateForm({...candidateForm, isStudent: checked === true})}
+                />
+                <Label htmlFor="editIsStudent" className="cursor-pointer">Eventueel leerling</Label>
+              </div>
+              {candidateForm.isStudent && (
+                <div>
+                  <Label htmlFor="editEducationType">Type leerling</Label>
+                  <Select value={candidateForm.educationType} onValueChange={(value) => setCandidateForm({...candidateForm, educationType: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecteer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BBL">BBL</SelectItem>
+                      <SelectItem value="BOL">BOL</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="editSmoking"
+                  checked={candidateForm.smoking}
+                  onCheckedChange={(checked) => setCandidateForm({...candidateForm, smoking: checked === true})}
+                />
+                <Label htmlFor="editSmoking" className="cursor-pointer">Roken?</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="editDrivingLicense"
+                  checked={candidateForm.drivingLicense}
+                  onCheckedChange={(checked) => setCandidateForm({...candidateForm, drivingLicense: checked === true})}
+                />
+                <Label htmlFor="editDrivingLicense" className="cursor-pointer">Rijbewijs?</Label>
+              </div>
+            </div>
+
+            <div>
+              <Label>Diploma's (optioneel)</Label>
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                {[
+                  "Vaarbewijs",
+                  "Rijnpatent tot Mannheim",
+                  "Rijnpatent tot Iffezheim",
+                  "Radar",
+                  "ADN",
+                  "STCW",
+                  "Marifoon",
+                  "BHV"
+                ].map((diploma) => (
+                  <div key={diploma} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-${diploma}`}
+                      checked={candidateForm.diplomas.includes(diploma)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setCandidateForm({
+                            ...candidateForm,
+                            diplomas: [...candidateForm.diplomas, diploma]
+                          });
+                        } else {
+                          setCandidateForm({
+                            ...candidateForm,
+                            diplomas: candidateForm.diplomas.filter((d) => d !== diploma)
+                          });
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor={`edit-${diploma}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      {diploma}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="editNotes">Notities</Label>
+              <Input
+                id="editNotes"
+                value={candidateForm.notes}
+                onChange={(e) => setCandidateForm({...candidateForm, notes: e.target.value})}
+                placeholder="Bijv: Benaderd via email, heeft interesse in stuurman positie..."
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                Annuleren
+              </Button>
+              <Button 
+                onClick={handleSaveEdit}
+                disabled={!candidateForm.firstName || !candidateForm.lastName}
+              >
+                Opslaan
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Status Change Dialog */}
       <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
@@ -990,3 +1604,5 @@ export default function NogInTeDelenPage() {
     </div>
   );
 } 
+
+
