@@ -85,7 +85,11 @@ export default function ReizenAflossersPage() {
   const [editTripData, setEditTripData] = useState({
     trip_from: "",
     trip_to: "",
-    aflosser_id: "none"
+    aflosser_id: "none",
+    start_date: "",
+    end_date: "",
+    start_datum: "",
+    start_tijd: ""
   })
   const [editDiplomas, setEditDiplomas] = useState<string[]>([])
   
@@ -335,11 +339,15 @@ export default function ReizenAflossersPage() {
         trip_from: editTripData.trip_from,
         trip_to: editTripData.trip_to,
         aflosser_id: editTripData.aflosser_id === "none" ? null : editTripData.aflosser_id,
-        trip_name: `${editTripData.trip_from} → ${editTripData.trip_to}` // Update trip name
+        trip_name: `${editTripData.trip_from} → ${editTripData.trip_to}`, // Update trip name
+        start_date: editTripData.start_date || null,
+        end_date: editTripData.end_date || null,
+        start_datum: editTripData.start_datum || null,
+        start_tijd: editTripData.start_tijd || null
       })
 
       setEditTripDialog(null)
-      setEditTripData({ trip_from: "", trip_to: "", aflosser_id: "none" })
+      setEditTripData({ trip_from: "", trip_to: "", aflosser_id: "none", start_date: "", end_date: "", start_datum: "", start_tijd: "" })
       alert("Reis bijgewerkt!")
     } catch (error) {
       console.error("Error editing trip:", error)
@@ -624,7 +632,11 @@ export default function ReizenAflossersPage() {
                                 setEditTripData({
                                   trip_from: trip.trip_from,
                                   trip_to: trip.trip_to,
-                                  aflosser_id: trip.aflosser_id || "none"
+                                aflosser_id: trip.aflosser_id || "none",
+                                start_date: trip.start_date || "",
+                                end_date: trip.end_date || "",
+                                start_datum: trip.start_datum || "",
+                                start_tijd: trip.start_tijd || ""
                                 })
                               }}
                               className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -707,7 +719,11 @@ export default function ReizenAflossersPage() {
                                 setEditTripData({
                                   trip_from: trip.trip_from,
                                   trip_to: trip.trip_to,
-                                  aflosser_id: trip.aflosser_id || "none"
+                                aflosser_id: trip.aflosser_id || "none",
+                                start_date: trip.start_date || "",
+                                end_date: trip.end_date || "",
+                                start_datum: trip.start_datum || "",
+                                start_tijd: trip.start_tijd || ""
                                 })
                               }}
                               className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -1381,6 +1397,46 @@ export default function ReizenAflossersPage() {
                 placeholder="Bijv. Antwerpen"
               />
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit_start_date">Start datum (planning)</Label>
+                <Input
+                  id="edit_start_date"
+                  type="date"
+                  value={editTripData.start_date}
+                  onChange={(e) => setEditTripData({...editTripData, start_date: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_end_date">Eind datum (optioneel)</Label>
+                <Input
+                  id="edit_end_date"
+                  type="date"
+                  value={editTripData.end_date}
+                  onChange={(e) => setEditTripData({...editTripData, end_date: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit_start_datum">Aan boord datum (indien actief)</Label>
+                <Input
+                  id="edit_start_datum"
+                  type="date"
+                  value={editTripData.start_datum}
+                  onChange={(e) => setEditTripData({...editTripData, start_datum: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit_start_tijd">Aan boord tijd (indien actief)</Label>
+                <Input
+                  id="edit_start_tijd"
+                  type="time"
+                  value={editTripData.start_tijd}
+                  onChange={(e) => setEditTripData({...editTripData, start_tijd: e.target.value})}
+                />
+              </div>
+            </div>
             <div>
               <Label htmlFor="edit_aflosser">Aflosser</Label>
               <Select value={editTripData.aflosser_id} onValueChange={(value) => setEditTripData({...editTripData, aflosser_id: value})}>
@@ -1452,3 +1508,4 @@ export default function ReizenAflossersPage() {
     </div>
   )
 }
+
