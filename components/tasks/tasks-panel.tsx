@@ -31,12 +31,28 @@ export function TasksPanel() {
   const [filter, setFilter] = useState<"open" | "completed">("open")
   const [isEditing, setIsEditing] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string>("")
+  const [statusUpdates, setStatusUpdates] = useState<Record<string, string>>({})
 
   // Filter tasks - standaard alleen openstaande taken (niet voltooid)
   // Open tasks include both 'open' and 'in_progress' status
   const openTasks = tasks.filter((t: any) => !t.completed && t.status !== 'completed')
   const completedTasks = tasks.filter((t: any) => t.completed || t.status === 'completed')
   const filteredTasks = filter === "open" ? openTasks : completedTasks
+
+  // Sync lokale status-updates met bestaande data (pak laatste entry uit status_updates)
+  useEffect(() => {
+    const initial: Record<string, string> = {}
+    tasks.forEach((t: any) => {
+      const history = Array.isArray(t.status_updates) ? t.status_updates : []
+      const latest = history.length ? history[history.length - 1] : null
+      if (latest?.text) {
+        initial[t.id] = latest.text
+      } else if (t.status_update) {
+        initial[t.id] = t.status_update
+      }
+    })
+    setStatusUpdates(initial)
+  }, [tasks])
 
   // Group tasks by assigned person
   const tasksByPerson = {
@@ -282,6 +298,32 @@ export function TasksPanel() {
     }
   }
 
+  const handleSaveStatusUpdate = async (taskId: string) => {
+    const updateText = (statusUpdates[taskId] || '').trim()
+    if (!updateText) {
+      alert("Vul een statusupdate in")
+      return
+    }
+    try {
+      const currentTask = tasks.find((t: any) => t.id === taskId) || {}
+      const existing = Array.isArray(currentTask.status_updates) ? currentTask.status_updates : []
+      const newEntry = {
+        text: updateText,
+        at: new Date().toISOString(),
+        by: user?.email || currentTask.taken_by || currentTask.created_by || 'Onbekend'
+      }
+      await updateTask(taskId, {
+        status_update: updateText,
+        status_update_at: newEntry.at,
+        status_updates: [...existing, newEntry]
+      })
+      setStatusUpdates((prev) => ({ ...prev, [taskId]: "" }))
+    } catch (error) {
+      console.error("Error saving status update:", error)
+      alert("Fout bij opslaan statusupdate")
+    }
+  }
+
   const getStatusBadge = (status: string | null, completed: boolean) => {
     // If task is completed, always show completed status
     if (completed || status === 'completed') {
@@ -521,7 +563,43 @@ export function TasksPanel() {
                                   </div>
                                 )}
 
-                                {task.deadline && (
+                                {/* Status update weergave (meerdere, nieuwste bovenaan) */}
+                                {(() => {
+                                  const history = Array.isArray(task.status_updates) ? [...task.status_updates] : []
+                                  if (!history.length && task.status_update) {
+                                    history.push({
+                                      text: task.status_update,
+                                      at: task.status_update_at,
+                                      by: task.taken_by || task.created_by || 'Onbekend'
+                                    })
+                                  }
+                                  if (!history.length) return null
+                                  return (
+                                    <div className="space-y-2">
+                                      {history.slice().reverse().map((entry: any, idx: number) => (
+                                        <div key={idx} className="bg-gray-50 border border-gray-200 rounded p-2 text-sm space-y-1">
+                                          <div className="flex items-center gap-2 text-gray-700">
+                                            <AlertCircle className="w-4 h-4 text-blue-600" />
+                                            <span className="font-medium">Statusupdate</span>
+                                            {entry.at && (
+                                              <span className="text-xs text-gray-500">
+                                                {format(new Date(entry.at), "d MMM, HH:mm", { locale: nl })}
+                                              </span>
+                                            )}
+                                            {entry.by && (
+                                              <span className="text-xs text-gray-500">— {entry.by}</span>
+                                            )}
+                                          </div>
+                                          <div className="text-gray-700 whitespace-pre-wrap break-words">
+                                            {entry.text}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                })()}
+
+        {task.deadline && (
                                   <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${deadlineStatus?.bg || "bg-gray-50"}`}>
                                     <Clock className={`w-4 h-4 ${deadlineStatus?.color || "text-gray-600"} flex-shrink-0`} />
                                     <span className={deadlineStatus?.color || "text-gray-600"}>
@@ -576,26 +654,52 @@ export function TasksPanel() {
                                       </Button>
                                     )}
                                     {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
-                                      <>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleReleaseTask(task.id)}
-                                          className="flex items-center gap-1.5"
-                                        >
-                                          <X className="w-4 h-4" />
-                                          Vrijgeven
-                                        </Button>
-                                        <Button
-                                          variant="default"
-                                          size="sm"
-                                          onClick={() => handleComplete(task.id)}
-                                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
-                                        >
-                                          <CheckCircle2 className="w-4 h-4" />
-                                          Voltooien
-                                        </Button>
-                                      </>
+                                      <div className="flex flex-col gap-2 w-full">
+                                        <div className="flex flex-wrap gap-2">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleReleaseTask(task.id)}
+                                            className="flex items-center gap-1.5"
+                                          >
+                                            <X className="w-4 h-4" />
+                                            Vrijgeven
+                                          </Button>
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handleComplete(task.id)}
+                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
+                                          >
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            Voltooien
+                                          </Button>
+                                        </div>
+                                        <Label className="text-xs text-gray-600">Statusupdate</Label>
+                                        <Textarea
+                                          rows={2}
+                                          value={statusUpdates[task.id] ?? ""}
+                                          onChange={(e) => setStatusUpdates((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                                          placeholder="Geef een korte update over de voortgang..."
+                                        />
+                                        <div className="flex gap-2">
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handleSaveStatusUpdate(task.id)}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                          >
+                                            Opslaan
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setStatusUpdates((prev) => ({ ...prev, [task.id]: task.status_update || "" }))}
+                                          >
+                                            Herstel
+                                          </Button>
+                                        </div>
+                                      </div>
                                     )}
                                     {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && (
                                       <span className="text-xs text-gray-500 italic">
