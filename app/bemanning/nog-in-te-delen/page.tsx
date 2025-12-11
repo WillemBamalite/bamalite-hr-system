@@ -271,7 +271,20 @@ export default function NogInTeDelenPage() {
       if (stage === "kennismaking-gepland") {
         const date = window.prompt("Datum kennismaking (DD-MM-YYYY)? Optioneel.", member.expected_start_date || "");
         if (date) {
-          updates.expected_start_date = date;
+          const m = date.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+          if (!m) {
+            alert("Gebruik formaat DD-MM-YYYY");
+            return;
+          }
+          const [_, dd, mm, yyyy] = m;
+          const iso = `${yyyy}-${mm}-${dd}`;
+          const dt = new Date(iso);
+          // simpele validatie
+          if (isNaN(dt.getTime())) {
+            alert("Ongeldige datum");
+            return;
+          }
+          updates.expected_start_date = iso;
         }
       }
       await updateCrew(member.id, updates);
@@ -547,7 +560,7 @@ export default function NogInTeDelenPage() {
               <div className="flex items-center gap-3 text-xs text-gray-500">
                 <div className="flex items-center gap-1">
                   <span className="w-3 h-3 rounded-sm bg-yellow-400 border border-yellow-500"></span>
-                  <span>Benaderen</span>
+                  <span>Benaderd</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="w-3 h-3 rounded-sm bg-blue-500 border border-blue-600"></span>
