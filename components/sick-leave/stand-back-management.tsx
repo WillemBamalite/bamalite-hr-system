@@ -47,8 +47,8 @@ export function StandBackManagement() {
   
   const { standBackRecords, crew, ships, loading, error, updateStandBackRecord, addStandBackRecord, loadData } = useSupabaseData()
 
-  // Filter records by status
-  const openStandBackRecords = standBackRecords
+  // Filter and map records by status
+  const openStandBackRecordsRaw = standBackRecords
     .filter((record: any) => (record.stand_back_days_remaining || 0) > 0 && record.stand_back_status === 'openstaand')
     .map((record: any) => {
       const crewMember = crew.find((c: any) => c.id === record.crew_member_id)
@@ -68,7 +68,7 @@ export function StandBackManagement() {
         standBackDaysCompleted: record.stand_back_days_completed || 0,
         standBackHistory: record.stand_back_history || [],
         standBackStatus: record.stand_back_status || 'openstaand',
-        archiveStatus: 'openstaand', // Default for now since we don't have this field yet
+        archiveStatus: 'openstaand',
         createdAt: record.created_at,
         updatedAt: record.updated_at,
         crewMember: crewMember ? {
@@ -87,7 +87,41 @@ export function StandBackManagement() {
       }
     })
     .filter((record) => record.crewMember)
-    .sort((a, b) => b.standBackDaysRemaining - a.standBackDaysRemaining)
+
+  // Group records by crew member ID
+  const groupedByMember = openStandBackRecordsRaw.reduce((acc: any, record: any) => {
+    const memberId = record.crewMemberId
+    if (!acc[memberId]) {
+      acc[memberId] = {
+        crewMemberId: memberId,
+        crewMember: record.crewMember,
+        ship: record.ship,
+        records: [],
+        totalRemaining: 0,
+        totalRequired: 0,
+        totalCompleted: 0,
+      }
+    }
+    acc[memberId].records.push(record)
+    acc[memberId].totalRemaining += record.standBackDaysRemaining
+    acc[memberId].totalRequired += record.standBackDaysRequired
+    acc[memberId].totalCompleted += record.standBackDaysCompleted
+    return acc
+  }, {})
+
+  // Convert grouped object to array and sort by total remaining days
+  const openStandBackRecords = Object.values(groupedByMember)
+    .map((group: any) => ({
+      ...group,
+      // Use the most recent record for display purposes
+      id: group.records[0].id,
+      startDate: group.records[0].startDate,
+      endDate: group.records[group.records.length - 1].endDate,
+      standBackDaysRemaining: group.totalRemaining,
+      standBackDaysRequired: group.totalRequired,
+      standBackDaysCompleted: group.totalCompleted,
+    }))
+    .sort((a: any, b: any) => b.totalRemaining - a.totalRemaining)
 
   // Archive records (completed and terminated)
   const archiveRecords = standBackRecords
@@ -211,37 +245,52 @@ export function StandBackManagement() {
     }
 
     try {
-      const daysToComplete = Math.min(Number.parseInt(daysToAdd), selectedRecord.standBackDaysRemaining)
+      const totalDaysToComplete = Math.min(Number.parseInt(daysToAdd), selectedRecord.totalRemaining)
+      let remainingDays = totalDaysToComplete
       
-      // Bereken nieuwe waarden
-      const newCompleted = selectedRecord.standBackDaysCompleted + daysToComplete
-      const newRemaining = selectedRecord.standBackDaysRemaining - daysToComplete
-      const newStatus = newRemaining === 0 ? 'voltooid' : 'openstaand'
-      const newArchiveStatus = newRemaining === 0 ? 'voltooid' : 'openstaand'
+      // Sort records by remaining days (most remaining first) to prioritize which records to complete first
+      const sortedRecords = [...(selectedRecord.records || [selectedRecord])]
+        .filter((r: any) => r.standBackDaysRemaining > 0)
+        .sort((a: any, b: any) => b.standBackDaysRemaining - a.standBackDaysRemaining)
       
-      // Maak history entry
-      const historyEntry = {
-        date: new Date().toISOString(),
-        daysCompleted: daysToComplete,
-        note: note || 'Dagen afgeboekt',
-        completedBy: 'User' // Je zou hier de logged in user kunnen gebruiken
+      // Distribute days across records
+      for (const record of sortedRecords) {
+        if (remainingDays <= 0) break
+        
+        const daysForThisRecord = Math.min(remainingDays, record.standBackDaysRemaining)
+        const newCompleted = record.standBackDaysCompleted + daysForThisRecord
+        const newRemaining = record.standBackDaysRemaining - daysForThisRecord
+        const newStatus = newRemaining === 0 ? 'voltooid' : 'openstaand'
+        
+        // Maak history entry
+        const historyEntry = {
+          date: new Date().toISOString(),
+          daysCompleted: daysForThisRecord,
+          note: note || `Dagen afgeboekt (${totalDaysToComplete} totaal voor alle registraties)`,
+          completedBy: 'User'
+        }
+        
+        // Update in database
+        await updateStandBackRecord(record.id, {
+          stand_back_days_completed: newCompleted,
+          stand_back_days_remaining: newRemaining,
+          stand_back_status: newStatus,
+          stand_back_history: [...(record.standBackHistory || []), historyEntry]
+        })
+        
+        remainingDays -= daysForThisRecord
       }
       
-      // Update in database
-      await updateStandBackRecord(selectedRecord.id, {
-        stand_back_days_completed: newCompleted,
-        stand_back_days_remaining: newRemaining,
-        stand_back_status: newStatus,
-        stand_back_history: [...selectedRecord.standBackHistory, historyEntry]
-      })
-      
-      alert(`Succesvol ${daysToComplete} dag(en) afgeboekt voor ${selectedRecord.crewMember?.firstName} ${selectedRecord.crewMember?.lastName}`)
+      alert(`Succesvol ${totalDaysToComplete} dag(en) afgeboekt voor ${selectedRecord.crewMember?.firstName} ${selectedRecord.crewMember?.lastName}`)
       
       // Reset form
       setDaysToAdd("")
       setNote("")
       setIsAddDaysOpen(false)
       setSelectedRecord(null)
+      
+      // Reload data to refresh the list
+      await loadData()
     } catch (error) {
       console.error('Error booking off days:', error)
       alert('Fout bij het afboeken van dagen: ' + (error instanceof Error ? error.message : String(error)))
@@ -577,37 +626,39 @@ export function StandBackManagement() {
           <Card>
             <CardContent className="pt-6">
               <div className="space-y-4">
-                {openStandBackRecords.map((record) => (
-                  <div key={record.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                {openStandBackRecords.map((group: any) => (
+                  <div key={group.crewMemberId} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center space-x-4">
                         <Avatar className="w-12 h-12">
                           <AvatarFallback className="bg-orange-100 text-orange-700">
-                            {record.crewMember?.firstName?.[0] || '?'}
-                            {record.crewMember?.lastName?.[0] || '?'}
+                            {group.crewMember?.firstName?.[0] || '?'}
+                            {group.crewMember?.lastName?.[0] || '?'}
                           </AvatarFallback>
                         </Avatar>
 
                         <div>
                           <div className="flex items-center space-x-2 mb-1">
                             <h4 className="font-medium text-gray-900">
-                              {record.crewMember?.firstName || 'Onbekend'} {record.crewMember?.lastName || 'Medewerker'}
+                              {group.crewMember?.firstName || 'Onbekend'} {group.crewMember?.lastName || 'Medewerker'}
                             </h4>
-                            <span className="text-lg">{getNationalityFlag(record.crewMember?.nationality || 'NL')}</span>
+                            <span className="text-lg">{getNationalityFlag(group.crewMember?.nationality || 'NL')}</span>
                             <Badge variant="outline" className="text-xs">
-                              {record.crewMember?.nationality || 'NL'}
+                              {group.crewMember?.nationality || 'NL'}
                             </Badge>
-                            <Badge className={`text-xs ${getReasonColor(record.reason)}`}>
-                              {record.reason}
-                            </Badge>
+                            {group.records.length > 1 && (
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                {group.records.length} registraties
+                              </Badge>
+                            )}
                           </div>
 
                           <div className="flex items-center space-x-4 text-sm text-gray-600">
-                            <span className="font-medium">{record.crewMember?.position || 'Onbekend'}</span>
-                            {record.ship && (
+                            <span className="font-medium">{group.crewMember?.position || 'Onbekend'}</span>
+                            {group.ship && (
                               <div className="flex items-center space-x-1">
                                 <Ship className="w-3 h-3" />
-                                <span>{record.ship.name}</span>
+                                <span>{group.ship.name}</span>
                               </div>
                             )}
                           </div>
@@ -616,14 +667,14 @@ export function StandBackManagement() {
 
                       <div className="flex items-center space-x-2">
                         <Badge variant="destructive" className="text-sm">
-                          {record.standBackDaysRemaining} dagen resterend
+                          {group.totalRemaining} dagen totaal resterend
                         </Badge>
                         
                         <Dialog
-                          open={isAddDaysOpen && selectedRecord?.id === record.id}
+                          open={isAddDaysOpen && selectedRecord?.crewMemberId === group.crewMemberId}
                           onOpenChange={(open) => {
                             setIsAddDaysOpen(open)
-                            if (open) setSelectedRecord(record)
+                            if (open) setSelectedRecord(group)
                             else setSelectedRecord(null)
                           }}
                         >
@@ -633,22 +684,50 @@ export function StandBackManagement() {
                               Dagen Afboeken
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
                               <DialogTitle>
-                                Terug Staan Dagen Afboeken - {record.crewMember?.firstName || 'Onbekend'} {record.crewMember?.lastName || 'Medewerker'}
+                                Terug Staan Dagen Afboeken - {group.crewMember?.firstName || 'Onbekend'} {group.crewMember?.lastName || 'Medewerker'}
                               </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-4">
                               <div className="bg-gray-50 p-3 rounded-lg">
                                 <p className="text-sm text-gray-600">
-                                  <strong>Openstaand:</strong> {record.standBackDaysRemaining} dagen
+                                  <strong>Totaal openstaand:</strong> {group.totalRemaining} dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
-                                  <strong>Al voltooid:</strong> {record.standBackDaysCompleted} van{" "}
-                                  {record.standBackDaysRequired} dagen
+                                  <strong>Al voltooid:</strong> {group.totalCompleted} van{" "}
+                                  {group.totalRequired} dagen totaal
                                 </p>
                               </div>
+
+                              {/* Show all records for this person */}
+                              {group.records.length > 1 && (
+                                <div className="bg-blue-50 p-3 rounded-lg">
+                                  <p className="text-sm font-medium text-blue-900 mb-2">
+                                    Alle registraties ({group.records.length}):
+                                  </p>
+                                  <div className="space-y-2">
+                                    {group.records.map((rec: any, idx: number) => (
+                                      <div key={rec.id} className="bg-white p-2 rounded text-xs">
+                                        <div className="flex justify-between items-center">
+                                          <div>
+                                            <Badge className={`text-xs ${getReasonColor(rec.reason)}`}>
+                                              {rec.reason}
+                                            </Badge>
+                                            <span className="ml-2 text-gray-600">
+                                              {new Date(rec.startDate).toLocaleDateString("nl-NL")} - {new Date(rec.endDate).toLocaleDateString("nl-NL")}
+                                            </span>
+                                          </div>
+                                          <Badge variant={rec.standBackDaysRemaining > 0 ? "destructive" : "default"} className="text-xs">
+                                            {rec.standBackDaysRemaining} resterend
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
 
                               <div>
                                 <Label htmlFor="days">Aantal dagen om af te boeken</Label>
@@ -656,7 +735,7 @@ export function StandBackManagement() {
                                   id="days"
                                   type="number"
                                   min="1"
-                                  max={record.standBackDaysRemaining}
+                                  max={group.totalRemaining}
                                   value={daysToAdd}
                                   onChange={(e) => setDaysToAdd(e.target.value)}
                                   placeholder="Aantal dagen"
@@ -685,10 +764,10 @@ export function StandBackManagement() {
                         </Dialog>
 
                         <Dialog
-                          open={isArchiveOpen && selectedRecord?.id === record.id}
+                          open={isArchiveOpen && selectedRecord?.crewMemberId === group.crewMemberId}
                           onOpenChange={(open) => {
                             setIsArchiveOpen(open)
-                            if (open) setSelectedRecord(record)
+                            if (open) setSelectedRecord(group)
                             else setSelectedRecord(null)
                           }}
                         >
@@ -698,40 +777,75 @@ export function StandBackManagement() {
                               Archiveren
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
                               <DialogTitle>
-                                Registratie Archiveren - {record.crewMember?.firstName || 'Onbekend'} {record.crewMember?.lastName || 'Medewerker'}
+                                Registratie Archiveren - {group.crewMember?.firstName || 'Onbekend'} {group.crewMember?.lastName || 'Medewerker'}
                               </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-4">
                               <div className="bg-gray-50 p-3 rounded-lg">
                                 <p className="text-sm text-gray-600">
-                                  <strong>Reden:</strong> {record.reason}
+                                  <strong>Totaal openstaand:</strong> {group.totalRemaining} dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
-                                  <strong>Periode:</strong> {new Date(record.startDate).toLocaleDateString("nl-NL")} - {new Date(record.endDate).toLocaleDateString("nl-NL")}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  <strong>Openstaand:</strong> {record.standBackDaysRemaining} dagen
+                                  <strong>Aantal registraties:</strong> {group.records.length}
                                 </p>
                               </div>
+
+                              {/* Show all records */}
+                              {group.records.length > 0 && (
+                                <div className="bg-blue-50 p-3 rounded-lg">
+                                  <p className="text-sm font-medium text-blue-900 mb-2">
+                                    Alle registraties die gearchiveerd worden:
+                                  </p>
+                                  <div className="space-y-2">
+                                    {group.records.map((rec: any) => (
+                                      <div key={rec.id} className="bg-white p-2 rounded text-xs">
+                                        <div className="flex justify-between items-center">
+                                          <div>
+                                            <Badge className={`text-xs ${getReasonColor(rec.reason)}`}>
+                                              {rec.reason}
+                                            </Badge>
+                                            <span className="ml-2 text-gray-600">
+                                              {new Date(rec.startDate).toLocaleDateString("nl-NL")} - {new Date(rec.endDate).toLocaleDateString("nl-NL")}
+                                            </span>
+                                          </div>
+                                          <Badge variant={rec.standBackDaysRemaining > 0 ? "destructive" : "default"} className="text-xs">
+                                            {rec.standBackDaysRemaining} resterend
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
 
                               <div className="space-y-2">
                                 <Button 
                                   className="w-full" 
-                                  onClick={() => handleArchiveRecord(record, 'completed')}
+                                  onClick={() => {
+                                    // Archive all records as completed
+                                    group.records.forEach((rec: any) => {
+                                      handleArchiveRecord(rec, 'completed')
+                                    })
+                                  }}
                                 >
                                   <CheckCircle className="w-4 h-4 mr-2" />
-                                  Markeer als Voltooid
+                                  Markeer Alle Als Voltooid
                                 </Button>
                                 <Button 
                                   variant="outline" 
                                   className="w-full" 
-                                  onClick={() => handleArchiveRecord(record, 'terminated')}
+                                  onClick={() => {
+                                    // Archive all records as terminated
+                                    group.records.forEach((rec: any) => {
+                                      handleArchiveRecord(rec, 'terminated')
+                                    })
+                                  }}
                                 >
                                   <UserX className="w-4 h-4 mr-2" />
-                                  Archiveer (Uit Dienst)
+                                  Archiveer Alle (Uit Dienst)
                                 </Button>
                               </div>
 
@@ -746,22 +860,22 @@ export function StandBackManagement() {
                       </div>
                     </div>
 
-                    {/* Details */}
+                    {/* Summary Details */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                       <div>
-                        <label className="text-xs font-medium text-gray-500">Periode</label>
+                        <label className="text-xs font-medium text-gray-500">Totaal Periode</label>
                         <div className="flex items-center space-x-1 mt-1">
                           <Calendar className="w-3 h-3 text-gray-400" />
                           <span className="text-sm font-medium">
-                            {new Date(record.startDate).toLocaleDateString("nl-NL")} -{" "}
-                            {new Date(record.endDate).toLocaleDateString("nl-NL")}
+                            {new Date(group.records[0]?.startDate || group.startDate).toLocaleDateString("nl-NL")} -{" "}
+                            {new Date(group.records[group.records.length - 1]?.endDate || group.endDate).toLocaleDateString("nl-NL")}
                           </span>
                         </div>
                       </div>
 
                       <div>
-                        <label className="text-xs font-medium text-gray-500">Duur</label>
-                        <p className="text-sm font-medium mt-1">{record.daysCount} dagen</p>
+                        <label className="text-xs font-medium text-gray-500">Totaal Dagen</label>
+                        <p className="text-sm font-medium mt-1">{group.totalRequired} dagen</p>
                       </div>
 
                       <div>
@@ -770,49 +884,103 @@ export function StandBackManagement() {
                           <div className="flex-1 bg-gray-200 rounded-full h-2">
                             <div
                               className="bg-orange-500 h-2 rounded-full"
-                              style={{ width: `${(record.standBackDaysCompleted / record.standBackDaysRequired) * 100}%` }}
+                              style={{ width: `${(group.totalCompleted / group.totalRequired) * 100}%` }}
                             ></div>
                           </div>
                           <span className="text-xs text-gray-600">
-                            {record.standBackDaysCompleted}/{record.standBackDaysRequired}
+                            {group.totalCompleted}/{group.totalRequired}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Description and Notes */}
-                    {record.description && (
-                      <div className="mb-4">
-                        <label className="text-xs font-medium text-gray-500">Beschrijving</label>
-                        <p className="text-sm text-gray-700 mt-1">{record.description}</p>
-                      </div>
-                    )}
-
-                    {record.notes && (
-                      <div className="mb-4">
-                        <label className="text-xs font-medium text-gray-500">Opmerkingen</label>
-                        <p className="text-sm text-gray-700 mt-1">{record.notes}</p>
-                      </div>
-                    )}
-
-                    {/* History */}
-                    {record.standBackHistory.length > 0 && (
-                      <div className="border-t pt-3">
-                        <label className="text-xs font-medium text-gray-500 mb-2 block">Afboek History</label>
-                        <div className="space-y-2">
-                          {record.standBackHistory.map((entry: any, index: number) => (
-                            <div key={index} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded">
-                              <div>
-                                <span className="font-medium">{entry.daysCompleted} dagen</span>
-                                <span className="text-gray-600 ml-2">
-                                  op {new Date(entry.date).toLocaleDateString("nl-NL")}
-                                </span>
+                    {/* Show all individual records */}
+                    {group.records.length > 1 && (
+                      <div className="border-t pt-4 mb-4">
+                        <label className="text-xs font-medium text-gray-500 mb-3 block">Alle Registraties ({group.records.length}):</label>
+                        <div className="space-y-3">
+                          {group.records.map((rec: any) => (
+                            <div key={rec.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                  <Badge className={`text-xs ${getReasonColor(rec.reason)}`}>
+                                    {rec.reason}
+                                  </Badge>
+                                  <span className="text-xs text-gray-600">
+                                    {new Date(rec.startDate).toLocaleDateString("nl-NL")} - {new Date(rec.endDate).toLocaleDateString("nl-NL")}
+                                  </span>
+                                </div>
+                                <Badge variant={rec.standBackDaysRemaining > 0 ? "destructive" : "default"} className="text-xs">
+                                  {rec.standBackDaysRemaining} resterend
+                                </Badge>
                               </div>
-                              <div className="text-gray-500">{entry.note}</div>
+                              
+                              {rec.description && (
+                                <p className="text-xs text-gray-700 mt-1">{rec.description}</p>
+                              )}
+                              
+                              {rec.notes && (
+                                <p className="text-xs text-gray-500 italic mt-1">{rec.notes}</p>
+                              )}
+
+                              {/* History for this specific record */}
+                              {rec.standBackHistory && rec.standBackHistory.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-gray-300">
+                                  <div className="space-y-1">
+                                    {rec.standBackHistory.map((entry: any, idx: number) => (
+                                      <div key={idx} className="flex items-center justify-between text-xs">
+                                        <span className="text-gray-600">
+                                          {entry.daysCompleted} dagen op {new Date(entry.date).toLocaleDateString("nl-NL")}
+                                        </span>
+                                        <span className="text-gray-500">{entry.note}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                       </div>
+                    )}
+
+                    {/* Single record details (if only one record) */}
+                    {group.records.length === 1 && (
+                      <>
+                        {group.records[0].description && (
+                          <div className="mb-4">
+                            <label className="text-xs font-medium text-gray-500">Beschrijving</label>
+                            <p className="text-sm text-gray-700 mt-1">{group.records[0].description}</p>
+                          </div>
+                        )}
+
+                        {group.records[0].notes && (
+                          <div className="mb-4">
+                            <label className="text-xs font-medium text-gray-500">Opmerkingen</label>
+                            <p className="text-sm text-gray-700 mt-1">{group.records[0].notes}</p>
+                          </div>
+                        )}
+
+                        {/* History */}
+                        {group.records[0].standBackHistory && group.records[0].standBackHistory.length > 0 && (
+                          <div className="border-t pt-3">
+                            <label className="text-xs font-medium text-gray-500 mb-2 block">Afboek History</label>
+                            <div className="space-y-2">
+                              {group.records[0].standBackHistory.map((entry: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded">
+                                  <div>
+                                    <span className="font-medium">{entry.daysCompleted} dagen</span>
+                                    <span className="text-gray-600 ml-2">
+                                      op {new Date(entry.date).toLocaleDateString("nl-NL")}
+                                    </span>
+                                  </div>
+                                  <div className="text-gray-500">{entry.note}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ))}
