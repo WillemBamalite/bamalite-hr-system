@@ -18,10 +18,13 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { StandBackManagement } from "@/components/sick-leave/stand-back-management"
 
 export default function ZiektePage() {
   const { crew, sickLeave, loading, error, updateCrew, updateSickLeave, addStandBackRecord } = useSupabaseData()
   const { t } = useLanguage()
+  const [activeTab, setActiveTab] = useState('ziekte')
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -508,9 +511,6 @@ export default function ZiektePage() {
             <UserX className="w-4 h-4" />
             Nieuwe ziekmelding
           </Link>
-          <Link href="/ziekte-history" className="bg-blue-600 text-white text-sm py-2 px-4 rounded-lg hover:bg-blue-700 shadow flex items-center gap-2">
-            📊 Terug Te Staan
-          </Link>
         </div>
       </div>
 
@@ -539,6 +539,22 @@ export default function ZiektePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
+          <TabsTrigger value="ziekte" className="text-base">
+            <UserX className="w-4 h-4 mr-2" />
+            Ziekte
+          </TabsTrigger>
+          <TabsTrigger value="terug-te-staan" className="text-base">
+            <Heart className="w-4 h-4 mr-2" />
+            Terug te staan
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Ziekte Tab */}
+        <TabsContent value="ziekte" className="space-y-6">
 
       {/* Desktop weergave - 3 secties onder elkaar, elk met 3 kaarten naast elkaar */}
       <div className="hidden md:block space-y-8">
@@ -696,6 +712,13 @@ export default function ZiektePage() {
           <p className='text-gray-500'>{t('noSickLeaveFound')}</p>
         </div>
       )}
+        </TabsContent>
+
+        {/* Terug te staan Tab */}
+        <TabsContent value="terug-te-staan" className="space-y-6">
+          <StandBackManagement />
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
