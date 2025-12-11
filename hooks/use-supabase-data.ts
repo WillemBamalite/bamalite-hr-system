@@ -1830,17 +1830,26 @@ export function useSupabaseData() {
   // Add task
   const addTask = async (taskData: any) => {
     try {
+      console.log('📝 Adding task with data:', JSON.stringify(taskData, null, 2))
       const { data, error } = await supabase
         .from('tasks')
         .insert([taskData])
         .select()
         .single()
       
-      if (error) throw error
+      if (error) {
+        console.error('❌ Supabase error adding task:', error)
+        console.error('❌ Error code:', error.code)
+        console.error('❌ Error message:', error.message)
+        console.error('❌ Error details:', error.details)
+        console.error('❌ Error hint:', error.hint)
+        throw error
+      }
       await loadData()
       return data
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error adding task:', err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
       throw err
     }
   }

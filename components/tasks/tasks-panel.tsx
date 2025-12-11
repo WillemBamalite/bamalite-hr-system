@@ -24,7 +24,7 @@ export function TasksPanel() {
   const [selectedCrewId, setSelectedCrewId] = useState<string>("")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [assignedTo, setAssignedTo] = useState<"Nautic" | "Leo" | "Jos" | "Willem">("Nautic")
+  const [assignedTo, setAssignedTo] = useState<"Nautic" | "Leo" | "Jos" | "Willem" | "Bart">("Nautic")
   const [priority, setPriority] = useState<"laag" | "normaal" | "hoog" | "urgent">("normaal")
   const [deadline, setDeadline] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -32,6 +32,20 @@ export function TasksPanel() {
   const [isEditing, setIsEditing] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string>("")
   const [statusUpdates, setStatusUpdates] = useState<Record<string, string>>({})
+  const assignees = ["Nautic", "Leo", "Willem", "Jos", "Bart"] as const
+  const [selectedAssignee, setSelectedAssignee] = useState<(typeof assignees)[number]>("Nautic")
+
+  // Hulp: bepaal assignee naam op basis van e-mail
+  const resolveAssigneeFromEmail = (email: string | null | undefined): (typeof assignees)[number] | null => {
+    if (!email) return null
+    const lower = email.toLowerCase()
+    if (lower.includes("nautic")) return "Nautic"
+    if (lower.includes("leo")) return "Leo"
+    if (lower.includes("willem")) return "Willem"
+    if (lower.includes("jos")) return "Jos"
+    if (lower.includes("bart")) return "Bart"
+    return null
+  }
 
   // Filter tasks - standaard alleen openstaande taken (niet voltooid)
   // Open tasks include both 'open' and 'in_progress' status
@@ -59,7 +73,8 @@ export function TasksPanel() {
     Nautic: filteredTasks.filter((t: any) => t.assigned_to === "Nautic"),
     Leo: filteredTasks.filter((t: any) => t.assigned_to === "Leo"),
     Willem: filteredTasks.filter((t: any) => t.assigned_to === "Willem"),
-    Jos: filteredTasks.filter((t: any) => t.assigned_to === "Jos")
+    Jos: filteredTasks.filter((t: any) => t.assigned_to === "Jos"),
+    Bart: filteredTasks.filter((t: any) => t.assigned_to === "Bart")
   }
 
   const resetForm = () => {
@@ -257,7 +272,12 @@ export function TasksPanel() {
       setShowDialog(false)
     } catch (error: any) {
       console.error(`Error ${isEditing ? "updating" : "creating"} task:`, error)
-      const errorMessage = error?.message || error?.error?.message || JSON.stringify(error)
+      console.error('Error code:', error?.code)
+      console.error('Error message:', error?.message)
+      console.error('Error details:', error?.details)
+      console.error('Error hint:', error?.hint)
+      console.error('Full error:', JSON.stringify(error, null, 2))
+      const errorMessage = error?.message || error?.error?.message || error?.details || error?.hint || JSON.stringify(error)
       alert(`Fout bij ${isEditing ? "bijwerken" : "aanmaken"} taak: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
@@ -280,11 +300,16 @@ export function TasksPanel() {
   const handleTakeTask = async (taskId: string) => {
     try {
       const currentUser = user?.email || 'Onbekend'
-      await updateTask(taskId, {
+      const newAssignee = resolveAssigneeFromEmail(user?.email)
+      const updates: any = {
         status: 'in_progress',
         taken_by: currentUser,
         taken_at: new Date().toISOString()
-      })
+      }
+      if (newAssignee) {
+        updates.assigned_to = newAssignee
+      }
+      await updateTask(taskId, updates)
     } catch (error) {
       console.error("Error taking task:", error)
       alert("Fout bij oppakken taak")
@@ -453,39 +478,80 @@ export function TasksPanel() {
         </Button>
       </div>
 
-      {/* Taken lijst in 4 kolommen */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {(["Nautic", "Leo", "Willem", "Jos"] as const).map((person) => {
-          const personTasks = tasksByPerson[person]
-          const openCount = personTasks.filter((t: any) => !t.completed).length
-          const completedCount = personTasks.filter((t: any) => t.completed).length
+      {/* Tabs per assignee */}
+      <div className="flex items-center gap-2 mb-4">
+        {assignees.map((person) => (
+          <button
+            key={person}
+            onClick={() => setSelectedAssignee(person)}
+            className={`px-4 py-2 rounded border text-sm font-medium flex items-center gap-2 ${
+              selectedAssignee === person
+                ? "bg-white border-gray-300 text-gray-900 shadow-sm"
+                : "bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            {person === "Nautic" && <ListTodo className="w-4 h-4" />}
+            {person === "Leo" && <User className="w-4 h-4" />}
+            {person === "Willem" && <User className="w-4 h-4" />}
+            {person === "Jos" && <User className="w-4 h-4" />}
+            {person === "Bart" && <User className="w-4 h-4" />}
+            <span>{person}</span>
+          </button>
+        ))}
+      </div>
 
-          return (
-            <div key={person} className="space-y-4">
-              <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center justify-between text-lg">
-                    <span className="font-bold">{person}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-sm">
-                        {openCount} open
-                      </Badge>
-                      {completedCount > 0 && (
-                        <Badge variant="outline" className="text-sm text-gray-500">
-                          {completedCount} voltooid
-                        </Badge>
-                      )}
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {personTasks.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500 text-sm">
-                      Geen taken
-                    </div>
-                  ) : (
-                    sortTasksByPriority(personTasks).map((task: any) => {
-                      const relatedShip = task.related_ship_id
+      {/* Taken lijst voor geselecteerde assignee (verdeeld in kolommen per type) */}
+      {[selectedAssignee].map((person) => {
+        const personTasks = tasksByPerson[person]
+        const openCount = personTasks.filter((t: any) => !t.completed).length
+        const completedCount = personTasks.filter((t: any) => t.completed).length
+
+        // Verdeel taken per type
+        const shipTasks = sortTasksByPriority(personTasks.filter((t: any) => t.task_type === "ship"))
+        const crewTasks = sortTasksByPriority(personTasks.filter((t: any) => t.task_type === "crew"))
+        const algemeenTasks = sortTasksByPriority(personTasks.filter((t: any) => t.task_type === "algemeen"))
+
+        return (
+          <div key={person} className="space-y-4">
+            {/* Header met persoon naam en counts */}
+            <div className="flex items-center justify-between pb-4">
+              <h2 className="text-xl font-bold">{person}</h2>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-sm">
+                  {openCount} open
+                </Badge>
+                {completedCount > 0 && (
+                  <Badge variant="outline" className="text-sm text-gray-500">
+                    {completedCount} voltooid
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Taken verdeeld in 3 kolommen per type (onder elkaar) */}
+            {personTasks.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-sm">
+                Geen taken
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Kolom 1: Schepen */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <ShipIcon className="w-5 h-5 text-blue-600" />
+                    Schepen
+                    <Badge variant="outline" className="text-xs">
+                      {shipTasks.length}
+                    </Badge>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {shipTasks.length === 0 ? (
+                      <div className="text-center py-4 text-gray-400 text-sm">
+                        Geen taken
+                      </div>
+                    ) : (
+                      shipTasks.map((task: any) => {
+                        const relatedShip = task.related_ship_id
                         ? ships.find((s: any) => s.id === task.related_ship_id)
                         : null
                       const relatedCrew = task.related_crew_id
@@ -495,7 +561,7 @@ export function TasksPanel() {
 
                       return (
                         <Card key={task.id} className={task.completed ? "opacity-60" : ""}>
-                          <CardContent className="p-5">
+                          <CardContent className="p-4">
                             <div className="space-y-4">
                               <div className="flex items-start gap-3">
                                 {task.completed ? (
@@ -742,14 +808,571 @@ export function TasksPanel() {
                           </CardContent>
                         </Card>
                       )
-                    })
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )
-        })}
-      </div>
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Kolom 2: Personeel */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <User className="w-5 h-5 text-purple-600" />
+                    Personeel
+                    <Badge variant="outline" className="text-xs">
+                      {crewTasks.length}
+                    </Badge>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {crewTasks.length === 0 ? (
+                      <div className="text-center py-4 text-gray-400 text-sm">
+                        Geen taken
+                      </div>
+                    ) : (
+                      crewTasks.map((task: any) => {
+                        const relatedShip = task.related_ship_id
+                        ? ships.find((s: any) => s.id === task.related_ship_id)
+                        : null
+                      const relatedCrew = task.related_crew_id
+                        ? crew.find((c: any) => c.id === task.related_crew_id)
+                        : null
+                      const deadlineStatus = getDeadlineStatus(task.deadline)
+
+                      return (
+                        <Card key={task.id} className={task.completed ? "opacity-60" : ""}>
+                          <CardContent className="p-4">
+                            <div className="space-y-4">
+                              <div className="flex items-start gap-3">
+                                {task.completed ? (
+                                  <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                                ) : (
+                                  <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
+                                    {task.title}
+                                  </h3>
+                                  {task.description && (
+                                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="space-y-2 text-sm">
+                                {/* Status Badge */}
+                                <div className="flex items-center gap-2">
+                                  {getStatusBadge(task.status, task.completed)}
+                                </div>
+
+                                {/* Opgepakt door */}
+                                {task.taken_by && task.status === 'in_progress' && (
+                                  <div className="flex items-center gap-2 px-3 py-2 rounded bg-blue-50 text-sm">
+                                    <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                    <span className="text-blue-800 font-medium">
+                                      Opgepakt door: {task.taken_by}
+                                    </span>
+                                    {task.taken_at && (
+                                      <span className="text-blue-600 text-xs">
+                                        ({format(new Date(task.taken_at), "d MMM, HH:mm", { locale: nl })})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                  {task.task_type === "ship" ? (
+                                    <ShipIcon className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                  ) : task.task_type === "crew" ? (
+                                    <User className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                                  ) : (
+                                    <ListTodo className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                  )}
+                                  <span className="text-gray-600 truncate">
+                                    {task.task_type === "ship"
+                                      ? relatedShip?.name || "Onbekend schip"
+                                      : task.task_type === "crew"
+                                      ? relatedCrew
+                                        ? `${relatedCrew.first_name} ${relatedCrew.last_name}`
+                                        : "Onbekend persoon"
+                                      : "Algemeen"}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                  <span className="text-gray-600 text-xs">
+                                    {task.created_at 
+                                      ? format(new Date(task.created_at), "d MMM yyyy, HH:mm", { locale: nl })
+                                      : task.created_date 
+                                        ? format(new Date(task.created_date), "d MMM yyyy", { locale: nl })
+                                        : "Onbekende datum"}
+                                  </span>
+                                </div>
+
+                                {task.created_by && (
+                                  <div className="flex items-center gap-2">
+                                    <User className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                    <span className="text-gray-600 text-xs">
+                                      Door: {task.created_by}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Status update weergave (meerdere, nieuwste bovenaan) */}
+                                {(() => {
+                                  const history = Array.isArray(task.status_updates) ? [...task.status_updates] : []
+                                  if (!history.length && task.status_update) {
+                                    history.push({
+                                      text: task.status_update,
+                                      at: task.status_update_at,
+                                      by: task.taken_by || task.created_by || 'Onbekend'
+                                    })
+                                  }
+                                  if (!history.length) return null
+                                  return (
+                                    <div className="space-y-2">
+                                      {history.slice().reverse().map((entry: any, idx: number) => (
+                                        <div key={idx} className="bg-gray-50 border border-gray-200 rounded p-2 text-sm space-y-1">
+                                          <div className="flex items-center gap-2 text-gray-700">
+                                            <AlertCircle className="w-4 h-4 text-blue-600" />
+                                            <span className="font-medium">Statusupdate</span>
+                                            {entry.at && (
+                                              <span className="text-xs text-gray-500">
+                                                {format(new Date(entry.at), "d MMM, HH:mm", { locale: nl })}
+                                              </span>
+                                            )}
+                                            {entry.by && (
+                                              <span className="text-xs text-gray-500">— {entry.by}</span>
+                                            )}
+                                          </div>
+                                          <div className="text-gray-700 whitespace-pre-wrap break-words">
+                                            {entry.text}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                })()}
+
+        {task.deadline && (
+                                  <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${deadlineStatus?.bg || "bg-gray-50"}`}>
+                                    <Clock className={`w-4 h-4 ${deadlineStatus?.color || "text-gray-600"} flex-shrink-0`} />
+                                    <span className={deadlineStatus?.color || "text-gray-600"}>
+                                      {format(new Date(task.deadline), "d MMM yyyy", { locale: nl })} ({deadlineStatus?.text})
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col gap-3 pt-3 border-t">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <div>{getPriorityBadge(task.priority)}</div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {!task.completed && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setIsEditing(true)
+                                          setEditingTaskId(task.id)
+                                          setShowDialog(true)
+                                          setSelectedTaskType(task.task_type)
+                                          setSelectedShipId(task.related_ship_id || "")
+                                          setSelectedCrewId(task.related_crew_id || "")
+                                          setTitle(task.title || "")
+                                          setDescription(task.description || "")
+                                          setAssignedTo(task.assigned_to)
+                                          setPriority(task.priority)
+                                          setDeadline(task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : "")
+                                        }}
+                                        className="flex items-center gap-1.5"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                        Bewerken
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Status actie knoppen */}
+                                {!task.completed && (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {task.status === 'open' && (
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => handleTakeTask(task.id)}
+                                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700"
+                                      >
+                                        <User className="w-4 h-4" />
+                                        Ik pak dit op
+                                      </Button>
+                                    )}
+                                    {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                      <div className="flex flex-col gap-2 w-full">
+                                        <div className="flex flex-wrap gap-2">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleReleaseTask(task.id)}
+                                            className="flex items-center gap-1.5"
+                                          >
+                                            <X className="w-4 h-4" />
+                                            Vrijgeven
+                                          </Button>
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handleComplete(task.id)}
+                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
+                                          >
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            Voltooien
+                                          </Button>
+                                        </div>
+                                        <Label className="text-xs text-gray-600">Statusupdate</Label>
+                                        <Textarea
+                                          rows={2}
+                                          value={statusUpdates[task.id] ?? ""}
+                                          onChange={(e) => setStatusUpdates((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                                          placeholder="Geef een korte update over de voortgang..."
+                                        />
+                                        <div className="flex gap-2">
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handleSaveStatusUpdate(task.id)}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                          >
+                                            Opslaan
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setStatusUpdates((prev) => ({ ...prev, [task.id]: task.status_update || "" }))}
+                                          >
+                                            Herstel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && (
+                                      <span className="text-xs text-gray-500 italic">
+                                        Wordt behandeld door {task.taken_by}
+                                      </span>
+                                    )}
+                                    {(!task.status || task.status === 'open') && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleComplete(task.id)}
+                                        className="flex items-center gap-1.5"
+                                      >
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        Voltooien
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDelete(task.id)}
+                                      className="text-red-600 hover:text-red-700 hover:border-red-300"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Kolom 3: Algemeen */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <ListTodo className="w-5 h-5 text-gray-600" />
+                    Algemeen
+                    <Badge variant="outline" className="text-xs">
+                      {algemeenTasks.length}
+                    </Badge>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {algemeenTasks.length === 0 ? (
+                      <div className="text-center py-4 text-gray-400 text-sm">
+                        Geen taken
+                      </div>
+                    ) : (
+                      algemeenTasks.map((task: any) => {
+                        const relatedShip = task.related_ship_id
+                        ? ships.find((s: any) => s.id === task.related_ship_id)
+                        : null
+                      const relatedCrew = task.related_crew_id
+                        ? crew.find((c: any) => c.id === task.related_crew_id)
+                        : null
+                      const deadlineStatus = getDeadlineStatus(task.deadline)
+
+                      return (
+                        <Card key={task.id} className={task.completed ? "opacity-60" : ""}>
+                          <CardContent className="p-4">
+                            <div className="space-y-4">
+                              <div className="flex items-start gap-3">
+                                {task.completed ? (
+                                  <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                                ) : (
+                                  <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
+                                    {task.title}
+                                  </h3>
+                                  {task.description && (
+                                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="space-y-2 text-sm">
+                                {/* Status Badge */}
+                                <div className="flex items-center gap-2">
+                                  {getStatusBadge(task.status, task.completed)}
+                                </div>
+
+                                {/* Opgepakt door */}
+                                {task.taken_by && task.status === 'in_progress' && (
+                                  <div className="flex items-center gap-2 px-3 py-2 rounded bg-blue-50 text-sm">
+                                    <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                    <span className="text-blue-800 font-medium">
+                                      Opgepakt door: {task.taken_by}
+                                    </span>
+                                    {task.taken_at && (
+                                      <span className="text-blue-600 text-xs">
+                                        ({format(new Date(task.taken_at), "d MMM, HH:mm", { locale: nl })})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                  {task.task_type === "ship" ? (
+                                    <ShipIcon className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                  ) : task.task_type === "crew" ? (
+                                    <User className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                                  ) : (
+                                    <ListTodo className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                  )}
+                                  <span className="text-gray-600 truncate">
+                                    {task.task_type === "ship"
+                                      ? relatedShip?.name || "Onbekend schip"
+                                      : task.task_type === "crew"
+                                      ? relatedCrew
+                                        ? `${relatedCrew.first_name} ${relatedCrew.last_name}`
+                                        : "Onbekend persoon"
+                                      : "Algemeen"}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                  <span className="text-gray-600 text-xs">
+                                    {task.created_at 
+                                      ? format(new Date(task.created_at), "d MMM yyyy, HH:mm", { locale: nl })
+                                      : task.created_date 
+                                        ? format(new Date(task.created_date), "d MMM yyyy", { locale: nl })
+                                        : "Onbekende datum"}
+                                  </span>
+                                </div>
+
+                                {task.created_by && (
+                                  <div className="flex items-center gap-2">
+                                    <User className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                    <span className="text-gray-600 text-xs">
+                                      Door: {task.created_by}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Status update weergave (meerdere, nieuwste bovenaan) */}
+                                {(() => {
+                                  const history = Array.isArray(task.status_updates) ? [...task.status_updates] : []
+                                  if (!history.length && task.status_update) {
+                                    history.push({
+                                      text: task.status_update,
+                                      at: task.status_update_at,
+                                      by: task.taken_by || task.created_by || 'Onbekend'
+                                    })
+                                  }
+                                  if (!history.length) return null
+                                  return (
+                                    <div className="space-y-2">
+                                      {history.slice().reverse().map((entry: any, idx: number) => (
+                                        <div key={idx} className="bg-gray-50 border border-gray-200 rounded p-2 text-sm space-y-1">
+                                          <div className="flex items-center gap-2 text-gray-700">
+                                            <AlertCircle className="w-4 h-4 text-blue-600" />
+                                            <span className="font-medium">Statusupdate</span>
+                                            {entry.at && (
+                                              <span className="text-xs text-gray-500">
+                                                {format(new Date(entry.at), "d MMM, HH:mm", { locale: nl })}
+                                              </span>
+                                            )}
+                                            {entry.by && (
+                                              <span className="text-xs text-gray-500">— {entry.by}</span>
+                                            )}
+                                          </div>
+                                          <div className="text-gray-700 whitespace-pre-wrap break-words">
+                                            {entry.text}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                })()}
+
+        {task.deadline && (
+                                  <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${deadlineStatus?.bg || "bg-gray-50"}`}>
+                                    <Clock className={`w-4 h-4 ${deadlineStatus?.color || "text-gray-600"} flex-shrink-0`} />
+                                    <span className={deadlineStatus?.color || "text-gray-600"}>
+                                      {format(new Date(task.deadline), "d MMM yyyy", { locale: nl })} ({deadlineStatus?.text})
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col gap-3 pt-3 border-t">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <div>{getPriorityBadge(task.priority)}</div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {!task.completed && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setIsEditing(true)
+                                          setEditingTaskId(task.id)
+                                          setShowDialog(true)
+                                          setSelectedTaskType(task.task_type)
+                                          setSelectedShipId(task.related_ship_id || "")
+                                          setSelectedCrewId(task.related_crew_id || "")
+                                          setTitle(task.title || "")
+                                          setDescription(task.description || "")
+                                          setAssignedTo(task.assigned_to)
+                                          setPriority(task.priority)
+                                          setDeadline(task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : "")
+                                        }}
+                                        className="flex items-center gap-1.5"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                        Bewerken
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Status actie knoppen */}
+                                {!task.completed && (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {task.status === 'open' && (
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => handleTakeTask(task.id)}
+                                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700"
+                                      >
+                                        <User className="w-4 h-4" />
+                                        Ik pak dit op
+                                      </Button>
+                                    )}
+                                    {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                      <div className="flex flex-col gap-2 w-full">
+                                        <div className="flex flex-wrap gap-2">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleReleaseTask(task.id)}
+                                            className="flex items-center gap-1.5"
+                                          >
+                                            <X className="w-4 h-4" />
+                                            Vrijgeven
+                                          </Button>
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handleComplete(task.id)}
+                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
+                                          >
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            Voltooien
+                                          </Button>
+                                        </div>
+                                        <Label className="text-xs text-gray-600">Statusupdate</Label>
+                                        <Textarea
+                                          rows={2}
+                                          value={statusUpdates[task.id] ?? ""}
+                                          onChange={(e) => setStatusUpdates((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                                          placeholder="Geef een korte update over de voortgang..."
+                                        />
+                                        <div className="flex gap-2">
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handleSaveStatusUpdate(task.id)}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                          >
+                                            Opslaan
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setStatusUpdates((prev) => ({ ...prev, [task.id]: task.status_update || "" }))}
+                                          >
+                                            Herstel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && (
+                                      <span className="text-xs text-gray-500 italic">
+                                        Wordt behandeld door {task.taken_by}
+                                      </span>
+                                    )}
+                                    {(!task.status || task.status === 'open') && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleComplete(task.id)}
+                                        className="flex items-center gap-1.5"
+                                      >
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        Voltooien
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDelete(task.id)}
+                                      className="text-red-600 hover:text-red-700 hover:border-red-300"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
 
       {/* Nieuwe taak dialog */}
       <Dialog open={showDialog} onOpenChange={(open) => {
@@ -848,7 +1471,7 @@ export function TasksPanel() {
               <Label>Toegewezen aan *</Label>
               <Select
                 value={assignedTo}
-                onValueChange={(value: "Nautic" | "Leo" | "Jos" | "Willem") => setAssignedTo(value)}
+                onValueChange={(value: "Nautic" | "Leo" | "Jos" | "Willem" | "Bart") => setAssignedTo(value)}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -858,6 +1481,7 @@ export function TasksPanel() {
                   <SelectItem value="Leo">Leo</SelectItem>
                   <SelectItem value="Jos">Jos</SelectItem>
                   <SelectItem value="Willem">Willem</SelectItem>
+                  <SelectItem value="Bart">Bart</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
       'nautic': 'nautic@bamalite.com',
       'leo': 'leo@bamalite.com',
       'willem': 'willem@bamalite.com',
-      'jos': 'jos@bamalite.com'
+      'jos': 'jos@bamalite.com',
+      'bart': 'bart@bamalite.com'
     }
 
     // Normaliseer assignedTo naar lowercase voor case-insensitive matching
