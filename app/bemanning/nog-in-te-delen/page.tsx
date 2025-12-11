@@ -108,8 +108,9 @@ export default function NogInTeDelenPage() {
   };
 
   // Categoriseer op basis van sub_status veld - alleen kandidaten die nog niet aangenomen zijn
+  const contactStages = [null, undefined, "", "nog-te-benaderen", "benaderen", "in-gesprek", "kennismaking-gepland"];
   const nogTeBenaderen = unassignedCrew.filter((m: any) => 
-    (!m.sub_status || m.sub_status === "nog-te-benaderen") &&
+    contactStages.includes(m.sub_status) &&
     m.status !== 'uit-dienst' &&
     m.recruitment_status !== "aangenomen" &&
     m.sub_status !== "later-terugkomen"
@@ -261,6 +262,35 @@ export default function NogInTeDelenPage() {
     } catch (error) {
       console.error("Fout bij verplaatsen naar later terugkomen:", error);
       alert("Er is een fout opgetreden.");
+    }
+  };
+
+  const setContactStage = async (member: any, stage: "benaderen" | "in-gesprek" | "kennismaking-gepland") => {
+    try {
+      let updates: any = { sub_status: stage };
+      if (stage === "kennismaking-gepland") {
+        const date = window.prompt("Datum kennismaking (DD-MM-YYYY)? Optioneel.", member.expected_start_date || "");
+        if (date) {
+          updates.expected_start_date = date;
+        }
+      }
+      await updateCrew(member.id, updates);
+    } catch (error) {
+      console.error("Fout bij stage opslaan:", error);
+      alert("Fout bij opslaan. Probeer opnieuw.");
+    }
+  };
+
+  const getStageColor = (member: any) => {
+    switch (member.sub_status) {
+      case "benaderen":
+        return { border: "border-yellow-300", bg: "bg-yellow-50", dot: "bg-yellow-400" };
+      case "in-gesprek":
+        return { border: "border-blue-300", bg: "bg-blue-50", dot: "bg-blue-500" };
+      case "kennismaking-gepland":
+        return { border: "border-purple-300", bg: "bg-purple-50", dot: "bg-purple-500" };
+      default:
+        return { border: "border-gray-200", bg: "bg-white", dot: "bg-gray-300" };
     }
   };
 
@@ -512,7 +542,23 @@ export default function NogInTeDelenPage() {
               <h2 className="text-xl font-bold text-gray-900">📞 Nog Te Benaderen</h2>
               <Badge className="bg-red-100 text-red-800">{nogTeBenaderen.length}</Badge>
             </div>
-            <p className="text-sm text-gray-600 mb-4">Nieuwe aanmeldingen die nog telefonisch benaderd moeten worden</p>
+            <div className="space-y-1 text-sm text-gray-600 mb-4">
+              <p>Nieuwe aanmeldingen die nog telefonisch benaderd moeten worden</p>
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                <div className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-sm bg-yellow-400 border border-yellow-500"></span>
+                  <span>Benaderen</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-sm bg-blue-500 border border-blue-600"></span>
+                  <span>In gesprek</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-sm bg-purple-500 border border-purple-600"></span>
+                  <span>Kennismaking gepland</span>
+                </div>
+              </div>
+            </div>
             {nogTeBenaderen.length === 0 ? (
               <Card>
                 <CardContent className="p-6 text-center text-gray-500">
@@ -521,146 +567,172 @@ export default function NogInTeDelenPage() {
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {nogTeBenaderen.map((member: any) => (
-            <Card key={member.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-orange-100 text-orange-700">
-                        {(member.first_name?.[0] || "?")}{(member.last_name?.[0] || "")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <Link 
-                        href={`/bemanning/${member.id}`}
-                        className="font-medium text-gray-900 hover:text-blue-700"
-                      >
-                        {member.first_name} {member.last_name}
-                      </Link>
-                      <div className="flex items-center space-x-2 text-sm text-gray-500">
-                        <span>{getNationalityFlag(member.nationality)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Position */}
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium">Functie:</span> {member.position}
-                </div>
-
-                {/* Regime */}
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium">Regime:</span> {member.regime}
-                </div>
-
-                {/* Contact Info */}
-                <div className="space-y-2 text-sm">
-                  {member.phone && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Telefoon:</span> {member.phone}
-                    </div>
-                  )}
-                  {member.email && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Email:</span> {member.email}
-                    </div>
-                  )}
-                </div>
-
-                {/* Experience */}
-                {member.experience && (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Ervaring:</span> {member.experience}
-                  </div>
-                )}
-
-                {/* Diplomas */}
-                {member.diplomas && member.diplomas.length > 0 && (
-                  <div className="space-y-1">
-                    <span className="text-sm font-medium text-gray-700">Diploma's:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {member.diplomas.map((diploma: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {diploma}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {member.notes && member.notes.length > 0 && (() => {
-                  const firstNote = member.notes[0];
-                  const noteText = typeof firstNote === "string" ? firstNote : (firstNote?.content || "");
-                  if (!noteText) return null;
+                {nogTeBenaderen.map((member: any) => {
+                  const stage = getStageColor(member);
                   return (
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">Notities:</span>
-                      <p className="italic mt-1">{noteText}</p>
-                    </div>
-                  );
-                })()}
+                    <Card key={member.id} className={`hover:shadow-lg transition-shadow border ${stage.border} ${stage.bg}`}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center space-x-3">
+                            <Avatar className="w-10 h-10">
+                              <AvatarFallback className="bg-orange-100 text-orange-700">
+                                {(member.first_name?.[0] || "?")}{(member.last_name?.[0] || "")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <Link 
+                                href={`/bemanning/${member.id}`}
+                                className="font-medium text-gray-900 hover:text-blue-700"
+                              >
+                                {member.first_name} {member.last_name}
+                              </Link>
+                              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                                <span>{getNationalityFlag(member.nationality)}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              aria-label="Stage benaderen (geel)"
+                              className={`w-4 h-4 rounded-sm border border-yellow-400 ${member.sub_status === "benaderen" ? "bg-yellow-400" : "bg-white"} hover:ring-2 hover:ring-yellow-300`}
+                              onClick={() => setContactStage(member, "benaderen")}
+                            />
+                            <button
+                              aria-label="Stage in gesprek (blauw)"
+                              className={`w-4 h-4 rounded-sm border border-blue-500 ${member.sub_status === "in-gesprek" ? "bg-blue-500" : "bg-white"} hover:ring-2 hover:ring-blue-300`}
+                              onClick={() => setContactStage(member, "in-gesprek")}
+                            />
+                            <button
+                              aria-label="Stage kennismaking gepland (paars)"
+                              className={`w-4 h-4 rounded-sm border border-purple-500 ${member.sub_status === "kennismaking-gepland" ? "bg-purple-500" : "bg-white"} hover:ring-2 hover:ring-purple-300`}
+                              onClick={() => setContactStage(member, "kennismaking-gepland")}
+                            />
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {member.sub_status === "kennismaking-gepland" && member.expected_start_date && (
+                          <div className="text-xs text-purple-700 font-medium">
+                            Kennismaking: {formatDate(member.expected_start_date)}
+                          </div>
+                        )}
 
-                {/* Actions */}
-                <div className="pt-3 border-t">
-                  <div className="flex flex-wrap gap-2">
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      className="text-blue-600 border-blue-200 hover:bg-blue-50 flex-1 min-w-[140px]"
-                      onClick={() => handleEdit(member)}
-                    >
-                      <span className="mr-1">✏️</span>
-                      Bewerken
-                    </Button>
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      className="text-green-600 border-green-200 hover:bg-green-50 flex-1 min-w-[140px]"
-                      onClick={async () => {
-                        try {
-                          // Zet status naar aangenomen
-                          await updateCrew(member.id, {
-                            recruitment_status: "aangenomen"
-                          });
-                          // Ga naar profiel
-                          window.location.href = `/bemanning/${member.id}?edit=true&hired=true`;
-                        } catch (error) {
-                          console.error('Error updating recruitment status:', error);
-                        }
-                      }}
-                    >
-                      <span className="mr-1">✓</span>
-                      Aangenomen
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      className="text-orange-600 border-orange-200 hover:bg-orange-50 flex-1 min-w-[140px]"
-                      onClick={() => handleLaterTerugkomen(member)}
-                    >
-                      <span className="mr-1">⏰</span>
-                      Later terugkomen
-                    </Button>
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      className="text-red-600 border-red-200 hover:bg-red-50 flex-1 min-w-[140px]"
-                      onClick={() => handleNoInterest(member.id, `${member.first_name} ${member.last_name}`)}
-                    >
-                      <span className="mr-1">✕</span>
-                      {t('noInterest')}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                        {/* Position */}
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Functie:</span> {member.position}
+                        </div>
+
+                        {/* Regime */}
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Regime:</span> {member.regime}
+                        </div>
+
+                        {/* Contact Info */}
+                        <div className="space-y-2 text-sm">
+                          {member.phone && (
+                            <div className="text-gray-600">
+                              <span className="font-medium">Telefoon:</span> {member.phone}
+                            </div>
+                          )}
+                          {member.email && (
+                            <div className="text-gray-600">
+                              <span className="font-medium">Email:</span> {member.email}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Experience */}
+                        {member.experience && (
+                          <div className="text-sm text-gray-600">
+                            <span className="font-medium">Ervaring:</span> {member.experience}
+                          </div>
+                        )}
+
+                        {/* Diplomas */}
+                        {member.diplomas && member.diplomas.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-sm font-medium text-gray-700">Diploma's:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {member.diplomas.map((diploma: string, index: number) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {diploma}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Notes */}
+                        {member.notes && member.notes.length > 0 && (() => {
+                          const firstNote = member.notes[0];
+                          const noteText = typeof firstNote === "string" ? firstNote : (firstNote?.content || "");
+                          if (!noteText) return null;
+                          return (
+                            <div className="text-sm text-gray-600">
+                              <span className="font-medium">Notities:</span>
+                              <p className="italic mt-1">{noteText}</p>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Actions */}
+                        <div className="pt-3 border-t">
+                          <div className="flex flex-wrap gap-2">
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              className="text-blue-600 border-blue-200 hover:bg-blue-50 flex-1 min-w-[140px]"
+                              onClick={() => handleEdit(member)}
+                            >
+                              <span className="mr-1">✏️</span>
+                              Bewerken
+                            </Button>
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              className="text-green-600 border-green-200 hover:bg-green-50 flex-1 min-w-[140px]"
+                              onClick={async () => {
+                                try {
+                                  // Zet status naar aangenomen
+                                  await updateCrew(member.id, {
+                                    recruitment_status: "aangenomen"
+                                  });
+                                  // Ga naar profiel
+                                  window.location.href = `/bemanning/${member.id}?edit=true&hired=true`;
+                                } catch (error) {
+                                  console.error('Error updating recruitment status:', error);
+                                }
+                              }}
+                            >
+                              <span className="mr-1">✓</span>
+                              Aangenomen
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              className="text-orange-600 border-orange-200 hover:bg-orange-50 flex-1 min-w-[140px]"
+                              onClick={() => handleLaterTerugkomen(member)}
+                            >
+                              <span className="mr-1">⏰</span>
+                              Later terugkomen
+                            </Button>
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 border-red-200 hover:bg-red-50 flex-1 min-w-[140px]"
+                              onClick={() => handleNoInterest(member.id, `${member.first_name} ${member.last_name}`)}
+                            >
+                              <span className="mr-1">✕</span>
+                              {t('noInterest')}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>
