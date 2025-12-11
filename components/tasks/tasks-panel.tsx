@@ -19,7 +19,7 @@ export function TasksPanel() {
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
   const { user } = useAuth()
   const [showDialog, setShowDialog] = useState(false)
-  const [selectedTaskType, setSelectedTaskType] = useState<"ship" | "crew" | "">("")
+  const [selectedTaskType, setSelectedTaskType] = useState<"ship" | "crew" | "algemeen" | "">("")
   const [selectedShipId, setSelectedShipId] = useState<string>("")
   const [selectedCrewId, setSelectedCrewId] = useState<string>("")
   const [title, setTitle] = useState("")
@@ -82,7 +82,7 @@ export function TasksPanel() {
     }
 
     if (!selectedTaskType) {
-      alert("Selecteer een taaktype (Schip of Bemanningslid)")
+      alert("Selecteer een taaktype (Schip, Bemanningslid of Algemeen)")
       return
     }
 
@@ -113,8 +113,11 @@ export function TasksPanel() {
       if (selectedTaskType === "ship") {
         taskData.related_ship_id = selectedShipId
         taskData.related_crew_id = null
-      } else {
+      } else if (selectedTaskType === "crew") {
         taskData.related_crew_id = selectedCrewId
+        taskData.related_ship_id = null
+      } else {
+        taskData.related_crew_id = null
         taskData.related_ship_id = null
       }
 
@@ -135,9 +138,12 @@ export function TasksPanel() {
         if (selectedTaskType === "ship") {
           updates.related_ship_id = selectedShipId
           updates.related_crew_id = null
-        } else {
+        } else if (selectedTaskType === "crew") {
           updates.related_ship_id = null
           updates.related_crew_id = selectedCrewId
+        } else {
+          updates.related_ship_id = null
+          updates.related_crew_id = null
         }
         await updateTask(editingTaskId, updates)
       } else {
@@ -531,15 +537,19 @@ export function TasksPanel() {
                                 <div className="flex items-center gap-2">
                                   {task.task_type === "ship" ? (
                                     <ShipIcon className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                                  ) : (
+                                  ) : task.task_type === "crew" ? (
                                     <User className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                                  ) : (
+                                    <ListTodo className="w-4 h-4 text-gray-600 flex-shrink-0" />
                                   )}
                                   <span className="text-gray-600 truncate">
                                     {task.task_type === "ship"
                                       ? relatedShip?.name || "Onbekend schip"
-                                      : relatedCrew
-                                      ? `${relatedCrew.first_name} ${relatedCrew.last_name}`
-                                      : "Onbekend persoon"}
+                                      : task.task_type === "crew"
+                                      ? relatedCrew
+                                        ? `${relatedCrew.first_name} ${relatedCrew.last_name}`
+                                        : "Onbekend persoon"
+                                      : "Algemeen"}
                                   </span>
                                 </div>
 
@@ -779,7 +789,7 @@ export function TasksPanel() {
               <Label>Taaktype *</Label>
               <Select
                 value={selectedTaskType}
-                onValueChange={(value: "ship" | "crew") => {
+                onValueChange={(value: "ship" | "crew" | "algemeen") => {
                   setSelectedTaskType(value)
                   setSelectedShipId("")
                   setSelectedCrewId("")
@@ -791,6 +801,7 @@ export function TasksPanel() {
                 <SelectContent>
                   <SelectItem value="ship">Schip</SelectItem>
                   <SelectItem value="crew">Bemanningslid</SelectItem>
+                  <SelectItem value="algemeen">Algemeen</SelectItem>
                 </SelectContent>
               </Select>
             </div>
