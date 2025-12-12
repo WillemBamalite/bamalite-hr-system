@@ -1812,8 +1812,7 @@ export default function ReizenAflossersPage() {
                     .filter((member: any) => 
                       !overwerkers.includes(member.id) && 
                       member.status !== "uit-dienst" &&
-                      !member.is_dummy &&
-                      !member.is_student
+                      !member.is_dummy
                     )
                     .map((member: any) => (
                       <SelectItem key={member.id} value={member.id}>
