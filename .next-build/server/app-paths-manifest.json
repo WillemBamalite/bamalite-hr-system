@@ -1,4 +1,7 @@
 {
+  "/taken/page": "app/taken/page.js",
   "/page": "app/page.js",
-  "/bemanning/medische-keuringen/page": "app/bemanning/medische-keuringen/page.js"
+  "/ziekte/page": "app/ziekte/page.js",
+  "/bemanning/nog-in-te-delen/page": "app/bemanning/nog-in-te-delen/page.js",
+  "/bemanning/aflossers/page": "app/bemanning/aflossers/page.js"
 }

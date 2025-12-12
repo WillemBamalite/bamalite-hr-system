@@ -1,4 +1,4 @@
-// File: C:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\bemanning\medische-keuringen\page.tsx
+// File: C:\Dev\bamalite-hr-system Bemanningslijst\app\bemanning\medische-keuringen\page.tsx
 import * as entry from '../../../../../app/bemanning/medische-keuringen/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

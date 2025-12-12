@@ -1,4 +1,4 @@
-// File: C:\Users\WillemvanderBent\OneDrive - A.M. Bruinsma B.V\Desktop\bemanningslijstcode\bamalite-hr-system Bemanningslijst\app\layout.tsx
+// File: C:\Dev\bamalite-hr-system Bemanningslijst\app\layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
