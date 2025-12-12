@@ -65,6 +65,10 @@ export default function ReizenAflossersPage() {
   const [completeTripDialog, setCompleteTripDialog] = useState<string | null>(null)
   const [editTripDialog, setEditTripDialog] = useState<string | null>(null)
   const [editDiplomasDialog, setEditDiplomasDialog] = useState<{ id: string; name: string } | null>(null)
+  const [addOverwerkerDialog, setAddOverwerkerDialog] = useState(false)
+  
+  // Overwerkers state (lijst van crew member IDs die als overwerkers zijn gemarkeerd)
+  const [overwerkers, setOverwerkers] = useState<string[]>([])
   
   // Form states
   const [selectedAflosserId, setSelectedAflosserId] = useState("")
@@ -107,6 +111,75 @@ export default function ReizenAflossersPage() {
       'HUN': '🇭🇺', 'FR': '🇫🇷', 'LUX': '🇱🇺', 'PO': '🇵🇱'
     }
     return flags[nationality] || '🏳️'
+  }
+
+  // Check if crew member is at home (beschikbaar)
+  const isAtHome = (memberId: string) => {
+    const member = crew.find((c: any) => c.id === memberId)
+    if (!member) return false
+    
+    // Simple check: status === "thuis"
+    return member.status === "thuis"
+  }
+
+  // Helper to parse notes (can be array, string, or null/undefined)
+  const parseNotes = (notes: any): any[] => {
+    if (!notes) return []
+    if (Array.isArray(notes)) return notes
+    if (typeof notes === 'string') {
+      try {
+        const parsed = JSON.parse(notes)
+        return Array.isArray(parsed) ? parsed : []
+      } catch (e) {
+        return []
+      }
+    }
+    return []
+  }
+
+  // Get availability date for overwerker
+  const getAvailabilityDate = (member: any): string | null => {
+    if (!member) return null
+    
+    // Als iemand thuis is (beschikbaar), kijk naar expected_start_date (wanneer gaat die weer aan boord)
+    if (member.status === "thuis") {
+      if (member.expected_start_date) {
+        return member.expected_start_date
+      }
+      return null
+    }
+    
+    // Als iemand aan boord is (niet beschikbaar), bereken wanneer die weer thuis komt
+    if (member.status === "aan-boord" && member.on_board_since) {
+      if (!member.regime || member.regime === "Altijd") {
+        return null // Geen einde datum bekend
+      }
+      
+      // Bereken regime periode
+      const regimeWeeks = parseInt(member.regime.split('/')[0])
+      const regimeDays = regimeWeeks * 7
+      
+      const onBoardDate = new Date(member.on_board_since)
+      onBoardDate.setDate(onBoardDate.getDate() + regimeDays)
+      
+      return onBoardDate.toISOString().split('T')[0] // Return YYYY-MM-DD format
+    }
+    
+    return null
+  }
+
+  // Format date to DD-MM-YYYY
+  const formatDateDDMMYYYY = (dateString: string | null): string | null => {
+    if (!dateString) return null
+    try {
+      const date = new Date(dateString)
+      const day = String(date.getDate()).padStart(2, '0')
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const year = date.getFullYear()
+      return `${day}-${month}-${year}`
+    } catch (e) {
+      return null
+    }
   }
 
   const getVasteDienstBalance = (aflosserId: string) => {
@@ -179,6 +252,74 @@ export default function ReizenAflossersPage() {
       case 'actief': return 'Actief'
       case 'voltooid': return 'Voltooid'
       default: return status
+    }
+  }
+
+  // Load overwerkers from crew members with OVERWERKER note
+  useEffect(() => {
+    if (!crew || crew.length === 0) return
+    
+    const overwerkerIds = crew
+      .filter((member: any) => {
+        const notes = parseNotes(member.notes)
+        return notes.some((note: any) => 
+          typeof note === 'object' && 
+          (note.content?.includes('OVERWERKER:true') || note.text?.includes('OVERWERKER:true'))
+        )
+      })
+      .map((member: any) => member.id)
+    
+    setOverwerkers(overwerkerIds)
+  }, [crew])
+
+  // Add overwerker
+  const handleAddOverwerker = async (memberId: string) => {
+    if (overwerkers.includes(memberId)) return
+    
+    try {
+      const member = crew.find((c: any) => c.id === memberId)
+      if (!member) return
+      
+      const currentNotes = parseNotes(member.notes)
+      const newNote = {
+        id: `overwerker-${Date.now()}`,
+        content: 'OVERWERKER:true',
+        created_at: new Date().toISOString(),
+        created_by: 'system'
+      }
+      
+      await updateCrew(memberId, {
+        notes: JSON.stringify([...currentNotes, newNote])
+      })
+      
+      setOverwerkers([...overwerkers, memberId])
+      setAddOverwerkerDialog(false)
+    } catch (error) {
+      console.error("Error adding overwerker:", error)
+      alert("Fout bij toevoegen overwerker")
+    }
+  }
+
+  // Remove overwerker
+  const handleRemoveOverwerker = async (memberId: string) => {
+    try {
+      const member = crew.find((c: any) => c.id === memberId)
+      if (!member) return
+      
+      const currentNotes = parseNotes(member.notes)
+      const filteredNotes = currentNotes.filter((note: any) => 
+        !(typeof note === 'object' && 
+          (note.content?.includes('OVERWERKER:true') || note.text?.includes('OVERWERKER:true')))
+      )
+      
+      await updateCrew(memberId, {
+        notes: JSON.stringify(filteredNotes)
+      })
+      
+      setOverwerkers(overwerkers.filter(id => id !== memberId))
+    } catch (error) {
+      console.error("Error removing overwerker:", error)
+      alert("Fout bij verwijderen overwerker")
     }
   }
 
@@ -463,7 +604,7 @@ export default function ReizenAflossersPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
+        <TabsList className="grid w-full max-w-3xl grid-cols-3 mb-8">
           <TabsTrigger value="reizen" className="text-base">
             <Ship className="w-4 h-4 mr-2" />
             {t('trips')}
@@ -471,6 +612,10 @@ export default function ReizenAflossersPage() {
           <TabsTrigger value="aflossers" className="text-base">
             <Users className="w-4 h-4 mr-2" />
             {t('reliefCrew')}
+          </TabsTrigger>
+          <TabsTrigger value="overwerkers" className="text-base">
+            <UserCheck className="w-4 h-4 mr-2" />
+            Overwerkers
           </TabsTrigger>
         </TabsList>
 
@@ -1144,6 +1289,147 @@ export default function ReizenAflossersPage() {
           )}
           </div>
         </TabsContent>
+
+        {/* Overwerkers Tab */}
+        <TabsContent value="overwerkers" className="space-y-6">
+          {/* Header with Add Button */}
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">Overwerkers</h2>
+            <Button onClick={() => setAddOverwerkerDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Overwerker toevoegen
+            </Button>
+          </div>
+
+          {/* Two Columns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Beschikbare Overwerkers */}
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <span>Beschikbare Overwerkers</span>
+                    <Badge variant="outline" className="ml-auto">
+                      {crew.filter((m: any) => overwerkers.includes(m.id) && isAtHome(m.id)).length}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {crew
+                    .filter((m: any) => overwerkers.includes(m.id) && isAtHome(m.id))
+                    .map((member: any) => (
+                      <Card key={member.id} className="hover:shadow-md transition-shadow">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <Avatar>
+                                <AvatarFallback>
+                                  {member.first_name?.[0]}{member.last_name?.[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">
+                                  {member.first_name} {member.last_name}
+                                </p>
+                                <p className="text-sm text-gray-500">{member.position}</p>
+                                {member.ship_id && (
+                                  <p className="text-xs text-gray-400">
+                                    {ships.find((s: any) => s.id === member.ship_id)?.name || 'Onbekend schip'}
+                                  </p>
+                                )}
+                                {(() => {
+                                  const availDate = formatDateDDMMYYYY(getAvailabilityDate(member))
+                                  return availDate ? (
+                                    <p className="text-xs text-green-600 mt-1">
+                                      Beschikbaar tot {availDate}
+                                    </p>
+                                  ) : null
+                                })()}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveOverwerker(member.id)}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  {crew.filter((m: any) => overwerkers.includes(m.id) && isAtHome(m.id)).length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">Geen beschikbare overwerkers</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Niet Beschikbare Overwerkers */}
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <UserX className="w-5 h-5 text-red-600" />
+                    <span>Niet Beschikbare Overwerkers</span>
+                    <Badge variant="outline" className="ml-auto">
+                      {crew.filter((m: any) => overwerkers.includes(m.id) && !isAtHome(m.id)).length}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {crew
+                    .filter((m: any) => overwerkers.includes(m.id) && !isAtHome(m.id))
+                    .map((member: any) => (
+                      <Card key={member.id} className="hover:shadow-md transition-shadow opacity-75">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <Avatar>
+                                <AvatarFallback>
+                                  {member.first_name?.[0]}{member.last_name?.[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">
+                                  {member.first_name} {member.last_name}
+                                </p>
+                                <p className="text-sm text-gray-500">{member.position}</p>
+                                {member.ship_id && (
+                                  <p className="text-xs text-gray-400">
+                                    {ships.find((s: any) => s.id === member.ship_id)?.name || 'Onbekend schip'}
+                                  </p>
+                                )}
+                                {(() => {
+                                  const availDate = formatDateDDMMYYYY(getAvailabilityDate(member))
+                                  return availDate ? (
+                                    <p className="text-xs text-red-600 mt-1">
+                                      Beschikbaar vanaf {availDate}
+                                    </p>
+                                  ) : null
+                                })()}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveOverwerker(member.id)}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  {crew.filter((m: any) => overwerkers.includes(m.id) && !isAtHome(m.id)).length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">Geen niet-beschikbare overwerkers</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* New Trip Dialog */}
@@ -1500,6 +1786,48 @@ export default function ReizenAflossersPage() {
                 }}
               >
                 Opslaan
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Overwerker Dialog */}
+      <Dialog open={addOverwerkerDialog} onOpenChange={setAddOverwerkerDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Overwerker Toevoegen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="overwerker-select">Selecteer Bemanningslid</Label>
+              <Select onValueChange={(value) => {
+                handleAddOverwerker(value)
+              }}>
+                <SelectTrigger id="overwerker-select">
+                  <SelectValue placeholder="Kies een bemanningslid" />
+                </SelectTrigger>
+                <SelectContent>
+                  {crew
+                    .filter((member: any) => 
+                      !overwerkers.includes(member.id) && 
+                      member.status !== "uit-dienst" &&
+                      !member.is_dummy &&
+                      !member.is_student
+                    )
+                    .map((member: any) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.first_name} {member.last_name} - {member.position}
+                        {member.ship_id && ` (${ships.find((s: any) => s.id === member.ship_id)?.name || 'Onbekend'})`}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={() => setAddOverwerkerDialog(false)} className="flex-1">
+                Annuleren
               </Button>
             </div>
           </div>
