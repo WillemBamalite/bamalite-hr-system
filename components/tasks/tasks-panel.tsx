@@ -9,11 +9,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag, Edit } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
 import { format, isPast, isToday, differenceInDays } from "date-fns"
 import { nl } from "date-fns/locale"
+import { supabase } from "@/lib/supabase"
 
 export function TasksPanel() {
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
@@ -27,6 +29,7 @@ export function TasksPanel() {
   const [assignedTo, setAssignedTo] = useState<"Nautic" | "Leo" | "Jos" | "Willem" | "Bart">("Nautic")
   const [priority, setPriority] = useState<"laag" | "normaal" | "hoog" | "urgent">("normaal")
   const [deadline, setDeadline] = useState("")
+  const [addToAgenda, setAddToAgenda] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [filter, setFilter] = useState<"open" | "completed">("open")
   const [isEditing, setIsEditing] = useState(false)
@@ -86,6 +89,7 @@ export function TasksPanel() {
     setAssignedTo("Nautic")
     setPriority("normaal")
     setDeadline("")
+    setAddToAgenda(false)
     setIsEditing(false)
     setEditingTaskId("")
   }
@@ -265,6 +269,45 @@ export function TasksPanel() {
           console.error('❌ Error details:', JSON.stringify(emailError, null, 2))
           // Toon foutmelding aan gebruiker (optioneel - niet blokkerend)
           alert(`⚠️ Taak aangemaakt, maar e-mail kon niet worden verstuurd: ${emailError instanceof Error ? emailError.message : 'Onbekende fout'}`)
+        }
+      }
+
+      // Toevoegen aan agenda als gevraagd (zowel bij nieuw als bij bewerken)
+      if (addToAgenda && deadline) {
+        try {
+          const relatedShip = selectedTaskType === "ship" && selectedShipId
+            ? ships.find((s: any) => s.id === selectedShipId)
+            : null
+          const relatedCrew = selectedTaskType === "crew" && selectedCrewId
+            ? crew.find((c: any) => c.id === selectedCrewId)
+            : null
+
+          const agendaDescription = description.trim() || 
+            `Taak: ${title}${relatedShip ? ` - Schip: ${relatedShip.name}` : ''}${relatedCrew ? ` - Bemanningslid: ${relatedCrew.first_name} ${relatedCrew.last_name}` : ''}`
+
+          const agendaItem = {
+            title: title.trim(),
+            description: agendaDescription,
+            date: deadline, // Gebruik deadline als datum
+            time: null,
+            voor_wie: assignedTo
+          }
+
+          const { error: agendaError } = await supabase
+            .from('agenda_items')
+            .insert([agendaItem])
+
+          if (agendaError) {
+            console.error('❌ Fout bij toevoegen aan agenda:', agendaError)
+            // Niet blokkerend - toon alleen waarschuwing
+            alert(`⚠️ Taak ${isEditing ? 'bijgewerkt' : 'aangemaakt'}, maar kon niet worden toegevoegd aan agenda: ${agendaError.message}`)
+          } else {
+            console.log('✅ Taak toegevoegd aan agenda')
+          }
+        } catch (agendaError) {
+          console.error('❌ Exception bij toevoegen aan agenda:', agendaError)
+          // Niet blokkerend
+          alert(`⚠️ Taak ${isEditing ? 'bijgewerkt' : 'aangemaakt'}, maar kon niet worden toegevoegd aan agenda: ${agendaError instanceof Error ? agendaError.message : 'Onbekende fout'}`)
         }
       }
       
@@ -1513,6 +1556,22 @@ export function TasksPanel() {
                 onChange={(e) => setDeadline(e.target.value)}
               />
             </div>
+
+            {deadline && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="addToAgenda"
+                  checked={addToAgenda}
+                  onCheckedChange={(checked) => setAddToAgenda(checked === true)}
+                />
+                <Label
+                  htmlFor="addToAgenda"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Toevoegen aan agenda ({format(new Date(deadline), 'dd-MM-yyyy')})
+                </Label>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

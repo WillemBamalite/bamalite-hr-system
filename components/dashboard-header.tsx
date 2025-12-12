@@ -11,6 +11,7 @@ import { useState, useEffect } from "react"
 import { format, formatDistanceToNow } from "date-fns"
 import { nl, de, fr } from "date-fns/locale"
 import { useLastActivity } from "@/hooks/use-last-activity"
+import { CalendarDialog } from "@/components/agenda/calendar-dialog"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -22,6 +23,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const pathname = usePathname()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
+  const [agendaOpen, setAgendaOpen] = useState(false)
   const { lastActivity, loading: activityLoading } = useLastActivity()
   
   // Prevent hydration errors
@@ -66,7 +68,10 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         </Link>
 
         {/* Live Datum & Tijd - Midden */}
-        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200">
+        <button
+          onClick={() => setAgendaOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+        >
           <Calendar className="w-5 h-5 text-blue-600" />
           <div className="text-center">
             <div className="text-sm font-semibold text-gray-900">
@@ -76,7 +81,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
               {mounted ? format(currentTime, 'HH:mm:ss') : '--:--:--'}
             </div>
           </div>
-        </div>
+        </button>
         
         <div className="flex items-center gap-4">
           {/* Last activity indicator */}
@@ -138,6 +143,9 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
           )}
         </div>
       </div>
+      
+      {/* Agenda Dialog */}
+      <CalendarDialog open={agendaOpen} onOpenChange={setAgendaOpen} />
     </div>
   )
 }
