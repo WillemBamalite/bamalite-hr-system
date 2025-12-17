@@ -71,13 +71,28 @@ export function TasksPanel() {
     setStatusUpdates(initial)
   }, [tasks])
 
-  // Group tasks by assigned person
+  // Helper to check if task belongs to person (either assigned_to or taken_by)
+  const taskBelongsToPerson = (task: any, person: string): boolean => {
+    // Task is assigned to this person
+    if (task.assigned_to === person) return true
+    
+    // Task was taken by this person (check email)
+    if (task.taken_by) {
+      const takenByLower = task.taken_by.toLowerCase()
+      const personLower = person.toLowerCase()
+      if (takenByLower.includes(personLower)) return true
+    }
+    
+    return false
+  }
+
+  // Group tasks by assigned person (includes tasks taken by that person)
   const tasksByPerson = {
     Nautic: filteredTasks.filter((t: any) => t.assigned_to === "Nautic"),
-    Leo: filteredTasks.filter((t: any) => t.assigned_to === "Leo"),
-    Willem: filteredTasks.filter((t: any) => t.assigned_to === "Willem"),
-    Jos: filteredTasks.filter((t: any) => t.assigned_to === "Jos"),
-    Bart: filteredTasks.filter((t: any) => t.assigned_to === "Bart")
+    Leo: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Leo")),
+    Willem: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Willem")),
+    Jos: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Jos")),
+    Bart: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Bart"))
   }
 
   const resetForm = () => {
@@ -343,16 +358,13 @@ export function TasksPanel() {
   const handleTakeTask = async (taskId: string) => {
     try {
       const currentUser = user?.email || 'Onbekend'
-      const newAssignee = resolveAssigneeFromEmail(user?.email)
-      const updates: any = {
+      // Don't change assigned_to - task stays at original assignee (e.g. Nautic)
+      // Only set taken_by so we know who picked it up
+      await updateTask(taskId, {
         status: 'in_progress',
         taken_by: currentUser,
         taken_at: new Date().toISOString()
-      }
-      if (newAssignee) {
-        updates.assigned_to = newAssignee
-      }
-      await updateTask(taskId, updates)
+      })
     } catch (error) {
       console.error("Error taking task:", error)
       alert("Fout bij oppakken taak")
@@ -538,7 +550,7 @@ export function TasksPanel() {
             {person === "Willem" && <User className="w-4 h-4" />}
             {person === "Jos" && <User className="w-4 h-4" />}
             {person === "Bart" && <User className="w-4 h-4" />}
-            <span>{person}</span>
+            <span>{person} ({tasksByPerson[person].filter((t: any) => !t.completed).length})</span>
           </button>
         ))}
       </div>
