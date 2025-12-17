@@ -247,7 +247,7 @@ export function DashboardStats() {
       })
 
       return overdue + dueSoon
-    })()
+    })(),
   }
 
   return (

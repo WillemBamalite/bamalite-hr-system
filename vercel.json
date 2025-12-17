@@ -3,6 +3,10 @@
     {
       "path": "/api/check-expiring-certificates",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/check-probation",
+      "schedule": "0 8 * * *"
     }
   ]
 }

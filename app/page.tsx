@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Ship, Users, CheckCircle, Clock, UserX, Cake } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle } from "lucide-react"
 import { ShipOverview } from "@/components/ship-overview"
 import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
@@ -28,6 +28,30 @@ function DashboardContent() {
   
   // Gebruik Supabase data
   const { ships, crew, sickLeave, loading, error } = useSupabaseData()
+
+  // Check voor proeftijd aflopend (dag 70 = nog 20 dagen)
+  const probationEnding = useMemo(() => {
+    if (!crew || crew.length === 0) return []
+    
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    return crew.filter((member: any) => {
+      if (member.is_dummy || member.is_aflosser || !member.in_dienst_vanaf) return false
+      
+      const startDate = new Date(member.in_dienst_vanaf)
+      startDate.setHours(0, 0, 0, 0)
+      
+      const diffTime = today.getTime() - startDate.getTime()
+      const daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+      
+      // Dag 70 = nog 20 dagen tot einde proeftijd
+      return daysSinceStart === 70
+    }).map((member: any) => ({
+      ...member,
+      daysRemaining: 20
+    }))
+  }, [crew])
 
   // Check voor verjaardagen
   const birthdaysToday = useMemo(() => {
@@ -97,6 +121,22 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full py-8 px-4">
+        {/* Proeftijd melding */}
+        {probationEnding.length > 0 && (
+          <Alert className="mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200">
+            <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <AlertDescription className="text-base font-medium">
+              ⚠️ Let op! De proefperiode van {probationEnding.map((member: any, index: number) => (
+                <span key={member.id}>
+                  <strong>{member.first_name} {member.last_name}</strong>
+                  {index < probationEnding.length - 1 && ", "}
+                  {index === probationEnding.length - 2 && " en "}
+                </span>
+              ))} verloopt over 20 dagen.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Verjaardagsmelding */}
         {birthdaysToday.length > 0 && (
           <Alert className="mb-6 bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">

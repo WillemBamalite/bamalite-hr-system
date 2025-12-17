@@ -342,7 +342,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
       } else if ((crewMember as any).in_dienst_vanaf) {
         supabaseData.in_dienst_vanaf = (crewMember as any).in_dienst_vanaf;
       }
-      
       // Reset rotatie als gevraagd
       if (resetRotation) {
         const rotationDate = newRotationDate || new Date().toISOString().split('T')[0]
