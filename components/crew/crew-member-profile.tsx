@@ -48,6 +48,21 @@ const STATUS_OPTIONS = [
   { value: "nog-in-te-delen", label: "Nog in te delen" },
 ]
 
+// Helper to parse notes (can be string, array, or null)
+const parseNotes = (notes: any): any[] => {
+  if (!notes) return []
+  if (Array.isArray(notes)) return notes
+  if (typeof notes === 'string') {
+    try {
+      const parsed = JSON.parse(notes)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
 const DIPLOMA_OPTIONS = [
   "Vaarbewijs",
   "Rijnpatent tot Wesel",
@@ -160,7 +175,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           country: ""
         },
         diplomas: crewMember.diplomas || [],
-        notes: crewMember.notes || []
+        notes: parseNotes(crewMember.notes)
       })
     }
   }, [crewMember])
@@ -431,7 +446,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           country: ""
         },
         diplomas: crewMember.diplomas || [],
-        notes: crewMember.notes || []
+        notes: parseNotes(crewMember.notes)
       })
     }
   }
@@ -1032,17 +1047,25 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
               />
             ) : (
             <div className="mt-2 space-y-2">
-                {crewMember.notes && crewMember.notes.length > 0 ? (
-                  crewMember.notes.map((note: any, index: number) => (
-                <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-700">
-                    {typeof note === 'string' ? note : note?.text || 'Geen notitie'}
-                  </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500">Geen notities</p>
-                )}
+                {(() => {
+                  const notes = parseNotes(crewMember.notes)
+                  // Filter out system notes (OVERWERKER, DUMMY, etc.)
+                  const visibleNotes = notes.filter((note: any) => {
+                    const content = typeof note === 'string' ? note : (note?.content || note?.text || '')
+                    return !content.includes('OVERWERKER') && !content.includes('DUMMY') && !content.includes('CREW_AB')
+                  })
+                  return visibleNotes.length > 0 ? (
+                    visibleNotes.map((note: any, index: number) => (
+                      <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-700">
+                          {typeof note === 'string' ? note : (note?.content || note?.text || 'Geen notitie')}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500">Geen notities</p>
+                  )
+                })()}
               </div>
             )}
           </div>
