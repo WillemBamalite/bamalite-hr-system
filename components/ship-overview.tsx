@@ -634,6 +634,9 @@ export function ShipOverview() {
                   <Link 
                     href={`/bemanning/${member.id}`}
                     className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
+                    onClick={() => {
+                      sessionStorage.setItem('shipOverviewScrollPosition', window.scrollY.toString())
+                    }}
                   >
                     {member.first_name} {member.last_name}
                   </Link>
@@ -890,6 +893,10 @@ export function ShipOverview() {
   async function handleSaveQuickNote() {
     if (!quickNote.trim()) return;
 
+    // Save scroll position before action
+    const currentScroll = window.scrollY;
+    scrollPositionRef.current = currentScroll;
+
     try {
       await addNoteToCrew(quickNoteDialog.crewId, quickNote.trim());
       
@@ -899,6 +906,11 @@ export function ShipOverview() {
         crewName: ""
       });
       setQuickNote("");
+
+      // Restore scroll position after state update
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: currentScroll, behavior: 'instant' });
+      });
     } catch (error) {
       console.error('Error saving note:', error);
       alert('Fout bij het opslaan van de notitie');
@@ -977,6 +989,10 @@ export function ShipOverview() {
   }
 
   async function handleConfirmDeleteNote() {
+    // Save scroll position before action
+    const currentScroll = window.scrollY;
+    scrollPositionRef.current = currentScroll;
+
     try {
       await removeNoteFromCrew(deleteNoteDialog.crewId, deleteNoteDialog.noteId);
       
@@ -985,6 +1001,11 @@ export function ShipOverview() {
         crewId: "",
         noteId: "",
         noteContent: ""
+      });
+
+      // Restore scroll position after state update
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: currentScroll, behavior: 'instant' });
       });
     } catch (error) {
       console.error('Error removing note:', error);
