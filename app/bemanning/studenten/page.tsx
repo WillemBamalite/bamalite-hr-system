@@ -405,7 +405,7 @@ export default function StudentenManagementPage() {
                       {student.notes && student.notes.length > 0 && (
                         <div className="text-sm text-gray-600">
                           <span className="font-medium">Notities:</span>
-                          <p className="italic mt-1">{student.notes[0]}</p>
+                          <p className="italic mt-1">{typeof student.notes[0] === 'object' ? student.notes[0].content : student.notes[0]}</p>
                         </div>
                       )}
 
@@ -537,7 +537,7 @@ export default function StudentenManagementPage() {
                       {student.notes && student.notes.length > 0 && (
                         <div className="text-sm text-gray-600">
                           <span className="font-medium">Notities:</span>
-                          <p className="italic mt-1">{student.notes[0]}</p>
+                          <p className="italic mt-1">{typeof student.notes[0] === 'object' ? student.notes[0].content : student.notes[0]}</p>
                         </div>
                       )}
 

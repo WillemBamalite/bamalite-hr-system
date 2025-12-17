@@ -1,8 +1,8 @@
 {
-  "/api/check-probation/route": "app/api/check-probation/route.js",
   "/page": "app/page.js",
-  "/bemanning/overzicht/page": "app/bemanning/overzicht/page.js",
   "/bemanning/nog-in-te-delen/page": "app/bemanning/nog-in-te-delen/page.js",
-  "/bemanning/aflossers/page": "app/bemanning/aflossers/page.js",
-  "/bemanning/[id]/page": "app/bemanning/[id]/page.js"
+  "/bemanning/overzicht/page": "app/bemanning/overzicht/page.js",
+  "/bemanning/studenten/page": "app/bemanning/studenten/page.js",
+  "/bemanning/[id]/page": "app/bemanning/[id]/page.js",
+  "/bemanning/aflossers/page": "app/bemanning/aflossers/page.js"
 }
