@@ -13,6 +13,11 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Bemanningslijst',
   description: 'Bemanningslijst management systeem - Updated 2025',
+  icons: {
+    icon: '/bemanningslijst-icon.png.png',
+    shortcut: '/bemanningslijst-icon.png.png',
+    apple: '/bemanningslijst-icon.png.png',
+  },
 }
 
 export default function RootLayout({
@@ -28,6 +33,10 @@ export default function RootLayout({
         <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
         <meta httpEquiv="Pragma" content="no-cache" />
         <meta httpEquiv="Expires" content="0" />
+        {/* Favicon / bookmark icon - gebruik het Bemanningslijst B-logo */}
+        <link rel="icon" type="image/png" href="/bemanningslijst-icon.png.png" />
+        <link rel="shortcut icon" href="/bemanningslijst-icon.png.png" />
+        <link rel="apple-touch-icon" href="/bemanningslijst-icon.png.png" />
       </head>
       <body className={inter.className}>
         <ThemeProvider
