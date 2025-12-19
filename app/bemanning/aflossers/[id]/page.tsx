@@ -4,13 +4,17 @@ import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { useSupabaseData, calculateWorkDaysVasteDienst } from "@/hooks/use-supabase-data"
 import { supabase } from '@/lib/supabase'
+import { useAflosserAvailability } from "@/hooks/use-aflosser-availability"
+import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { BackButton } from "@/components/ui/back-button"
 import { DashboardButton } from "@/components/ui/dashboard-button"
@@ -30,7 +34,9 @@ import {
   TrendingDown,
   RefreshCw,
   Trash2,
-  Check
+  Check,
+  Plus,
+  AlertTriangle
 } from "lucide-react"
 import Link from "next/link"
 
@@ -109,6 +115,8 @@ function calculateWorkDays(startDate: string, startTime: string, endDate: string
 export default function AflosserDetailPage() {
   const params = useParams()
   const { crew, ships, trips, vasteDienstRecords, loading, error, updateCrew, deleteAflosser, updateTrip } = useSupabaseData()
+  const { toast } = useToast()
+  const { periods, loading: availabilityLoading, addPeriod, updatePeriod, deletePeriod } = useAflosserAvailability(params.id as string)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [editedNotes, setEditedNotes] = useState("")
   const [isEditingTarief, setIsEditingTarief] = useState(false)
@@ -126,6 +134,14 @@ export default function AflosserDetailPage() {
   })
   const [mounted, setMounted] = useState(false)
   const [assignmentHistory, setAssignmentHistory] = useState<any[]>([])
+  const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false)
+  const [editingPeriod, setEditingPeriod] = useState<any>(null)
+  const [newPeriod, setNewPeriod] = useState({
+    start_date: "",
+    end_date: "",
+    type: "beschikbaar" as "beschikbaar" | "afwezig",
+    notes: ""
+  })
 
   // Find the aflosser
   const aflosser = crew.find((member: any) => member.id === params.id)
@@ -218,6 +234,84 @@ export default function AflosserDetailPage() {
     } catch (error) {
       console.error("Error updating profile:", error)
       alert("Fout bij het bijwerken van het profiel")
+    }
+  }
+
+  // Handle availability period actions
+  const handleAddPeriod = async () => {
+    if (!newPeriod.start_date || !newPeriod.type) {
+      toast({
+        title: "Fout",
+        description: "Vul minimaal startdatum en type in",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const result = await addPeriod({
+      crew_id: aflosser.id,
+      start_date: newPeriod.start_date,
+      end_date: newPeriod.end_date || null,
+      type: newPeriod.type,
+      notes: newPeriod.notes || null
+    })
+
+    if (result.error) {
+      toast({
+        title: "Fout",
+        description: result.error,
+        variant: "destructive"
+      })
+    } else {
+      toast({
+        title: "Succes",
+        description: "Periode toegevoegd"
+      })
+      setNewPeriod({ start_date: "", end_date: "", type: "beschikbaar", notes: "" })
+      setAvailabilityDialogOpen(false)
+    }
+  }
+
+  const handleUpdatePeriod = async () => {
+    if (!editingPeriod) return
+
+    const result = await updatePeriod(editingPeriod.id, {
+      start_date: editingPeriod.start_date,
+      end_date: editingPeriod.end_date || null,
+      type: editingPeriod.type,
+      notes: editingPeriod.notes || null
+    })
+
+    if (result.error) {
+      toast({
+        title: "Fout",
+        description: result.error,
+        variant: "destructive"
+      })
+    } else {
+      toast({
+        title: "Succes",
+        description: "Periode bijgewerkt"
+      })
+      setEditingPeriod(null)
+    }
+  }
+
+  const handleDeletePeriod = async (id: string) => {
+    if (!confirm("Weet je zeker dat je deze periode wilt verwijderen?")) return
+
+    const result = await deletePeriod(id)
+    if (result.error) {
+      toast({
+        title: "Fout",
+        description: result.error,
+        variant: "destructive"
+      })
+    } else {
+      toast({
+        title: "Succes",
+        description: "Periode verwijderd"
+      })
     }
   }
 
@@ -605,9 +699,9 @@ export default function AflosserDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Personal Information */}
-        <div className="lg:col-span-1">
+        <div>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
@@ -846,7 +940,7 @@ export default function AflosserDetailPage() {
               })()}
 
               {/* Algemene Opmerkingen */}
-              <div>
+              <div className="mt-6">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-medium text-sm text-gray-700">Algemene Opmerkingen:</h4>
                   {!isEditingNotes && (
@@ -942,72 +1036,97 @@ export default function AflosserDetailPage() {
               )}
             </CardContent>
           </Card>
+        </div>
 
-          {/* Statistics */}
-          <Card className="mt-6">
+        {/* Right Column - Availability */}
+        <div>
+          {/* Beschikbaarheid & Afwezigheid */}
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Clock className="w-5 h-5" />
-                <span>Statistieken</span>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Calendar className="w-5 h-5" />
+                  <span>Beschikbaarheid & Afwezigheid</span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setNewPeriod({ start_date: "", end_date: "", type: "beschikbaar", notes: "" })
+                    setEditingPeriod(null)
+                    setAvailabilityDialogOpen(true)
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Toevoegen
+                </Button>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Totaal reizen:</span>
-                <span className="font-medium">{assignmentHistory.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Voltooide reizen:</span>
-                <span className="font-medium">
-                  {assignmentHistory.filter((trip: any) => trip.status === 'voltooid').length}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Actieve reizen:</span>
-                <span className="font-medium">
-                  {assignmentHistory.filter((trip: any) => trip.status === 'actief').length}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Geplande reizen:</span>
-                <span className="font-medium">
-                  {assignmentHistory.filter((trip: any) => trip.status === 'gepland' || trip.status === 'ingedeeld').length}
-                </span>
-              </div>
-              <div className="flex justify-between border-t pt-2">
-                <span className="text-sm text-gray-600">Totaal werkdagen:</span>
-                <span className="font-medium text-blue-600">
-                  {(() => {
-                    // Calculate total work days from all completed trips using the new function
-                    const completedTrips = assignmentHistory.filter((trip: any) => 
-                      trip.status === 'voltooid' && 
-                      trip.start_datum && 
-                      trip.eind_datum && 
-                      trip.start_tijd && 
-                      trip.eind_tijd
-                    )
-                    
-                    let totalWorkDays = 0
-                    
-                    completedTrips.forEach((trip: any) => {
-                      const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                      totalWorkDays += workDays
-                    })
-                    
-                    return totalWorkDays === Math.floor(totalWorkDays) 
-                      ? `${totalWorkDays} dag${totalWorkDays !== 1 ? 'en' : ''}`
-                      : `${totalWorkDays} dag${totalWorkDays !== 1 ? 'en' : ''}`
-                  })()}
-                </span>
-              </div>
-              
+            <CardContent>
+              {availabilityLoading ? (
+                <div className="text-center py-4 text-gray-500">Laden...</div>
+              ) : periods.length === 0 ? (
+                <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg">
+                  <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm">Geen periodes geregistreerd</p>
+                  <p className="text-xs mt-1">Voeg periodes toe om beschikbaarheid bij te houden</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {periods.map((period) => (
+                    <div key={period.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge className={
+                              period.type === 'beschikbaar' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }>
+                              {period.type === 'beschikbaar' ? 'Beschikbaar' : 'Afwezig'}
+                            </Badge>
+                            <span className="text-sm text-gray-600">
+                              {period.type === 'beschikbaar' ? 'van' : 'van'} {format(new Date(period.start_date), 'dd-MM-yyyy')}
+                              {period.end_date ? ` tot ${format(new Date(period.end_date), 'dd-MM-yyyy')}` : ' (open einde)'}
+                            </span>
+                          </div>
+                          {period.notes && (
+                            <p className="text-sm text-gray-600 mt-1">{period.notes}</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingPeriod(period)
+                              setAvailabilityDialogOpen(true)
+                            }}
+                          >
+                            <Edit3 className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeletePeriod(period.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
+      </div>
 
-        {/* Ship History */}
-        <div className="lg:col-span-2">
-          <Card>
+      {/* Ship History - Full Width */}
+      <div className="mt-6">
+        <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Ship className="w-5 h-5" />
@@ -1334,8 +1453,168 @@ export default function AflosserDetailPage() {
               )}
             </CardContent>
           </Card>
-        </div>
       </div>
+
+      {/* Statistics - Full Width */}
+      <div className="mt-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Clock className="w-5 h-5" />
+              <span>Statistieken</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Totaal reizen:</span>
+              <span className="font-medium">{assignmentHistory.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Voltooide reizen:</span>
+              <span className="font-medium">
+                {assignmentHistory.filter((trip: any) => trip.status === 'voltooid').length}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Actieve reizen:</span>
+              <span className="font-medium">
+                {assignmentHistory.filter((trip: any) => trip.status === 'actief').length}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Geplande reizen:</span>
+              <span className="font-medium">
+                {assignmentHistory.filter((trip: any) => trip.status === 'gepland' || trip.status === 'ingedeeld').length}
+              </span>
+            </div>
+            <div className="flex justify-between border-t pt-2">
+              <span className="text-sm text-gray-600">Totaal werkdagen:</span>
+              <span className="font-medium text-blue-600">
+                {(() => {
+                  // Calculate total work days from all completed trips using the new function
+                  const completedTrips = assignmentHistory.filter((trip: any) => 
+                    trip.status === 'voltooid' && 
+                    trip.start_datum && 
+                    trip.eind_datum && 
+                    trip.start_tijd && 
+                    trip.eind_tijd
+                  )
+                  
+                  let totalWorkDays = 0
+                  
+                  completedTrips.forEach((trip: any) => {
+                    const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                    totalWorkDays += workDays
+                  })
+                  
+                  return totalWorkDays === Math.floor(totalWorkDays) 
+                    ? `${totalWorkDays} dag${totalWorkDays !== 1 ? 'en' : ''}`
+                    : `${totalWorkDays} dag${totalWorkDays !== 1 ? 'en' : ''}`
+                })()}
+              </span>
+            </div>
+            
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Availability Period Dialog */}
+      <Dialog open={availabilityDialogOpen} onOpenChange={setAvailabilityDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingPeriod ? 'Periode Bewerken' : 'Nieuwe Periode Toevoegen'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label htmlFor="type">Type</Label>
+              <Select
+                value={editingPeriod ? editingPeriod.type : newPeriod.type}
+                onValueChange={(value: "beschikbaar" | "afwezig") => {
+                  if (editingPeriod) {
+                    setEditingPeriod({ ...editingPeriod, type: value })
+                  } else {
+                    setNewPeriod({ ...newPeriod, type: value })
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="beschikbaar">Beschikbaar</SelectItem>
+                  <SelectItem value="afwezig">Afwezig</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="start_date">Startdatum</Label>
+              <Input
+                id="start_date"
+                type="date"
+                value={editingPeriod ? editingPeriod.start_date : newPeriod.start_date}
+                onChange={(e) => {
+                  if (editingPeriod) {
+                    setEditingPeriod({ ...editingPeriod, start_date: e.target.value })
+                  } else {
+                    setNewPeriod({ ...newPeriod, start_date: e.target.value })
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="end_date">Einddatum (optioneel, leeg voor open einde)</Label>
+              <Input
+                id="end_date"
+                type="date"
+                value={editingPeriod ? (editingPeriod.end_date || "") : newPeriod.end_date}
+                onChange={(e) => {
+                  if (editingPeriod) {
+                    setEditingPeriod({ ...editingPeriod, end_date: e.target.value || null })
+                  } else {
+                    setNewPeriod({ ...newPeriod, end_date: e.target.value })
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="notes">Opmerkingen (optioneel)</Label>
+              <Textarea
+                id="notes"
+                value={editingPeriod ? (editingPeriod.notes || "") : newPeriod.notes}
+                onChange={(e) => {
+                  if (editingPeriod) {
+                    setEditingPeriod({ ...editingPeriod, notes: e.target.value || null })
+                  } else {
+                    setNewPeriod({ ...newPeriod, notes: e.target.value })
+                  }
+                }}
+                placeholder="Voeg opmerkingen toe..."
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAvailabilityDialogOpen(false)
+                  setEditingPeriod(null)
+                  setNewPeriod({ start_date: "", end_date: "", type: "beschikbaar", notes: "" })
+                }}
+              >
+                Annuleren
+              </Button>
+              <Button
+                onClick={editingPeriod ? handleUpdatePeriod : handleAddPeriod}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {editingPeriod ? 'Bijwerken' : 'Toevoegen'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

@@ -260,6 +260,38 @@ export interface Database {
           updated_at?: string
         }
       }
+      aflosser_availability_periods: {
+        Row: {
+          id: string
+          crew_id: string
+          start_date: string
+          end_date: string | null
+          type: 'beschikbaar' | 'afwezig'
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          crew_id: string
+          start_date: string
+          end_date?: string | null
+          type: 'beschikbaar' | 'afwezig'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          crew_id?: string
+          start_date?: string
+          end_date?: string | null
+          type?: 'beschikbaar' | 'afwezig'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 } 

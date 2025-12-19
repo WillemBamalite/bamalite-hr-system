@@ -1889,6 +1889,15 @@ export function useSupabaseData() {
   // Complete task
   const completeTask = async (taskId: string) => {
     try {
+      // Haal eerst de gerelateerde ship_visit op (als die bestaat)
+      const { data: taskData, error: fetchError } = await supabase
+        .from('tasks')
+        .select('id, related_ship_visit_id')
+        .eq('id', taskId)
+        .single()
+
+      if (fetchError) throw fetchError
+
       const { error } = await supabase
         .from('tasks')
         .update({ 
@@ -1898,6 +1907,26 @@ export function useSupabaseData() {
         .eq('id', taskId)
       
       if (error) throw error
+
+      // Als deze taak gekoppeld is aan een scheepsbezoek, zet daar de follow-up uit
+      if (taskData?.related_ship_visit_id) {
+        try {
+          const { error: visitError } = await supabase
+            .from('ship_visits')
+            .update({
+              follow_up_needed: false,
+              follow_up_notes: null
+            })
+            .eq('id', taskData.related_ship_visit_id)
+
+          if (visitError) {
+            console.error('Error updating related ship_visit after completing task:', visitError)
+          }
+        } catch (innerErr) {
+          console.error('Unexpected error updating ship_visit for completed task:', innerErr)
+        }
+      }
+
       await loadData()
     } catch (err) {
       console.error('Error completing task:', err)

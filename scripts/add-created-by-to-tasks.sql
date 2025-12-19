@@ -20,3 +20,5 @@ CHECK (assigned_to IN ('Nautic', 'Leo', 'Jos', 'Willem'));
 -- ============================================
 SELECT 'created_by column added to tasks table successfully! 🎉' as result;
 
+
+

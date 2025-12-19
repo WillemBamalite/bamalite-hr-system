@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, UserPlus, Ship, AlertTriangle } from "lucide-react"
+import { Plus, UserPlus, Ship, AlertTriangle, Calendar } from "lucide-react"
 import Link from "next/link"
 import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import { useLanguage } from "@/contexts/LanguageContext"

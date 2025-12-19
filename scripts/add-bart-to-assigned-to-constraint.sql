@@ -17,3 +17,5 @@ CHECK (assigned_to IN ('Nautic', 'Leo', 'Jos', 'Willem', 'Bart'));
 -- ============================================
 SELECT 'Bart toegevoegd aan assigned_to constraint successfully! 🎉' as result;
 
+
+

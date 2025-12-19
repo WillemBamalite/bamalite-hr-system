@@ -81,3 +81,5 @@ Als het lokaal werkt, push dan de wijzigingen en test op Vercel.
 - Controleer of het e-mailadres correct is
 - Check console logs voor errors
 
+
+

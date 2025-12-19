@@ -44,3 +44,5 @@ END $$;
 -- Update comment
 COMMENT ON COLUMN crew.fit_verklaard_jaren IS 'Validity period in years (3, 2, 1) or 0.5 for 6 months';
 
+
+

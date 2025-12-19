@@ -38,3 +38,5 @@ COMMENT ON COLUMN agenda_items.description IS 'Optional description/details';
 COMMENT ON COLUMN agenda_items.date IS 'Date of the agenda item';
 COMMENT ON COLUMN agenda_items.time IS 'Optional time of the agenda item';
 
+
+

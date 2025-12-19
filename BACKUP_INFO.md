@@ -140,3 +140,5 @@
 - Database exports maandelijks aanbevelen
 - Alle conversaties met AI worden bewaard in Cursor
 
+
+

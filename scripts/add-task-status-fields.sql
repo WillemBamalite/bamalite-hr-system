@@ -28,3 +28,5 @@ COMMENT ON COLUMN tasks.taken_at IS 'Timestamp when the task was picked up';
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_taken_by ON tasks(taken_by) WHERE taken_by IS NOT NULL;
 
+
+

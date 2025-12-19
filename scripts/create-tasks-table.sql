@@ -13,6 +13,7 @@ CREATE TABLE tasks (
   task_type TEXT NOT NULL CHECK (task_type IN ('ship', 'crew')),
   related_ship_id TEXT REFERENCES ships(id) ON DELETE CASCADE,
   related_crew_id TEXT REFERENCES crew(id) ON DELETE CASCADE,
+  related_ship_visit_id TEXT REFERENCES ship_visits(id) ON DELETE SET NULL,
   assigned_to TEXT NOT NULL CHECK (assigned_to IN ('Leo', 'Jos', 'Willem')),
   priority TEXT NOT NULL CHECK (priority IN ('laag', 'normaal', 'hoog', 'urgent')) DEFAULT 'normaal',
   created_date DATE NOT NULL DEFAULT CURRENT_DATE,

@@ -20,3 +20,5 @@ FROM pg_constraint
 WHERE conrelid = 'tasks'::regclass
   AND conname = 'tasks_assigned_to_check';
 
+
+

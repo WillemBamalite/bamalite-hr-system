@@ -9,3 +9,5 @@ COMMENT ON COLUMN trips.paid IS 'Indicates if this trip has been paid (only rele
 -- Create index for better performance on paid queries
 CREATE INDEX IF NOT EXISTS idx_trips_paid ON trips(paid) WHERE paid = TRUE;
 
+
+

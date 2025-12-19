@@ -36,10 +36,12 @@ import {
 } from 'lucide-react'
 import { useSupabaseData, calculateWorkDaysVasteDienst } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { useAllAflosserAvailability } from '@/hooks/use-aflosser-availability'
 
 export default function ReizenAflossersPage() {
   const { crew, ships, trips, vasteDienstRecords, loading, updateCrew, addTrip, updateTrip, deleteTrip, addVasteDienstRecord } = useSupabaseData()
   const { t } = useLanguage()
+  const { getAvailabilityStatus, allPeriods } = useAllAflosserAvailability()
   const [activeTab, setActiveTab] = useState('reizen')
   const DIPLOMA_OPTIONS = [
     "Vaarbewijs",
@@ -194,6 +196,55 @@ export default function ReizenAflossersPage() {
     from: string
     to: string
     note?: string
+  }
+
+  // Helper function to render availability status badge
+  const renderAvailabilityStatus = (aflosserId: string) => {
+    const availability = getAvailabilityStatus(aflosserId)
+    const getStatusColor = () => {
+      if (availability.status === 'beschikbaar') return 'bg-green-100 text-green-800'
+      if (availability.status === 'afwezig') return 'bg-red-100 text-red-800'
+      return 'bg-gray-100 text-gray-800'
+    }
+    const getStatusText = () => {
+      if (availability.status === 'beschikbaar') {
+        if (availability.nextPeriod) {
+          const startDate = format(new Date(availability.nextPeriod.start_date), 'dd-MM-yyyy')
+          const endDate = availability.nextPeriod.end_date 
+            ? format(new Date(availability.nextPeriod.end_date), 'dd-MM-yyyy')
+            : 'open einde'
+          return `Beschikbaar van ${startDate} tot ${endDate}`
+        }
+        return 'Beschikbaar'
+      }
+      if (availability.status === 'afwezig') {
+        if (availability.nextPeriod) {
+          const startDate = format(new Date(availability.nextPeriod.start_date), 'dd-MM-yyyy')
+          const endDate = availability.nextPeriod.end_date 
+            ? format(new Date(availability.nextPeriod.end_date), 'dd-MM-yyyy')
+            : 'open einde'
+          return `Afwezig van ${startDate} tot ${endDate}`
+        }
+        return 'Afwezig'
+      }
+      if (availability.nextPeriod) {
+        const startDate = format(new Date(availability.nextPeriod.start_date), 'dd-MM-yyyy')
+        const endDate = availability.nextPeriod.end_date 
+          ? format(new Date(availability.nextPeriod.end_date), 'dd-MM-yyyy')
+          : 'open einde'
+        return availability.nextPeriod.type === 'afwezig' 
+          ? `Afwezig van ${startDate} tot ${endDate}`
+          : `Beschikbaar van ${startDate} tot ${endDate}`
+      }
+      return 'Onbekend'
+    }
+    return (
+      <div className={`p-2 rounded-lg ${getStatusColor()}`}>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">{getStatusText()}</span>
+        </div>
+      </div>
+    )
   }
 
   const getOverwerkerPeriods = (member: any): OverwerkerPeriod[] => {
@@ -519,6 +570,37 @@ export default function ReizenAflossersPage() {
   // Assign aflosser to trip (gepland → ingedeeld)
   const handleAssignAflosser = async () => {
     if (!assignAflosserDialog || !selectedAflosserId) return
+
+    // Check if aflosser is absent during trip period
+    const trip = trips.find((t: any) => t.id === assignAflosserDialog)
+    if (trip) {
+      const aflosserPeriods = allPeriods.filter((p: any) => p.crew_id === selectedAflosserId && p.type === 'afwezig')
+      
+      const tripStart = new Date(trip.start_date)
+      const tripEnd = trip.end_date ? new Date(trip.end_date) : tripStart
+      
+      const conflictingPeriod = aflosserPeriods.find((period: any) => {
+        const periodStart = new Date(period.start_date)
+        const periodEnd = period.end_date ? new Date(period.end_date) : new Date('2099-12-31')
+        
+        // Check if trip overlaps with absence period
+        return (tripStart >= periodStart && tripStart <= periodEnd) ||
+               (tripEnd >= periodStart && tripEnd <= periodEnd) ||
+               (tripStart <= periodStart && tripEnd >= periodEnd)
+      })
+      
+      if (conflictingPeriod) {
+        const periodEnd = conflictingPeriod.end_date 
+          ? format(new Date(conflictingPeriod.end_date), 'dd-MM-yyyy')
+          : 'open einde'
+        const confirmed = confirm(
+          `⚠️ WAARSCHUWING: Deze aflosser is afwezig van ${format(new Date(conflictingPeriod.start_date), 'dd-MM-yyyy')} t/m ${periodEnd}.\n\n` +
+          `De reis loopt van ${format(tripStart, 'dd-MM-yyyy')}${trip.end_date ? ` t/m ${format(tripEnd, 'dd-MM-yyyy')}` : ''}.\n\n` +
+          `Wil je toch doorgaan met de toewijzing?`
+        )
+        if (!confirmed) return
+      }
+    }
 
     try {
       await updateTrip(assignAflosserDialog, {
@@ -1225,6 +1307,9 @@ export default function ReizenAflossersPage() {
           </div>
                             )}
 
+                            {/* Beschikbaarheid Status */}
+                            {renderAvailabilityStatus(aflosser.id)}
+
                             {/* Algemene Opmerkingen */}
                             {aflosser.aflosser_opmerkingen && (
                               <div className="bg-gray-50 p-3 rounded-lg">
@@ -1335,6 +1420,9 @@ export default function ReizenAflossersPage() {
                             </div>
                           )}
 
+                          {/* Beschikbaarheid Status */}
+                          {renderAvailabilityStatus(aflosser.id)}
+
                           {/* Algemene Opmerkingen */}
                           {aflosser.aflosser_opmerkingen && (
                             <div className="bg-gray-50 p-3 rounded-lg">
@@ -1444,6 +1532,9 @@ export default function ReizenAflossersPage() {
                               </div>
                             </div>
                           )}
+
+                          {/* Beschikbaarheid Status */}
+                          {renderAvailabilityStatus(aflosser.id)}
 
                           {/* Algemene Opmerkingen */}
                           {aflosser.aflosser_opmerkingen && (
