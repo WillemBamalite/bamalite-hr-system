@@ -67,6 +67,34 @@ function ShipVisitsContent() {
     return getShipsNotVisitedInDays(50, ships)
   }, [ships, visits, getShipsNotVisitedInDays])
 
+  // Calculate visits per year
+  const visitsPerYear = useMemo(() => {
+    if (!visits || visits.length === 0) return {}
+    
+    const yearCounts: { [year: string]: number } = {}
+    visits.forEach(visit => {
+      const year = new Date(visit.visit_date).getFullYear().toString()
+      yearCounts[year] = (yearCounts[year] || 0) + 1
+    })
+    
+    return yearCounts
+  }, [visits])
+
+  // Calculate visits per person
+  const visitsPerPerson = useMemo(() => {
+    if (!visits || visits.length === 0) return {}
+    
+    const personCounts: { [person: string]: number } = {}
+    visits.forEach(visit => {
+      const person = visit.visited_by
+      if (person && person !== 'Nautic') {
+        personCounts[person] = (personCounts[person] || 0) + 1
+      }
+    })
+    
+    return personCounts
+  }, [visits])
+
 
   // Helper: Get A/B designation from crew member notes
   const getCrewABDesignation = (member: any): 'A' | 'B' | null => {
@@ -431,6 +459,53 @@ function ShipVisitsContent() {
             </DialogContent>
           </Dialog>
         </div>
+
+        {/* Statistics per year */}
+        {Object.keys(visitsPerYear).length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">Statistieken per jaar</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-4">
+                {Object.entries(visitsPerYear)
+                  .sort((a, b) => parseInt(b[0]) - parseInt(a[0]))
+                  .map(([year, count]) => (
+                    <div key={year} className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-lg px-3 py-1">
+                        {year}: {count} bezoek{count !== 1 ? 'en' : ''}
+                      </Badge>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Statistics per person */}
+        {(() => {
+          const filteredPersons = Object.entries(visitsPerPerson).filter(([person]) => person !== 'Jos')
+          return filteredPersons.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="text-lg">Aantal bezoeken per persoon</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-4">
+                  {filteredPersons
+                    .sort((a, b) => b[1] - a[1]) // Sort by count descending
+                    .map(([person, count]) => (
+                      <div key={person} className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-lg px-3 py-1">
+                          {person}: {count} bezoek{count !== 1 ? 'en' : ''}
+                        </Badge>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })()}
 
         {/* Alert for ships not visited in 50+ days */}
         {shipsNotVisited50Days.length > 0 && (

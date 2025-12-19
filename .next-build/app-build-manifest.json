@@ -50,6 +50,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/bemanning/aflossers/[id]/page.js"
+    ],
+    "/bemanning/oude-bemanningsleden/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/bemanning/oude-bemanningsleden/page.js"
+    ],
+    "/ziekte/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ziekte/page.js"
     ]
   }
 }

@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCircle, Edit, Save, X, Trash2, Ship, Clock, ArrowRight, ArrowLeft } from "lucide-react"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
@@ -85,6 +86,7 @@ interface Props {
 
 export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = false }: Props) {
   const { crew, ships, loading, error, updateCrew } = useSupabaseData()
+  const { visits } = useShipVisits()
   const { t } = useLanguage()
   const [isEditing, setIsEditing] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -134,6 +136,22 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
   // Find the crew member
   const crewMember = crew.find((member: any) => member.id === crewMemberId)
+  
+  // Calculate number of ship visits for this person (exclude Nautic)
+  const shipVisitsCount = useMemo(() => {
+    if (!crewMember || !visits) return 0
+    
+    // Get the person's first name (visited_by contains only first name)
+    const firstName = crewMember.first_name?.trim() || ''
+    
+    // Don't count visits for Nautic
+    if (firstName === 'Nautic' || firstName.toLowerCase().includes('nautic')) {
+      return 0
+    }
+    
+    // Count visits where visited_by matches the person's first name
+    return visits.filter(visit => visit.visited_by === firstName).length
+  }, [crewMember, visits])
   
   // Bereken status één keer en hergebruik (om inconsistenties te voorkomen)
   const calculatedStatus = useMemo(() => {
@@ -682,6 +700,18 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Ship visits statistic (exclude Nautic) */}
+        {shipVisitsCount > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-2">
+              <Ship className="w-5 h-5 text-blue-600" />
+              <span className="text-sm font-medium text-blue-900">
+                Aantal scheepsbezoeken: <strong>{shipVisitsCount}</strong>
+              </span>
+            </div>
+          </div>
+        )}
+        
         {/* Uit dienst knop */}
         <div className="flex justify-end">
           <Button variant="destructive" onClick={() => setShowOutDialog(true)}>

@@ -11,7 +11,7 @@ import Link from "next/link"
 
 export function DashboardStats() {
   const { crew, ships, sickLeave, loans, tasks, trips } = useSupabaseData()
-  const { getShipsNotVisitedInDays } = useShipVisits()
+  const { getShipsNotVisitedInDays, visits } = useShipVisits()
   const { t } = useLanguage()
   
   // Count open tasks from Supabase
@@ -251,9 +251,8 @@ export function DashboardStats() {
       return overdue + dueSoon
     })(),
     scheepsbezoeken: (() => {
-      if (!ships || ships.length === 0) return 0
-      const shipsNotVisited = getShipsNotVisitedInDays(50, ships)
-      return shipsNotVisited.length
+      // Return total number of visits
+      return visits ? visits.length : 0
     })(),
   }
 
