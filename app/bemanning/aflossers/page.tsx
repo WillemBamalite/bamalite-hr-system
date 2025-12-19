@@ -31,7 +31,8 @@ import {
   MessageSquare,
   Award,
   Edit,
-  X
+  X,
+  FileText
 } from 'lucide-react'
 import { useSupabaseData, calculateWorkDaysVasteDienst } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -869,6 +870,17 @@ export default function ReizenAflossersPage() {
                           <CalendarDays className="w-4 h-4" />
                           <span>{format(new Date(trip.start_date), 'dd-MM-yyyy')}</span>
                           </div>
+                        {trip.notes && (
+                          <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
+                            <div className="flex items-start space-x-2">
+                              <FileText className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <div className="text-xs text-gray-500 mb-1">Opmerkingen:</div>
+                                <div className="text-sm text-gray-700 whitespace-pre-wrap">{trip.notes}</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       <div className="flex space-x-2">
@@ -954,6 +966,17 @@ export default function ReizenAflossersPage() {
                               <span>{assignedAflosser.first_name} {assignedAflosser.last_name}</span>
                   </div>
                 )}
+                          {trip.notes && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
+                              <div className="flex items-start space-x-2">
+                                <FileText className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <div className="text-xs text-gray-500 mb-1">Opmerkingen:</div>
+                                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{trip.notes}</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                             </div>
                         
                             <div className="flex space-x-2">
@@ -1047,6 +1070,17 @@ export default function ReizenAflossersPage() {
                               <span>Aan boord: {format(new Date(trip.start_datum), 'dd-MM-yyyy')} {trip.start_tijd}</span>
                                 </div>
                               )}
+                          {trip.notes && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
+                              <div className="flex items-start space-x-2">
+                                <FileText className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <div className="text-xs text-gray-500 mb-1">Opmerkingen:</div>
+                                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{trip.notes}</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                             </div>
 
                             <Button 
