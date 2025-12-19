@@ -10,6 +10,7 @@ import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useState, useEffect, useMemo } from "react"
 import { format, isToday } from "date-fns"
@@ -28,6 +29,7 @@ function DashboardContent() {
   
   // Gebruik Supabase data
   const { ships, crew, sickLeave, loading, error } = useSupabaseData()
+  const { getShipsNotVisitedInDays, visits } = useShipVisits()
 
   // Check voor proeftijd aflopend (dag 70 = nog 20 dagen)
   const probationEnding = useMemo(() => {
@@ -79,6 +81,93 @@ function DashboardContent() {
       }
     })
   }, [crew])
+
+  // Helper: Get A/B designation from crew member notes
+  const getCrewABDesignation = (member: any): 'A' | 'B' | null => {
+    if (!member.active_notes) return null
+    const abNote = member.active_notes.find((n: any) => 
+      n.content?.startsWith('CREW_AB_DESIGNATION:')
+    )
+    if (abNote) {
+      const designation = abNote.content.replace('CREW_AB_DESIGNATION:', '').trim() as 'A' | 'B'
+      return (designation === 'A' || designation === 'B') ? designation : null
+    }
+    return null
+  }
+
+  // Bepaal welke ploeg op een schip zit
+  const getPloegForShip = (shipId: string): 'A' | 'B' | null => {
+    if (!crew || !shipId) return null
+    
+    const shipCrew = crew.filter((c: any) => 
+      c.ship_id === shipId && 
+      c.status === 'aan-boord' && 
+      !c.is_dummy && 
+      !c.is_aflosser
+    )
+    
+    if (shipCrew.length === 0) return null
+    
+    const ploegACount = shipCrew.filter((c: any) => getCrewABDesignation(c) === 'A').length
+    const ploegBCount = shipCrew.filter((c: any) => getCrewABDesignation(c) === 'B').length
+    
+    if (ploegACount > ploegBCount) return 'A'
+    if (ploegBCount > ploegACount) return 'B'
+    
+    const firstDesignation = getCrewABDesignation(shipCrew[0])
+    return firstDesignation
+  }
+
+  // Bepaal welke ploegen nog niet bezocht zijn of >50 dagen geleden bezocht zijn
+  const getUnvisitedPloegen = (shipId: string): ('A' | 'B')[] => {
+    if (!visits) return ['A', 'B']
+    
+    const shipVisits = visits.filter((v: any) => v.ship_id === shipId)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    const unvisited: ('A' | 'B')[] = []
+    
+    // Check Ploeg A
+    const visitsA = shipVisits.filter((v: any) => v.ploeg === 'A').sort((a: any, b: any) => 
+      new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime()
+    )
+    const lastVisitA = visitsA[0]
+    if (!lastVisitA) {
+      unvisited.push('A')
+    } else {
+      const visitDateA = new Date(lastVisitA.visit_date)
+      visitDateA.setHours(0, 0, 0, 0)
+      const diffDaysA = Math.floor((today.getTime() - visitDateA.getTime()) / (1000 * 60 * 60 * 24))
+      if (diffDaysA >= 50) {
+        unvisited.push('A')
+      }
+    }
+    
+    // Check Ploeg B
+    const visitsB = shipVisits.filter((v: any) => v.ploeg === 'B').sort((a: any, b: any) => 
+      new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime()
+    )
+    const lastVisitB = visitsB[0]
+    if (!lastVisitB) {
+      unvisited.push('B')
+    } else {
+      const visitDateB = new Date(lastVisitB.visit_date)
+      visitDateB.setHours(0, 0, 0, 0)
+      const diffDaysB = Math.floor((today.getTime() - visitDateB.getTime()) / (1000 * 60 * 60 * 24))
+      if (diffDaysB >= 50) {
+        unvisited.push('B')
+      }
+    }
+    
+    return unvisited
+  }
+
+  // Check voor schepen die langer dan 50 dagen niet bezocht zijn
+  const shipsNotVisited50Days = useMemo(() => {
+    if (!ships || ships.length === 0) return []
+    return getShipsNotVisitedInDays(50, ships)
+  }, [ships, getShipsNotVisitedInDays])
 
   // Prevent hydration errors
   useEffect(() => {
@@ -149,6 +238,66 @@ function DashboardContent() {
                   {index === birthdaysToday.length - 2 && " en "}
                 </span>
               ))} {birthdaysToday.length === 1 ? "is" : "zijn"} vandaag jarig! 🎂
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Scheepsbezoek melding */}
+        {shipsNotVisited50Days.length > 0 && (
+          <Alert className="mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200">
+            <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <AlertDescription className="text-base font-medium">
+              ⚠️ Let op! De volgende schepen zijn langer dan 50 dagen niet bezocht:
+              <ul className="list-disc list-inside mt-2">
+                {shipsNotVisited50Days.map((ship: any) => {
+                  const unvisitedPloegen = getUnvisitedPloegen(ship.id)
+                  
+                  if (unvisitedPloegen.length === 2) {
+                    // Check of beide nog nooit bezocht zijn of beide >50 dagen
+                    const shipVisits = visits?.filter((v: any) => v.ship_id === ship.id) || []
+                    const hasAnyVisit = shipVisits.length > 0
+                    
+                    if (!hasAnyVisit) {
+                      return (
+                        <li key={ship.id}>
+                          <strong>{ship.name}</strong> (Ploeg A en Ploeg B nog nooit bezocht)
+                        </li>
+                      )
+                    } else {
+                      return (
+                        <li key={ship.id}>
+                          <strong>{ship.name}</strong> (Ploeg A en Ploeg B langer dan 50 dagen niet bezocht)
+                        </li>
+                      )
+                    }
+                  } else if (unvisitedPloegen.length === 1) {
+                    // Check of deze ploeg nog nooit bezocht is
+                    const shipVisits = visits?.filter((v: any) => v.ship_id === ship.id && v.ploeg === unvisitedPloegen[0]) || []
+                    const hasVisit = shipVisits.length > 0
+                    
+                    if (!hasVisit) {
+                      return (
+                        <li key={ship.id}>
+                          <strong>{ship.name}</strong> (Ploeg {unvisitedPloegen[0]} nog nooit bezocht)
+                        </li>
+                      )
+                    } else {
+                      return (
+                        <li key={ship.id}>
+                          <strong>{ship.name}</strong> (Ploeg {unvisitedPloegen[0]} langer dan 50 dagen niet bezocht)
+                        </li>
+                      )
+                    }
+                  }
+                  
+                  // Fallback (zou niet moeten voorkomen)
+                  return (
+                    <li key={ship.id}>
+                      <strong>{ship.name}</strong>
+                    </li>
+                  )
+                })}
+              </ul>
             </AlertDescription>
           </Alert>
         )}

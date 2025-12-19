@@ -219,6 +219,47 @@ export interface Database {
           updated_at?: string
         }
       }
+      ship_visits: {
+        Row: {
+          id: string
+          ship_id: string
+          visit_date: string
+          visit_time: string | null
+          visited_by: 'Leo' | 'Jos' | 'Willem' | 'Bart' | 'Nautic'
+          ploeg: 'A' | 'B' | null
+          notes: string | null
+          follow_up_needed: boolean
+          follow_up_notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          ship_id: string
+          visit_date: string
+          visit_time?: string | null
+          visited_by: 'Leo' | 'Jos' | 'Willem' | 'Bart' | 'Nautic'
+          ploeg?: 'A' | 'B' | null
+          notes?: string | null
+          follow_up_needed?: boolean
+          follow_up_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          ship_id?: string
+          visit_date?: string
+          visit_time?: string | null
+          visited_by?: 'Leo' | 'Jos' | 'Willem' | 'Bart' | 'Nautic'
+          ploeg?: 'A' | 'B' | null
+          notes?: string | null
+          follow_up_needed?: boolean
+          follow_up_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 } 
