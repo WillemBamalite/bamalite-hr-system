@@ -3,19 +3,22 @@
 import { useState, useEffect } from "react"
 import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import Link from "next/link"
 
 export function DashboardStats() {
-  const { crew, ships, sickLeave, loans, tasks, trips } = useSupabaseData()
+  const { crew, ships, sickLeave, loans, tasks, trips, incidents } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
   const { t } = useLanguage()
   
   // Count open tasks from Supabase
   const tasksCount = tasks.filter((t: any) => !t.completed).length
+  
+  // Count open incidents
+  const openIncidentsCount = incidents.filter((i: any) => i.status === 'open' || i.status === 'in_behandeling').length
   
   // Bereken stats uit Supabase data
   const aflossers = crew.filter((c) => 
@@ -258,7 +261,7 @@ export function DashboardStats() {
 
   return (
     <div className="space-y-4 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-11 gap-4">
         <Link href="/bemanning/overzicht" className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
           <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
           <div className='text-xs text-blue-700 mt-1'>{t('totalCrewMembers')}</div>
@@ -354,6 +357,13 @@ export function DashboardStats() {
           <div className='text-xs text-indigo-700 mt-1 flex items-center justify-center gap-1'>
             <Calendar className="w-3 h-3" />
             <span>Scheepsbezoeken</span>
+          </div>
+        </Link>
+        <Link href="/incidenten" className="bg-rose-50 border border-rose-200 rounded-lg p-4 text-center hover:bg-rose-100 transition cursor-pointer">
+          <div className="text-2xl font-bold text-rose-800">{openIncidentsCount}</div>
+          <div className='text-xs text-rose-700 mt-1 flex items-center justify-center gap-1'>
+            <AlertCircle className="w-3 h-3" />
+            <span>Lopende Incidenten</span>
           </div>
         </Link>
       </div>

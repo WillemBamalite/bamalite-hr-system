@@ -800,6 +800,7 @@ export function useSupabaseData() {
   const [trips, setTrips] = useState<any[]>([])
   const [vasteDienstRecords, setVasteDienstRecords] = useState<any[]>([])
   const [tasks, setTasks] = useState<any[]>([])
+  const [incidents, setIncidents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [crewColorTags, setCrewColorTags] = useState<Record<string, string>>({})
@@ -825,6 +826,7 @@ export function useSupabaseData() {
         setTrips([])
         setVasteDienstRecords([])
         setTasks([])
+        setIncidents([])
         setLoading(false)
         return
       }
@@ -972,6 +974,21 @@ export function useSupabaseData() {
         console.log('Tasks loaded:', tasksData?.length || 0)
         setTasks(tasksData || [])
       }
+
+      // Load incidents
+      console.log('Loading incidents...')
+      const { data: incidentsData, error: incidentsError } = await supabase
+        .from('incidents')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (incidentsError) {
+        console.error('Error loading incidents:', incidentsError)
+        setIncidents([])
+      } else {
+        console.log('Incidents loaded:', incidentsData?.length || 0)
+        setIncidents(incidentsData || [])
+      }
       
       console.log('Data loading completed!')
 
@@ -1075,6 +1092,14 @@ export function useSupabaseData() {
       })
       .subscribe()
 
+    // Subscribe to incidents changes
+    const incidentsSubscription = supabase
+      .channel('incidents-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incidents' }, () => {
+        loadData()
+      })
+      .subscribe()
+
     return () => {
       shipsSubscription.unsubscribe()
       crewSubscription.unsubscribe()
@@ -1083,6 +1108,7 @@ export function useSupabaseData() {
       loansSubscription.unsubscribe()
       tripsSubscription.unsubscribe()
       tasksSubscription.unsubscribe()
+      incidentsSubscription.unsubscribe()
     }
   }, [])
 
@@ -1934,6 +1960,65 @@ export function useSupabaseData() {
     }
   }
 
+  // Add incident
+  const addIncident = async (incidentData: any) => {
+    try {
+      console.log('📝 Adding incident with data:', JSON.stringify(incidentData, null, 2))
+      const { data, error } = await supabase
+        .from('incidents')
+        .insert([incidentData])
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('❌ Supabase error adding incident:', error)
+        console.error('❌ Error code:', error.code)
+        console.error('❌ Error message:', error.message)
+        console.error('❌ Error details:', error.details)
+        console.error('❌ Error hint:', error.hint)
+        throw error
+      }
+      await loadData()
+      return data
+    } catch (err: any) {
+      console.error('Error adding incident:', err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
+      throw err
+    }
+  }
+
+  // Update incident
+  const updateIncident = async (incidentId: string, updates: any) => {
+    try {
+      const { error } = await supabase
+        .from('incidents')
+        .update(updates)
+        .eq('id', incidentId)
+      
+      if (error) throw error
+      await loadData()
+    } catch (err) {
+      console.error('Error updating incident:', err)
+      throw err
+    }
+  }
+
+  // Delete incident
+  const deleteIncident = async (incidentId: string) => {
+    try {
+      const { error } = await supabase
+        .from('incidents')
+        .delete()
+        .eq('id', incidentId)
+      
+      if (error) throw error
+      await loadData()
+    } catch (err) {
+      console.error('Error deleting incident:', err)
+      throw err
+    }
+  }
+
   return {
     ships,
     crew,
@@ -1942,6 +2027,7 @@ export function useSupabaseData() {
     loans,
     trips,
     tasks,
+    incidents,
     loading,
     error,
     loadData,
@@ -2007,6 +2093,9 @@ export function useSupabaseData() {
     addTask,
     updateTask,
     deleteTask,
-    completeTask
+    completeTask,
+    addIncident,
+    updateIncident,
+    deleteIncident
   }
 } 

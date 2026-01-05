@@ -28,7 +28,7 @@ function DashboardContent() {
   const { t } = useLanguage();
   
   // Gebruik Supabase data
-  const { ships, crew, sickLeave, loading, error } = useSupabaseData()
+  const { ships, crew, sickLeave, incidents, loading, error } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
 
   // Check voor proeftijd aflopend (dag 70 = nog 20 dagen)
@@ -169,6 +169,12 @@ function DashboardContent() {
     return getShipsNotVisitedInDays(50, ships)
   }, [ships, getShipsNotVisitedInDays])
 
+  // Check voor lopende incidenten
+  const openIncidents = useMemo(() => {
+    if (!incidents || incidents.length === 0) return []
+    return incidents.filter((i: any) => i.status === 'open' || i.status === 'in_behandeling')
+  }, [incidents])
+
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true);
@@ -301,6 +307,7 @@ function DashboardContent() {
             </AlertDescription>
           </Alert>
         )}
+
         
         {/* Single column flow: stats → quick actions → ships */}
         <div className="grid grid-cols-1 gap-6">
