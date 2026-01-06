@@ -657,7 +657,11 @@ export function ShipOverview() {
                       <div className="space-y-2">
                         <div className="font-semibold text-sm mb-2">Openstaande taken ({crewTasks.length}):</div>
                         {crewTasks.map((task: any) => (
-                          <div key={task.id} className="border-l-2 border-orange-500 pl-2 text-xs mb-2">
+                          <Link 
+                            key={task.id} 
+                            href={`/taken?taskId=${task.id}`}
+                            className="block border-l-2 border-orange-500 pl-2 text-xs mb-2 hover:bg-orange-50 p-2 rounded cursor-pointer transition-colors"
+                          >
                             <div className="font-medium">{task.title}</div>
                             {task.priority && (
                               <div className="text-gray-600">Prioriteit: {task.priority}</div>
@@ -668,7 +672,7 @@ export function ShipOverview() {
                             {task.deadline && (
                               <div className="text-gray-600">Deadline: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
                             )}
-                          </div>
+                          </Link>
                         ))}
                       </div>
                     </PopoverContent>
@@ -1389,7 +1393,11 @@ export function ShipOverview() {
                                           <div className="space-y-2">
                                             <div className="font-semibold text-sm mb-2">Openstaande taken ({shipTasks.length}):</div>
                                             {shipTasks.map((task: any) => (
-                                              <div key={task.id} className="border-l-2 border-orange-500 pl-2 text-xs mb-2">
+                                              <Link 
+                                                key={task.id} 
+                                                href={`/taken?taskId=${task.id}`}
+                                                className="block border-l-2 border-orange-500 pl-2 text-xs mb-2 hover:bg-orange-50 p-2 rounded cursor-pointer transition-colors"
+                                              >
                                                 <div className="font-medium">{task.title}</div>
                                                 {task.priority && (
                                                   <div className="text-gray-600">Prioriteit: {task.priority}</div>
@@ -1400,7 +1408,7 @@ export function ShipOverview() {
                                                 {task.deadline && (
                                                   <div className="text-gray-600">Deadline: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
                                                 )}
-                                              </div>
+                                              </Link>
                                             ))}
                                           </div>
                                         </PopoverContent>

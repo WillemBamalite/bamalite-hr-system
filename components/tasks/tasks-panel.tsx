@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,8 @@ import { nl } from "date-fns/locale"
 import { supabase } from "@/lib/supabase"
 
 export function TasksPanel() {
+  const searchParams = useSearchParams()
+  const highlightedTaskId = searchParams.get('taskId')
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
   const { user } = useAuth()
   const [showDialog, setShowDialog] = useState(false)
@@ -507,8 +510,7 @@ export function TasksPanel() {
     return <div className="text-center py-8">Laden...</div>
   }
 
-  return (
-    <div className="space-y-6">
+  return <div className="space-y-6">
       {/* Header met filters */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -567,7 +569,7 @@ export function TasksPanel() {
         const algemeenTasks = sortTasksByPriority(personTasks.filter((t: any) => t.task_type === "algemeen"))
 
         return (
-          <div key={person} className="space-y-4">
+          <div key={`person-${person}`} className="space-y-4" id={`task-person-${person}`}>
             {/* Header met persoon naam en counts */}
             <div className="flex items-center justify-between pb-4">
               <h2 className="text-xl font-bold">{person}</h2>
@@ -614,25 +616,29 @@ export function TasksPanel() {
                         : null
                       const deadlineStatus = getDeadlineStatus(task.deadline)
 
+                      const isHighlighted = highlightedTaskId === task.id
                       return (
-                        <Card key={task.id} className={task.completed ? "opacity-60" : ""}>
-                          <CardContent className="p-4">
-                            <div className="space-y-4">
-                              <div className="flex items-start gap-3">
-                                {task.completed ? (
-                                  <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                                ) : (
-                                  <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
-                                    {task.title}
-                                  </h3>
-                                  {task.description && (
-                                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                        <Card 
+                          key={task.id} 
+                          className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
+                        >
+                            <CardContent className="p-4">
+                              <div className="space-y-4">
+                                <div className="flex items-start gap-3">
+                                  {task.completed ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                                  ) : (
+                                    <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                                   )}
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
+                                      {task.title}
+                                    </h3>
+                                    {task.description && (
+                                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
 
                               <div className="space-y-2 text-sm">
                                 {/* Status Badge */}
@@ -894,25 +900,29 @@ export function TasksPanel() {
                         : null
                       const deadlineStatus = getDeadlineStatus(task.deadline)
 
+                      const isHighlighted = highlightedTaskId === task.id
                       return (
-                        <Card key={task.id} className={task.completed ? "opacity-60" : ""}>
-                          <CardContent className="p-4">
-                            <div className="space-y-4">
-                              <div className="flex items-start gap-3">
-                                {task.completed ? (
-                                  <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                                ) : (
-                                  <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
-                                    {task.title}
-                                  </h3>
-                                  {task.description && (
-                                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                        <Card 
+                          key={task.id} 
+                          className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
+                        >
+                            <CardContent className="p-4">
+                              <div className="space-y-4">
+                                <div className="flex items-start gap-3">
+                                  {task.completed ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                                  ) : (
+                                    <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                                   )}
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
+                                      {task.title}
+                                    </h3>
+                                    {task.description && (
+                                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
 
                               <div className="space-y-2 text-sm">
                                 {/* Status Badge */}
@@ -1174,25 +1184,29 @@ export function TasksPanel() {
                         : null
                       const deadlineStatus = getDeadlineStatus(task.deadline)
 
+                      const isHighlighted = highlightedTaskId === task.id
                       return (
-                        <Card key={task.id} className={task.completed ? "opacity-60" : ""}>
-                          <CardContent className="p-4">
-                            <div className="space-y-4">
-                              <div className="flex items-start gap-3">
-                                {task.completed ? (
-                                  <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                                ) : (
-                                  <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
-                                    {task.title}
-                                  </h3>
-                                  {task.description && (
-                                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                        <Card 
+                          key={task.id} 
+                          className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
+                        >
+                            <CardContent className="p-4">
+                              <div className="space-y-4">
+                                <div className="flex items-start gap-3">
+                                  {task.completed ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                                  ) : (
+                                    <ListTodo className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                                   )}
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className={`font-semibold text-base ${task.completed ? "line-through" : ""}`}>
+                                      {task.title}
+                                    </h3>
+                                    {task.description && (
+                                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap break-words">{task.description}</p>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
 
                               <div className="space-y-2 text-sm">
                                 {/* Status Badge */}
@@ -1602,6 +1616,5 @@ export function TasksPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  )
+  </div>
 }

@@ -1,5 +1,6 @@
 "use client"
 
+import { Suspense } from "react"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { TasksPanel } from "@/components/tasks/tasks-panel"
 import Link from "next/link"
@@ -16,7 +17,9 @@ export default function TakenPage() {
                 <Button variant="outline">Terug naar dashboard</Button>
               </Link>
             </div>
-            <TasksPanel />
+            <Suspense fallback={<div className="text-center py-8">Laden...</div>}>
+              <TasksPanel />
+            </Suspense>
           </div>
         </main>
       </div>
