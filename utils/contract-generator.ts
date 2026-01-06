@@ -456,7 +456,12 @@ function fillContractFields(
         
         try {
           console.log(`  → Field type check: ${field.constructor.name}`)
-          if (field.constructor.name === 'PDFTextField') {
+          // Check of het een text field is - pdf-lib gebruikt mogelijk andere constructor namen
+          const isTextField = field.constructor.name === 'PDFTextField' || 
+                              field.constructor.name === 'e' ||
+                              typeof (field as any).setText === 'function'
+          
+          if (isTextField) {
             // Vul eerst de tekst in (zonder bold font eerst, dat doen we daarna)
             const valueToSet = matchedValue
             console.log(`  → Probeer veld "${originalFieldName}" in te vullen met: "${valueToSet}"`)
