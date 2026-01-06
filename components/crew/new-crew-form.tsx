@@ -17,6 +17,8 @@ import { format } from "date-fns"
 import { nl } from "date-fns/locale"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { ContractDialog } from "./contract-dialog"
+import type { ContractData } from "@/utils/contract-generator"
 
 const diplomaOptions = [
   "Vaarbewijs",
@@ -124,6 +126,8 @@ export function NewCrewForm() {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [showContractDialog, setShowContractDialog] = useState(false)
+  const [savedCrewData, setSavedCrewData] = useState<ContractData | null>(null)
 
   const validateForm = () => {
     const errors: string[] = []
@@ -232,8 +236,31 @@ export function NewCrewForm() {
       // Bewaar via Supabase
       await addCrew(crewMember as any)
 
-      // Succes: meteen door naar overzicht
+      // Haal scheepsnaam op
+      const selectedShip = ships.find(ship => ship.id === formData.shipId)
+      const shipName = selectedShip ? selectedShip.name : (formData.shipId === 'none' || formData.shipId === 'unassigned' ? '' : 'Onbekend schip')
+
+      // Bereid contract data voor
+      const contractData: ContractData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        birthDate: formData.birthDate,
+        birthPlace: formData.birthPlace,
+        nationality: formData.nationality,
+        address: formData.address,
+        phone: formData.phone,
+        email: formData.email,
+        position: formData.position,
+        company: formData.company,
+        in_dienst_vanaf: formData.in_dienst_vanaf,
+        matricule: formData.matricule,
+        shipName: shipName
+      }
+
+      // Bewaar contract data en toon dialog
+      setSavedCrewData(contractData)
       setIsSuccess(true)
+      setShowContractDialog(true)
 
       // Reset form
       setFormData({
@@ -273,11 +300,6 @@ export function NewCrewForm() {
         educationEndDate: "",
         schoolPeriods: []
       })
-
-      // Navigeer naar overzicht na korte delay
-      setTimeout(() => {
-        window.location.href = '/bemanning/overzicht'
-      }, 1500)
       
     } catch (error) {
       console.error('Error adding crew member:', error)
@@ -382,22 +404,36 @@ export function NewCrewForm() {
     return { status, onBoardSince, thuisSinds }
   }
 
+  const handleContractDialogComplete = () => {
+    // Navigeer naar overzicht na contract dialog
+    setTimeout(() => {
+      window.location.href = '/bemanning/overzicht'
+    }, 500)
+  }
+
   if (isSuccess) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <Card className="border-green-200 bg-green-50">
-          <CardContent className="p-6 text-center">
-            <UserPlus className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-green-900 mb-2">{t('crewMemberAdded')}</h2>
-            <p className='text-green-700 mb-4'>
-              Het bemanningslid is succesvol toegevoegd aan het systeem.
-            </p>
-            <p className="text-sm text-green-600">
-              Je wordt automatisch doorgestuurd naar het dashboard...
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <>
+        <div className="max-w-2xl mx-auto">
+          <Card className="border-green-200 bg-green-50">
+            <CardContent className="p-6 text-center">
+              <UserPlus className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-green-900 mb-2">{t('crewMemberAdded')}</h2>
+              <p className='text-green-700 mb-4'>
+                Het bemanningslid is succesvol toegevoegd aan het systeem.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+        {savedCrewData && (
+          <ContractDialog
+            open={showContractDialog}
+            onOpenChange={setShowContractDialog}
+            crewData={savedCrewData}
+            onComplete={handleContractDialogComplete}
+          />
+        )}
+      </>
     )
   }
 
