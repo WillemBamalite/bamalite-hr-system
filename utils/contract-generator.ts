@@ -43,15 +43,31 @@ export async function generateContract(
 ): Promise<Blob> {
   try {
     // Bepaal het template bestand op basis van taal, firma en contract type
-    const templatePath = getTemplatePath(options.language, options.company, options.contractType)
+    const relativePath = getTemplatePath(options.language, options.company, options.contractType)
+    
+    // In de browser moeten we altijd een absolute URL gebruiken voor betrouwbaarheid
+    // Dit werkt zowel lokaal als in productie (Vercel)
+    let templatePath = relativePath
+    if (typeof window !== 'undefined') {
+      // We zijn in de browser - gebruik altijd absolute URL
+      templatePath = `${window.location.origin}${relativePath}`
+    }
+    
+    console.log('Loading PDF template from:', templatePath)
     
     // Fetch het template PDF bestand
     const templateResponse = await fetch(templatePath)
     if (!templateResponse.ok) {
-      throw new Error(`Kon template niet laden: ${templatePath}`)
+      console.error(`Failed to load template: ${templatePath}`, {
+        status: templateResponse.status,
+        statusText: templateResponse.statusText,
+        url: templateResponse.url
+      })
+      throw new Error(`Kon template niet laden: ${templatePath} (Status: ${templateResponse.status})`)
     }
     
     const templateBytes = await templateResponse.arrayBuffer()
+    console.log(`Template loaded successfully, size: ${templateBytes.byteLength} bytes`)
     
     // Laad het PDF document
     const pdfDoc = await PDFDocument.load(templateBytes)
