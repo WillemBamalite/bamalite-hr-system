@@ -116,7 +116,15 @@ export async function generateContract(
         // Als er formuliervelden zijn, vul ze in
         try {
           console.log('=== START VELDEN INVULLEN ===')
-          fillContractFields(form, contractData, options)
+          // Embed bold font eerst zodat we het kunnen gebruiken
+          let helveticaBoldFont: any = null
+          try {
+            helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
+            console.log('✓ Helvetica-Bold font geëmbed')
+          } catch (fontError) {
+            console.warn('⚠️ Kon Helvetica-Bold font niet embedden:', fontError)
+          }
+          fillContractFields(form, contractData, options, helveticaBoldFont)
           
           // VERIFICATIE: Controleer of de velden daadwerkelijk zijn ingevuld (VOOR flatten)
           console.log('=== VERIFICATIE VELDEN (voor flatten) ===')
@@ -151,11 +159,14 @@ export async function generateContract(
           }
           
           if (fieldsFilled) {
-            // Probeer bold font in te stellen na het invullen
+            // Bold font is al ingesteld in fillContractFields, maar we kunnen het nog een keer proberen
+            // voor het geval dat sommige velden gemist zijn
             try {
-              const helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
+              if (!helveticaBoldFont) {
+                helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
+              }
               await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
-              console.log('✓ Bold font ingesteld')
+              console.log('✓ Bold font definitief ingesteld voor alle velden')
             } catch (fontError) {
               console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
             }
@@ -311,7 +322,8 @@ async function setBoldFontForAllFields(fields: any[], boldFont: any, pdfDoc: PDF
 function fillContractFields(
   form: any,
   data: ContractData,
-  options: ContractOptions
+  options: ContractOptions,
+  boldFont?: any
 ) {
   try {
     // Probeer de velden in te vullen op basis van veelvoorkomende veldnamen
@@ -529,13 +541,12 @@ function fillContractFields(
                   }
                   
                   // Probeer ook updateAppearances aan te roepen als het beschikbaar is
-                  if (typeof (field as any).updateAppearances === 'function') {
-                    // We hebben de bold font nodig, maar die wordt later geëmbed
-                    // Voor nu proberen we het zonder
+                  if (typeof (field as any).updateAppearances === 'function' && boldFont) {
                     try {
-                      (field as any).updateAppearances()
+                      (field as any).updateAppearances(boldFont)
+                      console.log(`  ✓ updateAppearances() aangeroepen voor "${originalFieldName}"`)
                     } catch (e) {
-                      // Negeer als het niet werkt
+                      console.warn(`  ⚠️ updateAppearances() faalde voor "${originalFieldName}":`, e)
                     }
                   }
                 } catch (appearanceError) {
