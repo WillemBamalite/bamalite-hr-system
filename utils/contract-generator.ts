@@ -452,13 +452,19 @@ function fillContractFields(
       
       if (matchedValue) {
         console.log(`  ✓ Exacte match gevonden voor "${fieldName}" of "${fieldNameNormalized}"`)
+        console.log(`  → Waarde om in te vullen: "${matchedValue}"`)
+        
         try {
+          console.log(`  → Field type check: ${field.constructor.name}`)
           if (field.constructor.name === 'PDFTextField') {
             // Vul eerst de tekst in (zonder bold font eerst, dat doen we daarna)
             const valueToSet = matchedValue
             console.log(`  → Probeer veld "${originalFieldName}" in te vullen met: "${valueToSet}"`)
+            console.log(`  → Field object exists:`, !!field)
+            console.log(`  → Field.setText exists:`, typeof (field as any).setText === 'function')
             
             try {
+              console.log(`  → Aanroepen field.setText("${valueToSet}")...`)
               field.setText(valueToSet)
               console.log(`  ✓ setText() uitgevoerd voor "${originalFieldName}"`)
               
