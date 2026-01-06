@@ -28,7 +28,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
   const [isAddingNote, setIsAddingNote] = useState(false)
   const [mounted, setMounted] = useState(false)
   
-  const { crew, addNoteToCrew, removeNoteFromCrew } = useSupabaseData()
+  const { crew, addNoteToCrew, removeNoteFromCrew, deleteArchivedNote } = useSupabaseData()
 
   // Prevent hydration errors
   useEffect(() => {
@@ -78,6 +78,17 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
       } catch (error) {
         console.error('Error removing note:', error)
         alert('Fout bij het verwijderen van de notitie')
+      }
+    }
+  }
+
+  const handleDeleteArchivedNote = async (noteId: string) => {
+    if (confirm('Weet je zeker dat je deze gearchiveerde notitie permanent wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.')) {
+      try {
+        await deleteArchivedNote(crewMemberId, noteId)
+      } catch (error) {
+        console.error('Error deleting archived note:', error)
+        alert('Fout bij het verwijderen van de gearchiveerde notitie')
       }
     }
   }
@@ -195,31 +206,42 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
             <h4 className="font-medium text-sm text-gray-700">Gearchiveerde Notities:</h4>
             {archivedNotes.map((note) => (
               <div key={note.id} className="bg-gray-50 p-3 rounded border-l-4 border-gray-300">
-                <p className="text-sm text-gray-600 mb-1">{note.content}</p>
-                <p className="text-xs text-gray-500">
-                  Toegevoegd: {(() => {
-                    try {
-                      const date = new Date(note.createdAt)
-                      if (isNaN(date.getTime())) return 'Onbekende datum'
-                      return format(date, 'dd-MM-yyyy HH:mm')
-                    } catch {
-                      return 'Onbekende datum'
-                    }
-                  })()}
-                  {note.archivedAt && (
-                    <span className="ml-2">
-                      • Gearchiveerd: {(() => {
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-600 mb-1">{note.content}</p>
+                    <p className="text-xs text-gray-500">
+                      Toegevoegd: {(() => {
                         try {
-                          const date = new Date(note.archivedAt)
+                          const date = new Date(note.createdAt)
                           if (isNaN(date.getTime())) return 'Onbekende datum'
                           return format(date, 'dd-MM-yyyy HH:mm')
                         } catch {
                           return 'Onbekende datum'
                         }
                       })()}
-                    </span>
-                  )}
-                </p>
+                      {note.archivedAt && (
+                        <span className="ml-2">
+                          • Gearchiveerd: {(() => {
+                            try {
+                              const date = new Date(note.archivedAt)
+                              if (isNaN(date.getTime())) return 'Onbekende datum'
+                              return format(date, 'dd-MM-yyyy HH:mm')
+                            } catch {
+                              return 'Onbekende datum'
+                            }
+                          })()}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteArchivedNote(note.id)}
+                    className="text-red-500 hover:text-red-700 flex-shrink-0"
+                    title="Notitie permanent verwijderen"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

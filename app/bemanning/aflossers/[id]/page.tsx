@@ -1070,7 +1070,7 @@ export default function AflosserDetailPage() {
                   <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                   <p className="text-sm">Geen periodes geregistreerd</p>
                   <p className="text-xs mt-1">Voeg periodes toe om beschikbaarheid bij te houden</p>
-                </div>
+              </div>
               ) : (
                 <div className="space-y-3">
                   {periods.map((period) => (
@@ -1088,12 +1088,12 @@ export default function AflosserDetailPage() {
                             <span className="text-sm text-gray-600">
                               {period.type === 'beschikbaar' ? 'van' : 'van'} {format(new Date(period.start_date), 'dd-MM-yyyy')}
                               {period.end_date ? ` tot ${format(new Date(period.end_date), 'dd-MM-yyyy')}` : ' (open einde)'}
-                            </span>
-                          </div>
+                </span>
+              </div>
                           {period.notes && (
                             <p className="text-sm text-gray-600 mt-1">{period.notes}</p>
                           )}
-                        </div>
+              </div>
                         <div className="flex gap-2">
                           <Button
                             size="sm"
@@ -1113,8 +1113,8 @@ export default function AflosserDetailPage() {
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>
-                        </div>
-                      </div>
+              </div>
+              </div>
                     </div>
                   ))}
                 </div>
@@ -1122,11 +1122,11 @@ export default function AflosserDetailPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+        </div>
 
       {/* Ship History - Full Width */}
       <div className="mt-6">
-        <Card>
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Ship className="w-5 h-5" />
@@ -1453,7 +1453,7 @@ export default function AflosserDetailPage() {
               )}
             </CardContent>
           </Card>
-      </div>
+        </div>
 
       {/* Statistics - Full Width */}
       <div className="mt-6">
@@ -1468,13 +1468,13 @@ export default function AflosserDetailPage() {
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Totaal reizen:</span>
               <span className="font-medium">{assignmentHistory.length}</span>
-            </div>
+      </div>
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Voltooide reizen:</span>
               <span className="font-medium">
                 {assignmentHistory.filter((trip: any) => trip.status === 'voltooid').length}
               </span>
-            </div>
+    </div>
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Actieve reizen:</span>
               <span className="font-medium">

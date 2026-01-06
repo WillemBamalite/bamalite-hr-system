@@ -468,9 +468,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     }
   }
 
-  // Genereer scheepshistorie op basis van assignment_history
-  const shipHistory = crewMember.assignment_history || []
-  
   // Genereer status wijzigingen (historisch + toekomstig)
   const statusChanges: Array<{date: string, action: string, ship: string, type: string, isFuture?: boolean}> = []
   
@@ -1101,44 +1098,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         </CardContent>
       </Card>
 
-      {/* Scheepshistorie */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-3">
-            <Ship className="w-5 h-5" />
-            <span>Scheepshistorie</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {shipHistory.length > 0 ? (
-            <div className="space-y-4">
-              {shipHistory.map((assignment: any, index: number) => (
-                <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-shrink-0">
-                    <Ship className="w-4 h-4 text-gray-400" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium">{getShipName(assignment.ship_id)}</div>
-                    <div className="text-sm text-gray-600">
-                      {assignment.position} • {assignment.regime}
-                    </div>
-                    {assignment.start_date && (
-                      <div className="text-xs text-gray-500">
-                        {format(new Date(assignment.start_date), 'dd-MM-yyyy')}
-                        {assignment.end_date && ` - ${format(new Date(assignment.end_date), 'dd-MM-yyyy')}`}
-                      </div>
-                    )}
-                  </div>
-            </div>
-          ))}
-            </div>
-          ) : (
-            <div className="text-center text-gray-500 py-4">
-              Nog geen scheepshistorie beschikbaar
-          </div>
-        )}
-      </CardContent>
-    </Card>
 
     {/* Uit dienst dialog */}
     <Dialog open={showOutDialog} onOpenChange={setShowOutDialog}>

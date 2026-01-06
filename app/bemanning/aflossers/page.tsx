@@ -1057,8 +1057,8 @@ export default function ReizenAflossersPage() {
                                   <div className="text-sm text-gray-700 whitespace-pre-wrap">{trip.notes}</div>
                                 </div>
                               </div>
-                            </div>
-                          )}
+                  </div>
+                )}
                             </div>
                         
                             <div className="flex space-x-2">
@@ -1161,8 +1161,8 @@ export default function ReizenAflossersPage() {
                                   <div className="text-sm text-gray-700 whitespace-pre-wrap">{trip.notes}</div>
                                 </div>
                               </div>
-                            </div>
-                          )}
+                                </div>
+                              )}
                             </div>
 
                             <Button 

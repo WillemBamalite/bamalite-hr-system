@@ -1,7 +1,6 @@
 {
-  "/schepen/bezoeken/page": "app/schepen/bezoeken/page.js",
   "/page": "app/page.js",
-  "/bemanning/aflossers/page": "app/bemanning/aflossers/page.js",
-  "/bemanning/aflossers/[id]/page": "app/bemanning/aflossers/[id]/page.js",
-  "/bemanning/medische-keuringen/page": "app/bemanning/medische-keuringen/page.js"
+  "/taken/page": "app/taken/page.js",
+  "/incidenten/page": "app/incidenten/page.js",
+  "/bemanning/[id]/page": "app/bemanning/[id]/page.js"
 }

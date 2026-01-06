@@ -1853,6 +1853,40 @@ export function useSupabaseData() {
     }
   };
 
+  const deleteArchivedNote = async (crewId: string, noteId: string) => {
+    try {
+      // Get current crew member data
+      const { data: crewData, error: fetchError } = await supabase
+        .from('crew')
+        .select('archived_notes')
+        .eq('id', crewId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentArchivedNotes = crewData?.archived_notes || [];
+
+      // Remove from archived notes permanently
+      const updatedArchivedNotes = currentArchivedNotes.filter((note: any) => note.id !== noteId);
+
+      // Update crew member
+      const { error: updateError } = await supabase
+        .from('crew')
+        .update({ 
+          archived_notes: updatedArchivedNotes
+        })
+        .eq('id', crewId);
+
+      if (updateError) throw updateError;
+
+      console.log('Archived note deleted successfully')
+      await loadData(); // Reload data
+    } catch (error) {
+      console.error('Error deleting archived note:', error);
+      throw error;
+    }
+  };
+
   // Add task
   const addTask = async (taskData: any) => {
     try {
@@ -2090,6 +2124,7 @@ export function useSupabaseData() {
     deleteVasteDienstRecord,
     addNoteToCrew,
     removeNoteFromCrew,
+    deleteArchivedNote,
     addTask,
     updateTask,
     deleteTask,

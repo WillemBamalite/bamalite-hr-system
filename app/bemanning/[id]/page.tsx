@@ -6,6 +6,7 @@ import { CrewMemberHeader } from "@/components/crew/crew-member-header"
 import { CrewMemberProfile } from "@/components/crew/crew-member-profile"
 import { CrewMemberNotes } from "@/components/crew/crew-member-notes"
 import { CrewMemberStatusChanges } from "@/components/crew/crew-member-status-changes"
+import { CrewMemberShipHistory } from "@/components/crew/crew-member-ship-history"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { BackButton } from "@/components/ui/back-button"
@@ -54,12 +55,13 @@ export default function BemanningslidPage({ params }: Props) {
                   autoEdit={autoEdit}
                 />
               </Suspense>
+              <CrewMemberNotes crewMemberId={resolvedParams.id} />
             </div>
 
             {/* Sidebar */}
             <div className="space-y-6">
               <CrewMemberStatusChanges crewMemberId={resolvedParams.id} />
-              <CrewMemberNotes crewMemberId={resolvedParams.id} />
+              <CrewMemberShipHistory crewMemberId={resolvedParams.id} />
             </div>
           </div>
 
