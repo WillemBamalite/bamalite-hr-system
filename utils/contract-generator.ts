@@ -309,6 +309,7 @@ function fillContractFields(
       'achternaam': data.lastName,
       'naam': `${data.firstName} ${data.lastName}`,
       'volledigenaam': `${data.firstName} ${data.lastName}`,
+      'volledigenaamwerknemer': `${data.firstName} ${data.lastName}`, // Voor "Volledige naam werknemer" (zonder spaties)
       'geboortedatum': formatDate(data.birthDate),
       'geboorteplaats': data.birthPlace || '',
       'nationaliteit': getNationalityLabel(data.nationality),
@@ -364,6 +365,16 @@ function fillContractFields(
         })
         return calculated
       })(),
+      'in_dienst_vanafplus3maanden': (() => {
+        if (!data.in_dienst_vanaf) return ''
+        return calculateDatePlus3Months(data.in_dienst_vanaf)
+      })(), // Voor "in_dienst_vanaf + 3maanden" (zonder spaties en met plus)
+      // Extra mappings voor genormaliseerde versies
+      'firma': data.company, // Voor "Firma" (hoofdletter)
+      'functie': data.position, // Voor "Functie" (hoofdletter)
+      'basissalaris': data.basisSalaris || '', // Voor "Basissalaris" (hoofdletter)
+      'reiskosten': data.reiskosten || '', // Voor "Reiskosten" (hoofdletter)
+      'scheepsnaam': data.shipName || '', // Voor "Scheepsnaam" (hoofdletter)
       // Alternatieve veldnamen voor proeftijd
       'proeftijd': (() => {
         if (!data.in_dienst_vanaf) return ''
@@ -432,12 +443,21 @@ function fillContractFields(
     
     fields.forEach((field: any) => {
       const originalFieldName = field.getName()
+      // Normaliseer veldnaam: lowercase, trim, verwijder speciale tekens en spaties
       const fieldName = originalFieldName.toLowerCase().trim()
+      // Maak ook een versie zonder spaties en speciale tekens voor matching
+      const fieldNameNormalized = fieldName
+        .replace(/\s+/g, '') // Verwijder alle spaties
+        .replace(/[+]/g, 'plus') // Vervang + met "plus"
+        .replace(/[^a-z0-9_]/g, '') // Verwijder alle speciale tekens behalve underscore
       
-      console.log(`\n--- Verwerken veld: "${originalFieldName}" (normalized: "${fieldName}") ---`)
+      console.log(`\n--- Verwerken veld: "${originalFieldName}" (normalized: "${fieldName}", normalized2: "${fieldNameNormalized}") ---`)
       
-      // Eerst proberen exacte match
-      if (fieldMappings[fieldName]) {
+      // Eerst proberen exacte match (met en zonder spaties)
+      let matchedValue: string | undefined = fieldMappings[fieldName] || fieldMappings[fieldNameNormalized]
+      
+      if (matchedValue) {
+        console.log(`  ✓ Exacte match gevonden voor "${fieldName}" of "${fieldNameNormalized}"`)
           try {
             if (field.constructor.name === 'PDFTextField') {
               // Stel bold font in VOOR het invullen van de tekst
@@ -462,7 +482,23 @@ function fillContractFields(
               }
               
               // Vul nu de tekst in
-              field.setText(fieldMappings[fieldName])
+              const valueToSet = matchedValue
+              console.log(`  → Probeer veld "${originalFieldName}" in te vullen met: "${valueToSet}"`)
+              
+              try {
+                field.setText(valueToSet)
+                
+                // VERIFICATIE: Controleer direct of de waarde is ingesteld
+                const verifyValue = field.getText()
+                if (verifyValue === valueToSet || verifyValue === valueToSet.trim()) {
+                  console.log(`  ✓ Veld "${originalFieldName}" succesvol ingevuld met: "${verifyValue}"`)
+                } else {
+                  console.warn(`  ⚠️ Veld "${originalFieldName}" heeft andere waarde. Verwacht: "${valueToSet}", Krijg: "${verifyValue}"`)
+                }
+              } catch (setTextError) {
+                console.error(`  ❌ FOUT bij setText voor veld "${originalFieldName}":`, setTextError)
+                throw setTextError
+              }
               
               // Probeer de alignment in te stellen voor gecentreerde velden
               // Alleen als het veld daadwerkelijk gecentreerd moet zijn
@@ -490,9 +526,9 @@ function fillContractFields(
               }
               
               filledCount++
-              console.log(`✓ [${filledCount}] Veld "${field.getName()}" (exact match) ingevuld met: "${fieldMappings[fieldName]}"`)
+              console.log(`✓ [${filledCount}] Veld "${originalFieldName}" (exact match) ingevuld met: "${matchedValue}"`)
           } else if (field.constructor.name === 'PDFCheckBox') {
-            const value = fieldMappings[fieldName]
+            const value = matchedValue
             if (value === 'true' || value === 'ja' || value === 'yes') {
               field.check()
               console.log(`✓ Checkbox "${field.getName()}" aangevinkt`)
@@ -510,21 +546,29 @@ function fillContractFields(
       const sortedKeys = Object.entries(fieldMappings).sort((a, b) => b[0].length - a[0].length)
       
       for (const [key, value] of sortedKeys) {
-        // Probeer verschillende matching strategieën
-        const keyLower = key.toLowerCase()
-        
         // Skip als dit al exact gematcht is
-        if (fieldName === keyLower) {
+        if (fieldName === key.toLowerCase() || fieldNameNormalized === key.toLowerCase()) {
           continue
         }
+        
+        // Normaliseer key voor matching (verwijder spaties en speciale tekens)
+        const keyNormalized = key.toLowerCase()
+          .replace(/\s+/g, '') // Verwijder alle spaties
+          .replace(/[+]/g, 'plus') // Vervang + met "plus"
+          .replace(/[^a-z0-9_]/g, '') // Verwijder alle speciale tekens behalve underscore
         
         // Check verschillende matching strategieën
         // Belangrijk: omdat we gesorteerd hebben op lengte (langste eerst),
         // zal "in_dienst_vanaf_3maanden" eerst worden gecheckt voordat "in_dienst_vanaf"
         const matches = 
-          fieldName.includes(keyLower) || // Field name bevat de key (langste keys eerst!)
-          keyLower.includes(fieldName) || // Key bevat de field name
-          fieldName.replace(/[^a-z0-9]/g, '') === keyLower.replace(/[^a-z0-9]/g, '') // Zonder speciale tekens
+          fieldName === key.toLowerCase() || // Exact match (case-insensitive)
+          fieldNameNormalized === keyNormalized || // Exact match (genormaliseerd)
+          fieldName.includes(key.toLowerCase()) || // Field name bevat de key
+          fieldNameNormalized.includes(keyNormalized) || // Field name bevat de key (genormaliseerd)
+          key.toLowerCase().includes(fieldName) || // Key bevat de field name
+          keyNormalized.includes(fieldNameNormalized) || // Key bevat de field name (genormaliseerd)
+          fieldNameNormalized === key.toLowerCase().replace(/[^a-z0-9_]/g, '') || // Zonder speciale tekens
+          keyNormalized === fieldName.replace(/[^a-z0-9_]/g, '') // Zonder speciale tekens (omgekeerd)
         
         if (matches) {
           try {
