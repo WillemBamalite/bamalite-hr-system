@@ -449,47 +449,52 @@ function fillContractFields(
       
       if (matchedValue) {
         console.log(`  ✓ Exacte match gevonden voor "${fieldName}" of "${fieldNameNormalized}"`)
-          try {
-            if (field.constructor.name === 'PDFTextField') {
-              // Stel bold font in VOOR het invullen van de tekst
-              try {
-                const acroField = (field as any).acroField
-                if (acroField && acroField.dict) {
-                  // Haal bestaande font size op
-                  let fontSize = 12
-                  const existingDA = acroField.dict.lookup('DA')
-                  if (existingDA) {
-                    const daString = existingDA.toString()
-                    const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
-                    if (sizeMatch) {
-                      fontSize = parseFloat(sizeMatch[1])
-                    }
+        try {
+          if (field.constructor.name === 'PDFTextField') {
+            // Vul eerst de tekst in (zonder bold font eerst, dat doen we daarna)
+            const valueToSet = matchedValue
+            console.log(`  → Probeer veld "${originalFieldName}" in te vullen met: "${valueToSet}"`)
+            
+            try {
+              field.setText(valueToSet)
+              console.log(`  ✓ setText() uitgevoerd voor "${originalFieldName}"`)
+              
+              // VERIFICATIE: Controleer direct of de waarde is ingesteld
+              const verifyValue = field.getText()
+              console.log(`  → Gecontroleerde waarde: "${verifyValue}" (verwacht: "${valueToSet}")`)
+              if (verifyValue === valueToSet || verifyValue === valueToSet.trim()) {
+                console.log(`  ✓ Veld "${originalFieldName}" succesvol ingevuld met: "${verifyValue}"`)
+              } else {
+                console.warn(`  ⚠️ Veld "${originalFieldName}" heeft andere waarde. Verwacht: "${valueToSet}", Krijg: "${verifyValue}"`)
+              }
+            } catch (setTextError) {
+              console.error(`  ❌ FOUT bij setText voor veld "${originalFieldName}":`, setTextError)
+              console.error(`  Error details:`, setTextError)
+              // Gooi de error niet door, probeer door te gaan met andere velden
+            }
+            
+            // Probeer bold font in te stellen NA het invullen van de tekst
+            try {
+              const acroField = (field as any).acroField
+              if (acroField && acroField.dict) {
+                // Haal bestaande font size op
+                let fontSize = 12
+                const existingDA = acroField.dict.lookup('DA')
+                if (existingDA) {
+                  const daString = existingDA.toString()
+                  const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
+                  if (sizeMatch) {
+                    fontSize = parseFloat(sizeMatch[1])
                   }
-                  // Stel DA in met bold font
-                  acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                 }
-              } catch (fontError) {
-                console.warn(`Kon bold font niet instellen voor veld ${fieldName}:`, fontError)
+                // Stel DA in met bold font
+                acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                console.log(`  ✓ Bold font ingesteld voor "${originalFieldName}"`)
               }
-              
-              // Vul nu de tekst in
-              const valueToSet = matchedValue
-              console.log(`  → Probeer veld "${originalFieldName}" in te vullen met: "${valueToSet}"`)
-              
-              try {
-                field.setText(valueToSet)
-                
-                // VERIFICATIE: Controleer direct of de waarde is ingesteld
-                const verifyValue = field.getText()
-                if (verifyValue === valueToSet || verifyValue === valueToSet.trim()) {
-                  console.log(`  ✓ Veld "${originalFieldName}" succesvol ingevuld met: "${verifyValue}"`)
-                } else {
-                  console.warn(`  ⚠️ Veld "${originalFieldName}" heeft andere waarde. Verwacht: "${valueToSet}", Krijg: "${verifyValue}"`)
-                }
-              } catch (setTextError) {
-                console.error(`  ❌ FOUT bij setText voor veld "${originalFieldName}":`, setTextError)
-                throw setTextError
-              }
+            } catch (fontError) {
+              console.warn(`  ⚠️ Kon bold font niet instellen voor veld ${fieldName} (niet kritiek):`, fontError)
+              // Dit is niet kritiek, ga door
+            }
               
               // Probeer de alignment in te stellen voor gecentreerde velden
               // Alleen als het veld daadwerkelijk gecentreerd moet zijn
