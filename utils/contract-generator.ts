@@ -399,9 +399,12 @@ function fillContractFields(
       'datumopmaken': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
       'opmaakdatum': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
       'datum_opmak': format(new Date(), 'dd-MM-yyyy', { locale: nl }), // Alternatieve spelling
-      // Salaris velden (basissalaris en reiskosten zijn al gedefinieerd, maar hier voor duidelijkheid)
+      // Salaris velden
+      'basissalaris': data.basisSalaris || '', // Voor "Basissalaris" (hoofdletter)
       'salaris': data.basisSalaris || '',
       'kledinggeld': data.kledinggeld || '',
+      'reiskosten': data.reiskosten || '', // Voor "Reiskosten" (hoofdletter)
+      'scheepsnaam': data.shipName || '', // Voor "Scheepsnaam" (hoofdletter)
     }
     
     // Probeer alle velden in het formulier te vinden en in te vullen
