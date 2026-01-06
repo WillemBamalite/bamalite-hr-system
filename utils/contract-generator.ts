@@ -57,12 +57,10 @@ export async function generateContract(
     const pdfDoc = await PDFDocument.load(templateBytes)
     
     // Probeer formuliervelden te krijgen
+    let fieldsFilled = false
     try {
       const form = pdfDoc.getForm()
       const fields = form.getFields()
-      
-      // Embed bold font voor alle ingevulde velden
-      const helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
       
       console.log('=== PDF ANALYSE ===')
       console.log('Aantal formuliervelden gevonden:', fields.length)
@@ -73,14 +71,26 @@ export async function generateContract(
           console.log(`  - ${field.getName()} (${field.constructor.name})`)
         })
         
-        // Als er formuliervelden zijn, vul ze in
-        fillContractFields(form, contractData, options, helveticaBoldFont)
-        
-        // Stel bold font in voor ALLE velden (ook die al ingevuld zijn)
-        await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
-        
-        form.flatten()
-        console.log('Contract ingevuld met formuliervelden')
+        // Als er formuliervelden zijn, vul ze in (zonder bold font eerst)
+        try {
+          fillContractFields(form, contractData, options)
+          fieldsFilled = true
+          
+          // Probeer bold font in te stellen na het invullen
+          try {
+            const helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
+            await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
+          } catch (fontError) {
+            console.warn('Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
+          }
+          
+          form.flatten()
+          console.log('✓ Contract ingevuld met formuliervelden')
+        } catch (fillError) {
+          console.error('⚠️ Fout bij het invullen van formuliervelden:', fillError)
+          // Probeer tekst op posities als fallback
+          await fillContractWithText(pdfDoc, contractData, options)
+        }
       } else {
         // Geen formuliervelden, gebruik tekst op posities
         console.log('⚠️ Geen formuliervelden gevonden in PDF')
@@ -89,9 +99,11 @@ export async function generateContract(
       }
     } catch (error) {
       // Als er geen formulier is, gebruik tekst op posities
-      console.log('⚠️ Geen formulier gevonden in PDF:', error)
-      console.log('Gebruik tekst op specifieke posities (coördinaten moeten worden aangepast)')
-      await fillContractWithText(pdfDoc, contractData, options)
+      console.error('⚠️ Fout bij het ophalen van formuliervelden:', error)
+      if (!fieldsFilled) {
+        console.log('Gebruik tekst op specifieke posities (coördinaten moeten worden aangepast)')
+        await fillContractWithText(pdfDoc, contractData, options)
+      }
     }
     
     // Genereer de PDF bytes
@@ -197,8 +209,7 @@ async function setBoldFontForAllFields(fields: any[], boldFont: any, pdfDoc: PDF
 function fillContractFields(
   form: any,
   data: ContractData,
-  options: ContractOptions,
-  boldFont?: any
+  options: ContractOptions
 ) {
   try {
     // Probeer de velden in te vullen op basis van veelvoorkomende veldnamen
@@ -308,6 +319,13 @@ function fillContractFields(
     // Probeer alle velden in het formulier te vinden en in te vullen
     const fields = form.getFields()
     
+    console.log('=== START PDF INVULLEN ===')
+    console.log('Contract Data:', JSON.stringify(data, null, 2))
+    console.log('Contract Options:', JSON.stringify(options, null, 2))
+    console.log('Aantal velden om te verwerken:', fields.length)
+    
+    let filledCount = 0
+    
     fields.forEach((field: any) => {
       const fieldName = field.getName().toLowerCase().trim()
       
@@ -339,15 +357,6 @@ function fillContractFields(
               // Vul nu de tekst in
               field.setText(fieldMappings[fieldName])
               
-              // Probeer ook updateAppearances na het invullen
-              try {
-                if (boldFont && typeof (field as any).updateAppearances === 'function') {
-                  (field as any).updateAppearances(boldFont)
-                }
-              } catch (e) {
-                // Negeer als het niet werkt
-              }
-              
               // Probeer de alignment in te stellen voor gecentreerde velden
               // Alleen als het veld daadwerkelijk gecentreerd moet zijn
               // We respecteren de alignment die in het PDF is ingesteld voor andere velden
@@ -373,7 +382,8 @@ function fillContractFields(
                 console.warn(`Kon uitlijning niet instellen voor veld ${fieldName}:`, alignError)
               }
               
-              console.log(`✓ Veld "${field.getName()}" (exact match) ingevuld met: ${fieldMappings[fieldName]}`)
+              filledCount++
+              console.log(`✓ [${filledCount}] Veld "${field.getName()}" (exact match) ingevuld met: "${fieldMappings[fieldName]}"`)
           } else if (field.constructor.name === 'PDFCheckBox') {
             const value = fieldMappings[fieldName]
             if (value === 'true' || value === 'ja' || value === 'yes') {
@@ -436,15 +446,6 @@ function fillContractFields(
               // Vul nu de tekst in
               field.setText(value)
               
-              // Probeer ook updateAppearances na het invullen
-              try {
-                if (boldFont && typeof (field as any).updateAppearances === 'function') {
-                  (field as any).updateAppearances(boldFont)
-                }
-              } catch (e) {
-                // Negeer als het niet werkt
-              }
-              
               // Probeer de alignment in te stellen voor gecentreerde velden
               // Alleen als het veld daadwerkelijk gecentreerd moet zijn
               // We respecteren de alignment die in het PDF is ingesteld voor andere velden
@@ -471,7 +472,8 @@ function fillContractFields(
                 console.warn(`Kon uitlijning niet instellen voor veld ${fieldName}:`, alignError)
               }
               
-              console.log(`✓ Veld "${field.getName()}" (partial match: "${key}") ingevuld met: ${value}`)
+              filledCount++
+              console.log(`✓ [${filledCount}] Veld "${field.getName()}" (partial match: "${key}") ingevuld met: "${value}"`)
             } else if (field.constructor.name === 'PDFCheckBox') {
               if (value === 'true' || value === 'ja' || value === 'yes') {
                 field.check()
@@ -486,7 +488,8 @@ function fillContractFields(
       }
     })
     
-    console.log('=== EINDE PDF INVULLEN ===')
+    console.log(`=== EINDE PDF INVULLEN ===`)
+    console.log(`Totaal ${filledCount} van ${fields.length} velden ingevuld`)
   } catch (error) {
     console.error('Error filling contract fields:', error)
     // We gooien de fout niet door, zodat het PDF nog steeds wordt gegenereerd
