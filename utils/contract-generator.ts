@@ -519,6 +519,29 @@ function fillContractFields(
                 }
                 // Stel DA in met bold font
                 acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                
+                // Forceer update van de appearance door de tekst opnieuw in te stellen
+                try {
+                  const currentValue = field.getText()
+                  if (currentValue) {
+                    // Herstel de tekst om de appearance te forceren met de nieuwe bold font
+                    field.setText(currentValue)
+                  }
+                  
+                  // Probeer ook updateAppearances aan te roepen als het beschikbaar is
+                  if (typeof (field as any).updateAppearances === 'function') {
+                    // We hebben de bold font nodig, maar die wordt later geëmbed
+                    // Voor nu proberen we het zonder
+                    try {
+                      (field as any).updateAppearances()
+                    } catch (e) {
+                      // Negeer als het niet werkt
+                    }
+                  }
+                } catch (appearanceError) {
+                  console.warn(`  ⚠️ Kon appearance niet updaten voor "${originalFieldName}":`, appearanceError)
+                }
+                
                 console.log(`  ✓ Bold font ingesteld voor "${originalFieldName}"`)
               }
             } catch (fontError) {
