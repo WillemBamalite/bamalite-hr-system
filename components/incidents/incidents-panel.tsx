@@ -27,8 +27,11 @@ export function IncidentsPanel() {
   const [description, setDescription] = useState("")
   const [assignedTo, setAssignedTo] = useState<"Nautic" | "Leo" | "Jos" | "Willem" | "Bart">("Nautic")
   const [severity, setSeverity] = useState<"laag" | "normaal" | "hoog" | "kritiek">("normaal")
+  const [incidentDate, setIncidentDate] = useState("")
+  const [selectedPloeg, setSelectedPloeg] = useState<"Ploeg A" | "Ploeg B" | "">("")
   const [verklaringGemaakt, setVerklaringGemaakt] = useState(false)
   const [verzekeringIngelicht, setVerzekeringIngelicht] = useState(false)
+  const [verzekeringAfgerond, setVerzekeringAfgerond] = useState(false)
   const [incidentenRapportNodig, setIncidentenRapportNodig] = useState<"ja" | "nee">("nee")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [filter, setFilter] = useState<"open" | "resolved">("open")
@@ -47,10 +50,13 @@ export function IncidentsPanel() {
     setSelectedCrewId("")
     setTitle("")
     setDescription("")
+    setIncidentDate("")
+    setSelectedPloeg("")
     setAssignedTo("Nautic")
     setSeverity("normaal")
     setVerklaringGemaakt(false)
     setVerzekeringIngelicht(false)
+    setVerzekeringAfgerond(false)
     setIncidentenRapportNodig("nee")
     setIsEditing(false)
     setEditingIncidentId("")
@@ -103,20 +109,25 @@ export function IncidentsPanel() {
         reported_by: user?.email || null,
         status: 'open',
         description: description.trim() || null,
+        incident_date: incidentDate || null,
         verklaring_gemaakt: verklaringGemaakt,
         verzekering_ingelicht: verzekeringIngelicht,
+        verzekering_afgerond: verzekeringAfgerond,
         incidenten_rapport_nodig: incidentenRapportNodig === "ja"
       }
 
       if (selectedIncidentType === "ship") {
         incidentData.related_ship_id = selectedShipId
         incidentData.related_crew_id = null
+        incidentData.ploeg = selectedPloeg || null
       } else if (selectedIncidentType === "crew") {
         incidentData.related_crew_id = selectedCrewId
         incidentData.related_ship_id = null
+        incidentData.ploeg = null
       } else {
         incidentData.related_crew_id = null
         incidentData.related_ship_id = null
+        incidentData.ploeg = null
       }
 
       let createdIncidentId: string | null = null
@@ -129,19 +140,24 @@ export function IncidentsPanel() {
           assigned_to: assignedTo,
           severity: severity,
           description: incidentData.description || null,
+          incident_date: incidentDate || null,
           verklaring_gemaakt: verklaringGemaakt,
           verzekering_ingelicht: verzekeringIngelicht,
+          verzekering_afgerond: verzekeringAfgerond,
           incidenten_rapport_nodig: incidentenRapportNodig === "ja"
         }
         if (selectedIncidentType === "ship") {
           updates.related_ship_id = selectedShipId
           updates.related_crew_id = null
+          updates.ploeg = selectedPloeg || null
         } else if (selectedIncidentType === "crew") {
           updates.related_ship_id = null
           updates.related_crew_id = selectedCrewId
+          updates.ploeg = null
         } else {
           updates.related_ship_id = null
           updates.related_crew_id = null
+          updates.ploeg = null
         }
         await updateIncident(editingIncidentId, updates)
         createdIncidentId = editingIncidentId
@@ -502,7 +518,7 @@ export function IncidentsPanel() {
                         {getIncidentTypeIcon(incident.incident_type)}
                         <span className="text-gray-600">
                           {incident.incident_type === "ship"
-                            ? relatedShip?.name || "Onbekend schip"
+                            ? `${relatedShip?.name || "Onbekend schip"}${incident.ploeg ? ` (${incident.ploeg})` : ""}`
                             : incident.incident_type === "crew"
                             ? relatedCrew
                               ? `${relatedCrew.first_name} ${relatedCrew.last_name}`
@@ -510,6 +526,15 @@ export function IncidentsPanel() {
                             : incident.incident_type.charAt(0).toUpperCase() + incident.incident_type.slice(1)}
                         </span>
                       </div>
+
+                      {incident.incident_date && (
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                          <span className="text-gray-600 text-xs">
+                            Incident datum: {format(new Date(incident.incident_date), "d MMM yyyy", { locale: nl })}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-gray-600 flex-shrink-0" />
@@ -581,6 +606,21 @@ export function IncidentsPanel() {
                               className={`text-xs cursor-pointer ${incident.verzekering_ingelicht ? 'line-through text-gray-500' : 'text-gray-700'}`}
                             >
                               Verzekering ingelicht
+                            </Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`verzekering-afgerond-${incident.id}`}
+                              checked={incident.verzekering_afgerond || false}
+                              onCheckedChange={(checked) => 
+                                handleChecklistUpdate(incident.id, 'verzekering_afgerond', checked === true)
+                              }
+                            />
+                            <Label 
+                              htmlFor={`verzekering-afgerond-${incident.id}`}
+                              className={`text-xs cursor-pointer ${incident.verzekering_afgerond ? 'line-through text-gray-500' : 'text-gray-700'}`}
+                            >
+                              Verzekering afgerond
                             </Label>
                           </div>
                           <div className="flex items-center gap-2">
@@ -678,10 +718,13 @@ export function IncidentsPanel() {
                                 setSelectedCrewId(incident.related_crew_id || "")
                                 setTitle(incident.title || "")
                                 setDescription(incident.description || "")
+                                setIncidentDate(incident.incident_date || "")
+                                setSelectedPloeg(incident.ploeg || "")
                                 setAssignedTo(incident.assigned_to || "Nautic")
                                 setSeverity(incident.severity || "normaal")
                                 setVerklaringGemaakt(incident.verklaring_gemaakt || false)
                                 setVerzekeringIngelicht(incident.verzekering_ingelicht || false)
+                                setVerzekeringAfgerond(incident.verzekering_afgerond || false)
                                 setIncidentenRapportNodig(incident.incidenten_rapport_nodig ? "ja" : "nee")
                               }}
                               className="flex items-center gap-1.5"
@@ -744,6 +787,16 @@ export function IncidentsPanel() {
             </div>
 
             <div>
+              <Label htmlFor="incident-date">Datum van het incident</Label>
+              <Input
+                id="incident-date"
+                type="date"
+                value={incidentDate}
+                onChange={(e) => setIncidentDate(e.target.value)}
+              />
+            </div>
+
+            <div>
               <Label>Incidenttype *</Label>
               <Select
                 value={selectedIncidentType}
@@ -768,21 +821,39 @@ export function IncidentsPanel() {
             </div>
 
             {selectedIncidentType === "ship" && (
-              <div>
-                <Label>Schip *</Label>
-                <Select value={selectedShipId} onValueChange={setSelectedShipId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecteer een schip" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ships.map((ship: any) => (
-                      <SelectItem key={ship.id} value={ship.id}>
-                        {ship.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                <div>
+                  <Label>Schip *</Label>
+                  <Select value={selectedShipId} onValueChange={setSelectedShipId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecteer een schip" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ships.map((ship: any) => (
+                        <SelectItem key={ship.id} value={ship.id}>
+                          {ship.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Ploeg</Label>
+                  <Select 
+                    value={selectedPloeg || "none"} 
+                    onValueChange={(value: "Ploeg A" | "Ploeg B" | "none") => setSelectedPloeg(value === "none" ? "" : value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecteer ploeg (optioneel)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Geen ploeg</SelectItem>
+                      <SelectItem value="Ploeg A">Ploeg A</SelectItem>
+                      <SelectItem value="Ploeg B">Ploeg B</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
 
             {selectedIncidentType === "crew" && (
@@ -869,6 +940,19 @@ export function IncidentsPanel() {
                   className="text-sm font-normal cursor-pointer"
                 >
                   Verzekering ingelicht
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="verzekering-afgerond"
+                  checked={verzekeringAfgerond}
+                  onCheckedChange={(checked) => setVerzekeringAfgerond(checked === true)}
+                />
+                <Label
+                  htmlFor="verzekering-afgerond"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Verzekering afgerond
                 </Label>
               </div>
               <div>

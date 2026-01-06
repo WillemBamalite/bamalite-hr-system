@@ -784,28 +784,30 @@ export function TasksPanel() {
                                         Ik pak dit op
                                       </Button>
                                     )}
-                                    {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                    {((task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend')) || task.assigned_to === "Nautic") && (
                                       <div className="flex flex-col gap-2 w-full">
-                                        <div className="flex flex-wrap gap-2">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleReleaseTask(task.id)}
-                                            className="flex items-center gap-1.5"
-                                          >
-                                            <X className="w-4 h-4" />
-                                            Vrijgeven
-                                          </Button>
-                                          <Button
-                                            variant="default"
-                                            size="sm"
-                                            onClick={() => handleComplete(task.id)}
-                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
-                                          >
-                                            <CheckCircle2 className="w-4 h-4" />
-                                            Voltooien
-                                          </Button>
-                                        </div>
+                                        {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                          <div className="flex flex-wrap gap-2">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleReleaseTask(task.id)}
+                                              className="flex items-center gap-1.5"
+                                            >
+                                              <X className="w-4 h-4" />
+                                              Vrijgeven
+                                            </Button>
+                                            <Button
+                                              variant="default"
+                                              size="sm"
+                                              onClick={() => handleComplete(task.id)}
+                                              className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
+                                            >
+                                              <CheckCircle2 className="w-4 h-4" />
+                                              Voltooien
+                                            </Button>
+                                          </div>
+                                        )}
                                         <Label className="text-xs text-gray-600">Statusupdate</Label>
                                         <Textarea
                                           rows={2}
@@ -832,7 +834,7 @@ export function TasksPanel() {
                                         </div>
                                       </div>
                                     )}
-                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && (
+                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && task.assigned_to !== "Nautic" && (
                                       <span className="text-xs text-gray-500 italic">
                                         Wordt behandeld door {task.taken_by}
                                       </span>
@@ -1062,28 +1064,30 @@ export function TasksPanel() {
                                         Ik pak dit op
                                       </Button>
                                     )}
-                                    {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                    {((task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend')) || task.assigned_to === "Nautic") && (
                                       <div className="flex flex-col gap-2 w-full">
-                                        <div className="flex flex-wrap gap-2">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleReleaseTask(task.id)}
-                                            className="flex items-center gap-1.5"
-                                          >
-                                            <X className="w-4 h-4" />
-                                            Vrijgeven
-                                          </Button>
-                                          <Button
-                                            variant="default"
-                                            size="sm"
-                                            onClick={() => handleComplete(task.id)}
-                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
-                                          >
-                                            <CheckCircle2 className="w-4 h-4" />
-                                            Voltooien
-                                          </Button>
-                                        </div>
+                                        {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                          <div className="flex flex-wrap gap-2">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleReleaseTask(task.id)}
+                                              className="flex items-center gap-1.5"
+                                            >
+                                              <X className="w-4 h-4" />
+                                              Vrijgeven
+                                            </Button>
+                                            <Button
+                                              variant="default"
+                                              size="sm"
+                                              onClick={() => handleComplete(task.id)}
+                                              className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
+                                            >
+                                              <CheckCircle2 className="w-4 h-4" />
+                                              Voltooien
+                                            </Button>
+                                          </div>
+                                        )}
                                         <Label className="text-xs text-gray-600">Statusupdate</Label>
                                         <Textarea
                                           rows={2}
@@ -1110,7 +1114,7 @@ export function TasksPanel() {
                                         </div>
                                       </div>
                                     )}
-                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && (
+                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && task.assigned_to !== "Nautic" && (
                                       <span className="text-xs text-gray-500 italic">
                                         Wordt behandeld door {task.taken_by}
                                       </span>
@@ -1340,28 +1344,30 @@ export function TasksPanel() {
                                         Ik pak dit op
                                       </Button>
                                     )}
-                                    {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                    {((task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend')) || task.assigned_to === "Nautic") && (
                                       <div className="flex flex-col gap-2 w-full">
-                                        <div className="flex flex-wrap gap-2">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleReleaseTask(task.id)}
-                                            className="flex items-center gap-1.5"
-                                          >
-                                            <X className="w-4 h-4" />
-                                            Vrijgeven
-                                          </Button>
-                                          <Button
-                                            variant="default"
-                                            size="sm"
-                                            onClick={() => handleComplete(task.id)}
-                                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
-                                          >
-                                            <CheckCircle2 className="w-4 h-4" />
-                                            Voltooien
-                                          </Button>
-                                        </div>
+                                        {task.status === 'in_progress' && task.taken_by === (user?.email || 'Onbekend') && (
+                                          <div className="flex flex-wrap gap-2">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleReleaseTask(task.id)}
+                                              className="flex items-center gap-1.5"
+                                            >
+                                              <X className="w-4 h-4" />
+                                              Vrijgeven
+                                            </Button>
+                                            <Button
+                                              variant="default"
+                                              size="sm"
+                                              onClick={() => handleComplete(task.id)}
+                                              className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
+                                            >
+                                              <CheckCircle2 className="w-4 h-4" />
+                                              Voltooien
+                                            </Button>
+                                          </div>
+                                        )}
                                         <Label className="text-xs text-gray-600">Statusupdate</Label>
                                         <Textarea
                                           rows={2}
@@ -1388,7 +1394,7 @@ export function TasksPanel() {
                                         </div>
                                       </div>
                                     )}
-                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && (
+                                    {task.status === 'in_progress' && task.taken_by !== (user?.email || 'Onbekend') && task.assigned_to !== "Nautic" && (
                                       <span className="text-xs text-gray-500 italic">
                                         Wordt behandeld door {task.taken_by}
                                       </span>
