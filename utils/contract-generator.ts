@@ -249,7 +249,12 @@ async function setBoldFontForAllFields(fields: any[], boldFont: any, pdfDoc: PDF
   
   fields.forEach((field: any) => {
     try {
-      if (field.constructor.name === 'PDFTextField') {
+      // Check of het een text field is - pdf-lib gebruikt mogelijk andere constructor namen
+      const isTextField = field.constructor.name === 'PDFTextField' || 
+                          field.constructor.name === 'e' ||
+                          typeof (field as any).setText === 'function'
+      
+      if (isTextField) {
         const fieldName = field.getName()
         const acroField = (field as any).acroField
         
@@ -275,9 +280,17 @@ async function setBoldFontForAllFields(fields: any[], boldFont: any, pdfDoc: PDF
               // Forceer update van de appearance na het instellen van de tekst
               if (typeof field.updateAppearances === 'function') {
                 field.updateAppearances(boldFont)
+                console.log(`✓ updateAppearances() aangeroepen voor veld "${fieldName}"`)
+              } else {
+                // Als updateAppearances niet bestaat, probeer de appearance handmatig te updaten
+                const fieldValue = field.getText()
+                if (fieldValue) {
+                  // Herstel de tekst om de appearance te forceren
+                  field.setText(fieldValue)
+                }
               }
             } catch (e) {
-              // Negeer als updateAppearances niet werkt
+              console.warn(`Kon appearance niet updaten voor veld ${fieldName}:`, e)
             }
             
             console.log(`✓ Bold font ingesteld voor veld "${fieldName}" (fontSize: ${fontSize})`)
