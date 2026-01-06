@@ -69,8 +69,25 @@ export async function generateContract(
     const templateBytes = await templateResponse.arrayBuffer()
     console.log(`Template loaded successfully, size: ${templateBytes.byteLength} bytes`)
     
+    // Controleer of de PDF bytes geldig zijn
+    if (templateBytes.byteLength === 0) {
+      throw new Error('PDF template is leeg (0 bytes)')
+    }
+    
+    // Controleer of het een geldige PDF is (moet beginnen met %PDF)
+    const firstBytes = new Uint8Array(templateBytes.slice(0, 4))
+    const pdfHeader = String.fromCharCode(...firstBytes)
+    if (pdfHeader !== '%PDF') {
+      console.error('⚠️ PDF header check failed. First 4 bytes:', pdfHeader)
+      console.error('⚠️ Dit kan betekenen dat de PDF niet correct wordt geladen')
+    } else {
+      console.log('✓ PDF header check passed (geldige PDF)')
+    }
+    
     // Laad het PDF document
+    console.log('Loading PDF document with pdf-lib...')
     const pdfDoc = await PDFDocument.load(templateBytes)
+    console.log('✓ PDF document loaded successfully')
     
     // Probeer formuliervelden te krijgen
     let fieldsFilled = false
