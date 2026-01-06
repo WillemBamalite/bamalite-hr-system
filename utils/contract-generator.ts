@@ -74,52 +74,76 @@ export async function generateContract(
     
     // Probeer formuliervelden te krijgen
     let fieldsFilled = false
+    let form: any = null
+    let fields: any[] = []
+    
     try {
-      const form = pdfDoc.getForm()
-      const fields = form.getFields()
+      form = pdfDoc.getForm()
+      fields = form.getFields()
       
       console.log('=== PDF ANALYSE ===')
       console.log('Aantal formuliervelden gevonden:', fields.length)
       
       if (fields.length > 0) {
-        console.log('Formuliervelden:')
-        fields.forEach((field: any) => {
-          console.log(`  - ${field.getName()} (${field.constructor.name})`)
+        console.log('Formuliervelden gevonden:')
+        fields.forEach((field: any, index: number) => {
+          try {
+            const fieldName = field.getName()
+            const fieldType = field.constructor.name
+            console.log(`  [${index + 1}] ${fieldName} (${fieldType})`)
+          } catch (e) {
+            console.log(`  [${index + 1}] <veld naam kon niet worden opgehaald> (${field.constructor.name})`)
+          }
         })
         
-        // Als er formuliervelden zijn, vul ze in (zonder bold font eerst)
+        // Als er formuliervelden zijn, vul ze in
         try {
+          console.log('=== START VELDEN INVULLEN ===')
           fillContractFields(form, contractData, options)
           fieldsFilled = true
+          console.log('✓ Velden ingevuld, nu bold font instellen...')
           
           // Probeer bold font in te stellen na het invullen
           try {
             const helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
             await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
+            console.log('✓ Bold font ingesteld')
           } catch (fontError) {
-            console.warn('Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
+            console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
           }
           
           form.flatten()
-          console.log('✓ Contract ingevuld met formuliervelden')
+          console.log('✓ Contract ingevuld en geflattened')
         } catch (fillError) {
-          console.error('⚠️ Fout bij het invullen van formuliervelden:', fillError)
-          // Probeer tekst op posities als fallback
-          await fillContractWithText(pdfDoc, contractData, options)
+          console.error('❌ FOUT bij het invullen van formuliervelden:', fillError)
+          console.error('Error details:', {
+            message: fillError instanceof Error ? fillError.message : String(fillError),
+            stack: fillError instanceof Error ? fillError.stack : undefined
+          })
+          fieldsFilled = false
         }
       } else {
-        // Geen formuliervelden, gebruik tekst op posities
-        console.log('⚠️ Geen formuliervelden gevonden in PDF')
-        console.log('Gebruik tekst op specifieke posities (coördinaten moeten worden aangepast)')
-        await fillContractWithText(pdfDoc, contractData, options)
+        console.warn('⚠️ Geen formuliervelden gevonden in PDF')
+        console.warn('Dit betekent dat de PDF geen AcroForm velden heeft')
+        console.warn('De PDF moet formuliervelden hebben om automatisch ingevuld te worden')
       }
     } catch (error) {
-      // Als er geen formulier is, gebruik tekst op posities
-      console.error('⚠️ Fout bij het ophalen van formuliervelden:', error)
-      if (!fieldsFilled) {
-        console.log('Gebruik tekst op specifieke posities (coördinaten moeten worden aangepast)')
-        await fillContractWithText(pdfDoc, contractData, options)
-      }
+      console.error('❌ FOUT bij het ophalen van formuliervelden:', error)
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      fieldsFilled = false
+    }
+    
+    // Als er geen velden zijn ingevuld, gooi een duidelijke error
+    if (!fieldsFilled) {
+      const errorMsg = fields.length === 0 
+        ? 'De PDF heeft geen formuliervelden. Zorg ervoor dat de PDF AcroForm velden bevat.'
+        : 'De formuliervelden konden niet worden ingevuld. Controleer de console logs voor details.'
+      
+      console.error('❌', errorMsg)
+      throw new Error(errorMsg)
     }
     
     // Genereer de PDF bytes
