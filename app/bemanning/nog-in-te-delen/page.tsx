@@ -15,6 +15,9 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { BackButton } from "@/components/ui/back-button";
+import { ContractDialog } from "@/components/crew/contract-dialog";
+import type { ContractData } from "@/utils/contract-generator";
+import { FileText } from "lucide-react";
 
 export default function NogInTeDelenPage() {
   const { crew, ships, loading, error, updateCrew, addCrew, deleteCrew } = useSupabaseData();
@@ -30,6 +33,9 @@ export default function NogInTeDelenPage() {
   const [showNewCandidateDialog, setShowNewCandidateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingMember, setEditingMember] = useState<any>(null);
+  const [showContractDialog, setShowContractDialog] = useState(false);
+  const [selectedMemberForContract, setSelectedMemberForContract] = useState<any>(null);
+  const [contractData, setContractData] = useState<ContractData | null>(null);
   const [candidateForm, setCandidateForm] = useState({
     firstName: "",
     lastName: "",
@@ -184,6 +190,48 @@ export default function NogInTeDelenPage() {
     } catch (error) {
       return dateString;
     }
+  };
+
+  // Functie om crew member data om te zetten naar ContractData
+  const prepareContractData = (member: any): ContractData => {
+    const selectedShip = ships.find(ship => ship.id === member.ship_id);
+    const shipName = selectedShip ? selectedShip.name : '';
+
+    return {
+      firstName: member.first_name || '',
+      lastName: member.last_name || '',
+      birthDate: member.birth_date || '',
+      birthPlace: member.birth_place || '',
+      nationality: member.nationality || 'NL',
+      address: member.address || {
+        street: '',
+        city: '',
+        postalCode: '',
+        country: ''
+      },
+      phone: member.phone || '',
+      email: member.email || '',
+      position: member.position || '',
+      company: member.company || 'Bamalite S.A.',
+      in_dienst_vanaf: member.in_dienst_vanaf || '',
+      matricule: member.matricule || '',
+      shipName: shipName
+    };
+  };
+
+  // Functie om contract dialog te openen
+  const handleOpenContractDialog = (member: any) => {
+    const data = prepareContractData(member);
+    setContractData(data);
+    setSelectedMemberForContract(member);
+    setShowContractDialog(true);
+  };
+
+  // Functie die wordt aangeroepen na het sluiten van de contract dialog
+  const handleContractDialogComplete = () => {
+    setShowContractDialog(false);
+    setContractData(null);
+    setSelectedMemberForContract(null);
   };
 
 
@@ -966,6 +1014,21 @@ export default function NogInTeDelenPage() {
                   </div>
                 )}
 
+                {/* Contract opstellen knop (alleen als contract nog niet is afgevinkt) */}
+                {!member.arbeidsovereenkomst && (
+                  <div className="pt-2 border-t">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-blue-600 border-blue-200 hover:bg-blue-50"
+                      onClick={() => handleOpenContractDialog(member)}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Contract opstellen
+                    </Button>
+                  </div>
+                )}
+
                 {/* Checklist kan direct in de kaart worden afgerond door op de items te klikken */}
               </CardContent>
             </Card>
@@ -1686,6 +1749,16 @@ export default function NogInTeDelenPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Contract Dialog */}
+      {contractData && (
+        <ContractDialog
+          open={showContractDialog}
+          onOpenChange={setShowContractDialog}
+          crewData={contractData}
+          onComplete={handleContractDialogComplete}
+        />
+      )}
     </div>
   );
 } 
