@@ -369,12 +369,6 @@ function fillContractFields(
         if (!data.in_dienst_vanaf) return ''
         return calculateDatePlus3Months(data.in_dienst_vanaf)
       })(), // Voor "in_dienst_vanaf + 3maanden" (zonder spaties en met plus)
-      // Extra mappings voor genormaliseerde versies
-      'firma': data.company, // Voor "Firma" (hoofdletter)
-      'functie': data.position, // Voor "Functie" (hoofdletter)
-      'basissalaris': data.basisSalaris || '', // Voor "Basissalaris" (hoofdletter)
-      'reiskosten': data.reiskosten || '', // Voor "Reiskosten" (hoofdletter)
-      'scheepsnaam': data.shipName || '', // Voor "Scheepsnaam" (hoofdletter)
       // Alternatieve veldnamen voor proeftijd
       'proeftijd': (() => {
         if (!data.in_dienst_vanaf) return ''
@@ -393,8 +387,7 @@ function fillContractFields(
       'einddatum': data.in_dienst_tot ? formatDate(data.in_dienst_tot) : '',
       'contract_einddatum': data.in_dienst_tot ? formatDate(data.in_dienst_tot) : '',
       'matricule': data.matricule || '',
-      // Scheepsnaam
-      'scheepsnaam': data.shipName || '',
+      // Scheepsnaam (scheepsnaam is al eerder gedefinieerd)
       'schip': data.shipName || '',
       'scheep': data.shipName || '',
       // Datums
@@ -406,11 +399,9 @@ function fillContractFields(
       'datumopmaken': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
       'opmaakdatum': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
       'datum_opmak': format(new Date(), 'dd-MM-yyyy', { locale: nl }), // Alternatieve spelling
-      // Salaris velden
-      'basissalaris': data.basisSalaris || '',
+      // Salaris velden (basissalaris en reiskosten zijn al gedefinieerd, maar hier voor duidelijkheid)
       'salaris': data.basisSalaris || '',
       'kledinggeld': data.kledinggeld || '',
-      'reiskosten': data.reiskosten || '',
     }
     
     // Probeer alle velden in het formulier te vinden en in te vullen
