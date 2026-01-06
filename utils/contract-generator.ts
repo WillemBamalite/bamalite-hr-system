@@ -118,12 +118,15 @@ export async function generateContract(
           console.log('=== START VELDEN INVULLEN ===')
           fillContractFields(form, contractData, options)
           
-          // VERIFICATIE: Controleer of de velden daadwerkelijk zijn ingevuld
-          console.log('=== VERIFICATIE VELDEN ===')
+          // VERIFICATIE: Controleer of de velden daadwerkelijk zijn ingevuld (VOOR flatten)
+          console.log('=== VERIFICATIE VELDEN (voor flatten) ===')
           let verifiedFilledCount = 0
           fields.forEach((field: any) => {
             try {
-              if (field.constructor.name === 'PDFTextField') {
+              const isTextField = field.constructor.name === 'PDFTextField' || 
+                                  field.constructor.name === 'e' ||
+                                  typeof (field as any).setText === 'function'
+              if (isTextField) {
                 const fieldValue = field.getText()
                 const fieldName = field.getName()
                 if (fieldValue && fieldValue.trim() !== '') {
@@ -140,7 +143,7 @@ export async function generateContract(
           
           if (verifiedFilledCount > 0) {
             fieldsFilled = true
-            console.log(`✓ ${verifiedFilledCount} velden zijn daadwerkelijk ingevuld`)
+            console.log(`✓ ${verifiedFilledCount} velden zijn daadwerkelijk ingevuld (voor flatten)`)
           } else {
             console.error('❌ GEEN ENKEL VELD IS INGEVULD!')
             console.error('Dit betekent dat fillContractFields() de velden niet heeft kunnen invullen')
