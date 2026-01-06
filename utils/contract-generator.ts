@@ -100,20 +100,49 @@ export async function generateContract(
         try {
           console.log('=== START VELDEN INVULLEN ===')
           fillContractFields(form, contractData, options)
-          fieldsFilled = true
-          console.log('✓ Velden ingevuld, nu bold font instellen...')
           
-          // Probeer bold font in te stellen na het invullen
-          try {
-            const helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
-            await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
-            console.log('✓ Bold font ingesteld')
-          } catch (fontError) {
-            console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
+          // VERIFICATIE: Controleer of de velden daadwerkelijk zijn ingevuld
+          console.log('=== VERIFICATIE VELDEN ===')
+          let verifiedFilledCount = 0
+          fields.forEach((field: any) => {
+            try {
+              if (field.constructor.name === 'PDFTextField') {
+                const fieldValue = field.getText()
+                const fieldName = field.getName()
+                if (fieldValue && fieldValue.trim() !== '') {
+                  verifiedFilledCount++
+                  console.log(`✓ [${verifiedFilledCount}] Veld "${fieldName}" heeft waarde: "${fieldValue}"`)
+                } else {
+                  console.warn(`⚠️ Veld "${fieldName}" is nog steeds leeg na invullen`)
+                }
+              }
+            } catch (e) {
+              console.warn(`⚠️ Kon waarde van veld niet ophalen:`, e)
+            }
+          })
+          
+          if (verifiedFilledCount > 0) {
+            fieldsFilled = true
+            console.log(`✓ ${verifiedFilledCount} velden zijn daadwerkelijk ingevuld`)
+          } else {
+            console.error('❌ GEEN ENKEL VELD IS INGEVULD!')
+            console.error('Dit betekent dat fillContractFields() de velden niet heeft kunnen invullen')
+            fieldsFilled = false
           }
           
-          form.flatten()
-          console.log('✓ Contract ingevuld en geflattened')
+          if (fieldsFilled) {
+            // Probeer bold font in te stellen na het invullen
+            try {
+              const helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
+              await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
+              console.log('✓ Bold font ingesteld')
+            } catch (fontError) {
+              console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
+            }
+            
+            form.flatten()
+            console.log('✓ Contract ingevuld en geflattened')
+          }
         } catch (fillError) {
           console.error('❌ FOUT bij het invullen van formuliervelden:', fillError)
           console.error('Error details:', {
@@ -484,7 +513,22 @@ function fillContractFields(
               }
               
               // Vul nu de tekst in
-              field.setText(value)
+              console.log(`  → Probeer veld "${field.getName()}" in te vullen met partial match "${key}": "${value}"`)
+              
+              try {
+                field.setText(value)
+                
+                // VERIFICATIE: Controleer direct of de waarde is ingesteld
+                const verifyValue = field.getText()
+                if (verifyValue === value || verifyValue === value.trim()) {
+                  console.log(`  ✓ Veld "${field.getName()}" succesvol ingevuld met: "${verifyValue}"`)
+                } else {
+                  console.warn(`  ⚠️ Veld "${field.getName()}" heeft andere waarde. Verwacht: "${value}", Krijg: "${verifyValue}"`)
+                }
+              } catch (setTextError) {
+                console.error(`  ❌ FOUT bij setText voor veld "${field.getName()}":`, setTextError)
+                throw setTextError
+              }
               
               // Probeer de alignment in te stellen voor gecentreerde velden
               // Alleen als het veld daadwerkelijk gecentreerd moet zijn
