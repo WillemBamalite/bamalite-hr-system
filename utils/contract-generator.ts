@@ -410,10 +410,31 @@ function fillContractFields(
     console.log('Contract Options:', JSON.stringify(options, null, 2))
     console.log('Aantal velden om te verwerken:', fields.length)
     
+    // Log alle veldnamen die we gaan proberen te matchen
+    console.log('=== VELDNAMEN IN PDF ===')
+    fields.forEach((field: any, index: number) => {
+      try {
+        const fieldName = field.getName()
+        const fieldType = field.constructor.name
+        console.log(`  [${index + 1}] "${fieldName}" (${fieldType})`)
+      } catch (e) {
+        console.log(`  [${index + 1}] <veld naam kon niet worden opgehaald> (${field.constructor.name})`)
+      }
+    })
+    
+    // Log alle beschikbare mappings
+    console.log('=== BESCHIKBARE VELDNAMEN IN MAPPINGS ===')
+    Object.keys(fieldMappings).forEach((key, index) => {
+      console.log(`  [${index + 1}] "${key}" → "${fieldMappings[key]}"`)
+    })
+    
     let filledCount = 0
     
     fields.forEach((field: any) => {
-      const fieldName = field.getName().toLowerCase().trim()
+      const originalFieldName = field.getName()
+      const fieldName = originalFieldName.toLowerCase().trim()
+      
+      console.log(`\n--- Verwerken veld: "${originalFieldName}" (normalized: "${fieldName}") ---`)
       
       // Eerst proberen exacte match
       if (fieldMappings[fieldName]) {
