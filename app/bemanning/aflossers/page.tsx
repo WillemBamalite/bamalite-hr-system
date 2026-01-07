@@ -101,7 +101,8 @@ export default function ReizenAflossersPage() {
     start_date: "",
     end_date: "",
     start_datum: "",
-    start_tijd: ""
+    start_tijd: "",
+    notes: ""
   })
   const [editDiplomas, setEditDiplomas] = useState<string[]>([])
   
@@ -697,7 +698,7 @@ export default function ReizenAflossersPage() {
     }
   }
 
-  // Edit trip (voor ingedeelde trips)
+  // Edit trip (voor geplande, ingedeelde en actieve trips)
   const handleEditTrip = async () => {
     if (!editTripDialog) return
 
@@ -710,12 +711,13 @@ export default function ReizenAflossersPage() {
         start_date: editTripData.start_date || null,
         end_date: editTripData.end_date || null,
         start_datum: editTripData.start_datum || null,
-        start_tijd: editTripData.start_tijd || null
+        start_tijd: editTripData.start_tijd || null,
+        notes: editTripData.notes || null
       })
 
       setEditTripDialog(null)
-      setEditTripData({ trip_from: "", trip_to: "", aflosser_id: "none", start_date: "", end_date: "", start_datum: "", start_tijd: "" })
-      alert("Reis bijgewerkt!")
+      setEditTripData({ trip_from: "", trip_to: "", aflosser_id: "none", start_date: "", end_date: "", start_datum: "", start_tijd: "", notes: "" })
+      // Reis bijgewerkt - no alert needed
     } catch (error) {
       console.error("Error editing trip:", error)
       alert("Fout bij bewerken reis")
@@ -938,9 +940,31 @@ export default function ReizenAflossersPage() {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium">{getShipName(trip.ship_id)}</h4>
-                        <Badge className={getStatusColor(trip.status)}>
-                          {getStatusText(trip.status)}
-                        </Badge>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => {
+                              setEditTripDialog(trip.id)
+                              setEditTripData({
+                                trip_from: trip.trip_from,
+                                trip_to: trip.trip_to,
+                                aflosser_id: trip.aflosser_id || "none",
+                                start_date: trip.start_date || "",
+                                end_date: trip.end_date || "",
+                                start_datum: trip.start_datum || "",
+                                start_tijd: trip.start_tijd || "",
+                                notes: trip.notes || ""
+                              })
+                            }}
+                            className="p-1 hover:bg-gray-100 rounded transition-colors"
+                            title="Reis bewerken"
+                          >
+                            <Edit className="w-4 h-4 text-gray-500 hover:text-gray-700" />
+                          </button>
+                          
+                          <Badge className={getStatusColor(trip.status)}>
+                            {getStatusText(trip.status)}
+                          </Badge>
+                        </div>
                   </div>
                       
                       <div className="space-y-2 text-sm text-gray-600">
@@ -1018,7 +1042,8 @@ export default function ReizenAflossersPage() {
                                 start_date: trip.start_date || "",
                                 end_date: trip.end_date || "",
                                 start_datum: trip.start_datum || "",
-                                start_tijd: trip.start_tijd || ""
+                                start_tijd: trip.start_tijd || "",
+                                notes: trip.notes || ""
                                 })
                               }}
                               className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -1116,7 +1141,8 @@ export default function ReizenAflossersPage() {
                                 start_date: trip.start_date || "",
                                 end_date: trip.end_date || "",
                                 start_datum: trip.start_datum || "",
-                                start_tijd: trip.start_tijd || ""
+                                start_tijd: trip.start_tijd || "",
+                                notes: trip.notes || ""
                                 })
                               }}
                               className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -1999,6 +2025,16 @@ export default function ReizenAflossersPage() {
                       </SelectContent>
                     </Select>
                   </div>
+            <div>
+              <Label htmlFor="edit_notes">Notities</Label>
+              <Textarea
+                id="edit_notes"
+                value={editTripData.notes}
+                onChange={(e) => setEditTripData({...editTripData, notes: e.target.value})}
+                placeholder="Optionele notities..."
+                rows={3}
+              />
+            </div>
             <div className="flex space-x-2">
               <Button onClick={handleEditTrip} className="flex-1">
                 <Edit className="w-4 h-4 mr-2" />
