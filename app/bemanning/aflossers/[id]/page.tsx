@@ -1491,7 +1491,7 @@ export default function AflosserDetailPage() {
               <span className="text-sm text-gray-600">Totaal werkdagen:</span>
               <span className="font-medium text-blue-600">
                 {(() => {
-                  // Calculate total work days from all completed trips using the new function
+                  // Calculate total work days from all completed trips using the same logic as the trip cards
                   const completedTrips = assignmentHistory.filter((trip: any) => 
                     trip.status === 'voltooid' && 
                     trip.start_datum && 
@@ -1503,7 +1503,15 @@ export default function AflosserDetailPage() {
                   let totalWorkDays = 0
                   
                   completedTrips.forEach((trip: any) => {
-                    const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                    // Use the same calculation logic as in the trip cards
+                    let workDays
+                    if (aflosser?.vaste_dienst) {
+                      // For vaste dienst aflossers, use hour-based calculation
+                      workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                    } else {
+                      // For other aflossers, use simple day calculation
+                      workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                    }
                     totalWorkDays += workDays
                   })
                   
