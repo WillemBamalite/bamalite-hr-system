@@ -338,6 +338,10 @@ function fillContractFields(
       'naam': `${data.firstName} ${data.lastName}`,
       'volledigenaam': `${data.firstName} ${data.lastName}`,
       'volledigenaamwerknemer': `${data.firstName} ${data.lastName}`, // Voor "Volledige naam werknemer" (zonder spaties)
+      // Optionele speciale veldnamen als je in de PDF de eerste-pagina velden
+      // een andere naam geeft zodat alleen die gecentreerd hoeven te worden
+      // (bijvoorbeeld "Werknemer_centreren" en "Firma_centreren")
+      'werknemer_centreren': `${data.firstName} ${data.lastName}`,
       'geboortedatum': formatDate(data.birthDate),
       'geboorteplaats': data.birthPlace || '',
       'nationaliteit': getNationalityLabel(data.nationality),
@@ -352,6 +356,8 @@ function fillContractFields(
       'positie': data.position,
       'bedrijf': data.company,
       'firma': data.company,
+      // Eerste-pagina firma veld als je dit in de PDF hernoemt naar "Firma_centreren"
+      'firma_centreren': data.company,
       'firmanummer': companyNumber,
       'firmanr': companyNumber,
       'bedrijfsnummer': companyNumber,
@@ -560,13 +566,15 @@ function fillContractFields(
               // Dit is niet kritiek, ga door
             }
 
-            // Alleen voor de twee velden in het kader op pagina 1 centreren we expliciet:
-            // - "Firma"  (werkgever)
-            // - "Volledige naam werknemer" (werknemer)
+            // Alleen voor de twee velden in het kader op pagina 1 centreren we expliciet.
+            // Om onderscheid te maken met dezelfde velden op andere pagina's kun je in de PDF
+            // de eerste-pagina velden hernoemen naar bijvoorbeeld:
+            //  - "Firma_centreren"
+            //  - "Werknemer_centreren"
             try {
               const needsCenter =
-                originalFieldName === 'Firma' ||
-                originalFieldName === 'Volledige naam werknemer'
+                fieldNameNormalized === 'firma_centreren' ||
+                fieldNameNormalized === 'werknemer_centreren'
 
               if (needsCenter) {
                 const acroFieldAlign = (field as any).acroField
