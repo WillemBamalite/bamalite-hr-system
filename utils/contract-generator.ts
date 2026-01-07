@@ -567,14 +567,22 @@ function fillContractFields(
             }
 
             // Alleen voor de twee velden in het kader op pagina 1 centreren we expliciet.
-            // Om onderscheid te maken met dezelfde velden op andere pagina's kun je in de PDF
-            // de eerste-pagina velden hernoemen naar bijvoorbeeld:
-            //  - "Firma_centreren"
-            //  - "Werknemer_centreren"
+            // Om onderscheid te maken met dezelfde velden op andere pagina's gebruiken we speciale veldnamen,
+            // maar we staan verschillende varianten toe (met/zonder underscore/spatie, hoofdletters).
             try {
+              // fieldNameNormalized: lowercase, spaties weg, speciale tekens grotendeels weg
+              // Maak daarnaast een volledig "plain" variant zonder underscores e.d.
+              const fieldNamePlain = originalFieldName
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '')
+
               const needsCenter =
+                // Met underscore in de naam
                 fieldNameNormalized === 'firma_centreren' ||
-                fieldNameNormalized === 'werknemer_centreren'
+                fieldNameNormalized === 'werknemer_centreren' ||
+                // Zonder underscore / alleen letters-cijfers
+                fieldNamePlain === 'firmacentreren' ||
+                fieldNamePlain === 'werknemercentreren'
 
               if (needsCenter) {
                 const acroFieldAlign = (field as any).acroField
