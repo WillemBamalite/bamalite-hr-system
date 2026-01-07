@@ -559,8 +559,23 @@ function fillContractFields(
               console.warn(`  ⚠️ Kon bold font niet instellen voor veld ${fieldName} (niet kritiek):`, fontError)
               // Dit is niet kritiek, ga door
             }
-            
-            // Geen alignment meer forceren in code; we laten het PDF-template bepalen (links/gecentreerd)
+
+            // Alleen voor de twee velden in het kader op pagina 1 centreren we expliciet:
+            // - "Firma"  (werkgever)
+            // - "Volledige naam werknemer" (werknemer)
+            try {
+              const needsCenter =
+                originalFieldName === 'Firma' ||
+                originalFieldName === 'Volledige naam werknemer'
+
+              if (needsCenter && typeof (field as any).setAlignment === 'function') {
+                ;(field as any).setAlignment(1) // 1 = center
+                console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld op gecentreerd (specifiek eerste pagina)`)
+              }
+            } catch (alignError) {
+              console.warn(`  ⚠️ Kon uitlijning niet instellen voor "${originalFieldName}" (niet kritiek):`, alignError)
+            }
+
             filledCount++
             console.log(`✓ [${filledCount}] Veld "${originalFieldName}" (exact match) ingevuld met: "${matchedValue}"`)
           } else if (field.constructor.name === 'PDFCheckBox') {
