@@ -560,30 +560,25 @@ function fillContractFields(
               // Dit is niet kritiek, ga door
             }
               
-              // Probeer de alignment in te stellen voor gecentreerde velden
-              // Alleen als het veld daadwerkelijk gecentreerd moet zijn
-              // We respecteren de alignment die in het PDF is ingesteld voor andere velden
-              try {
-                const centerFields = ['volledigenaam', 'naam', 'voornaam', 'achternaam', 'firma', 'bedrijf']
-                if (centerFields.some(cf => fieldName.includes(cf))) {
-                  // Check eerst wat de huidige alignment is
-                  const acroField = (field as any).acroField
-                  if (acroField && acroField.dict) {
-                    const q = acroField.dict.lookup('Q') // Q = Quadding (alignment)
-                    // Als er geen alignment is ingesteld, of als het al gecentreerd is, stel het in
-                    if (q === undefined || q === null || q === 1) {
-                      if (typeof (field as any).setAlignment === 'function') {
-                        (field as any).setAlignment(1) // 1 = center
-                        console.log(`✓ Veld "${field.getName()}" uitlijning ingesteld op gecentreerd`)
+                  // Probeer de alignment in te stellen
+                  // We centreren alleen nog firma/bedrijfsnaam; naam van werknemer blijft links uitgelijnd
+                  try {
+                    const centerFields = ['firma', 'bedrijf']
+                    if (centerFields.some(cf => fieldName.includes(cf))) {
+                      const acroFieldAlign = (field as any).acroField
+                      if (acroFieldAlign && acroFieldAlign.dict) {
+                        const q = acroFieldAlign.dict.lookup('Q') // Q = Quadding (alignment)
+                        if (q === undefined || q === null || q === 1) {
+                          if (typeof (field as any).setAlignment === 'function') {
+                            (field as any).setAlignment(1) // 1 = center
+                            console.log(`✓ Veld "${field.getName()}" uitlijning ingesteld op gecentreerd`)
+                          }
+                        }
                       }
-                    } else {
-                      console.log(`✓ Veld "${field.getName()}" behoudt bestaande uitlijning (${q})`)
                     }
+                  } catch (alignError) {
+                    console.warn(`Kon uitlijning niet instellen voor veld ${fieldName}:`, alignError)
                   }
-                }
-              } catch (alignError) {
-                console.warn(`Kon uitlijning niet instellen voor veld ${fieldName}:`, alignError)
-              }
               
               filledCount++
               console.log(`✓ [${filledCount}] Veld "${originalFieldName}" (exact match) ingevuld met: "${matchedValue}"`)
