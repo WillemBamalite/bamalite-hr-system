@@ -566,9 +566,7 @@ function fillContractFields(
               // Dit is niet kritiek, ga door
             }
 
-            // Alleen voor de twee velden in het kader op pagina 1 centreren we expliciet.
-            // Om onderscheid te maken met dezelfde velden op andere pagina's gebruiken we speciale veldnamen,
-            // maar we staan verschillende varianten toe (met/zonder underscore/spatie, hoofdletters).
+            // Stel uitlijning in: centreren voor firma_centreren en werknemer_centreren, links voor alle andere velden
             try {
               // fieldNameNormalized: lowercase, spaties weg, speciale tekens grotendeels weg
               // Maak daarnaast een volledig "plain" variant zonder underscores e.d.
@@ -584,17 +582,47 @@ function fillContractFields(
                 fieldNamePlain === 'firmacentreren' ||
                 fieldNamePlain === 'werknemercentreren'
 
-              if (needsCenter) {
-                const acroFieldAlign = (field as any).acroField
-                if (acroFieldAlign && acroFieldAlign.dict) {
+              const acroFieldAlign = (field as any).acroField
+              if (acroFieldAlign && acroFieldAlign.dict) {
+                if (needsCenter) {
                   // Q = 0 (links), 1 (center), 2 (rechts)
                   acroFieldAlign.dict.set('Q', 1)
                   console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op center gezet`)
+                  
+                  // Forceer update van appearance na alignment wijziging
+                  try {
+                    const currentValue = field.getText()
+                    if (currentValue) {
+                      field.setText(currentValue)
+                    }
+                  } catch (e) {
+                    console.warn(`  ⚠️ Kon appearance niet updaten na centreren:`, e)
+                  }
+                } else {
+                  // Alle andere velden: links uitlijnen (Q = 0)
+                  acroFieldAlign.dict.set('Q', 0)
+                  console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op links gezet`)
+                  
+                  // Forceer update van appearance na alignment wijziging
+                  try {
+                    const currentValue = field.getText()
+                    if (currentValue) {
+                      field.setText(currentValue)
+                    }
+                  } catch (e) {
+                    console.warn(`  ⚠️ Kon appearance niet updaten na links uitlijnen:`, e)
+                  }
                 }
+              }
 
-                if (typeof (field as any).setAlignment === 'function') {
+              // Probeer ook setAlignment functie als die beschikbaar is
+              if (typeof (field as any).setAlignment === 'function') {
+                if (needsCenter) {
                   ;(field as any).setAlignment(1) // 1 = center
-                  console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld op gecentreerd (specifiek eerste pagina)`)
+                  console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld op gecentreerd via setAlignment`)
+                } else {
+                  ;(field as any).setAlignment(0) // 0 = left
+                  console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld op links via setAlignment`)
                 }
               }
             } catch (alignError) {
@@ -688,7 +716,58 @@ function fillContractFields(
                 throw setTextError
               }
               
-              // Geen alignment meer forceren in code; we laten het PDF-template bepalen (links/gecentreerd)
+              // Stel uitlijning in: centreren voor firma_centreren en werknemer_centreren, links voor alle andere velden
+              try {
+                const originalFieldName = field.getName()
+                const fieldNameNormalized = originalFieldName
+                  .toLowerCase()
+                  .trim()
+                  .replace(/\s+/g, '')
+                  .replace(/[+]/g, 'plus')
+                  .replace(/[^a-z0-9_]/g, '')
+                
+                const fieldNamePlain = originalFieldName
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]/g, '')
+
+                const needsCenter =
+                  fieldNameNormalized === 'firma_centreren' ||
+                  fieldNameNormalized === 'werknemer_centreren' ||
+                  fieldNamePlain === 'firmacentreren' ||
+                  fieldNamePlain === 'werknemercentreren'
+
+                const acroFieldAlign = (field as any).acroField
+                if (acroFieldAlign && acroFieldAlign.dict) {
+                  if (needsCenter) {
+                    acroFieldAlign.dict.set('Q', 1)
+                    console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op center gezet (partial match)`)
+                  } else {
+                    acroFieldAlign.dict.set('Q', 0)
+                    console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op links gezet (partial match)`)
+                  }
+                  
+                  // Forceer update van appearance
+                  try {
+                    const currentValue = field.getText()
+                    if (currentValue) {
+                      field.setText(currentValue)
+                    }
+                  } catch (e) {
+                    // Ignore
+                  }
+                }
+
+                if (typeof (field as any).setAlignment === 'function') {
+                  if (needsCenter) {
+                    ;(field as any).setAlignment(1)
+                  } else {
+                    ;(field as any).setAlignment(0)
+                  }
+                }
+              } catch (alignError) {
+                console.warn(`  ⚠️ Kon uitlijning niet instellen voor "${field.getName()}" (niet kritiek):`, alignError)
+              }
+              
               filledCount++
               console.log(`✓ [${filledCount}] Veld "${field.getName()}" (partial match: "${key}") ingevuld met: "${value}"`)
             } else if (field.constructor.name === 'PDFCheckBox') {
