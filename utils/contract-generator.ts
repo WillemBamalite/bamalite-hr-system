@@ -568,9 +568,18 @@ function fillContractFields(
                 originalFieldName === 'Firma' ||
                 originalFieldName === 'Volledige naam werknemer'
 
-              if (needsCenter && typeof (field as any).setAlignment === 'function') {
-                ;(field as any).setAlignment(1) // 1 = center
-                console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld op gecentreerd (specifiek eerste pagina)`)
+              if (needsCenter) {
+                const acroFieldAlign = (field as any).acroField
+                if (acroFieldAlign && acroFieldAlign.dict) {
+                  // Q = 0 (links), 1 (center), 2 (rechts)
+                  acroFieldAlign.dict.set('Q', 1)
+                  console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op center gezet`)
+                }
+
+                if (typeof (field as any).setAlignment === 'function') {
+                  ;(field as any).setAlignment(1) // 1 = center
+                  console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld op gecentreerd (specifiek eerste pagina)`)
+                }
               }
             } catch (alignError) {
               console.warn(`  ⚠️ Kon uitlijning niet instellen voor "${originalFieldName}" (niet kritiek):`, alignError)
