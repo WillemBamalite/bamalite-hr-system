@@ -171,6 +171,33 @@ export async function generateContract(
               console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
             }
             
+            // Stel alignment expliciet in voor alle velden VOOR flattenen
+            // Dit moet gebeuren NA het invullen van de tekst maar VOOR flattenen
+            try {
+              await setAlignmentForAllFields(fields)
+              console.log('✓ Alignment definitief ingesteld voor alle velden')
+              
+              // Forceer update van alle appearances na alignment wijziging
+              // Dit zorgt ervoor dat de appearance streams worden gegenereerd met de juiste alignment
+              fields.forEach((field: any) => {
+                try {
+                  if (typeof (field as any).updateAppearances === 'function') {
+                    (field as any).updateAppearances()
+                  } else {
+                    // Als updateAppearances niet beschikbaar is, forceer update door tekst opnieuw in te stellen
+                    const currentValue = field.getText()
+                    if (currentValue) {
+                      field.setText(currentValue)
+                    }
+                  }
+                } catch (e) {
+                  // Ignore errors
+                }
+              })
+            } catch (alignError) {
+              console.warn('⚠️ Kon alignment niet instellen:', alignError)
+            }
+            
             form.flatten()
             console.log('✓ Contract ingevuld en geflattened')
           }
@@ -249,6 +276,93 @@ function getTemplatePath(language: 'nl' | 'de', company: string, contractType?: 
     .replace(/\./g, '')
   
   return `/contracts/${companySlug}-${langCode}.pdf`
+}
+
+/**
+ * Stelt alignment in voor alle formuliervelden (centreren voor firma_centreren en werknemer_centreren, links voor anderen)
+ * Deze functie wordt aangeroepen VOOR flattenen om ervoor te zorgen dat de alignment behouden blijft
+ */
+async function setAlignmentForAllFields(fields: any[]) {
+  fields.forEach((field: any) => {
+    try {
+      const isTextField = field.constructor.name === 'PDFTextField' || 
+                          field.constructor.name === 'e' ||
+                          typeof (field as any).setText === 'function'
+      
+      if (isTextField) {
+        const originalFieldName = field.getName()
+        const fieldNameNormalized = originalFieldName
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '')
+          .replace(/[+]/g, 'plus')
+          .replace(/[^a-z0-9_]/g, '')
+        
+        const fieldNamePlain = originalFieldName
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '')
+
+        const needsCenter =
+          fieldNameNormalized === 'firma_centreren' ||
+          fieldNameNormalized === 'werknemer_centreren' ||
+          fieldNamePlain === 'firmacentreren' ||
+          fieldNamePlain === 'werknemercentreren'
+
+        const acroField = (field as any).acroField
+        if (acroField && acroField.dict) {
+          const alignmentValue = needsCenter ? 1 : 0 // 0 = left, 1 = center, 2 = right
+          
+          // Stel Q (Quadding) in - dit bepaalt de tekstuitlijning
+          acroField.dict.set('Q', alignmentValue)
+          
+          // Stel ook de DA (Default Appearance) string in met alignment
+          try {
+            const existingDA = acroField.dict.lookup('DA')
+            let fontSize = 12
+            if (existingDA) {
+              const daString = existingDA.toString()
+              const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
+              if (sizeMatch) {
+                fontSize = parseFloat(sizeMatch[1])
+              }
+            }
+            // DA string met alignment: /FontName Size Tf Color
+            acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+          } catch (daError) {
+            console.warn(`Kon DA niet instellen voor veld "${originalFieldName}":`, daError)
+          }
+          
+          console.log(`✓ Alignment op ${needsCenter ? 'center' : 'links'} gezet voor veld "${originalFieldName}" (Q=${alignmentValue})`)
+          
+          // Forceer update van appearance door tekst opnieuw in te stellen
+          // Dit zorgt ervoor dat de appearance stream wordt gegenereerd met de juiste alignment
+          try {
+            const currentValue = field.getText()
+            if (currentValue) {
+              // Verwijder en herstel de tekst om appearance te forceren
+              field.setText('')
+              field.setText(currentValue)
+            }
+          } catch (e) {
+            console.warn(`Kon appearance niet updaten voor veld "${originalFieldName}":`, e)
+          }
+        }
+
+        // Probeer ook setAlignment functie als die beschikbaar is (pdf-lib API)
+        if (typeof (field as any).setAlignment === 'function') {
+          try {
+            const alignmentValue = needsCenter ? 1 : 0
+            ;(field as any).setAlignment(alignmentValue)
+            console.log(`✓ setAlignment(${alignmentValue}) aangeroepen voor veld "${originalFieldName}"`)
+          } catch (alignError) {
+            console.warn(`setAlignment faalde voor veld "${originalFieldName}":`, alignError)
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Fout bij instellen alignment voor veld:`, error)
+    }
+  })
 }
 
 /**
