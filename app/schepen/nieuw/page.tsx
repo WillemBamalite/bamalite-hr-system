@@ -12,10 +12,12 @@ import Link from 'next/link';
 import { useSupabaseData } from '@/hooks/use-supabase-data';
 import { BackButton } from '@/components/ui/back-button';
 import { DashboardButton } from '@/components/ui/dashboard-button';
+import { Users } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 export default function NewShipPage() {
   const router = useRouter();
-  const { ships, addShip, loading, error } = useSupabaseData();
+  const { ships, addShip, crew, updateCrew, loading, error } = useSupabaseData();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [formData, setFormData] = useState({
@@ -23,24 +25,108 @@ export default function NewShipPage() {
     shipName: '',
     company: 'Bamalite S.A.'
   });
+  const [selectedOverigPersoneel, setSelectedOverigPersoneel] = useState<string[]>([]);
+  const [successData, setSuccessData] = useState<{shipName: string; personeelCount: number} | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // Voeg het schip toe aan Supabase
-      const newShip = {
-        id: formData.shipId,
-        name: formData.shipName,
-        max_crew: 8,
-        status: 'Operationeel', // Required field in Supabase
-        location: '', // Required field in Supabase
-        route: '', // Required field in Supabase
-        company: formData.company
-      };
+      // Zorg ervoor dat het "overig" schip bestaat voordat we personeel toewijzen
+      if (selectedOverigPersoneel.length > 0) {
+        try {
+          // Check of "overig" schip bestaat, zo niet, maak het aan
+          const { data: existingShip, error: checkError } = await supabase
+            .from('ships')
+            .select('id')
+            .eq('id', 'overig')
+            .single();
+
+          if (checkError && checkError.code === 'PGRST116') {
+            // Schip bestaat niet, maak het aan
+            const { error: insertError } = await supabase
+              .from('ships')
+              .insert([{
+                id: 'overig',
+                name: 'Overig Personeel',
+                max_crew: 0,
+                status: 'Operationeel',
+                location: '',
+                route: '',
+                company: 'Bamalite S.A.'
+              }]);
+
+            if (insertError) {
+              console.error('Fout bij aanmaken overig schip:', insertError);
+              throw insertError;
+            }
+          } else if (checkError) {
+            console.error('Fout bij controleren overig schip:', checkError);
+            throw checkError;
+          }
+
+          // Wijs personeel toe aan "overig personeel"
+          const updateResults = await Promise.all(
+            selectedOverigPersoneel.map(async (memberId) => {
+              try {
+                console.log('Updating crew member to overig:', memberId)
+                const result = await updateCrew(memberId, {
+                  ship_id: 'overig',
+                  status: 'thuis'
+                })
+                console.log('Update result:', result)
+                return result
+              } catch (error) {
+                console.error('Error updating crew member:', memberId, error)
+                throw error
+              }
+            })
+          );
+          
+          console.log('All updates completed:', updateResults)
+          
+          // Verify the updates by checking the database
+          const { data: verifyData, error: verifyError } = await supabase
+            .from('crew')
+            .select('id, first_name, last_name, ship_id')
+            .in('id', selectedOverigPersoneel)
+          
+          if (verifyError) {
+            console.error('Error verifying updates:', verifyError)
+          } else {
+            console.log('Verified crew members after update:', verifyData)
+          }
+        } catch (error) {
+          console.error('Fout bij toewijzen personeel aan overig:', error);
+          alert('Er is een fout opgetreden bij het toewijzen van personeel aan overig personeel.');
+        }
+      }
+
+      // Voeg het schip toe aan Supabase (alleen als er een schip naam is)
+      if (formData.shipName && formData.shipName.trim() !== '') {
+        const newShip = {
+          id: formData.shipId,
+          name: formData.shipName,
+          max_crew: 8,
+          status: 'Operationeel', // Required field in Supabase
+          location: '', // Required field in Supabase
+          route: '', // Required field in Supabase
+          company: formData.company
+        };
+        await addShip(newShip);
+      }
       
-      await addShip(newShip);
+      // Voeg het schip toe aan Supabase (alleen als er een schip naam is)
+      if (formData.shipName && formData.shipName.trim() !== '') {
+        await addShip(newShip);
+      }
+      
+      // Sla success data op voordat we resetten
+      setSuccessData({
+        shipName: formData.shipName,
+        personeelCount: selectedOverigPersoneel.length
+      });
       
       setIsSuccess(true);
       
@@ -50,6 +136,7 @@ export default function NewShipPage() {
         shipName: '',
         company: 'Bamalite S.A.'
       });
+      setSelectedOverigPersoneel([]);
       
       // Ga terug naar dashboard na 2 seconden
       setTimeout(() => {
@@ -88,9 +175,20 @@ export default function NewShipPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6 text-center">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Schip Toegevoegd!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {successData?.shipName && successData.personeelCount > 0
+              ? 'Succesvol Opgeslagen!'
+              : successData?.shipName 
+              ? 'Schip Toegevoegd!' 
+              : 'Personeel Toegewezen!'}
+          </h2>
           <p className="text-gray-600 mb-4">
-            Het schip "{formData.shipName}" is succesvol toegevoegd aan het systeem.
+            {successData?.shipName && successData.personeelCount > 0
+              ? `Het schip "${successData.shipName}" is toegevoegd en ${successData.personeelCount} persoon(en) ${successData.personeelCount === 1 ? 'is' : 'zijn'} toegewezen aan overig personeel.`
+              : successData?.shipName 
+              ? `Het schip "${successData.shipName}" is succesvol toegevoegd aan het systeem.`
+              : `Het personeel is succesvol toegewezen aan overig personeel.`
+            }
           </p>
           <p className="text-sm text-gray-500">
             Je wordt automatisch doorgestuurd naar het dashboard...
@@ -130,21 +228,26 @@ export default function NewShipPage() {
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="shipName">Schip Naam *</Label>
+                  <Label htmlFor="shipName">Schip Naam</Label>
                   <Input
                     id="shipName"
                     type="text"
                     value={formData.shipName}
                     onChange={(e) => handleShipNameChange(e.target.value)}
                     placeholder="Bijv. Bellona, Fraternite, etc."
-                    required
                     className="w-full"
                   />
+                  <p className="text-xs text-gray-500">
+                    Optioneel: Laat leeg als je alleen personeel wilt toewijzen aan "overig personeel"
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Firma *</Label>
-                  <Select value={formData.company} onValueChange={(v) => setFormData(prev => ({ ...prev, company: v }))}>
+                  <Label>Firma {formData.shipName ? '*' : ''}</Label>
+                  <Select 
+                    value={formData.company} 
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, company: v }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Kies firma" />
                     </SelectTrigger>
@@ -182,23 +285,114 @@ export default function NewShipPage() {
                   </Link>
                   <Button 
                     type="submit" 
-                    disabled={isSubmitting || !formData.shipName}
+                    disabled={isSubmitting || (!formData.shipName && selectedOverigPersoneel.length === 0)}
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     {isSubmitting ? (
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Toevoegen...</span>
+                        <span>Opslaan...</span>
                       </div>
                     ) : (
                       <div className="flex items-center space-x-2">
                         <Plus className="w-4 h-4" />
-                        <span>Schip Toevoegen</span>
+                        <span>
+                          {formData.shipName && selectedOverigPersoneel.length > 0 
+                            ? 'Schip Toevoegen & Personeel Toewijzen'
+                            : formData.shipName 
+                            ? 'Schip Toevoegen' 
+                            : 'Personeel Toewijzen'}
+                        </span>
                       </div>
                     )}
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+
+          {/* Overig Personeel Sectie */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Users className="w-5 h-5" />
+                <span>Overig Personeel</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Selecteer personeel dat je wilt toewijzen aan "overig personeel" (niet aan een specifiek schip).
+                </p>
+                
+                <div className="space-y-2">
+                  <Label>Selecteer Personeel</Label>
+                  <Select 
+                    value="" 
+                    onValueChange={(value) => {
+                      if (value && !selectedOverigPersoneel.includes(value)) {
+                        setSelectedOverigPersoneel([...selectedOverigPersoneel, value]);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Kies personeel om toe te voegen..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {crew
+                        .filter((member: any) => 
+                          !member.is_aflosser && 
+                          !member.is_dummy && 
+                          member.status !== 'uit-dienst' &&
+                          !selectedOverigPersoneel.includes(member.id) &&
+                          (!member.ship_id || member.ship_id === '' || member.ship_id === null)
+                        )
+                        .map((member: any) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.first_name} {member.last_name} - {member.position}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedOverigPersoneel.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Geselecteerd Personeel ({selectedOverigPersoneel.length})</Label>
+                    <div className="space-y-2">
+                      {selectedOverigPersoneel.map((memberId) => {
+                        const member = crew.find((m: any) => m.id === memberId);
+                        if (!member) return null;
+                        return (
+                          <div 
+                            key={memberId} 
+                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                          >
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {member.first_name} {member.last_name}
+                              </p>
+                              <p className="text-sm text-gray-600">{member.position}</p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedOverigPersoneel(
+                                  selectedOverigPersoneel.filter(id => id !== memberId)
+                                );
+                              }}
+                            >
+                              Verwijderen
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

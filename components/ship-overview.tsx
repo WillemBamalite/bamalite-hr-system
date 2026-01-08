@@ -1660,6 +1660,140 @@ export function ShipOverview() {
         </CardContent>
       </Card>
 
+      {/* Overig Personeel Sectie */}
+      {(() => {
+        // Filter crew members met ship_id = 'overig'
+        const overigPersoneel = crew.filter((member: any) => {
+          // Check of ship_id 'overig' is (case-insensitive en met trim)
+          const shipId = member.ship_id?.toString().toLowerCase().trim()
+          const isOverig = shipId === 'overig'
+          
+          // Debug logging voor elke crew member
+          if (process.env.NODE_ENV === 'development' && member.ship_id) {
+            console.log('Crew member ship_id check:', {
+              id: member.id,
+              name: `${member.first_name} ${member.last_name}`,
+              ship_id: member.ship_id,
+              ship_id_lower: shipId,
+              isOverig: isOverig,
+              is_dummy: member.is_dummy,
+              is_aflosser: member.is_aflosser,
+              status: member.status
+            })
+          }
+          
+          return isOverig && 
+            !member.is_dummy && 
+            !member.is_aflosser &&
+            member.status !== 'uit-dienst'
+        })
+        
+        // Debug logging
+        console.log('Overig personeel filter result:', {
+          totalCrew: crew.length,
+          overigPersoneel: overigPersoneel.length,
+          allShipIds: crew.map((m: any) => ({
+            id: m.id,
+            name: `${m.first_name} ${m.last_name}`,
+            ship_id: m.ship_id,
+            ship_id_type: typeof m.ship_id
+          })),
+          crewWithOverig: crew.filter((m: any) => {
+            const sid = m.ship_id?.toString().toLowerCase().trim()
+            return sid === 'overig'
+          }).map((m: any) => ({
+            id: m.id,
+            name: `${m.first_name} ${m.last_name}`,
+            ship_id: m.ship_id,
+            status: m.status,
+            is_dummy: m.is_dummy,
+            is_aflosser: m.is_aflosser
+          }))
+        })
+
+        // Split in ziek en niet-ziek
+        const overigZiek = overigPersoneel.filter((member: any) => member.status === "ziek")
+        const overigNietZiek = overigPersoneel.filter((member: any) => member.status !== "ziek")
+
+        return (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Users className="w-5 h-5" />
+                <span>Overig Personeel</span>
+                <Badge variant="outline" className="ml-2">
+                  {overigPersoneel.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Grid layout: Algemene lijst + Ziek kolom */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Algemene lijst (niet-ziek personeel) */}
+                  <div className="md:col-span-2 space-y-3">
+                    <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+                      <Users className="w-4 h-4 text-gray-600" />
+                      <h5 className="font-medium text-gray-700">Personeel</h5>
+                      <Badge className="bg-gray-100 text-gray-800 text-xs">
+                        {overigNietZiek.length}
+                      </Badge>
+                    </div>
+                    <div className="space-y-3 min-h-[100px]">
+                      {overigNietZiek.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">
+                          Geen personeel
+                        </div>
+                      ) : (
+                        sortCrewByRank(overigNietZiek).map((member: any) => (
+                          <CrewCard
+                            key={member.id}
+                            member={member}
+                            onDoubleClick={handleDoubleClick}
+                            sickLeave={sickLeave}
+                            borderColor="#e5e7eb"
+                            tasks={tasks}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ziek Column */}
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
+                      <UserX className="w-4 h-4 text-red-600" />
+                      <h5 className="font-medium text-red-700">Ziek</h5>
+                      <Badge className="bg-red-100 text-red-800 text-xs">
+                        {overigZiek.length}
+                      </Badge>
+                    </div>
+                    <div className="space-y-3 min-h-[100px]">
+                      {overigZiek.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">
+                          Geen zieke personeel
+                        </div>
+                      ) : (
+                        sortCrewByRank(overigZiek).map((member: any) => (
+                          <CrewCard
+                            key={member.id}
+                            member={member}
+                            onDoubleClick={handleDoubleClick}
+                            sickLeave={sickLeave}
+                            borderColor="#ef4444" /* Ziek = rood */
+                            tasks={tasks}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       {/* Quick Note Dialog */}
       <Dialog open={quickNoteDialog.isOpen} onOpenChange={(open) => setQuickNoteDialog(prev => ({ ...prev, isOpen: open }))}>
         <DialogContent>
