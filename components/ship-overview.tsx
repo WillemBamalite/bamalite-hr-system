@@ -127,24 +127,46 @@ export function ShipOverview() {
   useEffect(() => {
     setMounted(true);
     
-    // Restore scroll position after page reload
+    // Restore scroll position after page reload or navigation back
     const savedScrollPosition = sessionStorage.getItem('shipOverviewScrollPosition')
+    const savedCrewId = sessionStorage.getItem('shipOverviewScrollToCrewId')
+    
     if (savedScrollPosition) {
       scrollPositionRef.current = parseInt(savedScrollPosition, 10)
-      sessionStorage.removeItem('shipOverviewScrollPosition')
       
       // Restore scroll position after content loads
       const restoreScroll = () => {
         if (scrollPositionRef.current > 0 && typeof window !== 'undefined') {
           window.scrollTo({ top: scrollPositionRef.current, behavior: 'instant' })
+          
+          // If we have a specific crew member ID, try to scroll to that element
+          if (savedCrewId) {
+            const crewElement = document.getElementById(`crew-${savedCrewId}`)
+            if (crewElement) {
+              crewElement.scrollIntoView({ behavior: 'instant', block: 'center' })
+              // Update scroll position ref to the actual position after scrolling to element
+              setTimeout(() => {
+                scrollPositionRef.current = window.scrollY
+              }, 50)
+            }
+          }
         }
       }
       
-      // Try multiple times with increasing delays
-      [0, 50, 150, 300, 500, 800].forEach((delay, index) => {
+      // Try multiple times with increasing delays - more attempts for navigation back
+      [0, 50, 150, 300, 500, 800, 1200, 1500, 2000].forEach((delay, index) => {
         setTimeout(() => {
           restoreScroll()
-          if (index === 5) scrollPositionRef.current = 0 // Clear after last attempt
+          // Only clear after last attempt and if scroll was successfully restored
+          if (index === 8) {
+            // Check if scroll position is close to saved position (within 50px)
+            const currentScroll = window.scrollY
+            const savedPos = scrollPositionRef.current
+            if (Math.abs(currentScroll - savedPos) < 50) {
+              sessionStorage.removeItem('shipOverviewScrollPosition')
+              sessionStorage.removeItem('shipOverviewScrollToCrewId')
+            }
+          }
         }, delay)
       })
     }
@@ -224,24 +246,52 @@ export function ShipOverview() {
     
     // Check both ref and sessionStorage for saved position
     const savedPos = scrollPositionRef.current || parseInt(sessionStorage.getItem('shipOverviewScrollPosition') || '0', 10)
+    const savedCrewId = sessionStorage.getItem('shipOverviewScrollToCrewId')
     
     if (savedPos > 0) {
+      // Restore function that tries both scroll position and crew member element
+      const restoreScroll = () => {
+        const currentSavedPos = scrollPositionRef.current || parseInt(sessionStorage.getItem('shipOverviewScrollPosition') || '0', 10)
+        if (currentSavedPos > 0) {
+          // First try to scroll to the specific crew member element if we have an ID
+          if (savedCrewId) {
+            const crewElement = document.getElementById(`crew-${savedCrewId}`)
+            if (crewElement) {
+              crewElement.scrollIntoView({ behavior: 'instant', block: 'center' })
+              // Update scroll position ref to the actual position after scrolling
+              setTimeout(() => {
+                scrollPositionRef.current = window.scrollY
+              }, 50)
+              return
+            }
+          }
+          
+          // Fallback to saved scroll position
+          if (window.scrollY !== currentSavedPos && !isUserScrollingRef.current) {
+            window.scrollTo({ top: currentSavedPos, behavior: 'instant' })
+            scrollPositionRef.current = currentSavedPos
+          }
+        }
+      }
+      
       // Immediately restore if scroll position is wrong
       if (window.scrollY !== savedPos && !isUserScrollingRef.current) {
-        window.scrollTo({ top: savedPos, behavior: 'instant' })
+        restoreScroll()
       }
       
       // Multiple attempts to restore scroll position with longer delays
       const restoreAttempts = [10, 50, 100, 200, 300, 500, 800, 1200, 1500, 2000]
       const timeouts = restoreAttempts.map((delay, index) => 
         setTimeout(() => {
-          const currentSavedPos = scrollPositionRef.current || parseInt(sessionStorage.getItem('shipOverviewScrollPosition') || '0', 10)
-          if (currentSavedPos > 0 && window.scrollY !== currentSavedPos) {
-            window.scrollTo({ top: currentSavedPos, behavior: 'instant' })
-            scrollPositionRef.current = currentSavedPos
-            // Clear saved position after last attempt only if user hasn't scrolled
-            if (index === restoreAttempts.length - 1 && !isUserScrollingRef.current) {
-              // Don't clear - keep it for next update
+          restoreScroll()
+          // Clear saved position after last attempt if scroll was successfully restored
+          if (index === restoreAttempts.length - 1) {
+            const currentScroll = window.scrollY
+            const finalSavedPos = scrollPositionRef.current || parseInt(sessionStorage.getItem('shipOverviewScrollPosition') || '0', 10)
+            // If scroll position is close to saved position (within 100px), clear the saved position
+            if (Math.abs(currentScroll - finalSavedPos) < 100 && !isUserScrollingRef.current) {
+              sessionStorage.removeItem('shipOverviewScrollPosition')
+              sessionStorage.removeItem('shipOverviewScrollToCrewId')
             }
           }
         }, delay)
@@ -671,7 +721,10 @@ export function ShipOverview() {
                     href={`/bemanning/${member.id}`}
                     className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
                     onClick={() => {
-                      sessionStorage.setItem('shipOverviewScrollPosition', window.scrollY.toString())
+                      const currentScroll = window.scrollY
+                      sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString())
+                      sessionStorage.setItem('shipOverviewScrollToCrewId', member.id)
+                      scrollPositionRef.current = currentScroll
                     }}
                   >
                     {member.first_name} {member.last_name}
