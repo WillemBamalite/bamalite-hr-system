@@ -451,9 +451,10 @@ export function ShipOverview() {
 
     const isDummy = member.is_dummy === true
     const isAflosser = member.position === "Aflosser" || member.is_aflosser === true
+    const isOverigPersoneel = member.ship_id?.toString().toLowerCase().trim() === 'overig'
     
-    // Get A/B designation
-    const abDesignation = !isAflosser ? getCrewABDesignation(member) : null
+    // Get A/B designation (niet voor aflossers of overig personeel)
+    const abDesignation = !isAflosser && !isOverigPersoneel ? getCrewABDesignation(member) : null
     const [abSelectorOpen, setAbSelectorOpen] = useState(false)
     const abSelectorRef = useRef<HTMLDivElement>(null)
 
@@ -492,8 +493,8 @@ export function ShipOverview() {
       >
         {/* Top-right controls: A/B designation + color button + optional student badge + dummy delete button */}
         <div className="absolute top-2 right-2 flex items-center gap-2">
-          {/* A/B Designation - Prominent indicator */}
-          {!isAflosser && (
+          {/* A/B Designation - Prominent indicator (niet voor aflossers of overig personeel) */}
+          {!isAflosser && !isOverigPersoneel && (
             <div ref={abSelectorRef} className="z-10">
               {abSelectorOpen ? (
                 <div className="bg-white shadow-lg border-2 border-gray-300 rounded-lg p-2 flex gap-2">
