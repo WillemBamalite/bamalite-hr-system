@@ -62,7 +62,7 @@ const sortCrewByRank = (crew: any[]) => {
 }
 
 export function ShipOverview() {
-  const { ships, crew, sickLeave, trips, tasks, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag } = useSupabaseData()
+  const { ships, crew, sickLeave, trips, tasks, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag, loadData } = useSupabaseData()
   const { t } = useLanguage()
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("")
@@ -222,17 +222,26 @@ export function ShipOverview() {
   useEffect(() => {
     if (loading || !mounted) return
     
-    const savedPos = scrollPositionRef.current
+    // Check both ref and sessionStorage for saved position
+    const savedPos = scrollPositionRef.current || parseInt(sessionStorage.getItem('shipOverviewScrollPosition') || '0', 10)
+    
     if (savedPos > 0) {
-      // Multiple attempts to restore scroll position
-      const restoreAttempts = [50, 150, 300, 500, 800, 1200]
+      // Immediately restore if scroll position is wrong
+      if (window.scrollY !== savedPos && !isUserScrollingRef.current) {
+        window.scrollTo({ top: savedPos, behavior: 'instant' })
+      }
+      
+      // Multiple attempts to restore scroll position with longer delays
+      const restoreAttempts = [10, 50, 100, 200, 300, 500, 800, 1200, 1500, 2000]
       const timeouts = restoreAttempts.map((delay, index) => 
         setTimeout(() => {
-          if (!isUserScrollingRef.current && window.scrollY !== savedPos && savedPos > 0) {
-            window.scrollTo({ top: savedPos, behavior: 'instant' })
-            // Clear saved position after last attempt
-            if (index === restoreAttempts.length - 1) {
-              scrollPositionRef.current = 0
+          const currentSavedPos = scrollPositionRef.current || parseInt(sessionStorage.getItem('shipOverviewScrollPosition') || '0', 10)
+          if (currentSavedPos > 0 && window.scrollY !== currentSavedPos) {
+            window.scrollTo({ top: currentSavedPos, behavior: 'instant' })
+            scrollPositionRef.current = currentSavedPos
+            // Clear saved position after last attempt only if user hasn't scrolled
+            if (index === restoreAttempts.length - 1 && !isUserScrollingRef.current) {
+              // Don't clear - keep it for next update
             }
           }
         }, delay)
@@ -600,14 +609,40 @@ export function ShipOverview() {
                   type="button"
                   className="w-5 h-5 rounded-full border"
                   style={{ backgroundColor: c }}
-                  onClick={(e) => { e.stopPropagation(); setCrewColorTag(member.id, c); setPaletteOpen(false) }}
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    const currentScroll = window.scrollY;
+                    scrollPositionRef.current = currentScroll;
+                    sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+                    setCrewColorTag(member.id, c); 
+                    setPaletteOpen(false);
+                    // Restore scroll after color tag update
+                    setTimeout(() => {
+                      if (scrollPositionRef.current > 0) {
+                        window.scrollTo({ top: scrollPositionRef.current, behavior: 'instant' });
+                      }
+                    }, 100);
+                  }}
                   title="Kleur instellen"
                 />
               ))}
               <button
                 type="button"
                 className="text-xs px-2 py-1 border rounded"
-                onClick={(e) => { e.stopPropagation(); setCrewColorTag(member.id, null); setPaletteOpen(false) }}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  const currentScroll = window.scrollY;
+                  scrollPositionRef.current = currentScroll;
+                  sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+                  setCrewColorTag(member.id, null); 
+                  setPaletteOpen(false);
+                  // Restore scroll after color tag update
+                  setTimeout(() => {
+                    if (scrollPositionRef.current > 0) {
+                      window.scrollTo({ top: scrollPositionRef.current, behavior: 'instant' });
+                    }
+                  }, 100);
+                }}
               >
                 Geen
               </button>
@@ -898,9 +933,23 @@ export function ShipOverview() {
   async function handleSaveQuickNote() {
     if (!quickNote.trim()) return;
 
+    if (typeof window === 'undefined') return;
+    
     // Save scroll position before action
     const currentScroll = window.scrollY;
     scrollPositionRef.current = currentScroll;
+    sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+    
+    // Prevent scroll jump during update by temporarily locking scroll
+    isUserScrollingRef.current = true;
+    
+    // Immediately restore scroll position if it changes - aggressive watcher
+    const scrollWatcher = setInterval(() => {
+      if (window.scrollY !== currentScroll) {
+        window.scrollTo({ top: currentScroll, behavior: 'instant' });
+        scrollPositionRef.current = currentScroll;
+      }
+    }, 10);
 
     try {
       await addNoteToCrew(quickNoteDialog.crewId, quickNote.trim());
@@ -912,13 +961,34 @@ export function ShipOverview() {
       });
       setQuickNote("");
 
-      // Restore scroll position after state update
-      requestAnimationFrame(() => {
+      // Keep scroll watcher active during data reload
+      // Continue watching and restoring scroll for a bit longer
+      const continueWatching = setInterval(() => {
+        if (window.scrollY !== currentScroll) {
+          window.scrollTo({ top: currentScroll, behavior: 'instant' });
+          scrollPositionRef.current = currentScroll;
+        }
+      }, 10);
+      
+      // Stop watching after data has fully loaded and rendered
+      setTimeout(() => {
+        clearInterval(scrollWatcher);
+        clearInterval(continueWatching);
+        
+        // Final restore
         window.scrollTo({ top: currentScroll, behavior: 'instant' });
-      });
+        scrollPositionRef.current = currentScroll;
+        
+        // Re-enable user scrolling
+        setTimeout(() => {
+          isUserScrollingRef.current = false;
+        }, 200);
+      }, 2500);
     } catch (error) {
       console.error('Error saving note:', error);
       alert('Fout bij het opslaan van de notitie');
+      clearInterval(scrollWatcher);
+      isUserScrollingRef.current = false;
     }
   }
 
@@ -946,14 +1016,31 @@ export function ShipOverview() {
 
   // Handle A/B designation change
   async function handleABDesignationChange(crewId: string, designation: 'A' | 'B' | null) {
-    // Save scroll position before update
-    if (typeof window !== 'undefined') {
-      scrollPositionRef.current = window.scrollY
-    }
+    // Save scroll position before update - prevent any scroll jumps
+    if (typeof window === 'undefined') return;
+    
+    const currentScroll = window.scrollY;
+    scrollPositionRef.current = currentScroll;
+    sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+    
+    // Prevent scroll jump during update by temporarily locking scroll
+    isUserScrollingRef.current = true;
+    
+    // Immediately restore scroll position if it changes - aggressive watcher
+    const scrollWatcher = setInterval(() => {
+      if (window.scrollY !== currentScroll) {
+        window.scrollTo({ top: currentScroll, behavior: 'instant' });
+        scrollPositionRef.current = currentScroll;
+      }
+    }, 10);
     
     try {
       const member = crew.find((m: any) => m.id === crewId)
-      if (!member) return
+      if (!member) {
+        clearInterval(scrollWatcher);
+        isUserScrollingRef.current = false;
+        return;
+      }
 
       const existingNotes = member.active_notes || []
       const abNote = existingNotes.find((n: any) => n.content?.startsWith('CREW_AB_DESIGNATION:'))
@@ -983,20 +1070,62 @@ export function ShipOverview() {
       if (error) {
         console.error('Error updating A/B designation:', error)
         alert('Fout bij het bijwerken van A/B aanduiding')
+        clearInterval(scrollWatcher);
+        isUserScrollingRef.current = false;
       } else {
-        // Reload to reflect changes while preserving scroll position
-        reloadWithScrollPosition()
+        // Keep scroll watcher active during data reload
+        // Reload data without full page reload to preserve scroll position
+        await loadData()
+        
+        // Continue watching and restoring scroll for a bit longer
+        const continueWatching = setInterval(() => {
+          if (window.scrollY !== currentScroll) {
+            window.scrollTo({ top: currentScroll, behavior: 'instant' });
+            scrollPositionRef.current = currentScroll;
+          }
+        }, 10);
+        
+        // Stop watching after data has fully loaded and rendered
+        setTimeout(() => {
+          clearInterval(scrollWatcher);
+          clearInterval(continueWatching);
+          
+          // Final restore
+          window.scrollTo({ top: currentScroll, behavior: 'instant' });
+          scrollPositionRef.current = currentScroll;
+          
+          // Re-enable user scrolling
+          setTimeout(() => {
+            isUserScrollingRef.current = false;
+          }, 200);
+        }, 2500);
       }
     } catch (err) {
       console.error('Error updating A/B designation:', err)
       alert('Er is een fout opgetreden bij het bijwerken van A/B aanduiding')
+      clearInterval(scrollWatcher);
+      isUserScrollingRef.current = false;
     }
   }
 
   async function handleConfirmDeleteNote() {
+    if (typeof window === 'undefined') return;
+    
     // Save scroll position before action
     const currentScroll = window.scrollY;
     scrollPositionRef.current = currentScroll;
+    sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+    
+    // Prevent scroll jump during update by temporarily locking scroll
+    isUserScrollingRef.current = true;
+    
+    // Immediately restore scroll position if it changes - aggressive watcher
+    const scrollWatcher = setInterval(() => {
+      if (window.scrollY !== currentScroll) {
+        window.scrollTo({ top: currentScroll, behavior: 'instant' });
+        scrollPositionRef.current = currentScroll;
+      }
+    }, 10);
 
     try {
       await removeNoteFromCrew(deleteNoteDialog.crewId, deleteNoteDialog.noteId);
@@ -1008,18 +1137,44 @@ export function ShipOverview() {
         noteContent: ""
       });
 
-      // Restore scroll position after state update
-      requestAnimationFrame(() => {
+      // Keep scroll watcher active during data reload
+      // Continue watching and restoring scroll for a bit longer
+      const continueWatching = setInterval(() => {
+        if (window.scrollY !== currentScroll) {
+          window.scrollTo({ top: currentScroll, behavior: 'instant' });
+          scrollPositionRef.current = currentScroll;
+        }
+      }, 10);
+      
+      // Stop watching after data has fully loaded and rendered
+      setTimeout(() => {
+        clearInterval(scrollWatcher);
+        clearInterval(continueWatching);
+        
+        // Final restore
         window.scrollTo({ top: currentScroll, behavior: 'instant' });
-      });
+        scrollPositionRef.current = currentScroll;
+        
+        // Re-enable user scrolling
+        setTimeout(() => {
+          isUserScrollingRef.current = false;
+        }, 200);
+      }, 2500);
     } catch (error) {
       console.error('Error removing note:', error);
       alert('Fout bij het verwijderen van de notitie');
+      clearInterval(scrollWatcher);
+      isUserScrollingRef.current = false;
     }
   }
 
   async function handleDeleteShip(shipId: string, shipName: string) {
     if (confirm(`Weet je zeker dat je het schip "${shipName}" wilt verwijderen?`)) {
+      // Save scroll position before action
+      const currentScroll = window.scrollY;
+      scrollPositionRef.current = currentScroll;
+      sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+      
       try {
         // Delete ship from Supabase
         const { error } = await supabase
@@ -1050,6 +1205,11 @@ export function ShipOverview() {
       alert('Selecteer een functie')
       return
     }
+
+    // Save scroll position before action
+    const currentScroll = window.scrollY;
+    scrollPositionRef.current = currentScroll;
+    sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
 
     setIsCreatingDummy(true)
     try {
@@ -1147,6 +1307,11 @@ export function ShipOverview() {
 
   async function handleDeleteDummy(crewId: string) {
     if (confirm('Weet je zeker dat je deze dummy wilt verwijderen?')) {
+      // Save scroll position before action
+      const currentScroll = window.scrollY;
+      scrollPositionRef.current = currentScroll;
+      sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+      
       try {
         const { error } = await supabase
           .from('crew')
@@ -1193,6 +1358,11 @@ export function ShipOverview() {
     
     if (!draggedDummyId) return
 
+    // Save scroll position before update
+    const currentScroll = window.scrollY;
+    scrollPositionRef.current = currentScroll;
+    sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString());
+
     // Update location in state immediately for UI feedback
     setDummyLocations(prev => ({
       ...prev,
@@ -1234,6 +1404,17 @@ export function ShipOverview() {
           [draggedDummyId]: prev[draggedDummyId] === 'thuis' ? 'aan-boord' : 'thuis'
         }))
         alert('Fout bij het verplaatsen van de dummy')
+      } else {
+        // Restore scroll position after update - multiple attempts
+        const restoreScroll = () => {
+          if (scrollPositionRef.current > 0) {
+            window.scrollTo({ top: scrollPositionRef.current, behavior: 'instant' });
+          }
+        };
+        
+        [100, 300, 500, 800, 1200, 1500].forEach((delay) => {
+          setTimeout(restoreScroll, delay);
+        });
       }
     } catch (err) {
       console.error('Error updating dummy location:', err)
