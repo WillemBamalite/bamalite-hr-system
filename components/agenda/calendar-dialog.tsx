@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Plus, X, Edit, Trash2, Calendar as CalendarIcon, User } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, getDay } from 'date-fns'
+import { Plus, X, Edit, Trash2, Calendar as CalendarIcon, User, Cake } from 'lucide-react'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, getDay, parse, isWithinInterval, isAfter, isBefore } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -19,10 +19,21 @@ interface AgendaItem {
   title: string
   description: string | null
   date: string
+  end_date?: string | null
   time: string | null
   voor_wie: string | null
+  color?: string | null
   created_at: string
   updated_at: string
+}
+
+interface BirthdayItem {
+  id: string
+  title: string
+  date: string
+  color: string
+  isBirthday: true
+  crewMemberName: string
 }
 
 interface CalendarDialogProps {
@@ -34,6 +45,8 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([])
+  const [birthdays, setBirthdays] = useState<BirthdayItem[]>([])
+  const [crew, setCrew] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingItem, setEditingItem] = useState<AgendaItem | null>(null)
@@ -42,37 +55,157 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
     title: '',
     description: '',
     date: format(new Date(), 'yyyy-MM-dd'),
+    end_date: '',
     time: '',
-    voor_wie: ''
+    voor_wie: '',
+    color: '#3b82f6'
   })
 
-  // Load agenda items
+  // Load agenda items and birthdays
   useEffect(() => {
     if (open) {
       loadAgendaItems()
+      loadCrewAndBirthdays()
     }
   }, [open, currentMonth])
+
+  const loadCrewAndBirthdays = async () => {
+    try {
+      // Load crew members with birth dates
+      const { data: crewData, error: crewError } = await supabase
+        .from('crew')
+        .select('id, first_name, last_name, birth_date')
+      
+      if (crewError) {
+        console.error('Error loading crew for birthdays:', crewError)
+        // Don't throw, just return empty array - birthdays are optional
+        setBirthdays([])
+        return
+      }
+      
+      if (!crewData || crewData.length === 0) {
+        setBirthdays([])
+        return
+      }
+      
+      setCrew(crewData)
+      
+      // Generate birthdays for current month
+      const start = startOfMonth(currentMonth)
+      const end = endOfMonth(currentMonth)
+      const currentYear = currentMonth.getFullYear()
+      
+      const birthdayItems: BirthdayItem[] = []
+      
+      // Filter and process crew members with valid birth dates
+      crewData
+        .filter((member: any) => member.birth_date && member.birth_date.trim() !== '')
+        .forEach((member: any) => {
+          try {
+            // Parse birth date (format: YYYY-MM-DD)
+            const birthDateStr = member.birth_date.trim()
+            const birthDate = parse(birthDateStr, 'yyyy-MM-dd', new Date())
+            
+            // Validate the parsed date
+            if (isNaN(birthDate.getTime())) {
+              console.warn(`Invalid birth date format for ${member.first_name} ${member.last_name}: ${birthDateStr}`)
+              return
+            }
+            
+            const month = birthDate.getMonth()
+            const day = birthDate.getDate()
+            
+            // Create birthday date for current year
+            const birthdayThisYear = new Date(currentYear, month, day)
+            
+            // Check if birthday falls within current month
+            if (isWithinInterval(birthdayThisYear, { start, end }) || isSameDay(birthdayThisYear, start) || isSameDay(birthdayThisYear, end)) {
+              birthdayItems.push({
+                id: `birthday-${member.id}-${currentYear}`,
+                title: `🎂 ${member.first_name} ${member.last_name}`,
+                date: format(birthdayThisYear, 'yyyy-MM-dd'),
+                color: '#ec4899', // Pink color for birthdays
+                isBirthday: true,
+                crewMemberName: `${member.first_name} ${member.last_name}`
+              })
+            }
+          } catch (error) {
+            console.warn(`Error parsing birth date for ${member.first_name} ${member.last_name}:`, error, `Date: ${member.birth_date}`)
+          }
+        })
+      
+      setBirthdays(birthdayItems)
+    } catch (error) {
+      console.error('Error loading birthdays:', error)
+      // Set empty array on error so the agenda still works
+      setBirthdays([])
+    }
+  }
 
   const loadAgendaItems = async () => {
     setLoading(true)
     try {
       const start = startOfMonth(currentMonth)
       const end = endOfMonth(currentMonth)
+      const startStr = format(start, 'yyyy-MM-dd')
+      const endStr = format(end, 'yyyy-MM-dd')
       
-      const { data, error } = await supabase
+      // Load items that might be visible in this month
+      // We'll load a wider range and filter in JavaScript for better control
+      // Load items where:
+      // - date is before or during this month, OR
+      // - end_date is during or after this month
+      const { data: data1, error: error1 } = await supabase
         .from('agenda_items')
         .select('*')
-        .gte('date', format(start, 'yyyy-MM-dd'))
-        .lte('date', format(end, 'yyyy-MM-dd'))
+        .lte('date', endStr)
         .order('date', { ascending: true })
+      
+      // Also load items where end_date falls in this month (items that started earlier)
+      const { data: data2, error: error2 } = await supabase
+        .from('agenda_items')
+        .select('*')
+        .not('end_date', 'is', null)
+        .gte('end_date', startStr)
+        .lt('date', startStr)
+        .order('date', { ascending: true })
+      
+      // Combine and deduplicate
+      const allData = [...(data1 || []), ...(data2 || [])]
+      const uniqueData = Array.from(
+        new Map(allData.map(item => [item.id, item])).values()
+      )
+      
+      const error = error1 || error2
       
       if (error) {
         console.error('Supabase error details:', error)
         throw error
       }
       
+      // Filter items that are visible in this month
+      const visibleItems = (uniqueData || []).filter(item => {
+        try {
+          const itemStart = parse(item.date, 'yyyy-MM-dd', new Date())
+          const itemEnd = item.end_date ? parse(item.end_date, 'yyyy-MM-dd', new Date()) : itemStart
+          
+          // Item is visible if it overlaps with the current month
+          // Check if item range overlaps with month range
+          // Item overlaps if:
+          // - Item starts before or during month AND ends during or after month
+          const itemStartsBeforeOrDuring = isBefore(itemStart, start) || isSameDay(itemStart, start) || isWithinInterval(itemStart, { start, end })
+          const itemEndsDuringOrAfter = isSameDay(itemEnd, end) || isWithinInterval(itemEnd, { start, end }) || isAfter(itemEnd, end)
+          const itemSpansMonth = isBefore(itemStart, start) && isAfter(itemEnd, end)
+          
+          return (itemStartsBeforeOrDuring && itemEndsDuringOrAfter) || itemSpansMonth
+        } catch (error) {
+          console.warn('Error parsing agenda item date:', item, error)
+          return false
+        }
+      })
+      
       // Sort by date first, then by time (items without time go last)
-      const sorted = (data || []).sort((a, b) => {
+      const sorted = visibleItems.sort((a, b) => {
         // First sort by date
         if (a.date !== b.date) {
           return a.date.localeCompare(b.date)
@@ -102,13 +235,21 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
       return
     }
 
+    // Validate end_date is after date
+    if (formData.end_date && formData.end_date < formData.date) {
+      alert('Einddatum moet na de begindatum liggen')
+      return
+    }
+
     try {
       const itemData = {
         title: formData.title,
         description: formData.description || null,
         date: formData.date,
+        end_date: formData.end_date || null,
         time: formData.time || null,
-        voor_wie: formData.voor_wie || null
+        voor_wie: formData.voor_wie || null,
+        color: formData.color || '#3b82f6'
       }
 
       if (editingItem) {
@@ -132,8 +273,10 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
         title: '',
         description: '',
         date: format(selectedDate || new Date(), 'yyyy-MM-dd'),
+        end_date: '',
         time: '',
-        voor_wie: ''
+        voor_wie: '',
+        color: '#3b82f6'
       })
       await loadAgendaItems()
     } catch (error) {
@@ -165,8 +308,10 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
       title: item.title,
       description: item.description || '',
       date: item.date,
+      end_date: item.end_date || '',
       time: item.time || '',
-      voor_wie: item.voor_wie || ''
+      voor_wie: item.voor_wie || '',
+      color: item.color || '#3b82f6'
     })
     setShowAddDialog(true)
   }
@@ -189,11 +334,28 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
   // Create empty cells for days before month starts
   const emptyCells = Array.from({ length: adjustedFirstDay }, (_, i) => i)
 
-  // Get items for a specific date
+  // Get items for a specific date (including multi-day items and birthdays)
   const getItemsForDate = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
-    // Compare date strings directly to avoid timezone issues
-    return agendaItems.filter(item => item.date === dateStr)
+    const dateObj = parse(dateStr, 'yyyy-MM-dd', new Date())
+    
+    // Regular agenda items
+    const regularItems = agendaItems.filter(item => {
+      const itemStart = parse(item.date, 'yyyy-MM-dd', new Date())
+      const itemEnd = item.end_date ? parse(item.end_date, 'yyyy-MM-dd', new Date()) : itemStart
+      
+      // Check if date falls within the item's range
+      return (
+        isSameDay(dateObj, itemStart) ||
+        isSameDay(dateObj, itemEnd) ||
+        (isAfter(dateObj, itemStart) && isBefore(dateObj, itemEnd))
+      )
+    })
+    
+    // Birthday items
+    const birthdayItems = birthdays.filter(birthday => birthday.date === dateStr)
+    
+    return [...regularItems, ...birthdayItems]
   }
 
   const previousMonth = () => {
@@ -280,16 +442,25 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                         </div>
                         {dayItems.length > 0 && (
                           <div className="mt-auto pt-1 space-y-0.5">
-                            {dayItems.slice(0, 2).map((item) => (
-                              <div 
-                                key={item.id} 
-                                className="text-[10px] text-left truncate text-gray-700"
-                                title={item.title}
-                              >
-                                {item.time && <span className="text-gray-500">{item.time} </span>}
-                                {item.title}
-                              </div>
-                            ))}
+                            {dayItems.slice(0, 2).map((item) => {
+                              const itemColor = (item as any).color || (item as any).isBirthday ? '#ec4899' : '#3b82f6'
+                              const isBirthday = (item as any).isBirthday
+                              return (
+                                <div 
+                                  key={item.id} 
+                                  className="text-[10px] text-left truncate px-1 py-0.5 rounded"
+                                  style={{ 
+                                    backgroundColor: `${itemColor}20`,
+                                    borderLeft: `2px solid ${itemColor}`,
+                                    color: itemColor
+                                  }}
+                                  title={item.title}
+                                >
+                                  {item.time && !isBirthday && <span className="text-gray-500">{item.time} </span>}
+                                  {item.title}
+                                </div>
+                              )
+                            })}
                             {dayItems.length > 2 && (
                               <div className="text-[10px] text-gray-500">
                                 +{dayItems.length - 2} meer
@@ -327,8 +498,10 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                           title: '',
                           description: '',
                           date: format(selectedDate, 'yyyy-MM-dd'),
+                          end_date: '',
                           time: '',
-                          voor_wie: ''
+                          voor_wie: '',
+                          color: '#3b82f6'
                         })
                         setShowAddDialog(true)
                       }}
@@ -352,8 +525,10 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                           title: '',
                           description: '',
                           date: format(selectedDate, 'yyyy-MM-dd'),
+                          end_date: '',
                           time: '',
-                          voor_wie: ''
+                          voor_wie: '',
+                          color: '#3b82f6'
                         })
                         setShowAddDialog(true)
                       }}
@@ -371,47 +546,64 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                         if (!b.time) return -1
                         return a.time.localeCompare(b.time)
                       })
-                      .map(item => (
-                        <Card key={item.id}>
-                          <CardContent className="p-3">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h3 className="font-semibold">{item.title}</h3>
-                                  {item.time && (
-                                    <Badge variant="outline">{item.time}</Badge>
-                                  )}
-                                  {item.voor_wie && (
-                                    <Badge variant="secondary" className="flex items-center gap-1">
-                                      <User className="w-3 h-3" />
-                                      {item.voor_wie}
-                                    </Badge>
+                      .map(item => {
+                        const isBirthday = (item as any).isBirthday
+                        const itemColor = (item as any).color || (isBirthday ? '#ec4899' : '#3b82f6')
+                        const agendaItem = item as AgendaItem
+                        
+                        return (
+                          <Card 
+                            key={item.id}
+                            style={{ borderLeft: `4px solid ${itemColor}` }}
+                          >
+                            <CardContent className="p-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {isBirthday && <Cake className="w-4 h-4" style={{ color: itemColor }} />}
+                                    <h3 className="font-semibold">{item.title}</h3>
+                                    {agendaItem.time && !isBirthday && (
+                                      <Badge variant="outline">{agendaItem.time}</Badge>
+                                    )}
+                                    {agendaItem.voor_wie && !isBirthday && (
+                                      <Badge variant="secondary" className="flex items-center gap-1">
+                                        <User className="w-3 h-3" />
+                                        {agendaItem.voor_wie}
+                                      </Badge>
+                                    )}
+                                    {agendaItem.end_date && (
+                                      <Badge variant="outline" style={{ backgroundColor: `${itemColor}20`, color: itemColor }}>
+                                        {format(parse(agendaItem.date, 'yyyy-MM-dd', new Date()), 'dd-MM')} - {format(parse(agendaItem.end_date, 'yyyy-MM-dd', new Date()), 'dd-MM')}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {agendaItem.description && !isBirthday && (
+                                    <p className="text-sm text-gray-600 mt-1">{agendaItem.description}</p>
                                   )}
                                 </div>
-                                {item.description && (
-                                  <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                                {!isBirthday && (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditItem(agendaItem)}
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteItem(item.id)}
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-600" />
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleEditItem(item)}
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteItem(item.id)}
-                                >
-                                  <Trash2 className="w-4 h-4 text-red-600" />
-                                </Button>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
                   </div>
                 )}
               </CardContent>
@@ -446,13 +638,28 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                 />
               </div>
               <div>
-                <Label htmlFor="date">Datum *</Label>
+                <Label htmlFor="date">Begindatum *</Label>
                 <Input
                   id="date"
                   type="date"
                   value={formData.date}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 />
+              </div>
+              <div>
+                <Label htmlFor="end_date">Einddatum (optioneel - voor meerdere dagen)</Label>
+                <Input
+                  id="end_date"
+                  type="date"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                  min={formData.date}
+                />
+                {formData.end_date && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Dit item wordt getoond op elke dag tussen {format(parse(formData.date, 'yyyy-MM-dd', new Date()), 'dd-MM-yyyy')} en {format(parse(formData.end_date, 'yyyy-MM-dd', new Date()), 'dd-MM-yyyy')}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="time">Tijd (optioneel)</Label>
@@ -462,6 +669,37 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                   value={formData.time}
                   onChange={(e) => setFormData({ ...formData, time: e.target.value })}
                 />
+              </div>
+              <div>
+                <Label htmlFor="color">Kleur</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="color"
+                    type="color"
+                    value={formData.color}
+                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    className="w-16 h-10"
+                  />
+                  <Input
+                    type="text"
+                    value={formData.color}
+                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    placeholder="#3b82f6"
+                    className="flex-1"
+                  />
+                </div>
+                <div className="flex gap-2 mt-2">
+                  {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'].map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, color })}
+                      className="w-8 h-8 rounded border-2 border-gray-300 hover:border-gray-400"
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  ))}
+                </div>
               </div>
               <div>
                 <Label htmlFor="voor_wie">Voor wie (optioneel)</Label>
