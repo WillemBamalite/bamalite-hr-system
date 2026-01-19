@@ -341,7 +341,8 @@ export default function ReizenAflossersPage() {
     }, 0)
     
     // Voor aflossers met startsaldo
-    const startsaldoNote = aflosser.notes?.find((note: any) => 
+    const parsedNotes = parseNotes(aflosser.notes)
+    const startsaldoNote = parsedNotes.find((note: any) => 
       note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
     )
     
