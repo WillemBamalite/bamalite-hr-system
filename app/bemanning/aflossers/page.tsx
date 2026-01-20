@@ -73,6 +73,7 @@ export default function ReizenAflossersPage() {
   const [overwerkerDateFrom, setOverwerkerDateFrom] = useState("")
   const [overwerkerDateTo, setOverwerkerDateTo] = useState("")
   const [overwerkerNote, setOverwerkerNote] = useState("")
+  const [overwerkerMode, setOverwerkerMode] = useState<'periode' | 'vrije_weken'>('periode')
   const [editingPeriod, setEditingPeriod] = useState<{ memberId: string; periodId: string } | null>(null)
   
   // Overwerkers state (lijst van crew member IDs die als overwerkers zijn gemarkeerd)
@@ -197,6 +198,7 @@ export default function ReizenAflossersPage() {
     from: string
     to: string
     note?: string
+    type?: 'periode' | 'vrije_weken'
   }
 
   // Helper function to render availability status badge
@@ -409,27 +411,40 @@ export default function ReizenAflossersPage() {
 
   // Add period to overwerker
   const handleAddPeriod = async (memberId: string, fromDate: string, toDate: string, note?: string) => {
-    if (!fromDate || !toDate) {
-      alert("Vul beide datums in (van en tot)")
-      return
-    }
+    // Bij normale periode zijn datums verplicht
+    if (overwerkerMode === 'periode') {
+      if (!fromDate || !toDate) {
+        alert("Vul beide datums in (van en tot)")
+        return
+      }
 
-    if (new Date(fromDate) > new Date(toDate)) {
-      alert("De 'van' datum moet voor de 'tot' datum liggen")
-      return
+      if (new Date(fromDate) > new Date(toDate)) {
+        alert("De 'van' datum moet voor de 'tot' datum liggen")
+        return
+      }
     }
+    // Bij vrije weken negeren we de datums (die worden niet gebruikt)
     
     try {
       const member = crew.find((c: any) => c.id === memberId)
       if (!member) return
       
       const currentPeriods = getOverwerkerPeriods(member)
-      const newPeriod: OverwerkerPeriod = {
-        id: `period-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        from: fromDate,
-        to: toDate,
-        note: note?.trim() || undefined
-      }
+      const newPeriod: OverwerkerPeriod = overwerkerMode === 'vrije_weken'
+        ? {
+            id: `period-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            from: '',
+            to: '',
+            note: note?.trim() || undefined,
+            type: 'vrije_weken'
+          }
+        : {
+            id: `period-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            from: fromDate,
+            to: toDate,
+            note: note?.trim() || undefined,
+            type: 'periode'
+          }
       
       // Add to overwerkers list if not already there
       if (!overwerkers.includes(memberId)) {
@@ -443,6 +458,7 @@ export default function ReizenAflossersPage() {
       setOverwerkerDateFrom("")
       setOverwerkerDateTo("")
       setOverwerkerNote("")
+      setOverwerkerMode('periode')
       setEditingPeriod(null)
     } catch (error) {
       console.error("Error adding period:", error)
@@ -2136,25 +2152,59 @@ export default function ReizenAflossersPage() {
               </Select>
             </div>
 
+            {/* Kies type beschikbaarheid: periode of vrije weken */}
             <div>
-              <Label htmlFor="overwerker-date-from">Beschikbaar van datum *</Label>
-              <Input
-                id="overwerker-date-from"
-                type="date"
-                value={overwerkerDateFrom}
-                onChange={(e) => setOverwerkerDateFrom(e.target.value)}
-              />
+              <Label>Beschikbaarheidstype *</Label>
+              <div className="mt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOverwerkerMode('periode')}
+                  className={`w-full text-left px-3 py-2 rounded border text-sm ${
+                    overwerkerMode === 'periode'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  Beschikbaar op specifieke datum van/tot
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOverwerkerMode('vrije_weken')}
+                  className={`w-full text-left px-3 py-2 rounded border text-sm ${
+                    overwerkerMode === 'vrije_weken'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  Beschikbaar in vrije weken (automatisch op basis van thuis/aan boord)
+                </button>
+              </div>
             </div>
 
-            <div>
-              <Label htmlFor="overwerker-date-to">Beschikbaar tot datum *</Label>
-              <Input
-                id="overwerker-date-to"
-                type="date"
-                value={overwerkerDateTo}
-                onChange={(e) => setOverwerkerDateTo(e.target.value)}
-              />
-            </div>
+            {/* Alleen datums tonen als we in modus "periode" zitten */}
+            {overwerkerMode === 'periode' && (
+              <>
+                <div>
+                  <Label htmlFor="overwerker-date-from">Beschikbaar van datum *</Label>
+                  <Input
+                    id="overwerker-date-from"
+                    type="date"
+                    value={overwerkerDateFrom}
+                    onChange={(e) => setOverwerkerDateFrom(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="overwerker-date-to">Beschikbaar tot datum *</Label>
+                  <Input
+                    id="overwerker-date-to"
+                    type="date"
+                    value={overwerkerDateTo}
+                    onChange={(e) => setOverwerkerDateTo(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
 
             <div>
               <Label htmlFor="overwerker-note">Opmerking (optioneel)</Label>
@@ -2184,9 +2234,15 @@ export default function ReizenAflossersPage() {
               </Button>
               <Button 
                 onClick={() => {
-                  if (!selectedOverwerkerId || !overwerkerDateFrom || !overwerkerDateTo) {
-                    alert("Vul alle verplichte velden in")
+                  if (!selectedOverwerkerId) {
+                    alert("Kies eerst een bemanningslid")
                     return
+                  }
+                  if (overwerkerMode === 'periode') {
+                    if (!overwerkerDateFrom || !overwerkerDateTo) {
+                      alert("Vul beide datums in (van en tot)")
+                      return
+                    }
                   }
                   if (editingPeriod) {
                     handleUpdatePeriod(editingPeriod.memberId, editingPeriod.periodId, overwerkerDateFrom, overwerkerDateTo, overwerkerNote)
@@ -2195,7 +2251,10 @@ export default function ReizenAflossersPage() {
                   }
                 }} 
                 className="flex-1"
-                disabled={!selectedOverwerkerId || !overwerkerDateFrom || !overwerkerDateTo}
+                disabled={
+                  !selectedOverwerkerId ||
+                  (overwerkerMode === 'periode' && (!overwerkerDateFrom || !overwerkerDateTo))
+                }
               >
                 {editingPeriod ? 'Opslaan' : 'Toevoegen'}
               </Button>
