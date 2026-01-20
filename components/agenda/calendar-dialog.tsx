@@ -71,10 +71,10 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
 
   const loadCrewAndBirthdays = async () => {
     try {
-      // Load crew members with birth dates
+      // Load crew members with birth dates (exclusief dummy's)
       const { data: crewData, error: crewError } = await supabase
         .from('crew')
-        .select('id, first_name, last_name, birth_date')
+        .select('id, first_name, last_name, birth_date, is_dummy')
       
       if (crewError) {
         console.error('Error loading crew for birthdays:', crewError)
@@ -97,9 +97,9 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
       
       const birthdayItems: BirthdayItem[] = []
       
-      // Filter and process crew members with valid birth dates
+      // Filter en verwerk alleen echte bemanningsleden met geldige geboortedatum
       crewData
-        .filter((member: any) => member.birth_date && member.birth_date.trim() !== '')
+        .filter((member: any) => !member.is_dummy && member.birth_date && member.birth_date.trim() !== '')
         .forEach((member: any) => {
           try {
             // Parse birth date (format: YYYY-MM-DD)
@@ -368,7 +368,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl w-[95vw] h-[95vh] max-h-[95vh] flex flex-col p-6">
+      <DialogContent className="w-screen h-screen max-w-[100vw] max-h-[100vh] flex flex-col p-4 sm:p-6 rounded-none">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <CalendarIcon className="w-5 h-5" />
@@ -404,7 +404,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
               </div>
 
               {/* Calendar days */}
-              <div className="grid grid-cols-7 gap-1">
+              <div className="grid grid-cols-7 auto-rows-[minmax(120px,1fr)] gap-1">
                 {/* Empty cells */}
                 {emptyCells.map((_, i) => (
                   <div key={`empty-${i}`} className="aspect-square" />
@@ -421,7 +421,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                       key={day.toISOString()}
                       onClick={() => handleDateClick(day)}
                       className={`
-                        aspect-square border rounded-lg p-1 text-sm relative
+                        border rounded-lg p-1 text-[11px] sm:text-xs md:text-sm relative flex flex-col h-full
                         hover:bg-blue-50 transition-colors
                         ${isToday ? 'bg-blue-100 border-blue-400 font-bold' : ''}
                         ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''}
@@ -441,14 +441,16 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                           )}
                         </div>
                         {dayItems.length > 0 && (
-                          <div className="mt-auto pt-1 space-y-0.5">
-                            {dayItems.slice(0, 2).map((item) => {
-                              const itemColor = (item as any).color || (item as any).isBirthday ? '#ec4899' : '#3b82f6'
+                          <div className="mt-1 space-y-0.5 overflow-hidden">
+                            {dayItems.slice(0, 4).map((item) => {
                               const isBirthday = (item as any).isBirthday
+                              const itemColor = isBirthday
+                                ? '#ec4899'
+                                : ((item as any).color || '#3b82f6')
                               return (
                                 <div 
                                   key={item.id} 
-                                  className="text-[10px] text-left truncate px-1 py-0.5 rounded"
+                                  className="text-[11px] sm:text-xs text-left truncate px-1 py-0.5 rounded"
                                   style={{ 
                                     backgroundColor: `${itemColor}20`,
                                     borderLeft: `2px solid ${itemColor}`,
@@ -456,14 +458,14 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                                   }}
                                   title={item.title}
                                 >
-                                  {item.time && !isBirthday && <span className="text-gray-500">{item.time} </span>}
+                                  {item.time && !isBirthday && <span className="text-gray-600 font-medium">{item.time} </span>}
                                   {item.title}
                                 </div>
                               )
                             })}
-                            {dayItems.length > 2 && (
+                            {dayItems.length > 4 && (
                               <div className="text-[10px] text-gray-500">
-                                +{dayItems.length - 2} meer
+                                +{dayItems.length - 4} meer
                               </div>
                             )}
                           </div>
@@ -476,8 +478,8 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
             </CardContent>
           </Card>
 
-          {/* Selected Date Items */}
-          {selectedDate ? (
+          {/* Selected Date Items (alleen tonen als er echt iets geselecteerd is) */}
+          {selectedDate && (
             <Card className="flex flex-col overflow-hidden">
               <CardHeader className="flex-shrink-0">
                 <div className="flex items-center justify-between">
@@ -548,7 +550,9 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                       })
                       .map(item => {
                         const isBirthday = (item as any).isBirthday
-                        const itemColor = (item as any).color || (isBirthday ? '#ec4899' : '#3b82f6')
+                        const itemColor = isBirthday
+                          ? '#ec4899'
+                          : ((item as any).color || '#3b82f6')
                         const agendaItem = item as AgendaItem
                         
                         return (
@@ -606,13 +610,6 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                       })}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="flex items-center justify-center">
-              <CardContent className="text-center text-gray-500 py-12">
-                <CalendarIcon className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg">Selecteer een datum om items te bekijken</p>
               </CardContent>
             </Card>
           )}
