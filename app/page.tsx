@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle } from "lucide-react"
 import { ShipOverview } from "@/components/ship-overview"
 import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
@@ -28,7 +28,7 @@ function DashboardContent() {
   const { t } = useLanguage();
   
   // Gebruik Supabase data
-  const { ships, crew, sickLeave, incidents, loading, error } = useSupabaseData()
+  const { ships, crew, sickLeave, incidents, tasks, loading, error } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
 
   // Check voor proeftijd aflopend (dag 70 = nog 20 dagen)
@@ -175,6 +175,16 @@ function DashboardContent() {
     return incidents.filter((i: any) => i.status === 'open' || i.status === 'in_behandeling')
   }, [incidents])
 
+  // Urgente taken (blijven in meldingen tot opgelost of prioriteit lager is)
+  const urgentTasks = useMemo(() => {
+    if (!tasks || tasks.length === 0) return []
+    return tasks.filter((task: any) =>
+      task.priority === 'urgent' &&
+      task.status !== 'completed' &&
+      task.completed !== true
+    )
+  }, [tasks])
+
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true);
@@ -221,13 +231,17 @@ function DashboardContent() {
           <Alert className="mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200">
             <AlertTriangle className="h-5 w-5 text-orange-600" />
             <AlertDescription className="text-base font-medium">
-              ⚠️ Let op! De proefperiode van {probationEnding.map((member: any, index: number) => (
+              ⚠️ Let op! De proefperiode van{" "}
+              {probationEnding.map((member: any, index: number) => (
                 <span key={member.id}>
-                  <strong>{member.first_name} {member.last_name}</strong>
+                  <strong>
+                    {member.first_name} {member.last_name}
+                  </strong>
                   {index < probationEnding.length - 1 && ", "}
                   {index === probationEnding.length - 2 && " en "}
                 </span>
-              ))} verloopt over 20 dagen.
+              ))}{" "}
+              verloopt over 20 dagen.
             </AlertDescription>
           </Alert>
         )}
@@ -237,13 +251,57 @@ function DashboardContent() {
           <Alert className="mb-6 bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
             <Cake className="h-5 w-5 text-pink-600" />
             <AlertDescription className="text-base font-medium">
-              🎉 {birthdaysToday.map((member: any, index: number) => (
+              🎉{" "}
+              {birthdaysToday.map((member: any, index: number) => (
                 <span key={member.id}>
-                  <strong>{member.first_name} {member.last_name}</strong>
+                  <strong>
+                    {member.first_name} {member.last_name}
+                  </strong>
                   {index < birthdaysToday.length - 1 && ", "}
                   {index === birthdaysToday.length - 2 && " en "}
                 </span>
-              ))} {birthdaysToday.length === 1 ? "is" : "zijn"} vandaag jarig! 🎂
+              ))}{" "}
+              {birthdaysToday.length === 1 ? "is" : "zijn"} vandaag jarig! 🎂
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Urgente taken */}
+        {urgentTasks.length > 0 && (
+          <Alert className="mb-6 bg-gradient-to-r from-red-50 to-red-100 border-red-300">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <AlertDescription className="text-base font-medium">
+              🚨 Er {urgentTasks.length === 1 ? 'staat' : 'staan'}{" "}
+              <strong>{urgentTasks.length}</strong> taak{urgentTasks.length === 1 ? '' : 'en'} met{" "}
+              <strong>prioriteit URGENT</strong> open.
+              <ul className="mt-3 space-y-1 text-sm">
+                {urgentTasks.slice(0, 5).map((task: any) => (
+                  <li key={task.id} className="flex items-start gap-2">
+                    <span className="mt-1 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
+                    <div>
+                      <div className="font-semibold">
+                        {task.title}
+                        {task.assigned_to && (
+                          <span className="ml-1 text-xs text-gray-600">
+                            – toegewezen aan {task.assigned_to}
+                          </span>
+                        )}
+                      </div>
+                      {task.deadline && (
+                        <div className="text-xs text-gray-600">
+                          Deadline:{" "}
+                          {format(new Date(task.deadline), 'dd-MM-yyyy')}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+                {urgentTasks.length > 5 && (
+                  <li className="text-xs text-gray-600">
+                    +{urgentTasks.length - 5} extra urgente taak{urgentTasks.length - 5 === 1 ? '' : 'en'} – bekijk alle taken in het takenoverzicht.
+                  </li>
+                )}
+              </ul>
             </AlertDescription>
           </Alert>
         )}
@@ -257,12 +315,12 @@ function DashboardContent() {
               <ul className="list-disc list-inside mt-2">
                 {shipsNotVisited50Days.map((ship: any) => {
                   const unvisitedPloegen = getUnvisitedPloegen(ship.id)
-                  
+
                   if (unvisitedPloegen.length === 2) {
                     // Check of beide nog nooit bezocht zijn of beide >50 dagen
                     const shipVisits = visits?.filter((v: any) => v.ship_id === ship.id) || []
                     const hasAnyVisit = shipVisits.length > 0
-                    
+
                     if (!hasAnyVisit) {
                       return (
                         <li key={ship.id}>
@@ -278,9 +336,10 @@ function DashboardContent() {
                     }
                   } else if (unvisitedPloegen.length === 1) {
                     // Check of deze ploeg nog nooit bezocht is
-                    const shipVisits = visits?.filter((v: any) => v.ship_id === ship.id && v.ploeg === unvisitedPloegen[0]) || []
+                    const shipVisits =
+                      visits?.filter((v: any) => v.ship_id === ship.id && v.ploeg === unvisitedPloegen[0]) || []
                     const hasVisit = shipVisits.length > 0
-                    
+
                     if (!hasVisit) {
                       return (
                         <li key={ship.id}>
@@ -295,7 +354,7 @@ function DashboardContent() {
                       )
                     }
                   }
-                  
+
                   // Fallback (zou niet moeten voorkomen)
                   return (
                     <li key={ship.id}>

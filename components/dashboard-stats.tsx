@@ -261,111 +261,154 @@ export function DashboardStats() {
 
   return (
     <div className="space-y-4 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-11 gap-4">
-        <Link href="/bemanning/overzicht" className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
-          <div className='text-xs text-blue-700 mt-1'>{t('totalCrewMembers')}</div>
-        </Link>
-        <Link href="/bemanning/aflossers" className="bg-green-50 border border-green-200 rounded-lg p-4 hover:bg-green-100 transition cursor-pointer">
-          <div className="text-sm font-semibold text-green-900 mb-2 text-center">Nog openstaande reizen</div>
-          <div className="text-xs text-green-700 space-y-1">
-            <div className="flex justify-between">
-              <span>geplande reizen:</span>
-              <span className="font-semibold text-green-900">{stats.reizenStats.gepland}</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* 1. Totaal bemanningsleden */}
+        <div className="aspect-[3/1]">
+          <Link href="/bemanning/overzicht" className="h-full flex flex-col items-center justify-center bg-blue-50 border border-blue-200 rounded-lg p-4 text-center hover:bg-blue-100 transition cursor-pointer">
+            <div className="text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
+            <div className='text-xs text-blue-700 mt-1'>{t('totalCrewMembers')}</div>
+          </Link>
+        </div>
+
+        {/* 2. Nog openstaande reizen */}
+        <div className="aspect-[3/1]">
+          <Link href="/bemanning/aflossers" className="h-full flex flex-col bg-green-50 border border-green-200 rounded-lg p-4 text-center hover:bg-green-100 transition cursor-pointer">
+            <div className="text-sm font-semibold text-green-900 mb-2 text-center">Nog openstaande reizen</div>
+            <div className="text-xs text-green-700 space-y-1">
+              <div className="flex justify-between">
+                <span>geplande reizen:</span>
+                <span className="font-semibold text-green-900">{stats.reizenStats.gepland}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>ingedeelde reizen:</span>
+                <span className="font-semibold text-green-900">{stats.reizenStats.ingedeeld}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>actieve reizen:</span>
+                <span className="font-semibold text-green-900">{stats.reizenStats.actief}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>ingedeelde reizen:</span>
-              <span className="font-semibold text-green-900">{stats.reizenStats.ingedeeld}</span>
+          </Link>
+        </div>
+
+        {/* 3. Zieken */}
+        <div className="aspect-[3/1]">
+          <Link href="/ziekte" className="h-full flex flex-col bg-red-50 border border-red-200 rounded-lg p-4 text-center hover:bg-red-100 transition cursor-pointer">
+            <div className="text-sm font-semibold text-red-900 mb-2 text-center">{t('sickMembers')}</div>
+            <div className="text-xs text-red-700 space-y-1">
+              <div className="flex justify-between">
+                <span>verlopen briefje:</span>
+                <span className="font-semibold text-red-900">{stats.ziekenStats.verlopenBriefje}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>bijna verlopen:</span>
+                <span className="font-semibold text-red-900">{stats.ziekenStats.bijnaVerlopen}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>geldig briefje:</span>
+                <span className="font-semibold text-red-900">{stats.ziekenStats.geldigBriefje}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>actieve reizen:</span>
-              <span className="font-semibold text-green-900">{stats.reizenStats.actief}</span>
+          </Link>
+        </div>
+
+        {/* 4. Nieuw personeel */}
+        <div className="aspect-[3/1]">
+          <Link href="/bemanning/nog-in-te-delen" className="h-full flex flex-col bg-gray-50 border border-gray-200 rounded-lg p-4 text-center hover:bg-gray-100 transition cursor-pointer">
+            <div className="text-sm font-semibold text-gray-900 mb-2 text-center">{t('newPersonnelMembers')}</div>
+            <div className="text-xs text-gray-700 space-y-1">
+              <div className="flex justify-between">
+                <span>nog te benaderen:</span>
+                <span className="font-semibold text-gray-900">{stats.nieuwPersoneelStats.nogTeBenaderen}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>nog in te delen:</span>
+                <span className="font-semibold text-gray-900">{stats.nieuwPersoneelStats.nogInTeDelen}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>nog af te ronden:</span>
+                <span className="font-semibold text-gray-900">{stats.nieuwPersoneelStats.nogAfTeRonden}</span>
+              </div>
             </div>
-          </div>
-        </Link>
-        <Link href="/bemanning/studenten" className="bg-purple-50 border border-purple-200 rounded-lg p-4 hover:bg-purple-100 transition cursor-pointer">
-          <div className="text-sm font-semibold text-purple-900 mb-2 text-center">{t('students')}</div>
-          <div className="text-xs text-purple-700 space-y-1">
-            <div className="flex justify-between">
-              <span>BBL:</span>
-              <span className="font-semibold text-purple-900">{stats.studentenStats.BBL}</span>
+          </Link>
+        </div>
+
+        {/* 5. Studenten */}
+        <div className="aspect-[3/1]">
+          <Link href="/bemanning/studenten" className="h-full flex flex-col bg-purple-50 border border-purple-200 rounded-lg p-4 text-center hover:bg-purple-100 transition cursor-pointer">
+            <div className="text-sm font-semibold text-purple-900 mb-2 text-center">{t('students')}</div>
+            <div className="text-xs text-purple-700 space-y-1">
+              <div className="flex justify-between">
+                <span>BBL:</span>
+                <span className="font-semibold text-purple-900">{stats.studentenStats.BBL}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>BOL:</span>
+                <span className="font-semibold text-purple-900">{stats.studentenStats.BOL}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>BOL:</span>
-              <span className="font-semibold text-purple-900">{stats.studentenStats.BOL}</span>
+          </Link>
+        </div>
+
+        {/* 6. Taken */}
+        <div className="aspect-[3/1]">
+          <Link href="/taken" className="h-full flex flex-col items-center justify-center bg-amber-50 border border-amber-200 rounded-lg p-4 text-center hover:bg-amber-100 transition cursor-pointer">
+            <div className="text-2xl font-bold text-amber-800">{tasksCount}</div>
+            <div className='text-xs text-amber-700 mt-1 flex items-center justify-center gap-1'>
+              <ListTodo className="w-3 h-3" />
+              <span>Taken</span>
             </div>
-          </div>
-        </Link>
-        <Link href="/ziekte" className="bg-red-50 border border-red-200 rounded-lg p-4 hover:bg-red-100 transition cursor-pointer">
-          <div className="text-sm font-semibold text-red-900 mb-2 text-center">{t('sickMembers')}</div>
-          <div className="text-xs text-red-700 space-y-1">
-            <div className="flex justify-between">
-              <span>verlopen briefje:</span>
-              <span className="font-semibold text-red-900">{stats.ziekenStats.verlopenBriefje}</span>
+          </Link>
+        </div>
+
+        {/* 7. Scheepsbezoeken */}
+        <div className="aspect-[3/1]">
+          <Link href="/schepen/bezoeken" className="h-full flex flex-col items-center justify-center bg-indigo-50 border border-indigo-200 rounded-lg p-4 text-center hover:bg-indigo-100 transition cursor-pointer">
+            <div className="text-2xl font-bold text-indigo-800">{stats.scheepsbezoeken}</div>
+            <div className='text-xs text-indigo-700 mt-1 flex items-center justify-center gap-1'>
+              <Calendar className="w-3 h-3" />
+              <span>Scheepsbezoeken</span>
             </div>
-            <div className="flex justify-between">
-              <span>bijna verlopen:</span>
-              <span className="font-semibold text-red-900">{stats.ziekenStats.bijnaVerlopen}</span>
+          </Link>
+        </div>
+
+        {/* 8. Medische keuringen */}
+        <div className="aspect-[3/1]">
+          <Link href="/bemanning/medische-keuringen" className="h-full flex flex-col items-center justify-center bg-teal-50 border border-teal-200 rounded-lg p-4 text-center hover:bg-teal-100 transition cursor-pointer">
+            <div className="text-2xl font-bold text-teal-800">{stats.medischeKeuringen}</div>
+            <div className='text-xs text-teal-700 mt-1 flex items-center justify-center gap-1'>
+              <Cloud className="w-3 h-3" />
+              <span>Medische Keuringen</span>
             </div>
-            <div className="flex justify-between">
-              <span>geldig briefje:</span>
-              <span className="font-semibold text-red-900">{stats.ziekenStats.geldigBriefje}</span>
+          </Link>
+        </div>
+
+        {/* 9. Lopende incidenten */}
+        <div className="aspect-[3/1]">
+          <Link href="/incidenten" className="h-full flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-lg p-4 text-center hover:bg-rose-100 transition cursor-pointer">
+            <div className="text-2xl font-bold text-rose-800">{openIncidentsCount}</div>
+            <div className='text-xs text-rose-700 mt-1 flex items-center justify-center gap-1'>
+              <AlertCircle className="w-3 h-3" />
+              <span>Lopende Incidenten</span>
             </div>
-          </div>
-        </Link>
-        <Link href="/bemanning/nog-in-te-delen" className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 transition cursor-pointer">
-          <div className="text-sm font-semibold text-gray-900 mb-2 text-center">{t('newPersonnelMembers')}</div>
-          <div className="text-xs text-gray-700 space-y-1">
-            <div className="flex justify-between">
-              <span>nog te benaderen:</span>
-              <span className="font-semibold text-gray-900">{stats.nieuwPersoneelStats.nogTeBenaderen}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>nog in te delen:</span>
-              <span className="font-semibold text-gray-900">{stats.nieuwPersoneelStats.nogInTeDelen}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>nog af te ronden:</span>
-              <span className="font-semibold text-gray-900">{stats.nieuwPersoneelStats.nogAfTeRonden}</span>
-            </div>
-          </div>
-        </Link>
-        <Link href="/bemanning/medische-keuringen" className="bg-teal-50 border border-teal-200 rounded-lg p-4 text-center hover:bg-teal-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-teal-800">{stats.medischeKeuringen}</div>
-          <div className='text-xs text-teal-700 mt-1 flex items-center justify-center gap-1'>
-            <Cloud className="w-3 h-3" />
-            <span>Medische Keuringen</span>
-          </div>
-        </Link>
-        <Link href="/taken" className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center hover:bg-amber-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-amber-800">{tasksCount}</div>
-          <div className='text-xs text-amber-700 mt-1 flex items-center justify-center gap-1'>
-            <ListTodo className="w-3 h-3" />
-            <span>Taken</span>
-          </div>
-        </Link>
-        <Link href="/bemanning/leningen" className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>
-          <div className='text-xs text-yellow-700 mt-1'>{t('outstandingLoans')}</div>
-        </Link>
-        <Link href="/bemanning/oude-bemanningsleden" className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center hover:bg-slate-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-slate-800">{stats.oudMedewerkers}</div>
-          <div className='text-xs text-slate-700 mt-1'>{t('oldEmployees')}</div>
-        </Link>
-        <Link href="/schepen/bezoeken" className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 text-center hover:bg-indigo-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-indigo-800">{stats.scheepsbezoeken}</div>
-          <div className='text-xs text-indigo-700 mt-1 flex items-center justify-center gap-1'>
-            <Calendar className="w-3 h-3" />
-            <span>Scheepsbezoeken</span>
-          </div>
-        </Link>
-        <Link href="/incidenten" className="bg-rose-50 border border-rose-200 rounded-lg p-4 text-center hover:bg-rose-100 transition cursor-pointer">
-          <div className="text-2xl font-bold text-rose-800">{openIncidentsCount}</div>
-          <div className='text-xs text-rose-700 mt-1 flex items-center justify-center gap-1'>
-            <AlertCircle className="w-3 h-3" />
-            <span>Lopende Incidenten</span>
-          </div>
-        </Link>
+          </Link>
+        </div>
+
+        {/* 10. Openstaande leningen */}
+        <div className="aspect-[3/1]">
+          <Link href="/bemanning/leningen" className="h-full flex flex-col items-center justify-center bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
+            <div className="text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>
+            <div className='text-xs text-yellow-700 mt-1'>{t('outstandingLoans')}</div>
+          </Link>
+        </div>
+
+        {/* 11. Oud medewerkers */}
+        <div className="aspect-[3/1]">
+          <Link href="/bemanning/oude-bemanningsleden" className="h-full flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-lg p-4 text-center hover:bg-slate-100 transition cursor-pointer">
+            <div className="text-2xl font-bold text-slate-800">{stats.oudMedewerkers}</div>
+            <div className='text-xs text-slate-700 mt-1'>{t('oldEmployees')}</div>
+          </Link>
+        </div>
       </div>
     </div>
   )
