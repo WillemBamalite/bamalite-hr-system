@@ -521,10 +521,13 @@ function fillContractFields(
       'regel13': data.basisSalaris || '', // Basissalaris - Links
       'regel14': data.kledinggeld || '', // Kledinggeld - Links
       'regel15': data.reiskosten || '', // Reiskosten - Links
-      'regel16': data.company, // Firma - Links
-      'regel17': currentDate, // Datum opmaken - Links
-      'regel18': data.company, // Firma - Links
-      'regel19': fullName, // Volledige naam - Links
+      // Regel16-regel19 verschillen per taal:
+      // NL: regel16=Firma, regel17=Datum, regel18=Firma, regel19=Volledige naam
+      // DE: regel16=Datum, regel17=Firma, regel18=Volledige naam
+      'regel16': options.language === 'de' ? currentDate : data.company, // DE: Datum opmaken, NL: Firma - Links
+      'regel17': options.language === 'de' ? data.company : currentDate, // DE: Firma, NL: Datum opmaken - Links
+      'regel18': options.language === 'de' ? fullName : data.company, // DE: Volledige naam, NL: Firma - Links
+      'regel19': options.language === 'nl' ? fullName : '', // NL: Volledige naam - Links (alleen voor NL)
       
       // Oude veldnamen (voor backward compatibility)
       'voornaam': data.firstName,
