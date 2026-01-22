@@ -17,7 +17,7 @@ interface Props {
   }>
 }
 
-export default function BemanningslidPage({ params }: Props) {
+function BemanningslidContent({ params }: Props) {
   const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -86,5 +86,17 @@ export default function BemanningslidPage({ params }: Props) {
         </main>
       </div>
     </div>
+  )
+}
+
+export default function BemanningslidPage({ params }: Props) {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div>Laden...</div>
+      </div>
+    }>
+      <BemanningslidContent params={params} />
+    </Suspense>
   )
 }

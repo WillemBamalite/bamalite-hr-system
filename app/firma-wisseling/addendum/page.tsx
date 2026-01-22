@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,7 +22,7 @@ const COMPANIES = [
   'Devel Shipping S.A.',
 ]
 
-export default function AddendumPage() {
+function AddendumForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { crew, loading } = useSupabaseData()
@@ -342,6 +342,18 @@ export default function AddendumPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function AddendumPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto p-6">
+        <div className="text-center py-12">Laden...</div>
+      </div>
+    }>
+      <AddendumForm />
+    </Suspense>
   )
 }
 
