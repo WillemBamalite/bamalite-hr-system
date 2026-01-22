@@ -176,6 +176,11 @@ export async function generateContract(
             try {
               await setAlignmentForAllFields(fields, helveticaBoldFont)
               console.log('✓ Alignment definitief ingesteld voor alle velden (met behoud van bold font)')
+              
+              // Extra stap: forceer alignment opnieuw vlak voor flatten()
+              // Dit is belangrijk omdat sommige operaties de alignment kunnen resetten
+              await setAlignmentForAllFields(fields, helveticaBoldFont)
+              console.log('✓ Alignment opnieuw gecontroleerd en ingesteld vlak voor flatten()')
             } catch (alignError) {
               console.warn('⚠️ Kon alignment niet instellen:', alignError)
             }
@@ -302,6 +307,7 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any) {
           const alignmentValue = needsCenter ? 1 : 0 // 0 = left, 1 = center, 2 = right
           
           // Stel Q (Quadding) in - dit bepaalt de tekstuitlijning
+          // Dit is de belangrijkste stap voor alignment
           acroField.dict.set('Q', alignmentValue)
           
           // Behoud de bestaande DA (Default Appearance) string - overschrijf alleen als nodig
@@ -326,6 +332,13 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any) {
             }
             // Update DA string met behoud van font maar met juiste alignment via Q
             acroField.dict.set('DA', `/${fontName} ${fontSize} Tf 0 g`)
+            
+            // Verifieer dat Q correct is ingesteld
+            const verifyQ = acroField.dict.lookup('Q')
+            if (!verifyQ || verifyQ.toString() !== alignmentValue.toString()) {
+              console.warn(`⚠️ Q waarde niet correct voor "${originalFieldName}", opnieuw instellen...`)
+              acroField.dict.set('Q', alignmentValue)
+            }
           } catch (daError) {
             console.warn(`Kon DA niet instellen voor veld "${originalFieldName}":`, daError)
           }
@@ -334,26 +347,64 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any) {
         }
 
         // Probeer ook setAlignment functie als die beschikbaar is (pdf-lib API)
+        // Dit is belangrijk omdat sommige versies van pdf-lib deze methode gebruiken
         if (typeof (field as any).setAlignment === 'function') {
           try {
             const alignmentValue = needsCenter ? 1 : 0
             ;(field as any).setAlignment(alignmentValue)
             console.log(`✓ setAlignment(${alignmentValue}) aangeroepen voor veld "${originalFieldName}"`)
+            
+            // Verifieer dat de alignment correct is ingesteld
+            try {
+              const currentAlignment = (field as any).getAlignment?.()
+              if (currentAlignment !== undefined && currentAlignment !== alignmentValue) {
+                console.warn(`⚠️ Alignment mismatch voor "${originalFieldName}": verwacht ${alignmentValue}, kreeg ${currentAlignment}`)
+                // Probeer opnieuw
+                ;(field as any).setAlignment(alignmentValue)
+              }
+            } catch (verifyError) {
+              // getAlignment bestaat mogelijk niet, dat is ok
+            }
           } catch (alignError) {
             console.warn(`setAlignment faalde voor veld "${originalFieldName}":`, alignError)
           }
         }
         
         // Forceer update van appearance met bold font EN alignment
+        // Dit is cruciaal om ervoor te zorgen dat de alignment behouden blijft na flatten()
         try {
           const currentValue = field.getText()
-          if (currentValue && boldFont) {
-            // Update appearance met bold font
-            if (typeof (field as any).updateAppearances === 'function') {
-              (field as any).updateAppearances(boldFont)
-            } else {
-              // Als updateAppearances niet beschikbaar is, forceer update door tekst opnieuw in te stellen
-              field.setText(currentValue)
+          if (currentValue) {
+            // Eerst: stel Q (Quadding) opnieuw in om zeker te zijn
+            if (acroField && acroField.dict) {
+              const alignmentValue = needsCenter ? 1 : 0
+              acroField.dict.set('Q', alignmentValue)
+              
+              // Update de appearance stream expliciet
+              // Dit zorgt ervoor dat de alignment wordt toegepast in de visuele weergave
+              try {
+                // Forceer update door de tekst opnieuw in te stellen
+                // Dit triggert een regeneratie van de appearance stream met de juiste alignment
+                field.setText('') // Leeg eerst
+                field.setText(currentValue) // Vul opnieuw in
+                
+                // Stel Q opnieuw in na setText (soms wordt het gereset)
+                acroField.dict.set('Q', alignmentValue)
+                
+                // Update appearance met bold font als beschikbaar
+                if (boldFont && typeof (field as any).updateAppearances === 'function') {
+                  (field as any).updateAppearances(boldFont)
+                }
+                
+                // Verifieer dat Q nog steeds correct is ingesteld
+                const verifyQ = acroField.dict.lookup('Q')
+                if (verifyQ && verifyQ.toString() !== alignmentValue.toString()) {
+                  console.warn(`⚠️ Q waarde werd gereset voor "${originalFieldName}", opnieuw instellen...`)
+                  acroField.dict.set('Q', alignmentValue)
+                }
+              } catch (appearanceError) {
+                console.warn(`Kon appearance stream niet updaten voor "${originalFieldName}":`, appearanceError)
+              }
             }
           }
         } catch (e) {
