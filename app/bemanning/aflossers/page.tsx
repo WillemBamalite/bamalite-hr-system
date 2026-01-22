@@ -542,7 +542,15 @@ export default function ReizenAflossersPage() {
   )
 
   // Filter trips by status
-  const geplandeTrips = trips.filter((trip: any) => trip.status === 'gepland')
+  const geplandeTrips = trips
+    .filter((trip: any) => trip.status === 'gepland')
+    .sort((a: any, b: any) => {
+      // Sorteer op start_date (vroegste eerst)
+      if (!a.start_date && !b.start_date) return 0
+      if (!a.start_date) return 1 // Geen datum komt achteraan
+      if (!b.start_date) return -1
+      return new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+    })
   const ingedeeldeTrips = trips.filter((trip: any) => trip.status === 'ingedeeld')
   const actieveTrips = trips.filter((trip: any) => trip.status === 'actief')
   const voltooideTrips = trips.filter((trip: any) => trip.status === 'voltooid')
