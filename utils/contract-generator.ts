@@ -285,7 +285,13 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any) {
           .toLowerCase()
           .replace(/[^a-z0-9]/g, '')
 
+        // Regel1 en regel2 moeten gecentreerd worden, alle andere regels links
         const needsCenter =
+          fieldNameNormalized === 'regel1' ||
+          fieldNameNormalized === 'regel2' ||
+          fieldNamePlain === 'regel1' ||
+          fieldNamePlain === 'regel2' ||
+          // Backward compatibility met oude veldnamen
           fieldNameNormalized === 'firma_centreren' ||
           fieldNameNormalized === 'werknemer_centreren' ||
           fieldNamePlain === 'firmacentreren' ||
@@ -439,22 +445,47 @@ function fillContractFields(
     // Dit moet worden aangepast op basis van de werkelijke veldnamen in het PDF
     
     const companyNumber = getCompanyNumber(data.company)
+    const fullName = `${data.firstName} ${data.lastName}`
+    const address = `${data.address.street}, ${data.address.postalCode} ${data.address.city}, ${data.address.country}`
+    const currentDate = format(new Date(), 'dd-MM-yyyy', { locale: nl })
     
+    // Nieuwe veldnamen: regel1 tot regel19
     const fieldMappings: Record<string, string> = {
-      // Persoonlijke gegevens
+      // Nieuwe regel-gebaseerde veldnamen
+      'regel1': data.company, // Firma - Gecentreerd
+      'regel2': fullName, // Volledige naam - Gecentreerd
+      'regel3': data.company, // Firma - Links
+      'regel4': companyNumber, // Firmanummer - Links
+      'regel5': fullName, // volledige naam - Links
+      'regel6': formatDate(data.birthDate), // geboortedatum - Links
+      'regel7': data.birthPlace || '', // Geboorteplaats - Links
+      'regel8': address, // Adres - Links
+      'regel9': formatDate(data.in_dienst_vanaf), // in dienst vanaf - Links
+      'regel10': data.position, // Functie - Links
+      'regel11': data.shipName || '', // Scheepsnaam - Links
+      'regel12': (() => {
+        if (!data.in_dienst_vanaf) return ''
+        return calculateDatePlus3Months(data.in_dienst_vanaf)
+      })(), // in dienst vanaf + 3 maanden - Links
+      'regel13': data.basisSalaris || '', // Basissalaris - Links
+      'regel14': data.kledinggeld || '', // Kledinggeld - Links
+      'regel15': data.reiskosten || '', // Reiskosten - Links
+      'regel16': data.company, // Firma - Links
+      'regel17': currentDate, // Datum opmaken - Links
+      'regel18': data.company, // Firma - Links
+      'regel19': fullName, // Volledige naam - Links
+      
+      // Oude veldnamen (voor backward compatibility)
       'voornaam': data.firstName,
       'achternaam': data.lastName,
-      'naam': `${data.firstName} ${data.lastName}`,
-      'volledigenaam': `${data.firstName} ${data.lastName}`,
-      'volledigenaamwerknemer': `${data.firstName} ${data.lastName}`, // Voor "Volledige naam werknemer" (zonder spaties)
-      // Optionele speciale veldnamen als je in de PDF de eerste-pagina velden
-      // een andere naam geeft zodat alleen die gecentreerd hoeven te worden
-      // (bijvoorbeeld "Werknemer_centreren" en "Firma_centreren")
-      'werknemer_centreren': `${data.firstName} ${data.lastName}`,
+      'naam': fullName,
+      'volledigenaam': fullName,
+      'volledigenaamwerknemer': fullName,
+      'werknemer_centreren': fullName,
       'geboortedatum': formatDate(data.birthDate),
       'geboorteplaats': data.birthPlace || '',
       'nationaliteit': getNationalityLabel(data.nationality),
-      'adres': `${data.address.street}, ${data.address.postalCode} ${data.address.city}, ${data.address.country}`,
+      'adres': address,
       'straat': data.address.street,
       'postcode': data.address.postalCode,
       'plaats': data.address.city,
@@ -465,54 +496,28 @@ function fillContractFields(
       'positie': data.position,
       'bedrijf': data.company,
       'firma': data.company,
-      // Eerste-pagina firma veld als je dit in de PDF hernoemt naar "Firma_centreren"
       'firma_centreren': data.company,
       'firmanummer': companyNumber,
       'firmanr': companyNumber,
       'bedrijfsnummer': companyNumber,
-      'indiensttreding': (() => {
-        const formatted = formatDate(data.in_dienst_vanaf)
-        console.log('Indiensttreding datum:', { original: data.in_dienst_vanaf, formatted })
-        return formatted
-      })(),
-      'in_dienst_vanaf': (() => {
-        const formatted = formatDate(data.in_dienst_vanaf)
-        console.log('In dienst vanaf datum:', { original: data.in_dienst_vanaf, formatted })
-        return formatted
-      })(),
-      // Proeftijd einddatum (3 maanden na indiensttreding) - BEREKEN EERST
+      'indiensttreding': formatDate(data.in_dienst_vanaf),
+      'in_dienst_vanaf': formatDate(data.in_dienst_vanaf),
       'proeftijd_einddatum': (() => {
         if (!data.in_dienst_vanaf) return ''
-        const calculated = calculateDatePlus3Months(data.in_dienst_vanaf)
-        console.log('Proeftijd einddatum berekend:', { 
-          original: data.in_dienst_vanaf, 
-          calculated 
-        })
-        return calculated
+        return calculateDatePlus3Months(data.in_dienst_vanaf)
       })(),
       'in_dienst_vanaf_3maanden': (() => {
         if (!data.in_dienst_vanaf) return ''
-        const calculated = calculateDatePlus3Months(data.in_dienst_vanaf)
-        console.log('Proeftijd einddatum (in_dienst_vanaf_3maanden):', { 
-          original: data.in_dienst_vanaf, 
-          calculated 
-        })
-        return calculated
+        return calculateDatePlus3Months(data.in_dienst_vanaf)
       })(),
       'in_dienst_vanaf_plus_3maanden': (() => {
         if (!data.in_dienst_vanaf) return ''
-        const calculated = calculateDatePlus3Months(data.in_dienst_vanaf)
-        console.log('Proeftijd einddatum (in_dienst_vanaf_plus_3maanden):', { 
-          original: data.in_dienst_vanaf, 
-          calculated 
-        })
-        return calculated
+        return calculateDatePlus3Months(data.in_dienst_vanaf)
       })(),
       'in_dienst_vanafplus3maanden': (() => {
         if (!data.in_dienst_vanaf) return ''
         return calculateDatePlus3Months(data.in_dienst_vanaf)
-      })(), // Voor "in_dienst_vanaf + 3maanden" (zonder spaties en met plus)
-      // Alternatieve veldnamen voor proeftijd
+      })(),
       'proeftijd': (() => {
         if (!data.in_dienst_vanaf) return ''
         return calculateDatePlus3Months(data.in_dienst_vanaf)
@@ -525,29 +530,25 @@ function fillContractFields(
         if (!data.in_dienst_vanaf) return ''
         return calculateDatePlus3Months(data.in_dienst_vanaf)
       })(),
-      // Einddatum voor contract bepaalde tijd
       'in_dienst_tot': data.in_dienst_tot ? formatDate(data.in_dienst_tot) : '',
       'einddatum': data.in_dienst_tot ? formatDate(data.in_dienst_tot) : '',
       'contract_einddatum': data.in_dienst_tot ? formatDate(data.in_dienst_tot) : '',
       'matricule': data.matricule || '',
-      // Scheepsnaam (scheepsnaam is al eerder gedefinieerd)
       'schip': data.shipName || '',
       'scheep': data.shipName || '',
-      // Datums
-      'datum': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
-      'vandaag': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
-      'huidigedatum': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
-      'contractdatum': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
-      'datum_opmaken': format(new Date(), 'dd-MM-yyyy', { locale: nl }), // Contractdatum
-      'datumopmaken': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
-      'opmaakdatum': format(new Date(), 'dd-MM-yyyy', { locale: nl }),
-      'datum_opmak': format(new Date(), 'dd-MM-yyyy', { locale: nl }), // Alternatieve spelling
-      // Salaris velden
-      'basissalaris': data.basisSalaris || '', // Voor "Basissalaris" (hoofdletter)
+      'datum': currentDate,
+      'vandaag': currentDate,
+      'huidigedatum': currentDate,
+      'contractdatum': currentDate,
+      'datum_opmaken': currentDate,
+      'datumopmaken': currentDate,
+      'opmaakdatum': currentDate,
+      'datum_opmak': currentDate,
+      'basissalaris': data.basisSalaris || '',
       'salaris': data.basisSalaris || '',
       'kledinggeld': data.kledinggeld || '',
-      'reiskosten': data.reiskosten || '', // Voor "Reiskosten" (hoofdletter)
-      'scheepsnaam': data.shipName || '', // Voor "Scheepsnaam" (hoofdletter)
+      'reiskosten': data.reiskosten || '',
+      'scheepsnaam': data.shipName || '',
     }
     
     // Probeer alle velden in het formulier te vinden en in te vullen
@@ -684,11 +685,15 @@ function fillContractFields(
                 .toLowerCase()
                 .replace(/[^a-z0-9]/g, '')
 
+              // Regel1 en regel2 moeten gecentreerd worden, alle andere regels links
               const needsCenter =
-                // Met underscore in de naam
+                fieldNameNormalized === 'regel1' ||
+                fieldNameNormalized === 'regel2' ||
+                fieldNamePlain === 'regel1' ||
+                fieldNamePlain === 'regel2' ||
+                // Backward compatibility met oude veldnamen
                 fieldNameNormalized === 'firma_centreren' ||
                 fieldNameNormalized === 'werknemer_centreren' ||
-                // Zonder underscore / alleen letters-cijfers
                 fieldNamePlain === 'firmacentreren' ||
                 fieldNamePlain === 'werknemercentreren'
 
@@ -844,7 +849,13 @@ function fillContractFields(
                   .toLowerCase()
                   .replace(/[^a-z0-9]/g, '')
 
+                // Regel1 en regel2 moeten gecentreerd worden, alle andere regels links
                 const needsCenter =
+                  fieldNameNormalized === 'regel1' ||
+                  fieldNameNormalized === 'regel2' ||
+                  fieldNamePlain === 'regel1' ||
+                  fieldNamePlain === 'regel2' ||
+                  // Backward compatibility met oude veldnamen
                   fieldNameNormalized === 'firma_centreren' ||
                   fieldNameNormalized === 'werknemer_centreren' ||
                   fieldNamePlain === 'firmacentreren' ||
