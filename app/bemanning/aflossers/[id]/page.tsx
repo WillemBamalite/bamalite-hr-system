@@ -112,6 +112,21 @@ function calculateWorkDays(startDate: string, startTime: string, endDate: string
   return daysDiff
 }
 
+// Helper to parse notes (can be array, string, or null/undefined)
+const parseNotes = (notes: any): any[] => {
+  if (!notes) return []
+  if (Array.isArray(notes)) return notes
+  if (typeof notes === 'string') {
+    try {
+      const parsed = JSON.parse(notes)
+      return Array.isArray(parsed) ? parsed : []
+    } catch (e) {
+      return []
+    }
+  }
+  return []
+}
+
 export default function AflosserDetailPage() {
   const params = useParams()
   const { crew, ships, trips, vasteDienstRecords, loading, error, updateCrew, deleteAflosser, updateTrip } = useSupabaseData()
@@ -174,7 +189,8 @@ export default function AflosserDetailPage() {
     }, 0)
     
     // Voor aflossers met startsaldo
-    const startsaldoNote = aflosser.notes?.find((note: any) => 
+    const parsedNotes = parseNotes(aflosser.notes)
+    const startsaldoNote = parsedNotes.find((note: any) => 
       note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
     )
     
@@ -554,7 +570,8 @@ export default function AflosserDetailPage() {
                       
                       {/* Startsaldo Info onderaan */}
                       {(() => {
-                        const startsaldoNote = aflosser.notes?.find((note: any) => 
+                        const parsedNotes = parseNotes(aflosser.notes)
+                        const startsaldoNote = parsedNotes.find((note: any) => 
                           note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
                         )
                         
@@ -920,10 +937,11 @@ export default function AflosserDetailPage() {
               {/* Notes */}
               {(() => {
                 // Filter out startsaldo notes
-                const filteredNotes = aflosser.notes?.filter((note: any) => {
+                const parsedNotes = parseNotes(aflosser.notes)
+                const filteredNotes = parsedNotes.filter((note: any) => {
                   const noteText = typeof note === 'string' ? note : note?.text || ''
                   return !noteText.toLowerCase().includes('startsaldo')
-                }) || []
+                })
                 
                 return filteredNotes.length > 0 && (
                   <div>
