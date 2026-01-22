@@ -514,20 +514,46 @@ function fillContractFields(
       'regel9': formatDate(data.in_dienst_vanaf), // in dienst vanaf - Links
       'regel10': data.position, // Functie - Links
       'regel11': data.shipName || '', // Scheepsnaam - Links
-      'regel12': (() => {
-        if (!data.in_dienst_vanaf) return ''
-        return calculateDatePlus3Months(data.in_dienst_vanaf)
-      })(), // in dienst vanaf + 3 maanden - Links
-      'regel13': data.basisSalaris || '', // Basissalaris - Links
-      'regel14': data.kledinggeld || '', // Kledinggeld - Links
-      'regel15': data.reiskosten || '', // Reiskosten - Links
-      // Regel16-regel19 verschillen per taal:
-      // NL: regel16=Firma, regel17=Datum, regel18=Firma, regel19=Volledige naam
-      // DE: regel16=Datum, regel17=Firma, regel18=Volledige naam
-      'regel16': options.language === 'de' ? currentDate : data.company, // DE: Datum opmaken, NL: Firma - Links
-      'regel17': options.language === 'de' ? data.company : currentDate, // DE: Firma, NL: Datum opmaken - Links
-      'regel18': options.language === 'de' ? fullName : data.company, // DE: Volledige naam, NL: Firma - Links
-      'regel19': options.language === 'nl' ? fullName : '', // NL: Volledige naam - Links (alleen voor NL)
+      // Regel12-regel21 verschillen per contract type en taal:
+      // NL bepaalde tijd: regel12=einde datum, regel13=+3 maanden, regel14=einde datum, regel15-17=salaris, regel18-21=firma/datum/naam
+      // NL onbepaalde tijd: regel12=+3 maanden, regel13-15=salaris, regel16-19=firma/datum/naam
+      // DE: regel12=+3 maanden, regel13-15=salaris, regel16-18=firma/datum/naam
+      'regel12': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? (data.in_dienst_tot ? formatDate(data.in_dienst_tot) : '') // NL bepaalde tijd: einde datum contract
+        : (() => {
+            if (!data.in_dienst_vanaf) return ''
+            return calculateDatePlus3Months(data.in_dienst_vanaf)
+          })(), // NL onbepaalde tijd / DE: in dienst vanaf + 3 maanden
+      'regel13': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? (() => {
+            if (!data.in_dienst_vanaf) return ''
+            return calculateDatePlus3Months(data.in_dienst_vanaf)
+          })() // NL bepaalde tijd: in dienst vanaf + 3 maanden
+        : data.basisSalaris || '', // NL onbepaalde tijd / DE: Basissalaris
+      'regel14': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? (data.in_dienst_tot ? formatDate(data.in_dienst_tot) : '') // NL bepaalde tijd: einde datum contract
+        : data.kledinggeld || '', // NL onbepaalde tijd / DE: Kledinggeld
+      'regel15': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.basisSalaris || '' // NL bepaalde tijd: Basissalaris
+        : data.reiskosten || '', // NL onbepaalde tijd / DE: Reiskosten
+      'regel16': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.kledinggeld || '' // NL bepaalde tijd: Kledinggeld
+        : (options.language === 'de' ? currentDate : data.company), // NL onbepaalde tijd: Firma, DE: Datum opmaken
+      'regel17': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.reiskosten || '' // NL bepaalde tijd: Reiskosten
+        : (options.language === 'de' ? data.company : currentDate), // NL onbepaalde tijd: Datum opmaken, DE: Firma
+      'regel18': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.company // NL bepaalde tijd: Firma
+        : (options.language === 'de' ? fullName : data.company), // NL onbepaalde tijd: Firma, DE: Volledige naam
+      'regel19': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? currentDate // NL bepaalde tijd: Datum opmaken
+        : (options.language === 'nl' ? fullName : ''), // NL onbepaalde tijd: Volledige naam, DE: (niet gebruikt)
+      'regel20': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.company // NL bepaalde tijd: Firma
+        : '', // Alleen voor NL bepaalde tijd
+      'regel21': options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? fullName // NL bepaalde tijd: Volledige naam
+        : '', // Alleen voor NL bepaalde tijd
       
       // Oude veldnamen (voor backward compatibility)
       'voornaam': data.firstName,
