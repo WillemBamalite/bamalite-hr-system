@@ -34,6 +34,24 @@ export interface ContractOptions {
   contractType?: 'onbepaalde_tijd' | 'bepaalde_tijd' // Contract type
 }
 
+export interface AddendumData {
+  firstName: string
+  lastName: string
+  birthDate: string
+  birthPlace: string
+  address: {
+    street: string
+    city: string
+    postalCode: string
+    country: string
+  }
+  oldCompany: string // Voormalige firma
+  newCompany: string // Nieuwe firma
+  inDienstVanafEersteWerkgever: string // in dienst vanaf bij eerste werkgever
+  wisselingDate: string // Datum van wisseling
+  addendumDate: string // Datum van aanmaken addendum
+}
+
 /**
  * Genereert een contract PDF op basis van de template en vult deze in met de crew member data
  */
@@ -269,8 +287,9 @@ function getTemplatePath(language: 'nl' | 'de', company: string, contractType?: 
  * Stelt alignment in voor alle formuliervelden (centreren voor firma_centreren en werknemer_centreren, links voor anderen)
  * Deze functie wordt aangeroepen NA bold font instellen maar VOOR flattenen
  * Belangrijk: deze functie behoudt de bold font die al is ingesteld
+ * @param isAddendum - Als true, worden alle velden links uitgelijnd (geen centreren voor regel1/regel2)
  */
-async function setAlignmentForAllFields(fields: any[], boldFont?: any) {
+async function setAlignmentForAllFields(fields: any[], boldFont?: any, isAddendum: boolean = false) {
   fields.forEach((field: any) => {
     try {
       const isTextField = field.constructor.name === 'PDFTextField' || 
@@ -290,8 +309,9 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any) {
           .toLowerCase()
           .replace(/[^a-z0-9]/g, '')
 
-        // Regel1 en regel2 moeten gecentreerd worden, alle andere regels links
-        const needsCenter =
+        // Voor Addendum: alle velden links uitgelijnd
+        // Voor contracten: regel1 en regel2 gecentreerd, alle andere links
+        const needsCenter = isAddendum ? false : (
           fieldNameNormalized === 'regel1' ||
           fieldNameNormalized === 'regel2' ||
           fieldNamePlain === 'regel1' ||
@@ -301,6 +321,7 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any) {
           fieldNameNormalized === 'werknemer_centreren' ||
           fieldNamePlain === 'firmacentreren' ||
           fieldNamePlain === 'werknemercentreren'
+        )
 
         const acroField = (field as any).acroField
         if (acroField && acroField.dict) {
@@ -1266,6 +1287,579 @@ function getCompanyNumber(company: string): string {
   }
   
   return companyNumberMap[company] || ''
+}
+
+/**
+ * Genereert een addendum PDF op basis van het template en vult deze in met de wisseling data
+ */
+export async function generateAddendum(
+  addendumData: AddendumData
+): Promise<Blob> {
+  try {
+    const templatePath = '/contracts/Addendum.pdf'
+    
+    // In de browser moeten we altijd een absolute URL gebruiken
+    let fullTemplatePath = templatePath
+    if (typeof window !== 'undefined') {
+      fullTemplatePath = `${window.location.origin}${templatePath}`
+      // Voeg cache-busting toe om ervoor te zorgen dat het nieuwste bestand wordt geladen
+      fullTemplatePath += `?v=${Date.now()}`
+    }
+    
+    console.log('Loading Addendum PDF template from:', fullTemplatePath)
+    
+    // Fetch het template PDF bestand met cache: 'no-store' om caching te voorkomen
+    const templateResponse = await fetch(fullTemplatePath, {
+      cache: 'no-store'
+    })
+    if (!templateResponse.ok) {
+      console.error(`Failed to load template: ${fullTemplatePath}`, {
+        status: templateResponse.status,
+        statusText: templateResponse.statusText,
+        url: templateResponse.url
+      })
+      throw new Error(`Kon template niet laden: ${fullTemplatePath} (Status: ${templateResponse.status})`)
+    }
+    
+    const templateBytes = await templateResponse.arrayBuffer()
+    console.log(`Template loaded successfully, size: ${templateBytes.byteLength} bytes`)
+    
+    // Controleer of de PDF bytes geldig zijn
+    if (templateBytes.byteLength === 0) {
+      throw new Error('PDF template is leeg (0 bytes)')
+    }
+    
+    // Controleer of het een geldige PDF is (moet beginnen met %PDF)
+    const firstBytes = new Uint8Array(templateBytes.slice(0, 4))
+    const pdfHeader = String.fromCharCode(...firstBytes)
+    if (pdfHeader !== '%PDF') {
+      console.error('⚠️ PDF header check failed. First 4 bytes:', pdfHeader)
+      console.error('⚠️ Dit kan betekenen dat de PDF niet correct wordt geladen')
+    } else {
+      console.log('✓ PDF header check passed (geldige PDF)')
+    }
+    
+    // Laad het PDF document
+    console.log('Loading PDF document with pdf-lib...')
+    const pdfDoc = await PDFDocument.load(templateBytes)
+    console.log('✓ PDF document loaded successfully')
+    
+    // Probeer formuliervelden te krijgen
+    let fieldsFilled = false
+    let form: any = null
+    let fields: any[] = []
+    
+    try {
+      form = pdfDoc.getForm()
+      fields = form.getFields()
+      
+      console.log('=== PDF ANALYSE ===')
+      console.log('Aantal formuliervelden gevonden:', fields.length)
+      
+      if (fields.length > 0) {
+        console.log('Formuliervelden gevonden:')
+        fields.forEach((field: any, index: number) => {
+          try {
+            const fieldName = field.getName()
+            const fieldType = field.constructor.name
+            console.log(`  [${index + 1}] ${fieldName} (${fieldType})`)
+          } catch (e) {
+            console.log(`  [${index + 1}] <veld naam kon niet worden opgehaald> (${field.constructor.name})`)
+          }
+        })
+        
+        // Als er formuliervelden zijn, vul ze in
+        try {
+          console.log('=== START VELDEN INVULLEN ===')
+          // Embed bold font eerst zodat we het kunnen gebruiken
+          let helveticaBoldFont: any = null
+          try {
+            helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
+            console.log('✓ Helvetica-Bold font geëmbed')
+          } catch (fontError) {
+            console.warn('⚠️ Kon Helvetica-Bold font niet embedden:', fontError)
+          }
+          
+          fillAddendumFields(form, addendumData, helveticaBoldFont)
+          
+          // VERIFICATIE: Controleer of de velden daadwerkelijk zijn ingevuld (VOOR flatten)
+          console.log('=== VERIFICATIE VELDEN (voor flatten) ===')
+          let verifiedFilledCount = 0
+          fields.forEach((field: any) => {
+            try {
+              const isTextField = field.constructor.name === 'PDFTextField' || 
+                                  field.constructor.name === 'e' ||
+                                  typeof (field as any).setText === 'function'
+              if (isTextField) {
+                const fieldValue = field.getText()
+                const fieldName = field.getName()
+                if (fieldValue && fieldValue.trim() !== '') {
+                  verifiedFilledCount++
+                  console.log(`✓ [${verifiedFilledCount}] Veld "${fieldName}" heeft waarde: "${fieldValue}"`)
+                } else {
+                  console.warn(`⚠️ Veld "${fieldName}" is nog steeds leeg na invullen`)
+                }
+              }
+            } catch (e) {
+              console.warn(`⚠️ Kon waarde van veld niet ophalen:`, e)
+            }
+          })
+          
+          if (verifiedFilledCount > 0) {
+            fieldsFilled = true
+            console.log(`✓ ${verifiedFilledCount} velden zijn daadwerkelijk ingevuld (voor flatten)`)
+          } else {
+            console.error('❌ GEEN ENKEL VELD IS INGEVULD!')
+            console.error('Dit betekent dat fillAddendumFields() de velden niet heeft kunnen invullen')
+            fieldsFilled = false
+          }
+          
+          if (fieldsFilled) {
+            // Bold font is al ingesteld in fillAddendumFields, maar we kunnen het nog een keer proberen
+            // voor het geval dat sommige velden gemist zijn
+            try {
+              if (!helveticaBoldFont) {
+                helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
+              }
+              await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
+              console.log('✓ Bold font definitief ingesteld voor alle velden')
+            } catch (fontError) {
+              console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
+            }
+            
+            // Stel alignment expliciet in voor alle velden VOOR flattenen
+            // Dit moet gebeuren NA bold font instellen zodat beide behouden blijven
+            // Voor Addendum: alle velden links uitgelijnd
+            try {
+              await setAlignmentForAllFields(fields, helveticaBoldFont, true)
+              console.log('✓ Alignment definitief ingesteld voor alle velden (met behoud van bold font)')
+              
+              // Extra stap: forceer alignment opnieuw vlak voor flatten()
+              // Dit is belangrijk omdat sommige operaties de alignment kunnen resetten
+              await setAlignmentForAllFields(fields, helveticaBoldFont, true)
+              console.log('✓ Alignment opnieuw gecontroleerd en ingesteld vlak voor flatten()')
+            } catch (alignError) {
+              console.warn('⚠️ Kon alignment niet instellen:', alignError)
+            }
+            
+            form.flatten()
+            console.log('✓ Addendum ingevuld en geflattened')
+          }
+        } catch (fillError) {
+          console.error('❌ FOUT bij het invullen van formuliervelden:', fillError)
+          fieldsFilled = false
+        }
+      } else {
+        console.warn('⚠️ Geen formuliervelden gevonden in PDF')
+      }
+    } catch (error) {
+      console.error('❌ FOUT bij het ophalen van formuliervelden:', error)
+      fieldsFilled = false
+    }
+    
+    // Als er geen velden zijn ingevuld, gooi een duidelijke error
+    if (!fieldsFilled) {
+      const errorMsg = fields.length === 0 
+        ? 'De PDF heeft geen formuliervelden. Zorg ervoor dat de PDF AcroForm velden bevat.'
+        : 'De formuliervelden konden niet worden ingevuld. Controleer de console logs voor details.'
+      
+      console.error('❌', errorMsg)
+      throw new Error(errorMsg)
+    }
+    
+    // Genereer de PDF bytes
+    const pdfBytes = await pdfDoc.save()
+    
+    // Maak een Blob van de PDF bytes
+    return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
+  } catch (error) {
+    console.error('Error generating addendum:', error)
+    throw new Error(`Fout bij het genereren van het addendum: ${error instanceof Error ? error.message : 'Onbekende fout'}`)
+  }
+}
+
+/**
+ * Vult de formuliervelden in het Addendum PDF in
+ */
+function fillAddendumFields(
+  form: any,
+  data: AddendumData,
+  boldFont?: any
+) {
+  try {
+    const oldCompanyNumber = getCompanyNumber(data.oldCompany)
+    const newCompanyNumber = getCompanyNumber(data.newCompany)
+    const fullName = `${data.firstName} ${data.lastName}`
+    const address = `${data.address.street}, ${data.address.postalCode} ${data.address.city}, ${data.address.country}`
+    
+    const fieldMappings: Record<string, string> = {
+      // Regel-gebaseerde veldnamen voor Addendum
+      'regel1': data.oldCompany, // Voormalige Firma - Links
+      'regel2': oldCompanyNumber, // Firmanummer voormalige firma - Links
+      'regel3': fullName, // volledige naam - Links
+      'regel4': formatDate(data.birthDate), // geboortedatum - Links
+      'regel5': data.birthPlace || '', // Geboorteplaats - Links
+      'regel6': address, // Adres - Links
+      'regel7': data.newCompany, // nieuwe werkgever - Links
+      'regel8': newCompanyNumber, // firmanummer nieuwe firma - Links
+      'regel9': formatDate(data.inDienstVanafEersteWerkgever), // in dienst vanaf (bij eerste werkgever) - Links
+      'regel10': data.oldCompany, // voormalige firma - Links
+      'regel11': formatDate(data.inDienstVanafEersteWerkgever), // in dienst vanaf (bij eerste werkgever) - Links
+      'regel12': formatDate(data.addendumDate), // datum van aanmaken - Links
+      'regel13': formatDate(data.wisselingDate), // begin datum nieuwe werkgever - Links
+      'regel14': formatDate(data.wisselingDate), // begin datum nieuwe werkgever - Links
+      'regel15': data.oldCompany, // Naam voormalige Firma - Links
+      'regel16': fullName, // Volledige naam werknemer - Links
+      'regel17': data.newCompany, // Naam nieuwe firma - Links
+      'regel18': formatDate(data.addendumDate), // datum van aanmaken - Links
+    }
+    
+    // Probeer alle velden in het formulier te vinden en in te vullen
+    const fields = form.getFields()
+    
+    console.log('=== START ADDENDUM INVULLEN ===')
+    console.log('Addendum Data:', JSON.stringify(data, null, 2))
+    console.log('Aantal velden om te verwerken:', fields.length)
+    
+    // Log alle veldnamen die we gaan proberen te matchen
+    console.log('=== VELDNAMEN IN PDF ===')
+    fields.forEach((field: any, index: number) => {
+      try {
+        const fieldName = field.getName()
+        const fieldType = field.constructor.name
+        console.log(`  [${index + 1}] "${fieldName}" (${fieldType})`)
+      } catch (e) {
+        console.log(`  [${index + 1}] <veld naam kon niet worden opgehaald> (${field.constructor.name})`)
+      }
+    })
+    
+    // Log alle beschikbare mappings
+    console.log('=== BESCHIKBARE VELDNAMEN IN MAPPINGS ===')
+    Object.keys(fieldMappings).forEach((key, index) => {
+      console.log(`  [${index + 1}] "${key}" → "${fieldMappings[key]}"`)
+    })
+    
+    let filledCount = 0
+    
+    fields.forEach((field: any) => {
+      const originalFieldName = field.getName()
+      // Normaliseer veldnaam: lowercase, trim, verwijder speciale tekens en spaties
+      const fieldName = originalFieldName.toLowerCase().trim()
+      // Maak ook een versie zonder spaties en speciale tekens voor matching
+      const fieldNameNormalized = fieldName
+        .replace(/\s+/g, '') // Verwijder alle spaties
+        .replace(/[+]/g, 'plus') // Vervang + met "plus"
+        .replace(/[^a-z0-9_]/g, '') // Verwijder alle speciale tekens behalve underscore
+      
+      console.log(`\n--- Verwerken veld: "${originalFieldName}" (normalized: "${fieldName}", normalized2: "${fieldNameNormalized}") ---`)
+      
+      // Eerst proberen exacte match (met en zonder spaties)
+      let matchedValue: string | undefined = fieldMappings[fieldName] || fieldMappings[fieldNameNormalized]
+      
+      if (matchedValue) {
+        console.log(`  ✓ Exacte match gevonden voor "${fieldName}" of "${fieldNameNormalized}"`)
+        console.log(`  → Waarde om in te vullen: "${matchedValue}"`)
+        
+        try {
+          console.log(`  → Field type check: ${field.constructor.name}`)
+          // Check of het een text field is - pdf-lib gebruikt mogelijk andere constructor namen
+          const isTextField = field.constructor.name === 'PDFTextField' || 
+                              field.constructor.name === 'e' ||
+                              typeof (field as any).setText === 'function'
+          
+          if (isTextField) {
+            // Vul eerst de tekst in (zonder bold font eerst, dat doen we daarna)
+            const valueToSet = matchedValue
+            console.log(`  → Probeer veld "${originalFieldName}" in te vullen met: "${valueToSet}"`)
+            console.log(`  → Field object exists:`, !!field)
+            console.log(`  → Field.setText exists:`, typeof (field as any).setText === 'function')
+            
+            try {
+              console.log(`  → Aanroepen field.setText("${valueToSet}")...`)
+              field.setText(valueToSet)
+              console.log(`  ✓ setText() uitgevoerd voor "${originalFieldName}"`)
+              
+              // VERIFICATIE: Controleer direct of de waarde is ingesteld
+              const verifyValue = field.getText()
+              console.log(`  → Gecontroleerde waarde: "${verifyValue}" (verwacht: "${valueToSet}")`)
+              if (verifyValue === valueToSet || verifyValue === valueToSet.trim()) {
+                console.log(`  ✓ Veld "${originalFieldName}" succesvol ingevuld met: "${verifyValue}"`)
+              } else {
+                console.warn(`  ⚠️ Veld "${originalFieldName}" heeft andere waarde. Verwacht: "${valueToSet}", Krijg: "${verifyValue}"`)
+              }
+            } catch (setTextError) {
+              console.error(`  ❌ FOUT bij setText voor veld "${originalFieldName}":`, setTextError)
+              console.error(`  Error details:`, setTextError)
+              // Gooi de error niet door, probeer door te gaan met andere velden
+            }
+            
+            // Probeer bold font in te stellen NA het invullen van de tekst
+            try {
+              const acroField = (field as any).acroField
+              if (acroField && acroField.dict) {
+                // Haal bestaande font size op
+                let fontSize = 12
+                const existingDA = acroField.dict.lookup('DA')
+                if (existingDA) {
+                  const daString = existingDA.toString()
+                  const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
+                  if (sizeMatch) {
+                    fontSize = parseFloat(sizeMatch[1])
+                  }
+                }
+                // Stel DA in met bold font
+                acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                
+                // Forceer update van de appearance door de tekst opnieuw in te stellen
+                try {
+                  const currentValue = field.getText()
+                  if (currentValue) {
+                    // Herstel de tekst om de appearance te forceren met de nieuwe bold font
+                    field.setText(currentValue)
+                  }
+                  
+                  // Probeer ook updateAppearances aan te roepen als het beschikbaar is
+                  if (typeof (field as any).updateAppearances === 'function' && boldFont) {
+                    try {
+                      (field as any).updateAppearances(boldFont)
+                      console.log(`  ✓ updateAppearances() aangeroepen voor "${originalFieldName}"`)
+                    } catch (e) {
+                      console.warn(`  ⚠️ updateAppearances() faalde voor "${originalFieldName}":`, e)
+                    }
+                  }
+                } catch (appearanceError) {
+                  console.warn(`  ⚠️ Kon appearance niet updaten voor "${originalFieldName}":`, appearanceError)
+                }
+                
+                console.log(`  ✓ Bold font ingesteld voor "${originalFieldName}"`)
+              }
+            } catch (fontError) {
+              console.warn(`  ⚠️ Kon bold font niet instellen voor veld ${fieldName} (niet kritiek):`, fontError)
+              // Dit is niet kritiek, ga door
+            }
+
+            // Stel uitlijning in: voor Addendum zijn alle velden links uitgelijnd
+            // Dit gebeurt NA het instellen van bold font zodat beide behouden blijven
+            try {
+              // fieldNameNormalized: lowercase, spaties weg, speciale tekens grotendeels weg
+              // Maak daarnaast een volledig "plain" variant zonder underscores e.d.
+              const fieldNamePlain = originalFieldName
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '')
+
+              // Voor Addendum: alle velden links uitgelijnd (geen centreren)
+              const needsCenter = false
+
+              const acroFieldAlign = (field as any).acroField
+              if (acroFieldAlign && acroFieldAlign.dict) {
+                const alignmentValue = needsCenter ? 1 : 0 // 0 = left, 1 = center, 2 = right
+                
+                // Stel Q (Quadding) in - dit bepaalt de tekstuitlijning
+                acroFieldAlign.dict.set('Q', alignmentValue)
+                console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op ${needsCenter ? 'center' : 'links'} gezet (Q=${alignmentValue})`)
+                
+                // Behoud de bold font in DA string
+                try {
+                  const existingDA = acroFieldAlign.dict.lookup('DA')
+                  if (existingDA) {
+                    const daString = existingDA.toString()
+                    // Als de DA string al Helvetica-Bold bevat, behoud deze
+                    if (!daString.includes('Helvetica-Bold')) {
+                      // Update alleen als het nog geen bold font heeft
+                      const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
+                      const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 12
+                      acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                    }
+                  }
+                } catch (daError) {
+                  // Ignore
+                }
+              }
+
+              // Probeer ook setAlignment functie als die beschikbaar is
+              if (typeof (field as any).setAlignment === 'function') {
+                try {
+                  const alignmentValue = needsCenter ? 1 : 0
+                  ;(field as any).setAlignment(alignmentValue)
+                  console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld op ${needsCenter ? 'gecentreerd' : 'links'} via setAlignment`)
+                } catch (alignFuncError) {
+                  console.warn(`  ⚠️ setAlignment faalde voor "${originalFieldName}":`, alignFuncError)
+                }
+              }
+              
+              // Update appearance met bold font als beschikbaar
+              if (boldFont) {
+                try {
+                  if (typeof (field as any).updateAppearances === 'function') {
+                    (field as any).updateAppearances(boldFont)
+                  }
+                } catch (appearanceError) {
+                  // Ignore
+                }
+              }
+            } catch (alignError) {
+              console.warn(`  ⚠️ Kon uitlijning niet instellen voor "${originalFieldName}" (niet kritiek):`, alignError)
+            }
+
+            filledCount++
+            console.log(`✓ [${filledCount}] Veld "${originalFieldName}" (exact match) ingevuld met: "${matchedValue}"`)
+          } else if (field.constructor.name === 'PDFCheckBox') {
+            const value = matchedValue
+            if (value === 'true' || value === 'ja' || value === 'yes') {
+              field.check()
+              console.log(`✓ Checkbox "${field.getName()}" aangevinkt`)
+            }
+          }
+          return // Stop hier, exacte match gevonden
+        } catch (err) {
+          console.warn(`Kon veld ${fieldName} niet invullen (exact match):`, err)
+        }
+      }
+      
+      // Als geen exacte match, probeer partial match
+      // Sorteer keys op lengte (langste eerst) zodat specifiekere matches prioriteit krijgen
+      const sortedKeys = Object.entries(fieldMappings).sort((a, b) => b[0].length - a[0].length)
+      
+      for (const [key, value] of sortedKeys) {
+        // Skip als dit al exact gematcht is
+        if (fieldName === key.toLowerCase() || fieldNameNormalized === key.toLowerCase()) {
+          continue
+        }
+        
+        // Normaliseer key voor matching (verwijder spaties en speciale tekens)
+        const keyNormalized = key.toLowerCase()
+          .replace(/\s+/g, '') // Verwijder alle spaties
+          .replace(/[+]/g, 'plus') // Vervang + met "plus"
+          .replace(/[^a-z0-9_]/g, '') // Verwijder alle speciale tekens behalve underscore
+        
+        // Check verschillende matching strategieën
+        const matches = 
+          fieldName === key.toLowerCase() || // Exact match (case-insensitive)
+          fieldNameNormalized === keyNormalized || // Exact match (genormaliseerd)
+          fieldName.includes(key.toLowerCase()) || // Field name bevat de key
+          fieldNameNormalized.includes(keyNormalized) || // Field name bevat de key (genormaliseerd)
+          key.toLowerCase().includes(fieldName) || // Key bevat de field name
+          keyNormalized.includes(fieldNameNormalized) || // Key bevat de field name (genormaliseerd)
+          fieldNameNormalized === key.toLowerCase().replace(/[^a-z0-9_]/g, '') || // Zonder speciale tekens
+          keyNormalized === fieldName.replace(/[^a-z0-9_]/g, '') // Zonder speciale tekens (omgekeerd)
+        
+        if (matches) {
+          try {
+            if (field.constructor.name === 'PDFTextField') {
+              // Stel bold font in VOOR het invullen van de tekst
+              try {
+                const acroField = (field as any).acroField
+                if (acroField && acroField.dict) {
+                  // Haal bestaande font size op
+                  let fontSize = 12
+                  const existingDA = acroField.dict.lookup('DA')
+                  if (existingDA) {
+                    const daString = existingDA.toString()
+                    const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
+                    if (sizeMatch) {
+                      fontSize = parseFloat(sizeMatch[1])
+                    }
+                  }
+                  // Stel DA in met bold font
+                  acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                }
+              } catch (fontError) {
+                console.warn(`Kon bold font niet instellen voor veld ${fieldName}:`, fontError)
+              }
+              
+              // Vul nu de tekst in
+              console.log(`  → Probeer veld "${field.getName()}" in te vullen met partial match "${key}": "${value}"`)
+              
+              try {
+                field.setText(value)
+                
+                // VERIFICATIE: Controleer direct of de waarde is ingesteld
+                const verifyValue = field.getText()
+                if (verifyValue === value || verifyValue === value.trim()) {
+                  console.log(`  ✓ Veld "${field.getName()}" succesvol ingevuld met: "${verifyValue}"`)
+                } else {
+                  console.warn(`  ⚠️ Veld "${field.getName()}" heeft andere waarde. Verwacht: "${value}", Krijg: "${verifyValue}"`)
+                }
+              } catch (setTextError) {
+                console.error(`  ❌ FOUT bij setText voor veld "${field.getName()}":`, setTextError)
+                throw setTextError
+              }
+              
+              // Stel uitlijning in: voor Addendum zijn alle velden links uitgelijnd
+              try {
+                const originalFieldName = field.getName()
+                const fieldNameNormalized = originalFieldName
+                  .toLowerCase()
+                  .trim()
+                  .replace(/\s+/g, '')
+                  .replace(/[+]/g, 'plus')
+                  .replace(/[^a-z0-9_]/g, '')
+                
+                const fieldNamePlain = originalFieldName
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]/g, '')
+
+                // Voor Addendum: alle velden links uitgelijnd (geen centreren)
+                const needsCenter = false
+
+                const acroFieldAlign = (field as any).acroField
+                if (acroFieldAlign && acroFieldAlign.dict) {
+                  const alignmentValue = needsCenter ? 1 : 0
+                  acroFieldAlign.dict.set('Q', alignmentValue)
+                  console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op ${needsCenter ? 'center' : 'links'} gezet (partial match, Q=${alignmentValue})`)
+                  
+                  // Behoud bold font in DA string
+                  try {
+                    const existingDA = acroFieldAlign.dict.lookup('DA')
+                    if (existingDA) {
+                      const daString = existingDA.toString()
+                      if (!daString.includes('Helvetica-Bold')) {
+                        const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
+                        const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 12
+                        acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                      }
+                    }
+                  } catch (daError) {
+                    // Ignore
+                  }
+                }
+
+                if (typeof (field as any).setAlignment === 'function') {
+                  try {
+                    const alignmentValue = needsCenter ? 1 : 0
+                    ;(field as any).setAlignment(alignmentValue)
+                    console.log(`✓ Veld "${originalFieldName}" uitlijning ingesteld via setAlignment (partial match)`)
+                  } catch (alignFuncError) {
+                    console.warn(`  ⚠️ setAlignment faalde voor "${originalFieldName}":`, alignFuncError)
+                  }
+                }
+              } catch (alignError) {
+                console.warn(`  ⚠️ Kon uitlijning niet instellen voor "${field.getName()}" (niet kritiek):`, alignError)
+              }
+              
+              filledCount++
+              console.log(`✓ [${filledCount}] Veld "${field.getName()}" (partial match: "${key}") ingevuld met: "${value}"`)
+            } else if (field.constructor.name === 'PDFCheckBox') {
+              if (value === 'true' || value === 'ja' || value === 'yes') {
+                field.check()
+                console.log(`✓ Checkbox "${field.getName()}" aangevinkt`)
+              }
+            }
+            break // Stop bij eerste match
+          } catch (err) {
+            console.warn(`Kon veld ${fieldName} niet invullen (partial match met "${key}"):`, err)
+          }
+        }
+      }
+    })
+    
+    console.log(`=== EINDE ADDENDUM INVULLEN ===`)
+    console.log(`Totaal ${filledCount} van ${fields.length} velden ingevuld`)
+  } catch (error) {
+    console.error('Error filling addendum fields:', error)
+    // We gooien de fout niet door, zodat het PDF nog steeds wordt gegenereerd
+    // zelfs als sommige velden niet kunnen worden ingevuld
+  }
 }
 
 /**

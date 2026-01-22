@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2 } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -257,6 +257,22 @@ export function DashboardStats() {
       // Return total number of visits
       return visits ? visits.length : 0
     })(),
+    firmaWisseling: (() => {
+      // Tel hoeveel mensen op een schip van een andere firma staan
+      return crew.filter((member: any) => {
+        if (!member.ship_id || member.status === 'uit-dienst' || member.is_dummy) {
+          return false
+        }
+        
+        const ship = ships.find((s: any) => s.id === member.ship_id)
+        if (!ship || !ship.company) {
+          return false
+        }
+        
+        // Als het schip een andere company heeft dan de persoon, tel mee
+        return ship.company !== member.company
+      }).length
+    })(),
   }
 
   return (
@@ -408,6 +424,30 @@ export function DashboardStats() {
           <Link href="/bemanning/oude-bemanningsleden" className="h-full flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-lg p-2 md:p-4 text-center hover:bg-slate-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-slate-800">{stats.oudMedewerkers}</div>
             <div className='text-[10px] md:text-xs text-slate-700 mt-1'>{t('oldEmployees')}</div>
+          </Link>
+        </div>
+
+        {/* 12. Firma Wisseling */}
+        <div className="aspect-[3/1]">
+          <Link href="/firma-wisseling" className="h-full flex flex-col bg-orange-50 border border-orange-200 rounded-lg p-2 md:p-4 text-center hover:bg-orange-100 transition cursor-pointer">
+            <div className="text-[10px] md:text-sm font-semibold text-orange-900 mb-1 md:mb-2 text-center flex items-center justify-center gap-1">
+              <Building2 className="w-2.5 h-2.5 md:w-3 md:h-3" />
+              <span>Firma Wisseling</span>
+            </div>
+            {stats.firmaWisseling > 0 && (
+              <div className="text-[9px] md:text-xs text-orange-700 space-y-0.5 md:space-y-1">
+                <div className="flex items-center justify-center gap-1">
+                  <AlertCircle className="w-3 h-3 md:w-3.5 md:h-3.5 text-orange-600" />
+                  <span className="font-semibold text-orange-900">{stats.firmaWisseling}</span>
+                  <span>met uitroepteken</span>
+                </div>
+              </div>
+            )}
+            {stats.firmaWisseling === 0 && (
+              <div className="text-[9px] md:text-xs text-orange-600 mt-1">
+                Geen actie nodig
+              </div>
+            )}
           </Link>
         </div>
       </div>

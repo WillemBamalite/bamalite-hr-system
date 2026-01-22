@@ -390,6 +390,13 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         supabaseData.sub_status = "wacht-op-startdatum"
       }
       
+      // BELANGRIJK: Behoud de company wanneer ship_id wordt gewijzigd
+      // De company wisselt alleen wanneer expliciet gewijzigd via firma-wisseling
+      // NIET automatisch wanneer iemand van schip wisselt
+      if ((crewMember as any).company) {
+        supabaseData.company = (crewMember as any).company
+      }
+      
       console.log('Sending to Supabase:', supabaseData)
       
       const result = await updateCrew(crewMemberId, supabaseData)

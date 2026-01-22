@@ -243,12 +243,20 @@ export default function NogInTeDelenPage() {
 
     try {
       // Update de bemanningslid met schip toewijzing
-      await updateCrew(selectedMember.id, {
+      // BELANGRIJK: Behoud de company - deze wisselt alleen via firma-wisseling, niet automatisch bij schip wissel
+      const updateData: any = {
         ship_id: selectedShip,
         status: "thuis", // Start met thuis status
         on_board_since: onBoardDate,
         thuis_sinds: new Date().toISOString().split('T')[0] // Vandaag als thuis sinds
-      });
+      }
+      
+      // Behoud de bestaande company als die er is
+      if (selectedMember.company) {
+        updateData.company = selectedMember.company
+      }
+      
+      await updateCrew(selectedMember.id, updateData);
 
       // Success - no alert needed
       
