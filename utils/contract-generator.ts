@@ -50,6 +50,7 @@ export interface AddendumData {
   inDienstVanafEersteWerkgever: string // in dienst vanaf bij eerste werkgever
   wisselingDate: string // Datum van wisseling
   addendumDate: string // Datum van aanmaken addendum
+  language?: 'nl' | 'de' // Taal voor addendum (default: 'nl')
 }
 
 /**
@@ -1343,7 +1344,10 @@ export async function generateAddendum(
   addendumData: AddendumData
 ): Promise<Blob> {
   try {
-    const templatePath = '/contracts/Addendum.pdf'
+    // Bepaal het juiste template bestand op basis van taal
+    const language = addendumData.language || 'nl'
+    const templateFileName = language === 'de' ? 'Addendum 2.pdf' : 'Addendum.pdf'
+    const templatePath = `/contracts/${templateFileName}`
     
     // In de browser moeten we altijd een absolute URL gebruiken
     let fullTemplatePath = templatePath

@@ -50,6 +50,7 @@ function AddendumForm() {
     inDienstVanafEersteWerkgever: '',
     wisselingDate: wisselingDate,
     addendumDate: format(new Date(), 'yyyy-MM-dd'),
+    language: 'nl', // Default Nederlands
   })
   
   const [generating, setGenerating] = useState(false)
@@ -88,6 +89,7 @@ function AddendumForm() {
         inDienstVanafEersteWerkgever: member.in_dienst_vanaf || '',
         wisselingDate: wisselingDate,
         addendumDate: format(new Date(), 'yyyy-MM-dd'),
+        language: 'nl', // Default Nederlands
       })
     }
   }, [member, oldCompany, newCompany, wisselingDate])
@@ -240,6 +242,28 @@ function AddendumForm() {
                     address: { ...formData.address, country: e.target.value }
                   })}
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Taal selectie */}
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Taal</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="language">Addendum Taal</Label>
+                <Select 
+                  value={formData.language || 'nl'} 
+                  onValueChange={(value: 'nl' | 'de') => setFormData({ ...formData, language: value })}
+                >
+                  <SelectTrigger id="language">
+                    <SelectValue placeholder="Selecteer taal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nl">Nederlands</SelectItem>
+                    <SelectItem value="de">Duits</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
