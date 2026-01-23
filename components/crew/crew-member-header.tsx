@@ -1,13 +1,13 @@
 "use client"
 
-import { ArrowLeft, Edit, Ship, AlertCircle } from "lucide-react"
+import { ArrowLeft, Edit, Ship, AlertCircle, Printer, ChevronDown } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { BackButton } from "@/components/ui/back-button"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
@@ -18,6 +18,7 @@ interface Props {
 
 export function CrewMemberHeader({ crewMemberId }: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { crew, ships, tasks, loading } = useSupabaseData()
   
   // Haal data uit Supabase
@@ -164,7 +165,38 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 no-print">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline">
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print Profiel
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2">
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      router.push(`/bemanning/${crewMemberId}?print=true&lang=nl`)
+                      setTimeout(() => window.print(), 100)
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
+                  >
+                    🇳🇱 Nederlands
+                  </button>
+                  <button
+                    onClick={() => {
+                      router.push(`/bemanning/${crewMemberId}?print=true&lang=de`)
+                      setTimeout(() => window.print(), 100)
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
+                  >
+                    🇩🇪 Deutsch
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
             <Button variant="outline">
               <Edit className="w-4 h-4 mr-2" />
               Bewerken

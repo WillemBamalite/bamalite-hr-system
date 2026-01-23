@@ -7,6 +7,7 @@ import { CrewMemberProfile } from "@/components/crew/crew-member-profile"
 import { CrewMemberNotes } from "@/components/crew/crew-member-notes"
 import { CrewMemberStatusChanges } from "@/components/crew/crew-member-status-changes"
 import { CrewMemberShipHistory } from "@/components/crew/crew-member-ship-history"
+import { CrewMemberPrint } from "@/components/crew/crew-member-print"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { BackButton } from "@/components/ui/back-button"
@@ -37,9 +38,18 @@ function BemanningslidContent({ params }: Props) {
     setRefreshKey(prev => prev + 1);
   };
 
+  const printLang = (searchParams.get('lang') as 'nl' | 'de') || 'nl'
+
   return (
     <div className="min-h-screen bg-background">
-      <CrewMemberHeader crewMemberId={resolvedParams.id} />
+      {/* Print component - alleen zichtbaar bij printen */}
+      <Suspense fallback={null}>
+        <CrewMemberPrint crewMemberId={resolvedParams.id} language={printLang} />
+      </Suspense>
+      
+      <Suspense fallback={<div>Laden...</div>}>
+        <CrewMemberHeader crewMemberId={resolvedParams.id} />
+      </Suspense>
       <MobileHeaderNav />
 
       <div className="w-full px-2 md:px-8 py-8">
