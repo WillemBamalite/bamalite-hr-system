@@ -25,7 +25,7 @@ export function DashboardStats() {
     c.position === "Aflosser" || c.position === "aflosser" || c.is_aflosser === true
   )
   
-  const activeCrew = crew.filter((c) => c.status !== 'uit-dienst')
+  const activeCrew = crew.filter((c) => c.status !== 'uit-dienst' && !c.is_dummy)
   
   const stats = {
     // Totaal bemanningsleden: alleen actieve vaste bemanning (geen aflossers, geen uit-dienst, geen dummy's)

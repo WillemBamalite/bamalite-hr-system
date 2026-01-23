@@ -46,7 +46,7 @@ export default function CrewOverviewPage() {
 
   useEffect(() => {
     const merged = buildLiveCrew(crew)
-    const visible = merged.filter((c: any) => c.status !== 'uit-dienst')
+    const visible = merged.filter((c: any) => c.status !== 'uit-dienst' && !c.is_dummy)
     setFilteredCrew(visible)
     const groupedData: { [rank: string]: any[] } = {}
     visible.forEach((c: any) => {
@@ -62,7 +62,7 @@ export default function CrewOverviewPage() {
     if (typeof window === 'undefined') return
     const update = () => {
       const merged = buildLiveCrew(crew)
-      const visible = merged.filter((c: any) => c.status !== 'uit-dienst')
+      const visible = merged.filter((c: any) => c.status !== 'uit-dienst' && !c.is_dummy)
       setFilteredCrew(visible)
       const groupedData: { [rank: string]: any[] } = {}
       visible.forEach((c: any) => {

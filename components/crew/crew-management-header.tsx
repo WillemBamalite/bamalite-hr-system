@@ -13,8 +13,8 @@ export function CrewManagementHeader() {
   const router = useRouter()
   const { t } = useLanguage()
 
-  // Bereken statistieken
-  const crew = Object.values(crewDatabase).filter((c: any) => c.status !== "uit-dienst")
+  // Bereken statistieken (exclude dummy's)
+  const crew = Object.values(crewDatabase).filter((c: any) => c.status !== "uit-dienst" && !c.is_dummy)
   const totalCrew = crew.length
   const onBoardCrew = crew.filter((crew: any) => crew.status === "aan-boord").length
   const atHomeCrew = crew.filter((crew: any) => crew.status === "thuis").length
