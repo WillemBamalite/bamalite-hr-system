@@ -53,6 +53,48 @@ export interface AddendumData {
 }
 
 /**
+ * Normaliseert tekst voor PDF-velden door Unicode-karakters te vervangen met ASCII-equivalenten
+ * Dit voorkomt encoding errors met WinAnsi encoding die niet alle Unicode-karakters ondersteunt
+ */
+function normalizeTextForPDF(text: string): string {
+  if (!text) return text
+  
+  // Unicode normalisatie: vervang speciale karakters met ASCII-equivalenten
+  return text
+    .normalize('NFD') // Decomposeer Unicode-karakters (bijv. č -> c + ˇ)
+    .replace(/[\u0300-\u036f]/g, '') // Verwijder diakritische tekens (accents)
+    .replace(/[^\x00-\x7F]/g, (char) => {
+      // Vervang overige niet-ASCII karakters met ASCII-equivalenten
+      const replacements: Record<string, string> = {
+        'č': 'c', 'ć': 'c', 'Č': 'C', 'Ć': 'C',
+        'š': 's', 'Š': 'S',
+        'ž': 'z', 'Ž': 'Z',
+        'đ': 'd', 'Đ': 'D',
+        'ñ': 'n', 'Ñ': 'N',
+        'ü': 'u', 'Ü': 'U',
+        'ö': 'o', 'Ö': 'O',
+        'ä': 'a', 'Ä': 'A',
+        'ÿ': 'y', 'Ÿ': 'Y',
+        'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'å': 'a',
+        'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Å': 'A',
+        'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+        'È': 'E', 'É': 'E', 'Ê': 'E', 'Ë': 'E',
+        'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+        'Ì': 'I', 'Í': 'I', 'Î': 'I', 'Ï': 'I',
+        'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o',
+        'Ò': 'O', 'Ó': 'O', 'Ô': 'O', 'Õ': 'O',
+        'ù': 'u', 'ú': 'u', 'û': 'u',
+        'Ù': 'U', 'Ú': 'U', 'Û': 'U',
+        'ý': 'y', 'Ý': 'Y',
+        'æ': 'ae', 'Æ': 'AE',
+        'œ': 'oe', 'Œ': 'OE',
+        'ß': 'ss',
+      }
+      return replacements[char] || char
+    })
+}
+
+/**
  * Genereert een contract PDF op basis van de template en vult deze in met de crew member data
  */
 export async function generateContract(
@@ -651,6 +693,11 @@ function fillContractFields(
       'reiskosten': data.reiskosten || '',
       'scheepsnaam': data.shipName || '',
     }
+    
+    // Normaliseer alle waarden in fieldMappings voor PDF encoding
+    Object.keys(fieldMappings).forEach(key => {
+      fieldMappings[key] = normalizeTextForPDF(fieldMappings[key])
+    })
     
     // Probeer alle velden in het formulier te vinden en in te vullen
     const fields = form.getFields()
@@ -1513,6 +1560,11 @@ function fillAddendumFields(
       'regel17': data.newCompany, // Naam nieuwe firma - Links
       'regel18': formatDate(data.addendumDate), // datum van aanmaken - Links
     }
+    
+    // Normaliseer alle waarden in fieldMappings voor PDF encoding
+    Object.keys(fieldMappings).forEach(key => {
+      fieldMappings[key] = normalizeTextForPDF(fieldMappings[key])
+    })
     
     // Probeer alle velden in het formulier te vinden en in te vullen
     const fields = form.getFields()

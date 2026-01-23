@@ -2191,7 +2191,7 @@ export default function ReizenAflossersPage() {
 
             {/* Alleen datums tonen als we in modus "periode" zitten */}
             {overwerkerMode === 'periode' && (
-              <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="overwerker-date-from">Beschikbaar van datum *</Label>
                   <Input
@@ -2211,7 +2211,7 @@ export default function ReizenAflossersPage() {
                     onChange={(e) => setOverwerkerDateTo(e.target.value)}
                   />
                 </div>
-              </>
+              </div>
             )}
 
             <div>
