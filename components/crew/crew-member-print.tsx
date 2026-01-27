@@ -9,9 +9,14 @@ import { useSearchParams } from "next/navigation"
 interface Props {
   crewMemberId: string
   language?: 'nl' | 'de'
+  /**
+   * single  = standalone print (detailpagina bemanningslid, met eigen globale print CSS)
+   * firma   = gebruikt binnen firma-wisseling verzamelprint (geen globale CSS, alleen pagina-breaks)
+   */
+  variant?: 'single' | 'firma'
 }
 
-export function CrewMemberPrint({ crewMemberId, language }: Props) {
+export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: Props) {
   const searchParams = useSearchParams()
   const { crew, ships } = useSupabaseData()
   
@@ -137,47 +142,49 @@ export function CrewMemberPrint({ crewMemberId, language }: Props) {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{__html: `
-        @media print {
-          body * {
-            visibility: hidden;
+      {variant === 'single' && (
+        <style dangerouslySetInnerHTML={{__html: `
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .crew-print-content,
+            .crew-print-content * {
+              visibility: visible;
+            }
+            .crew-print-content {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 210mm;
+              min-height: 297mm;
+              padding: 20mm;
+              background: white;
+              font-family: 'Arial', sans-serif;
+              font-size: 11pt;
+              line-height: 1.5;
+              page-break-after: always;
+            }
+            .no-print,
+            header,
+            nav,
+            button {
+              display: none !important;
+            }
           }
-          .crew-print-content,
-          .crew-print-content * {
-            visibility: visible;
+          @media screen {
+            .crew-print-content {
+              display: none;
+            }
           }
-          .crew-print-content {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 210mm;
-            min-height: 297mm;
-            padding: 20mm;
-            background: white;
-            font-family: 'Arial', sans-serif;
-            font-size: 11pt;
-            line-height: 1.5;
-            page-break-after: always;
+          @page {
+            size: A4;
+            margin: 0;
           }
-          .no-print,
-          header,
-          nav,
-          button {
-            display: none !important;
-          }
-        }
-        @media screen {
-          .crew-print-content {
-            display: none;
-          }
-        }
-        @page {
-          size: A4;
-          margin: 0;
-        }
-      `}} />
+        `}} />
+      )}
       
-      <div className="crew-print-content">
+      <div className={variant === 'single' ? "crew-print-content" : "crew-print-page"}>
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between mb-4">
