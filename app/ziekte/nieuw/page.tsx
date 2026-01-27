@@ -28,7 +28,8 @@ export default function NieuwZiektePage() {
     hasCertificate: false,
     certificateValidUntil: "",
     paidBy: "Bamalite S.A.",
-    notes: ""
+    notes: "",
+    sendInstructionsEmail: false,
   })
   const [searchQuery, setSearchQuery] = useState("")
   const [showSearchResults, setShowSearchResults] = useState(false)
@@ -100,6 +101,22 @@ export default function NieuwZiektePage() {
           ...currentCrewMember,
           status: "ziek"
         })
+
+        // Optioneel: verstuur ziekte instructie e-mail naar bemanningslid
+        if (formData.sendInstructionsEmail && currentCrewMember.email) {
+          try {
+            await fetch("/api/send-sick-instructions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: currentCrewMember.email,
+                name: `${currentCrewMember.first_name} ${currentCrewMember.last_name}`,
+              }),
+            })
+          } catch (emailError) {
+            console.error("Fout bij versturen ziekte-instructie e-mail:", emailError)
+          }
+        }
       }
 
       // Sick leave registered - no alert needed
@@ -281,6 +298,23 @@ export default function NieuwZiektePage() {
                 placeholder="Optionele notities over de ziekmelding..."
                 rows={3}
               />
+            </div>
+
+            {/* E-mail met ziekte instructies */}
+            <div className="flex items-center space-x-2 border-t border-gray-200 pt-4 mt-2">
+              <input
+                id="sendInstructionsEmail"
+                type="checkbox"
+                checked={formData.sendInstructionsEmail}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  sendInstructionsEmail: e.target.checked,
+                })}
+                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+              />
+              <Label htmlFor="sendInstructionsEmail" className="text-sm text-gray-700">
+                Persoon een e-mail sturen met ziekte-instructies (PDF bijlage)
+              </Label>
             </div>
 
             {/* Submit knoppen */}
