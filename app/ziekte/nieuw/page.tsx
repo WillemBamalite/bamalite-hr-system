@@ -105,7 +105,8 @@ export default function NieuwZiektePage() {
         // Optioneel: verstuur ziekte instructie e-mail naar bemanningslid
         if (formData.sendInstructionsEmail && currentCrewMember.email) {
           try {
-            await fetch("/api/send-sick-instructions", {
+            console.log("📧 Verstuur ziekte-instructie e-mail naar:", currentCrewMember.email)
+            const emailResponse = await fetch("/api/send-sick-instructions", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -113,8 +114,18 @@ export default function NieuwZiektePage() {
                 name: `${currentCrewMember.first_name} ${currentCrewMember.last_name}`,
               }),
             })
+            
+            const emailResult = await emailResponse.json()
+            
+            if (!emailResponse.ok) {
+              console.error("📧 ❌ E-mail niet verstuurd:", emailResult)
+              // Toon geen alert - de ziekmelding is al geregistreerd
+            } else {
+              console.log("📧 ✅ E-mail succesvol verstuurd:", emailResult)
+            }
           } catch (emailError) {
-            console.error("Fout bij versturen ziekte-instructie e-mail:", emailError)
+            console.error("📧 ❌ Fout bij versturen ziekte-instructie e-mail:", emailError)
+            // Toon geen alert - de ziekmelding is al geregistreerd
           }
         }
       }
