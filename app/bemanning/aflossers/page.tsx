@@ -28,6 +28,7 @@ import {
   Clock,
   UserCheck,
   UserX,
+  AlertTriangle,
   MessageSquare,
   Award,
   Edit,
@@ -1062,6 +1063,9 @@ export default function ReizenAflossersPage() {
                               className="bg-green-100 text-green-800 border-green-300 text-sm px-3 py-1 hover:bg-green-200 hover:text-green-900 cursor-pointer transition-colors"
                             >
                               {aflosser.first_name} {aflosser.last_name}
+                              {aflosser.aflosser_opmerkingen && (
+                                <AlertTriangle className="w-3 h-3 ml-1 text-orange-600 inline" title="Heeft opmerking" />
+                              )}
                             </Badge>
                           </Link>
                         ))}
