@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -75,6 +75,8 @@ export default function ReizenAflossersPage() {
   const [overwerkerNote, setOverwerkerNote] = useState("")
   const [overwerkerMode, setOverwerkerMode] = useState<'periode' | 'vrije_weken'>('periode')
   const [editingPeriod, setEditingPeriod] = useState<{ memberId: string; periodId: string } | null>(null)
+  const [aflosserOpmerkingDialog, setAflosserOpmerkingDialog] = useState<{ id: string; name: string; currentNote: string } | null>(null)
+  const [aflosserOpmerkingText, setAflosserOpmerkingText] = useState("")
   
   // Overwerkers state (lijst van crew member IDs die als overwerkers zijn gemarkeerd)
   const [overwerkers, setOverwerkers] = useState<string[]>([])
@@ -145,6 +147,87 @@ export default function ReizenAflossersPage() {
       }
     }
     return []
+  }
+
+  // Check if aflosser is marked as beschikbaar
+  const isAflosserBeschikbaar = (member: any): boolean => {
+    const notes = parseNotes(member.notes)
+    return notes.some((note: any) => {
+      const content = typeof note === 'object' ? (note.content || note.text || '') : String(note)
+      return content === 'AFLOSSER_BESCHIKBAAR:true'
+    })
+  }
+
+  // Toggle beschikbaar status for aflosser
+  const toggleAflosserBeschikbaar = async (memberId: string) => {
+    try {
+      const member = crew.find((c: any) => c.id === memberId)
+      if (!member) return
+
+      const currentNotes = parseNotes(member.notes)
+      const isCurrentlyBeschikbaar = isAflosserBeschikbaar(member)
+
+      // Remove existing AFLOSSER_BESCHIKBAAR note
+      const filteredNotes = currentNotes.filter((note: any) => {
+        const content = typeof note === 'object' ? (note.content || note.text || '') : String(note)
+        return !content.startsWith('AFLOSSER_BESCHIKBAAR:')
+      })
+
+      // Add or remove beschikbaar marker
+      if (!isCurrentlyBeschikbaar) {
+        filteredNotes.push({
+          id: `aflosser-beschikbaar-${Date.now()}`,
+          content: 'AFLOSSER_BESCHIKBAAR:true',
+          created_at: new Date().toISOString(),
+          created_by: 'system'
+        })
+      }
+
+      await updateCrew(memberId, {
+        notes: JSON.stringify(filteredNotes)
+      })
+    } catch (error) {
+      console.error("Error toggling beschikbaar status:", error)
+      alert("Fout bij bijwerken beschikbaar status")
+    }
+  }
+
+  // Handle double click to add/edit opmerking
+  const handleAflosserDoubleClick = (aflosser: any) => {
+    setAflosserOpmerkingDialog({
+      id: aflosser.id,
+      name: `${aflosser.first_name} ${aflosser.last_name}`,
+      currentNote: aflosser.aflosser_opmerkingen || ""
+    })
+    setAflosserOpmerkingText(aflosser.aflosser_opmerkingen || "")
+  }
+
+  // Save aflosser opmerking
+  const handleSaveAflosserOpmerking = async () => {
+    if (!aflosserOpmerkingDialog) return
+
+    try {
+      await updateCrew(aflosserOpmerkingDialog.id, {
+        aflosser_opmerkingen: aflosserOpmerkingText.trim() || null
+      })
+      setAflosserOpmerkingDialog(null)
+      setAflosserOpmerkingText("")
+    } catch (error) {
+      console.error("Error saving opmerking:", error)
+      alert("Fout bij opslaan opmerking")
+    }
+  }
+
+  // Remove aflosser opmerking
+  const handleRemoveAflosserOpmerking = async (aflosserId: string) => {
+    try {
+      await updateCrew(aflosserId, {
+        aflosser_opmerkingen: null
+      })
+    } catch (error) {
+      console.error("Error removing opmerking:", error)
+      alert("Fout bij verwijderen opmerking")
+    }
   }
 
   // Get availability date for overwerker
@@ -537,9 +620,29 @@ export default function ReizenAflossersPage() {
   }
 
   // Filter aflossers (exclude "uit-dienst")
-  const aflossers = crew.filter((member: any) => 
+  const filteredAflossers = crew.filter((member: any) => 
     member.position === "Aflosser" && member.status !== "uit-dienst"
   )
+
+  // Sorteer aflossers: eerst kapiteins, daarna op aantal trips (meest actief eerst)
+  const aflossers = useMemo(() => {
+    // Tel aantal trips per aflosser
+    const tripCounts = filteredAflossers.map((aflosser: any) => {
+      const count = trips.filter((trip: any) => trip.aflosser_id === aflosser.id).length
+      const positionLower = aflosser.position?.toLowerCase() || ''
+      const isKapitein = positionLower.includes('kapitein')
+      return { aflosser, tripCount: count, isKapitein }
+    })
+
+    // Sorteer: eerst kapiteins, daarna op aantal trips (hoogste eerst)
+    return tripCounts.sort((a, b) => {
+      // Eerst kapiteins
+      if (a.isKapitein && !b.isKapitein) return -1
+      if (!a.isKapitein && b.isKapitein) return 1
+      // Dan op aantal trips (hoogste eerst)
+      return b.tripCount - a.tripCount
+    }).map(item => item.aflosser)
+  }, [filteredAflossers, trips])
 
   // Filter trips by status
   const geplandeTrips = trips
@@ -933,6 +1036,43 @@ export default function ReizenAflossersPage() {
             </Card>
           </div>
 
+          {/* Beschikbare Aflossers Melding */}
+          {(() => {
+            const beschikbareAflossers = aflossers.filter((a: any) => isAflosserBeschikbaar(a))
+            if (beschikbareAflossers.length === 0) return null
+            
+            return (
+              <Card className="mb-8 bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+                <CardContent className="p-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <UserCheck className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-green-900 mb-2">
+                        Beschikbare Aflossers ({beschikbareAflossers.length})
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {beschikbareAflossers.map((aflosser: any) => (
+                          <Link 
+                            key={aflosser.id} 
+                            href={`/bemanning/aflossers/${aflosser.id}`}
+                          >
+                            <Badge 
+                              className="bg-green-100 text-green-800 border-green-300 text-sm px-3 py-1 hover:bg-green-200 hover:text-green-900 cursor-pointer transition-colors"
+                            >
+                              {aflosser.first_name} {aflosser.last_name}
+                            </Badge>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-4 mb-8">
             <Button onClick={() => setNewTripDialog(true)} className="bg-blue-600 hover:bg-blue-700">
@@ -1262,11 +1402,15 @@ export default function ReizenAflossersPage() {
                   {aflossers.filter((a: any) => a.vaste_dienst).map((aflosser: any) => {
                     const vasteDienstBalance = getVasteDienstBalance(aflosser.id)
                     return (
-                      <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
+                      <Card 
+                        key={aflosser.id} 
+                        className="hover:shadow-md transition-shadow cursor-pointer"
+                        onDoubleClick={() => handleAflosserDoubleClick(aflosser)}
+                      >
               <CardContent className="p-6">
                           <div className="space-y-4">
-                            {/* Header */}
-                            <div className="flex items-center justify-between">
+                            {/* Header - Alleen naam */}
+                            <div className="flex items-center">
                 <div className="flex items-center space-x-3">
                                 <Avatar className="h-12 w-12">
                                   <AvatarFallback className="bg-blue-100 text-blue-600">
@@ -1274,103 +1418,46 @@ export default function ReizenAflossersPage() {
                                   </AvatarFallback>
                                 </Avatar>
                   <div>
-                                  <Link href={`/bemanning/aflossers/${aflosser.id}`}>
-                                    <h3 className="font-semibold text-blue-600 hover:text-blue-800 cursor-pointer transition-colors">
+                                  <Link href={`/bemanning/aflossers/${aflosser.id}`} onClick={(e) => e.stopPropagation()}>
+                                    <h3 className="font-semibold text-blue-600 hover:text-blue-800 cursor-pointer transition-colors text-lg">
                                       {aflosser.first_name} {aflosser.last_name}
                                     </h3>
                                   </Link>
-                                  <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
                   </div>
                 </div>
-                              <Badge className={
-                                aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
-                                aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                              }>
-                                {aflosser.status === 'thuis' ? 'Thuis' :
-                                 aflosser.status === 'aan-boord' ? 'Aan Boord' :
-                                 aflosser.status}
-                              </Badge>
                             </div>
 
-                            {/* Diploma's */}
-                            {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                              <div className="bg-green-50 p-3 rounded-lg">
-                                <div className="flex items-start space-x-2">
-                                  <Award className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                                    <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
-                                    <div className="flex flex-wrap gap-1">
-                                      {aflosser.diplomas.map((diploma: string, index: number) => (
-                                        <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                          {diploma}
-                                        </Badge>
-                                      ))}
-                  </div>
-                </div>
-                  </div>
-                </div>
-                            )}
+                            {/* Beschikbaar Checkbox */}
+                            <div 
+                              className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-200"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                id={`beschikbaar-${aflosser.id}`}
+                                checked={isAflosserBeschikbaar(aflosser)}
+                                onChange={() => toggleAflosserBeschikbaar(aflosser.id)}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <label htmlFor={`beschikbaar-${aflosser.id}`} className="text-sm font-medium text-blue-900 cursor-pointer">
+                                Beschikbaar
+                              </label>
+                            </div>
 
-                            {/* Contact Info */}
-                            <div className="space-y-2">
-                              {aflosser.phone && (
-                                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                  <Phone className="w-4 h-4" />
-                                  <span>{aflosser.phone}</span>
-                                </div>
-                              )}
-                              {aflosser.email && (
-                                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                  <MessageSquare className="w-4 h-4" />
-                                  <span>{aflosser.email}</span>
-                                </div>
-                              )}
-          </div>
-
-                            {/* Dagtarief (voor uitzendbureau, zelfstandige en bestaande aflossers met tarief, maar niet voor vaste-dienst) */}
-                            {!aflosser.vaste_dienst && aflosser.dag_tarief && (
-                              <div className="bg-orange-50 p-3 rounded-lg">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm font-medium text-orange-800">
-                                    Tarief
-                                  </span>
-                                  <span className="text-sm font-bold text-orange-600">
-                                    €{parseFloat(aflosser.dag_tarief).toFixed(2)}/dag
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Vaste Dienst Saldo */}
-                            {aflosser.vaste_dienst && (
-                              <div className="bg-blue-50 p-3 rounded-lg">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm font-medium text-blue-800">Vaste Dienst Saldo</span>
-                                  <span className={`text-sm font-bold ${
-                                    vasteDienstBalance > 0 ? 'text-green-600' :
-                                    vasteDienstBalance < 0 ? 'text-red-600' :
-                                    'text-gray-600'
-                                  }`}>
-                                    {vasteDienstBalance > 0 ? '+' : ''}{vasteDienstBalance} dagen
-                                  </span>
-            </div>
-          </div>
-                            )}
-
-                            {/* Beschikbaarheid Status */}
-                            {renderAvailabilityStatus(aflosser.id)}
-
-                            {/* Algemene Opmerkingen */}
+                            {/* Opmerking */}
                             {aflosser.aflosser_opmerkingen && (
-                              <div className="bg-gray-50 p-3 rounded-lg">
-                                <div className="flex items-start space-x-2">
-                                  <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
-                                    <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
-                                  </div>
-                                </div>
+                              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 relative">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleRemoveAflosserOpmerking(aflosser.id)
+                                  }}
+                                  className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 transition-colors"
+                                  title="Opmerking verwijderen"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                                <p className="text-sm text-gray-700 pr-6">{aflosser.aflosser_opmerkingen}</p>
                               </div>
                             )}
                           </div>
@@ -1391,11 +1478,15 @@ export default function ReizenAflossersPage() {
                 </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).map((aflosser: any) => (
-                    <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
+                    <Card 
+                      key={aflosser.id} 
+                      className="hover:shadow-md transition-shadow cursor-pointer"
+                      onDoubleClick={() => handleAflosserDoubleClick(aflosser)}
+                    >
                   <CardContent className="p-6">
                         <div className="space-y-4">
-                          {/* Header */}
-                          <div className="flex items-center justify-between">
+                          {/* Header - Alleen naam */}
+                          <div className="flex items-center">
                       <div className="flex items-center space-x-3">
                               <Avatar className="h-12 w-12">
                                 <AvatarFallback className="bg-green-100 text-green-600">
@@ -1403,87 +1494,46 @@ export default function ReizenAflossersPage() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                                <Link href={`/bemanning/aflossers/${aflosser.id}`}>
-                                  <h3 className="font-semibold text-green-600 hover:text-green-800 cursor-pointer transition-colors">
+                                <Link href={`/bemanning/aflossers/${aflosser.id}`} onClick={(e) => e.stopPropagation()}>
+                                  <h3 className="font-semibold text-green-600 hover:text-green-800 cursor-pointer transition-colors text-lg">
                             {aflosser.first_name} {aflosser.last_name}
                                   </h3>
                           </Link>
-                                <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
                           </div>
                         </div>
-                            <Badge className={
-                              aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
-                              aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
-                              'bg-gray-100 text-gray-800'
-                            }>
-                              {aflosser.status === 'thuis' ? 'Thuis' :
-                               aflosser.status === 'aan-boord' ? 'Aan Boord' :
-                               aflosser.status}
-                            </Badge>
                       </div>
 
-                          {/* Diploma's */}
-                          {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                            <div className="bg-green-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <Award className="w-4 h-4 text-green-600 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {aflosser.diplomas.map((diploma: string, index: number) => (
-                                      <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                        {diploma}
-                      </Badge>
-                                    ))}
-                    </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Contact Info */}
-                          <div className="space-y-2">
-                    {aflosser.phone && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                        <Phone className="w-4 h-4" />
-                        <span>{aflosser.phone}</span>
-                      </div>
-                    )}
-                            {aflosser.email && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <MessageSquare className="w-4 h-4" />
-                                <span>{aflosser.email}</span>
-                              </div>
-                            )}
+                          {/* Beschikbaar Checkbox */}
+                          <div 
+                            className="flex items-center space-x-2 p-3 bg-green-50 rounded-lg border border-green-200"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              id={`beschikbaar-${aflosser.id}`}
+                              checked={isAflosserBeschikbaar(aflosser)}
+                              onChange={() => toggleAflosserBeschikbaar(aflosser.id)}
+                              className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                            />
+                            <label htmlFor={`beschikbaar-${aflosser.id}`} className="text-sm font-medium text-green-900 cursor-pointer">
+                              Beschikbaar
+                            </label>
                           </div>
 
-                          {/* Dagtarief (voor zelfstandige, uitzendbureau en bestaande aflossers met tarief) */}
-                          {aflosser.dag_tarief && (
-                            <div className="bg-orange-50 p-3 rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-orange-800">
-                                  Tarief
-                                </span>
-                                <span className="text-sm font-bold text-orange-600">
-                                  €{parseFloat(aflosser.dag_tarief).toFixed(2)}/dag
-                                </span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Beschikbaarheid Status */}
-                          {renderAvailabilityStatus(aflosser.id)}
-
-                          {/* Algemene Opmerkingen */}
+                          {/* Opmerking */}
                           {aflosser.aflosser_opmerkingen && (
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
-                                  <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
-                                </div>
-                              </div>
+                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 relative">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleRemoveAflosserOpmerking(aflosser.id)
+                                }}
+                                className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 transition-colors"
+                                title="Opmerking verwijderen"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                              <p className="text-sm text-gray-700 pr-6">{aflosser.aflosser_opmerkingen}</p>
                             </div>
                           )}
                         </div>
@@ -1503,11 +1553,15 @@ export default function ReizenAflossersPage() {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {aflossers.filter((a: any) => a.is_uitzendbureau).map((aflosser: any) => (
-                    <Card key={aflosser.id} className="hover:shadow-md transition-shadow">
+                    <Card 
+                      key={aflosser.id} 
+                      className="hover:shadow-md transition-shadow cursor-pointer"
+                      onDoubleClick={() => handleAflosserDoubleClick(aflosser)}
+                    >
                       <CardContent className="p-6">
                         <div className="space-y-4">
-                          {/* Header */}
-                          <div className="flex items-center justify-between">
+                          {/* Header - Alleen naam */}
+                          <div className="flex items-center">
                             <div className="flex items-center space-x-3">
                               <Avatar className="h-12 w-12">
                                 <AvatarFallback className="bg-orange-100 text-orange-600">
@@ -1515,88 +1569,46 @@ export default function ReizenAflossersPage() {
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <Link href={`/bemanning/aflossers/${aflosser.id}`}>
-                                  <h3 className="font-semibold text-orange-600 hover:text-orange-800 cursor-pointer transition-colors">
+                                <Link href={`/bemanning/aflossers/${aflosser.id}`} onClick={(e) => e.stopPropagation()}>
+                                  <h3 className="font-semibold text-orange-600 hover:text-orange-800 cursor-pointer transition-colors text-lg">
                                     {aflosser.first_name} {aflosser.last_name}
                                   </h3>
                                 </Link>
-                                <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
-                                <p className="text-xs text-orange-600 font-medium">{aflosser.uitzendbureau_naam}</p>
                               </div>
                             </div>
-                            <Badge className={
-                              aflosser.status === 'thuis' ? 'bg-green-100 text-green-800' :
-                              aflosser.status === 'aan-boord' ? 'bg-blue-100 text-blue-800' :
-                              'bg-gray-100 text-gray-800'
-                            }>
-                              {aflosser.status === 'thuis' ? 'Thuis' :
-                               aflosser.status === 'aan-boord' ? 'Aan Boord' :
-                               aflosser.status}
-                            </Badge>
                           </div>
 
-                    {/* Diploma's */}
-                    {aflosser.diplomas && aflosser.diplomas.length > 0 && (
-                            <div className="bg-green-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <Award className="w-4 h-4 text-green-600 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-green-800 mb-1">Diploma's</p>
-                        <div className="flex flex-wrap gap-1">
-                                    {aflosser.diplomas.map((diploma: string, index: number) => (
-                                      <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-800">
-                              {diploma}
-                            </Badge>
-                          ))}
-                                  </div>
-                                </div>
-                        </div>
-                      </div>
-                    )}
-
-                          {/* Contact Info */}
-                          <div className="space-y-2">
-                            {aflosser.phone && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <Phone className="w-4 h-4" />
-                                <span>{aflosser.phone}</span>
-                      </div>
-                    )}
-                            {aflosser.email && (
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <MessageSquare className="w-4 h-4" />
-                                <span>{aflosser.email}</span>
-                              </div>
-                            )}
+                          {/* Beschikbaar Checkbox */}
+                          <div 
+                            className="flex items-center space-x-2 p-3 bg-orange-50 rounded-lg border border-orange-200"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              id={`beschikbaar-${aflosser.id}`}
+                              checked={isAflosserBeschikbaar(aflosser)}
+                              onChange={() => toggleAflosserBeschikbaar(aflosser.id)}
+                              className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                            />
+                            <label htmlFor={`beschikbaar-${aflosser.id}`} className="text-sm font-medium text-orange-900 cursor-pointer">
+                              Beschikbaar
+                            </label>
                           </div>
 
-                          {/* Dagtarief (voor uitzendbureau en bestaande aflossers met tarief) */}
-                          {aflosser.dag_tarief && (
-                            <div className="bg-orange-50 p-3 rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-orange-800">
-                                  Tarief
-                                </span>
-                                <span className="text-sm font-bold text-orange-600">
-                                  €{parseFloat(aflosser.dag_tarief).toFixed(2)}/dag
-                                </span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Beschikbaarheid Status */}
-                          {renderAvailabilityStatus(aflosser.id)}
-
-                          {/* Algemene Opmerkingen */}
+                          {/* Opmerking */}
                           {aflosser.aflosser_opmerkingen && (
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <div className="flex items-start space-x-2">
-                                <MessageSquare className="w-4 h-4 text-gray-500 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-700">Opmerkingen</p>
-                                  <p className="text-sm text-gray-600">{aflosser.aflosser_opmerkingen}</p>
-                                </div>
-                              </div>
+                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 relative">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleRemoveAflosserOpmerking(aflosser.id)
+                                }}
+                                className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 transition-colors"
+                                title="Opmerking verwijderen"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                              <p className="text-sm text-gray-700 pr-6">{aflosser.aflosser_opmerkingen}</p>
                             </div>
                           )}
                         </div>
@@ -2265,6 +2277,46 @@ export default function ReizenAflossersPage() {
                 }
               >
                 {editingPeriod ? 'Opslaan' : 'Toevoegen'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Aflosser Opmerking Dialog */}
+      <Dialog open={!!aflosserOpmerkingDialog} onOpenChange={(open) => {
+        if (!open) {
+          setAflosserOpmerkingDialog(null)
+          setAflosserOpmerkingText("")
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Opmerking voor {aflosserOpmerkingDialog?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="aflosser-opmerking">Opmerking</Label>
+              <Textarea
+                id="aflosser-opmerking"
+                value={aflosserOpmerkingText}
+                onChange={(e) => setAflosserOpmerkingText(e.target.value)}
+                placeholder="Voeg een opmerking toe..."
+                rows={4}
+              />
+            </div>
+            <div className="flex space-x-2">
+              <Button onClick={handleSaveAflosserOpmerking} className="flex-1">
+                Opslaan
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setAflosserOpmerkingDialog(null)
+                  setAflosserOpmerkingText("")
+                }}
+              >
+                Annuleren
               </Button>
             </div>
           </div>
