@@ -13,7 +13,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useState, useEffect, useMemo } from "react"
-import { format, isToday } from "date-fns"
+import { format, isToday, isPast, startOfDay } from "date-fns"
 
 export default function Dashboard() {
   return (
@@ -175,14 +175,28 @@ function DashboardContent() {
     return incidents.filter((i: any) => i.status === 'open' || i.status === 'in_behandeling')
   }, [incidents])
 
-  // Urgente taken (blijven in meldingen tot opgelost of prioriteit lager is)
+  // Urgente taken en taken met verlopen deadline (blijven in meldingen tot opgelost)
   const urgentTasks = useMemo(() => {
     if (!tasks || tasks.length === 0) return []
-    return tasks.filter((task: any) =>
-      task.priority === 'urgent' &&
-      task.status !== 'completed' &&
-      task.completed !== true
-    )
+    const today = startOfDay(new Date())
+    
+    return tasks.filter((task: any) => {
+      // Taak moet niet voltooid zijn
+      if (task.status === 'completed' || task.completed === true) return false
+      
+      // Check of taak urgent is
+      if (task.priority === 'urgent') return true
+      
+      // Check of taak een verlopen deadline heeft
+      if (task.deadline) {
+        const deadlineDate = startOfDay(new Date(task.deadline))
+        if (isPast(deadlineDate) || isToday(deadlineDate)) {
+          return true
+        }
+      }
+      
+      return false
+    })
   }, [tasks])
 
   // Prevent hydration errors
@@ -266,45 +280,82 @@ function DashboardContent() {
           </Alert>
         )}
 
-        {/* Urgente taken */}
-        {urgentTasks.length > 0 && (
-          <Alert className="mb-6 bg-gradient-to-r from-red-50 to-red-100 border-red-300">
-            <AlertCircle className="h-5 w-5 text-red-600" />
-            <AlertDescription className="text-base font-medium">
-              🚨 Er {urgentTasks.length === 1 ? 'staat' : 'staan'}{" "}
-              <strong>{urgentTasks.length}</strong> taak{urgentTasks.length === 1 ? '' : 'en'} met{" "}
-              <strong>prioriteit URGENT</strong> open.
-              <ul className="mt-3 space-y-1 text-sm">
-                {urgentTasks.slice(0, 5).map((task: any) => (
-                  <li key={task.id} className="flex items-start gap-2">
-                    <span className="mt-1 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
-                    <div>
-                      <div className="font-semibold">
-                        {task.title}
-                        {task.assigned_to && (
-                          <span className="ml-1 text-xs text-gray-600">
-                            – toegewezen aan {task.assigned_to}
-                          </span>
-                        )}
-                      </div>
-                      {task.deadline && (
-                        <div className="text-xs text-gray-600">
-                          Deadline:{" "}
-                          {format(new Date(task.deadline), 'dd-MM-yyyy')}
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                ))}
-                {urgentTasks.length > 5 && (
-                  <li className="text-xs text-gray-600">
-                    +{urgentTasks.length - 5} extra urgente taak{urgentTasks.length - 5 === 1 ? '' : 'en'} – bekijk alle taken in het takenoverzicht.
-                  </li>
+        {/* Urgente taken en taken met verlopen deadline */}
+        {urgentTasks.length > 0 && (() => {
+          const today = startOfDay(new Date())
+          const urgentOnly = urgentTasks.filter((t: any) => t.priority === 'urgent')
+          const expiredDeadline = urgentTasks.filter((t: any) => {
+            if (t.priority === 'urgent') return false
+            if (!t.deadline) return false
+            const deadlineDate = startOfDay(new Date(t.deadline))
+            return isPast(deadlineDate) || isToday(deadlineDate)
+          })
+          
+          return (
+            <Alert className="mb-6 bg-gradient-to-r from-red-50 to-red-100 border-red-300">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              <AlertDescription className="text-base font-medium">
+                🚨 Er {urgentTasks.length === 1 ? 'staat' : 'staan'}{" "}
+                <strong>{urgentTasks.length}</strong> taak{urgentTasks.length === 1 ? '' : 'en'} die aandacht vereist:
+                {urgentOnly.length > 0 && (
+                  <span className="ml-1">
+                    <strong>{urgentOnly.length}</strong> met prioriteit URGENT
+                  </span>
                 )}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
+                {urgentOnly.length > 0 && expiredDeadline.length > 0 && (
+                  <span> en </span>
+                )}
+                {expiredDeadline.length > 0 && (
+                  <span>
+                    <strong>{expiredDeadline.length}</strong> met verlopen deadline
+                  </span>
+                )}
+                <ul className="mt-3 space-y-1 text-sm">
+                  {urgentTasks.slice(0, 5).map((task: any) => {
+                    const isUrgent = task.priority === 'urgent'
+                    const hasExpiredDeadline = task.deadline && (isPast(startOfDay(new Date(task.deadline))) || isToday(startOfDay(new Date(task.deadline))))
+                    
+                    return (
+                      <li key={task.id} className="flex items-start gap-2">
+                        <span className="mt-1 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
+                        <div>
+                          <div className="font-semibold">
+                            {task.title}
+                            {isUrgent && (
+                              <span className="ml-1 text-xs font-bold text-red-600">[URGENT]</span>
+                            )}
+                            {!isUrgent && hasExpiredDeadline && (
+                              <span className="ml-1 text-xs font-bold text-orange-600">[DEADLINE VERLOPEN]</span>
+                            )}
+                            {task.assigned_to && (
+                              <span className="ml-1 text-xs text-gray-600">
+                                – toegewezen aan {task.assigned_to}
+                              </span>
+                            )}
+                          </div>
+                          {task.deadline && (
+                            <div className={`text-xs ${hasExpiredDeadline ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                              Deadline:{" "}
+                              {format(new Date(task.deadline), 'dd-MM-yyyy')}
+                              {hasExpiredDeadline && !isUrgent && (
+                                <span className="ml-1">(verlopen)</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                  {urgentTasks.length > 5 && (
+                    <li className="text-xs text-gray-600">
+                      +{urgentTasks.length - 5} extra taak{urgentTasks.length - 5 === 1 ? '' : 'en'} – bekijk alle taken in het takenoverzicht.
+                    </li>
+                  )}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )
+        })()}
 
         {/* Scheepsbezoek melding */}
         {shipsNotVisited50Days.length > 0 && (
