@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import nodemailer from "nodemailer"
-import path from "path"
-import fs from "fs"
+
+// Zorg dat deze route altijd op de Node.js runtime draait (nodemailer werkt niet in Edge)
+export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,10 +34,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Zoek de beschikbare ziekteprocedure-PDF's in /public/contracts
-    const contractsDir = path.join(process.cwd(), "public", "contracts")
-    console.log("📧 [send-sick-instructions] Zoek PDF's in:", contractsDir)
-    
+    // Zoek de beschikbare ziekteprocedure-PDF's via publieke URL (werkt ook op Vercel)
+    // Gebruik altijd de actuele origin van de request als basis, tenzij expliciet NEXT_PUBLIC_APP_URL is gezet
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+    console.log("📧 [send-sick-instructions] Gebruik base URL voor attachments:", baseUrl)
+
     const possibleFiles = [
       "Ziekmelding_procedures_nl.pdf",
       "Ziekmelding_procedures_de.pdf",
@@ -48,38 +50,30 @@ export async function POST(request: NextRequest) {
       "Ziekmelding_procedure.pdf",
     ]
 
-    const attachments: { filename: string; content: Buffer }[] = []
-    
+    const attachments: { filename: string; path: string }[] = []
+
     for (const fileName of possibleFiles) {
-      const fullPath = path.join(contractsDir, fileName)
+      const url = `${baseUrl}/contracts/${fileName}`
       try {
-        if (fs.existsSync(fullPath)) {
-          const fileContent = fs.readFileSync(fullPath)
+        const head = await fetch(url, { method: "HEAD" })
+        if (head.ok) {
           attachments.push({
             filename: fileName,
-            content: fileContent,
+            path: url,
           })
-          console.log("📧 [send-sick-instructions] ✅ PDF gevonden:", fileName)
+          console.log("📧 [send-sick-instructions] ✅ PDF gevonden (via URL):", url)
+        } else {
+          console.log("📧 [send-sick-instructions] PDF niet gevonden (status", head.status, "):", url)
         }
       } catch (fileError) {
-        console.warn("📧 [send-sick-instructions] ⚠️ Fout bij lezen van", fileName, ":", fileError)
+        console.warn("📧 [send-sick-instructions] ⚠️ Fout bij controleren van", url, ":", fileError)
       }
     }
 
     if (attachments.length === 0) {
-      console.error("📧 [send-sick-instructions] ❌ Geen ziekteprocedure-PDF gevonden in public/contracts")
-      console.error("📧 [send-sick-instructions] Gezochte bestanden:", possibleFiles)
-      console.error("📧 [send-sick-instructions] Contracts directory:", contractsDir)
-      console.error("📧 [send-sick-instructions] Directory exists:", fs.existsSync(contractsDir))
-      
-      // Probeer directory listing
-      try {
-        const files = fs.readdirSync(contractsDir)
-        console.error("📧 [send-sick-instructions] Bestanden in contracts directory:", files)
-      } catch (dirError) {
-        console.error("📧 [send-sick-instructions] Kan directory niet lezen:", dirError)
-      }
-      
+      console.error("📧 [send-sick-instructions] ❌ Geen ziekteprocedure-PDF gevonden via publieke URL")
+      console.error("📧 [send-sick-instructions] Geprobeerde bestanden:", possibleFiles)
+
       return NextResponse.json(
         { error: "Geen ziekteprocedure-PDF gevonden op de server", message: "Zorg ervoor dat de PDF bestanden in public/contracts staan" },
         { status: 500 }
