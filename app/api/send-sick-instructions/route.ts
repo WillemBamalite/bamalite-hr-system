@@ -40,33 +40,34 @@ export async function POST(request: NextRequest) {
     console.log("📧 [send-sick-instructions] Gebruik base URL voor attachments:", baseUrl)
 
     const possibleFiles = [
-      "Ziekmelding_procedures_nl.pdf",
-      "Ziekmelding_procedures_de.pdf",
-      "Ziekmelding_procedures_en.pdf",
+      "Ziekmelding_procedure.pdf",
+      "Ziekmelding_procedures.pdf",
       "Ziekmelding_procedure_nl.pdf",
       "Ziekmelding_procedure_de.pdf",
       "Ziekmelding_procedure_en.pdf",
-      "Ziekmelding_procedures.pdf",
-      "Ziekmelding_procedure.pdf",
+      "Ziekmelding_procedures_nl.pdf",
+      "Ziekmelding_procedures_de.pdf",
+      "Ziekmelding_procedures_en.pdf",
     ]
 
-    const attachments: { filename: string; path: string }[] = []
+    const attachments: { filename: string; content?: Buffer; path?: string }[] = []
 
     for (const fileName of possibleFiles) {
       const url = `${baseUrl}/contracts/${fileName}`
       try {
-        const head = await fetch(url, { method: "HEAD" })
-        if (head.ok) {
+        const response = await fetch(url)
+        if (response.ok) {
+          const buffer = Buffer.from(await response.arrayBuffer())
           attachments.push({
             filename: fileName,
-            path: url,
+            content: buffer,
           })
-          console.log("📧 [send-sick-instructions] ✅ PDF gevonden (via URL):", url)
+          console.log("📧 [send-sick-instructions] ✅ PDF gevonden en gedownload:", fileName, `(${buffer.length} bytes)`)
         } else {
-          console.log("📧 [send-sick-instructions] PDF niet gevonden (status", head.status, "):", url)
+          console.log("📧 [send-sick-instructions] PDF niet gevonden (status", response.status, "):", url)
         }
       } catch (fileError) {
-        console.warn("📧 [send-sick-instructions] ⚠️ Fout bij controleren van", url, ":", fileError)
+        console.warn("📧 [send-sick-instructions] ⚠️ Fout bij ophalen van", url, ":", fileError)
       }
     }
 
@@ -106,18 +107,22 @@ export async function POST(request: NextRequest) {
       text: [
         `Beste ${displayName},`,
         "",
-        "Hierbij ontvang je de documenten met de afspraken en procedures rondom ziekmelding.",
-        "Lees deze instructies zorgvuldig door.",
+        "Wat vervelend om te horen dat je ziek bent. Wij wensen je van harte beterschap.",
+        "",
+        "In de bijlage ontvang je de documenten met de afspraken en procedures rondom ziekmelding. Wij verzoeken je deze instructies zorgvuldig door te lezen en het ziektebriefje zo spoedig mogelijk aan ons toe te sturen.",
+        "",
+        "Alvast bedankt voor je medewerking. Nogmaals beterschap gewenst.",
         "",
         "Met vriendelijke groet,",
-        "Bamalite HR",
+        "Team Nautic Bamalite",
       ].join("\n"),
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
           <p>Beste ${displayName},</p>
-          <p>Hierbij ontvang je de documenten met de afspraken en procedures rondom ziekmelding.</p>
-          <p>Lees deze instructies zorgvuldig door.</p>
-          <p>Met vriendelijke groet,<br>Bamalite HR</p>
+          <p>Wat vervelend om te horen dat je ziek bent. Wij wensen je van harte beterschap.</p>
+          <p>In de bijlage ontvang je de documenten met de afspraken en procedures rondom ziekmelding. Wij verzoeken je deze instructies zorgvuldig door te lezen en het ziektebriefje zo spoedig mogelijk aan ons toe te sturen.</p>
+          <p>Alvast bedankt voor je medewerking. Nogmaals beterschap gewenst.</p>
+          <p>Met vriendelijke groet,<br>Team Nautic Bamalite</p>
         </div>
       `,
       attachments,
