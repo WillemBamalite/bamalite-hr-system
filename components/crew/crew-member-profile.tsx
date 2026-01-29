@@ -181,7 +181,10 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         phone: crewMember.phone || "",
         email: crewMember.email || "",
         birth_date: crewMember.birth_date || "",
+        birth_place: (crewMember as any).birth_place || "",
+        matricule: (crewMember as any).matricule ?? "",
         expected_start_date: (crewMember as any).expected_start_date || "",
+        in_dienst_vanaf: (crewMember as any).in_dienst_vanaf || "",
         in_dienst_vanaf: (crewMember as any).in_dienst_vanaf || "",
         arbeidsovereenkomst: (crewMember as any).arbeidsovereenkomst || false,
         ingeschreven_luxembourg: (crewMember as any).ingeschreven_luxembourg || false,
@@ -319,6 +322,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         status: editData.status,
         phone: editData.phone,
         email: editData.email,
+        matricule: editData.matricule ? editData.matricule.trim() : "",
         arbeidsovereenkomst: editData.arbeidsovereenkomst,
         ingeschreven_luxembourg: editData.ingeschreven_luxembourg,
         verzekerd: editData.verzekerd,
@@ -418,6 +422,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
             phone: editData.phone,
             email: editData.email,
             birthDate: editData.birth_date,
+            birthPlace: editData.birth_place,
+            matricule: editData.matricule,
             expectedStartDate: editData.expected_start_date,
             address: editData.address,
             diplomas: editData.diplomas,
@@ -462,7 +468,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         email: crewMember.email || "",
         birth_date: crewMember.birth_date || "",
         birth_place: (crewMember as any).birth_place || "",
-        matricule: (crewMember as any).matricule || "",
+        matricule: (crewMember as any).matricule ?? "",
         address: crewMember.address || {
           street: "",
           city: "",
@@ -525,7 +531,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   }
 
   const renderField = (label: string, value: any, field: string, type: string = "text") => {
-    const currentValue = editData[field] || "";
+    const currentValue = editData[field] ?? "";
     
     if (isEditing) {
       switch (type) {
@@ -592,7 +598,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           return <p className="mt-1">{value}</p>
         }
       }
-      return <p className="mt-1">{value || "Niet ingevuld"}</p>
+      return <p className="mt-1">{value ?? "Niet ingevuld"}</p>
     }
   }
 
