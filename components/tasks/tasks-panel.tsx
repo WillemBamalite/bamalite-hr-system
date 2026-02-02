@@ -24,6 +24,40 @@ export function TasksPanel() {
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
   const { user } = useAuth()
   const [showDialog, setShowDialog] = useState(false)
+  
+  // Scroll naar gehighlighte taak wanneer deze beschikbaar is en selecteer juiste assignee
+  useEffect(() => {
+    if (highlightedTaskId && tasks.length > 0) {
+      // Vind de taak en selecteer de juiste assignee
+      const task = tasks.find((t: any) => t.id === highlightedTaskId)
+      if (task) {
+        // Bepaal de assignee op basis van assigned_to of taken_by
+        let assignee: (typeof assignees)[number] = "Nautic"
+        if (task.assigned_to) {
+          assignee = task.assigned_to as (typeof assignees)[number]
+        } else if (task.taken_by) {
+          const resolved = resolveAssigneeFromEmail(task.taken_by)
+          if (resolved) assignee = resolved
+        }
+        setSelectedAssignee(assignee)
+        
+        // Zorg dat de taak zichtbaar is (niet in completed filter als deze open is)
+        if (task.completed || task.status === 'completed') {
+          setFilter('completed')
+        } else {
+          setFilter('open')
+        }
+        
+        // Wacht even zodat de DOM is gerenderd en scroll dan
+        setTimeout(() => {
+          const taskElement = document.querySelector(`[data-task-id="${highlightedTaskId}"]`)
+          if (taskElement) {
+            taskElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }, 500)
+      }
+    }
+  }, [highlightedTaskId, tasks])
   const [selectedTaskType, setSelectedTaskType] = useState<"ship" | "crew" | "algemeen" | "">("")
   const [selectedShipId, setSelectedShipId] = useState<string>("")
   const [selectedCrewId, setSelectedCrewId] = useState<string>("")
@@ -619,7 +653,8 @@ export function TasksPanel() {
                       const isHighlighted = highlightedTaskId === task.id
                       return (
                         <Card 
-                          key={task.id} 
+                          key={task.id}
+                          data-task-id={task.id}
                           className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
                         >
                             <CardContent className="p-4">
@@ -902,7 +937,8 @@ export function TasksPanel() {
                       const isHighlighted = highlightedTaskId === task.id
                       return (
                         <Card 
-                          key={task.id} 
+                          key={task.id}
+                          data-task-id={task.id}
                           className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
                         >
                             <CardContent className="p-4">
@@ -1185,7 +1221,8 @@ export function TasksPanel() {
                       const isHighlighted = highlightedTaskId === task.id
                       return (
                         <Card 
-                          key={task.id} 
+                          key={task.id}
+                          data-task-id={task.id}
                           className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
                         >
                             <CardContent className="p-4">

@@ -14,6 +14,7 @@ import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useState, useEffect, useMemo } from "react"
 import { format, isToday, isPast, startOfDay } from "date-fns"
+import Link from "next/link"
 
 export default function Dashboard() {
   return (
@@ -318,37 +319,44 @@ function DashboardContent() {
                     return (
                       <li key={task.id} className="flex items-start gap-2">
                         <span className="mt-1 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
-                        <div>
-                          <div className="font-semibold">
-                            {task.title}
-                            {isUrgent && (
-                              <span className="ml-1 text-xs font-bold text-red-600">[URGENT]</span>
-                            )}
-                            {!isUrgent && hasExpiredDeadline && (
-                              <span className="ml-1 text-xs font-bold text-orange-600">[DEADLINE VERLOPEN]</span>
-                            )}
-                            {task.assigned_to && (
-                              <span className="ml-1 text-xs text-gray-600">
-                                – toegewezen aan {task.assigned_to}
-                              </span>
-                            )}
-                          </div>
-                          {task.deadline && (
-                            <div className={`text-xs ${hasExpiredDeadline ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
-                              Deadline:{" "}
-                              {format(new Date(task.deadline), 'dd-MM-yyyy')}
-                              {hasExpiredDeadline && !isUrgent && (
-                                <span className="ml-1">(verlopen)</span>
+                        <Link 
+                          href={`/taken?taskId=${task.id}`}
+                          className="flex-1 hover:bg-red-50 rounded p-1 -m-1 transition-colors cursor-pointer"
+                        >
+                          <div>
+                            <div className="font-semibold">
+                              {task.title}
+                              {isUrgent && (
+                                <span className="ml-1 text-xs font-bold text-red-600">[URGENT]</span>
+                              )}
+                              {!isUrgent && hasExpiredDeadline && (
+                                <span className="ml-1 text-xs font-bold text-orange-600">[DEADLINE VERLOPEN]</span>
+                              )}
+                              {task.assigned_to && (
+                                <span className="ml-1 text-xs text-gray-600">
+                                  – toegewezen aan {task.assigned_to}
+                                </span>
                               )}
                             </div>
-                          )}
-                        </div>
+                            {task.deadline && (
+                              <div className={`text-xs ${hasExpiredDeadline ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                                Deadline:{" "}
+                                {format(new Date(task.deadline), 'dd-MM-yyyy')}
+                                {hasExpiredDeadline && !isUrgent && (
+                                  <span className="ml-1">(verlopen)</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </Link>
                       </li>
                     )
                   })}
                   {urgentTasks.length > 5 && (
                     <li className="text-xs text-gray-600">
-                      +{urgentTasks.length - 5} extra taak{urgentTasks.length - 5 === 1 ? '' : 'en'} – bekijk alle taken in het takenoverzicht.
+                      <Link href="/taken" className="text-blue-600 hover:text-blue-800 underline">
+                        +{urgentTasks.length - 5} extra taak{urgentTasks.length - 5 === 1 ? '' : 'en'} – bekijk alle taken in het takenoverzicht.
+                      </Link>
                     </li>
                   )}
                 </ul>
