@@ -296,8 +296,11 @@ function DashboardContent() {
             <Alert className="mb-6 bg-gradient-to-r from-red-50 to-red-100 border-red-300">
               <AlertCircle className="h-5 w-5 text-red-600" />
               <AlertDescription className="text-base font-medium">
-                🚨 Er {urgentTasks.length === 1 ? 'staat' : 'staan'}{" "}
-                <strong>{urgentTasks.length}</strong> taak{urgentTasks.length === 1 ? '' : 'en'} die aandacht vereist:
+                🚨 Er {urgentTasks.length === 1 ? 'is' : 'zijn'}{" "}
+                <strong>{urgentTasks.length}</strong>{" "}
+                {urgentTasks.length === 1
+                  ? "taak die aandacht vereist:"
+                  : "taken die aandacht vereisen:"}
                 {urgentOnly.length > 0 && (
                   <span className="ml-1">
                     <strong>{urgentOnly.length}</strong> met prioriteit URGENT
@@ -307,7 +310,7 @@ function DashboardContent() {
                   <span> en </span>
                 )}
                 {expiredDeadline.length > 0 && (
-                  <span>
+                  <span className="ml-1">
                     <strong>{expiredDeadline.length}</strong> met verlopen deadline
                   </span>
                 )}
