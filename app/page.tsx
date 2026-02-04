@@ -315,7 +315,7 @@ function DashboardContent() {
                   </span>
                 )}
                 <ul className="mt-3 space-y-1 text-sm">
-                  {urgentTasks.slice(0, 5).map((task: any) => {
+                  {urgentTasks.map((task: any) => {
                     const isUrgent = task.priority === 'urgent'
                     const hasExpiredDeadline = task.deadline && (isPast(startOfDay(new Date(task.deadline))) || isToday(startOfDay(new Date(task.deadline))))
                     
@@ -355,13 +355,6 @@ function DashboardContent() {
                       </li>
                     )
                   })}
-                  {urgentTasks.length > 5 && (
-                    <li className="text-xs text-gray-600">
-                      <Link href="/taken" className="text-blue-600 hover:text-blue-800 underline">
-                        +{urgentTasks.length - 5} extra taak{urgentTasks.length - 5 === 1 ? '' : 'en'} – bekijk alle taken in het takenoverzicht.
-                      </Link>
-                    </li>
-                  )}
                 </ul>
               </AlertDescription>
             </Alert>
