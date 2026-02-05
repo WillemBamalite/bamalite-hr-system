@@ -36,6 +36,16 @@ interface BirthdayItem {
   crewMemberName: string
 }
 
+interface AnniversaryItem {
+  id: string
+  title: string
+  date: string
+  color: string
+  isAnniversary: true
+  crewMemberName: string
+  years: number
+}
+
 interface CalendarDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -46,6 +56,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([])
   const [birthdays, setBirthdays] = useState<BirthdayItem[]>([])
+  const [anniversaries, setAnniversaries] = useState<AnniversaryItem[]>([])
   const [crew, setCrew] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -71,31 +82,34 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
 
   const loadCrewAndBirthdays = async () => {
     try {
-      // Load crew members with birth dates (exclusief dummy's)
+      // Load crew members with birth dates en in-dienst data (exclusief dummy's)
       const { data: crewData, error: crewError } = await supabase
         .from('crew')
-        .select('id, first_name, last_name, birth_date, is_dummy')
+        .select('id, first_name, last_name, birth_date, in_dienst_vanaf, is_dummy')
       
       if (crewError) {
         console.error('Error loading crew for birthdays:', crewError)
-        // Don't throw, just return empty array - birthdays are optional
+        // Don't throw, just return empty arrays - birthdays/anniversaries zijn optioneel
         setBirthdays([])
+        setAnniversaries([])
         return
       }
       
       if (!crewData || crewData.length === 0) {
         setBirthdays([])
+        setAnniversaries([])
         return
       }
       
       setCrew(crewData)
       
-      // Generate birthdays for current month
+      // Generate birthdays en dienstjubilea voor current month
       const start = startOfMonth(currentMonth)
       const end = endOfMonth(currentMonth)
       const currentYear = currentMonth.getFullYear()
       
       const birthdayItems: BirthdayItem[] = []
+      const anniversaryItems: AnniversaryItem[] = []
       
       // Filter en verwerk alleen echte bemanningsleden met geldige geboortedatum
       crewData
@@ -135,10 +149,65 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
         })
       
       setBirthdays(birthdayItems)
+
+      // Dienstjubilea (5,10,15,20,25,30 jaar en vanaf 30 elk jaar)
+      crewData
+        .filter((member: any) => !member.is_dummy && member.in_dienst_vanaf && String(member.in_dienst_vanaf).trim() !== '')
+        .forEach((member: any) => {
+          try {
+            const startStr = String(member.in_dienst_vanaf).trim()
+            // Probeer eerst als YYYY-MM-DD, anders fallback naar Date constructor
+            let startDate = parse(startStr, 'yyyy-MM-dd', new Date())
+            if (isNaN(startDate.getTime())) {
+              startDate = new Date(startStr)
+            }
+            if (isNaN(startDate.getTime())) {
+              console.warn(`Invalid in_dienst_vanaf for ${member.first_name} ${member.last_name}: ${startStr}`)
+              return
+            }
+
+            startDate.setHours(0, 0, 0, 0)
+
+            // Loop door mogelijke jaren tot max 60 dienstjaren
+            for (let years = 5; years <= 60; years++) {
+              const isMilestone = years < 30 ? years % 5 === 0 : true
+              if (!isMilestone) continue
+
+              const anniversaryDate = new Date(startDate)
+              anniversaryDate.setFullYear(startDate.getFullYear() + years)
+
+              if (anniversaryDate.getFullYear() !== currentYear) {
+                continue
+              }
+
+              // Valt dit jubileum in de huidige maand?
+              if (
+                isWithinInterval(anniversaryDate, { start, end }) ||
+                isSameDay(anniversaryDate, start) ||
+                isSameDay(anniversaryDate, end)
+              ) {
+                anniversaryItems.push({
+                  id: `anniversary-${member.id}-${years}-${currentYear}`,
+                  title: `⭐ ${years} jaar in dienst – ${member.first_name} ${member.last_name}`,
+                  date: format(anniversaryDate, 'yyyy-MM-dd'),
+                  color: '#f59e0b', // Amber voor jubileum
+                  isAnniversary: true,
+                  crewMemberName: `${member.first_name} ${member.last_name}`,
+                  years
+                })
+              }
+            }
+          } catch (error) {
+            console.warn(`Error parsing in_dienst_vanaf for ${member.first_name} ${member.last_name}:`, error, `Date: ${member.in_dienst_vanaf}`)
+          }
+        })
+
+      setAnniversaries(anniversaryItems)
     } catch (error) {
       console.error('Error loading birthdays:', error)
-      // Set empty array on error so the agenda still works
+      // Set empty arrays on error so the agenda still works
       setBirthdays([])
+      setAnniversaries([])
     }
   }
 
@@ -334,7 +403,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
   // Create empty cells for days before month starts
   const emptyCells = Array.from({ length: adjustedFirstDay }, (_, i) => i)
 
-  // Get items for a specific date (including multi-day items and birthdays)
+  // Get items for a specific date (including multi-day items, birthdays en jubilea)
   const getItemsForDate = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
     const dateObj = parse(dateStr, 'yyyy-MM-dd', new Date())
@@ -355,7 +424,10 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
     // Birthday items
     const birthdayItems = birthdays.filter(birthday => birthday.date === dateStr)
     
-    return [...regularItems, ...birthdayItems]
+    // Anniversary items
+    const anniversaryItemsForDate = anniversaries.filter(item => item.date === dateStr)
+    
+    return [...regularItems, ...birthdayItems, ...anniversaryItemsForDate]
   }
 
   const previousMonth = () => {

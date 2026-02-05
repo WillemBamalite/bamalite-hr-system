@@ -83,51 +83,67 @@ function DashboardContent() {
     })
   }, [crew])
 
-  // Check voor dienstjubilea (5,10,15,20,25,30 jaar en vanaf 30 elk jaar)
-  const workAnniversariesToday = useMemo(() => {
+  // Dienstjubilea in de komende 7 dagen (5,10,15,20,25,30 jaar en vanaf 30 elk jaar)
+  const upcomingWorkAnniversaries = useMemo(() => {
     if (!crew || crew.length === 0) return []
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = startOfDay(new Date())
+    const maxDate = new Date(today)
+    maxDate.setDate(maxDate.getDate() + 6) // vandaag + 6 = totaal 7 dagen (0..6)
+    const MS_PER_DAY = 24 * 60 * 60 * 1000
 
-    return crew
-      .filter((member: any) => {
-        if (member.is_dummy === true) return false
-        if (!member.in_dienst_vanaf) return false
+    const results: {
+      member: any
+      years: number
+      daysUntil: number
+    }[] = []
 
-        try {
-          const start = new Date(member.in_dienst_vanaf)
-          start.setHours(0, 0, 0, 0)
-          if (isNaN(start.getTime())) return false
+    crew.forEach((member: any) => {
+      if (member.is_dummy === true) return
+      if (!member.in_dienst_vanaf) return
 
-          const years = today.getFullYear() - start.getFullYear()
-          if (years < 5) return false
+      let start: Date
+      try {
+        start = new Date(member.in_dienst_vanaf)
+        if (isNaN(start.getTime())) return
+        start.setHours(0, 0, 0, 0)
+      } catch {
+        return
+      }
 
-          // Bepaal of vandaag de jubileumdatum is
-          const anniversaryThisYear = new Date(start)
-          anniversaryThisYear.setFullYear(start.getFullYear() + years)
-          anniversaryThisYear.setHours(0, 0, 0, 0)
+      // Zoek eerstvolgend relevant jubileum binnen de komende 7 dagen
+      for (let years = 5; years <= 60; years++) {
+        const isMilestone = years < 30 ? years % 5 === 0 : true
+        if (!isMilestone) continue
 
-          const isToday =
-            anniversaryThisYear.getTime() === today.getTime()
+        const anniversaryDate = new Date(start)
+        anniversaryDate.setFullYear(start.getFullYear() + years)
+        anniversaryDate.setHours(0, 0, 0, 0)
 
-          if (!isToday) return false
-
-          // Alleen 5,10,15,20,25,30 en vanaf 30 elk jaar
-          if (years >= 30) return true
-          return years % 5 === 0
-        } catch {
-          return false
+        if (anniversaryDate < today) {
+          continue
         }
-      })
-      .map((member: any) => {
-        const start = new Date(member.in_dienst_vanaf)
-        const years = today.getFullYear() - start.getFullYear()
-        return {
-          ...member,
-          years
+        if (anniversaryDate > maxDate) {
+          break
         }
-      })
+
+        const daysUntil = Math.round((anniversaryDate.getTime() - today.getTime()) / MS_PER_DAY)
+        if (daysUntil >= 0 && daysUntil <= 6) {
+          results.push({ member, years, daysUntil })
+          break
+        }
+      }
+    })
+
+    // Sorteer op dagen tot jubileum, daarna op naam
+    results.sort((a, b) => {
+      if (a.daysUntil !== b.daysUntil) return a.daysUntil - b.daysUntil
+      const nameA = `${a.member.last_name || ""} ${a.member.first_name || ""}`.toLowerCase()
+      const nameB = `${b.member.last_name || ""} ${b.member.first_name || ""}`.toLowerCase()
+      return nameA.localeCompare(nameB)
+    })
+
+    return results
   }, [crew])
 
   // Helper: Get A/B designation from crew member notes
@@ -328,24 +344,25 @@ function DashboardContent() {
           </Alert>
         )}
 
-        {/* Dienstjubilea melding */}
-        {workAnniversariesToday.length > 0 && (
+        {/* Dienstjubilea melding voor komende 7 dagen */}
+        {upcomingWorkAnniversaries.length > 0 && (
           <Alert className="mb-6 bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
             <Award className="h-5 w-5 text-amber-600" />
             <AlertDescription className="text-base font-medium">
-              🎖️{" "}
-              {workAnniversariesToday.length === 1 ? "Vandaag is" : "Vandaag zijn"}{" "}
-              {workAnniversariesToday.map((member: any, index: number) => (
-                <span key={member.id}>
-                  <strong>
-                    {member.first_name} {member.last_name}
-                  </strong>{" "}
-                  ({member.years} jaar in dienst)
-                  {index < workAnniversariesToday.length - 1 && ", "}
-                  {index === workAnniversariesToday.length - 2 && " en "}
-                </span>
-              ))}
-              {" "}jubileum! 🎉
+              🎖️ De komende 7 dagen zijn er dienstjubilea:
+              <ul className="mt-2 space-y-1 text-sm">
+                {upcomingWorkAnniversaries.map((item, index) => (
+                  <li key={`${item.member.id}-${item.years}-${index}`}>
+                    {item.daysUntil === 0
+                      ? "Vandaag is "
+                      : `Over ${item.daysUntil} dagen is `}
+                    <strong>
+                      {item.member.first_name} {item.member.last_name}
+                    </strong>{" "}
+                    {item.years} jaar in dienst.
+                  </li>
+                ))}
+              </ul>
             </AlertDescription>
           </Alert>
         )}

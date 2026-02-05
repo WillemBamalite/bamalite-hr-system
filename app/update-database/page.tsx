@@ -147,6 +147,47 @@ export default function UpdateDatabasePage() {
     }
   }
 
+  const cleanupJubileeAgendaItems = async () => {
+    setLoading(true)
+    setResult("")
+
+    try {
+      setResult("Bezig met opruimen van jubileum-agendapunten...")
+
+      // Verwijder alle agenda items voor oude jubileum-logica:
+      // - Titels die beginnen met 'Over 10 dagen:' en eindigen op 'jaar in dienst'
+      // - Titels die beginnen met 'Jubileum' en 'jaar in dienst' bevatten
+
+      const { error: errorReminders, count: countReminders } = await supabase
+        .from("agenda_items")
+        .delete({ count: "estimated" })
+        .ilike("title", "Over 10 dagen:%jaar in dienst%")
+
+      const { error: errorJubilees, count: countJubilees } = await supabase
+        .from("agenda_items")
+        .delete({ count: "estimated" })
+        .ilike("title", "Jubileum%jaar in dienst%")
+
+      if (errorReminders || errorJubilees) {
+        const msg1 = errorReminders?.message ?? "geen"
+        const msg2 = errorJubilees?.message ?? "geen"
+        setResult(`❌ Fout bij het verwijderen van jubileum-agendapunten.\nReminders: ${msg1}\nJubileum-dagen: ${msg2}`)
+      } else {
+        const total =
+          (countReminders ?? 0) +
+          (countJubilees ?? 0)
+
+        setResult(
+          `✅ Opruimen voltooid.\nVerwijderde jubileum-agendapunten: ${total} (reminders en oude 'Jubileum ... jaar in dienst' items).\n\nDe nieuwe jubileum-weergave werkt nu volledig zonder echte agenda records.`
+        )
+      }
+    } catch (err) {
+      setResult(`❌ Onverwachte fout bij het verwijderen van jubileum-agendapunten: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
       <Card>
@@ -183,6 +224,15 @@ export default function UpdateDatabasePage() {
               className="w-full"
             >
               {loading ? "Bezig..." : "Verwijder alle jubileum-taken (Jubileum X jaar in dienst)"}
+            </Button>
+
+            <Button 
+              onClick={cleanupJubileeAgendaItems} 
+              disabled={loading}
+              variant="outline"
+              className="w-full"
+            >
+              {loading ? "Bezig..." : "Verwijder oude jubileum-agendapunten (Over 10 dagen: ... jaar in dienst)"}
             </Button>
           </div>
 

@@ -361,188 +361,6 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
   }
 }
 
-// Functie om automatisch jubileum-taken en agenda-items aan te maken
-// - 5, 10, 15, 20, 25, 30 jaar in dienst
-// - Vanaf 30 jaar: elk jaar een taak
-// - Voor elke jubileumdag ook een taak 10 dagen van tevoren
-async function autoCreateAnniversaryTasks(crewData: any[], tasksData: any[]) {
-  try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    // Helper om een datum als YYYY-MM-DD string te krijgen
-    const toDateString = (date: Date) => date.toISOString().split("T")[0]
-
-    // Helper om bestaande deadlines te vergelijken (alleen datumdeel)
-    const normalizeDeadline = (value: any | null | undefined): string | null => {
-      if (!value) return null
-      try {
-        const d = new Date(value)
-        if (isNaN(d.getTime())) return null
-        return toDateString(d)
-      } catch {
-        return null
-      }
-    }
-
-    const oneYearAhead = new Date(today)
-    oneYearAhead.setDate(oneYearAhead.getDate() + 400) // iets ruimer dan 1 jaar
-
-    for (const member of crewData || []) {
-      if (!member || !member.in_dienst_vanaf) continue
-      if (member.is_dummy) continue
-
-      let startDate: Date
-      try {
-        startDate = new Date(member.in_dienst_vanaf)
-        if (isNaN(startDate.getTime())) continue
-        startDate.setHours(0, 0, 0, 0)
-      } catch {
-        continue
-      }
-
-      // We willen alleen toekomstige (of vandaag) jubileums binnen ongeveer 1 jaar
-      // Start bij 5 jaar dienst
-      const yearsSinceStart = today.getFullYear() - startDate.getFullYear()
-      let year = 5
-
-      // Sla jaren over die sowieso al lang voorbij zijn
-      if (yearsSinceStart > 0) {
-        year = Math.max(5, yearsSinceStart - 1)
-      }
-
-      // Bestaande taken voor deze persoon cachen om zoeken goedkoper te maken
-      const memberTasks = (tasksData || []).filter((t: any) => t.related_crew_id === member.id)
-
-      while (year <= yearsSinceStart + 40) {
-        // Bepaal of dit een relevant jubileumjaar is
-        const isMilestone =
-          (year >= 5 && year < 30 && year % 5 === 0) ||
-          year >= 30 // vanaf 30 elk jaar
-
-        if (!isMilestone) {
-          year++
-          continue
-        }
-
-        const anniversaryDate = new Date(startDate)
-        anniversaryDate.setFullYear(startDate.getFullYear() + year)
-        anniversaryDate.setHours(0, 0, 0, 0)
-
-        if (anniversaryDate < today) {
-          year++
-          continue
-        }
-        if (anniversaryDate > oneYearAhead) {
-          break
-        }
-
-        const anniversaryDateStr = toDateString(anniversaryDate)
-
-        // 10-dagen-voor datum
-        const reminderDate = new Date(anniversaryDate)
-        reminderDate.setDate(reminderDate.getDate() - 10)
-        reminderDate.setHours(0, 0, 0, 0)
-
-        const reminderDateStr = toDateString(reminderDate)
-
-        const yearsLabel = `${year} jaar`
-        const fullName = `${member.first_name || ""} ${member.last_name || ""}`.trim()
-
-        const jubileeTitle = `Jubileum ${yearsLabel} in dienst - ${fullName}`
-        const reminderTitle = `Over 10 dagen: ${fullName} ${yearsLabel} in dienst`
-
-        // Bestaat reminder-taak al (10 dagen van tevoren)?
-        const hasReminderTask = memberTasks.some((t: any) => {
-          return (
-            t.title === reminderTitle &&
-            normalizeDeadline(t.deadline) === reminderDateStr
-          )
-        })
-
-        const baseTask = {
-          task_type: "crew",
-          related_crew_id: member.id,
-          related_ship_id: member.ship_id || null,
-          assigned_to: "Nautic",
-          priority: "normaal",
-          created_date: toDateString(today),
-          created_by: "HR-systeem",
-          status: "open",
-          completed: false
-        } as any
-
-        // Reminder taak 10 dagen ervoor
-        if (!hasReminderTask) {
-          const reminderDescription = `Let op: over 10 dagen is ${fullName} ${yearsLabel} in dienst. Bereid eventuele felicitatie of attentie voor.`
-
-          try {
-            await supabase.from("tasks").insert([
-              {
-                ...baseTask,
-                title: reminderTitle,
-                description: reminderDescription,
-                deadline: reminderDateStr
-              }
-            ])
-          } catch (err) {
-            console.error("❌ Error creating jubilee reminder task:", err)
-          }
-        }
-
-        // Agenda-item op de jubileumdag zelf (éénmalig)
-        const jubileeDescription = `Jubileum: ${fullName} is vanaf deze datum ${yearsLabel} in dienst. Denk aan feliciteren / attentie.`
-        try {
-          const { data: existingAgenda, error: agendaFetchError } = await supabase
-            .from("agenda_items")
-            .select("id")
-            .eq("title", jubileeTitle)
-            .eq("date", anniversaryDateStr)
-            .eq("voor_wie", "Nautic")
-            .single()
-
-          const hasAgendaItem = !!existingAgenda && !agendaFetchError
-
-          if (!hasAgendaItem) {
-            await supabase.from("agenda_items").insert([
-              {
-                title: jubileeTitle,
-                description: jubileeDescription,
-                date: anniversaryDateStr,
-                time: null,
-                voor_wie: "Nautic"
-              }
-            ])
-          }
-        } catch (err: any) {
-          // PGRST116 = no rows found for single(); in dat geval gewoon nieuw item aanmaken
-          if (err?.code === "PGRST116") {
-            try {
-              await supabase.from("agenda_items").insert([
-                {
-                  title: jubileeTitle,
-                  description: jubileeDescription,
-                  date: anniversaryDateStr,
-                  time: null,
-                  voor_wie: "Nautic"
-                }
-              ])
-            } catch (insertErr) {
-              console.error("❌ Error creating jubilee agenda item (insert after no existing):", insertErr)
-            }
-          } else {
-            console.error("❌ Error checking/creating jubilee agenda item:", err)
-          }
-        }
-
-        year++
-      }
-    }
-  } catch (err) {
-    console.error("❌ Error in autoCreateAnniversaryTasks:", err)
-  }
-}
-
 // Helper function to calculate work days from trip data
 export function calculateWorkDays(startDate: string, startTime: string, endDate: string, endTime: string): number {
   if (!startDate || !endDate) return 0
@@ -973,6 +791,40 @@ async function resetAllVasteDienstRecords() {
   }
 }
 
+// Eenmalige schoonmaak van oude jubileum-agendapunten uit eerdere logica
+// Verwijdert items met titels zoals:
+// - "Over 10 dagen: ... X jaar in dienst"
+// - "Jubileum X jaar in dienst - ..."
+async function cleanupOldJubileeAgendaItems() {
+  try {
+    console.log('🧹 Cleaning up old jubilee agenda items...')
+
+    // Verwijder "Over 10 dagen: ... jaar in dienst" items
+    const { error: errorReminders } = await supabase
+      .from('agenda_items')
+      .delete()
+      .ilike('title', 'Over 10 dagen:%jaar in dienst%')
+
+    if (errorReminders) {
+      console.error('❌ Error deleting old jubilee reminder agenda items:', errorReminders)
+    }
+
+    // Verwijder "Jubileum X jaar in dienst - ..." items
+    const { error: errorJubilees } = await supabase
+      .from('agenda_items')
+      .delete()
+      .ilike('title', 'Jubileum%jaar in dienst%')
+
+    if (errorJubilees) {
+      console.error('❌ Error deleting old jubilee day agenda items:', errorJubilees)
+    }
+
+    console.log('✅ Old jubilee agenda items cleanup completed')
+  } catch (err) {
+    console.error('❌ Unexpected error during jubilee agenda cleanup:', err)
+  }
+}
+
 export function useSupabaseData() {
   const [ships, setShips] = useState<any[]>([])
   const [crew, setCrew] = useState<any[]>([])
@@ -985,9 +837,7 @@ export function useSupabaseData() {
   const [incidents, setIncidents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [crewColorTags, setCrewColorTags] = useState<Record<string, string>>({})
-
-  // Load all data from Supabase
+  const [crewColorTags, setCrewColorTags] = useState<Record<string, string>>({})  // Load all data from Supabase
   const loadData = async () => {
     try {
       setLoading(true)
@@ -1012,6 +862,9 @@ export function useSupabaseData() {
         setLoading(false)
         return
       }
+
+      // Eenmalig oude jubileum-agendapunten opruimen (veilig om vaker te draaien)
+      await cleanupOldJubileeAgendaItems()
 
       // Test Supabase connection
       console.log('Testing Supabase connection...')
@@ -1155,12 +1008,6 @@ export function useSupabaseData() {
       } else {
         console.log('Tasks loaded:', tasksData?.length || 0)
         setTasks(tasksData || [])
-
-        // Automatisch jubileum-taken en agenda-items aanmaken op basis van in_dienst_vanaf
-        if (crewData && tasksData) {
-          console.log('🔔 Auto-creating anniversary tasks (5/10/15/20/25/30 jaar en jaarlijks vanaf 30)...')
-          await autoCreateAnniversaryTasks(crewData || [], tasksData || [])
-        }
       }
 
       // Load incidents
