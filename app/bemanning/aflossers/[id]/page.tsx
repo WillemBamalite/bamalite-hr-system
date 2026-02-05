@@ -163,53 +163,121 @@ export default function AflosserDetailPage() {
 
   // Get vaste dienst records for this aflosser
   const aflosserVasteDienstRecords = vasteDienstRecords.filter((record: any) => record.aflosser_id === aflosser?.id)
-  
-  // Calculate current balance - EXACTE KOPIE VAN KAART BEREKENING
+
+  // Bereken per maand hoeveel dagen deze aflosser gewerkt heeft (op basis van alle voltooide reizen)
+  const vasteDienstMonthSummaries = (() => {
+    if (!aflosser) return [] as { year: number; month: number; workedDays: number }[]
+
+    // Veilige date parser (ondersteunt YYYY-MM-DD en DD-MM-YYYY)
+    const parseDate = (dateStr: string): Date => {
+      if (!dateStr || typeof dateStr !== "string") return new Date(NaN)
+      if (dateStr.includes("T") || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+        const d = new Date(dateStr)
+        return isNaN(d.getTime()) ? new Date(NaN) : d
+      }
+      const parts = dateStr.split("-")
+      if (parts.length !== 3) return new Date(NaN)
+      const [day, month, year] = parts
+      const iso = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+      const d = new Date(iso)
+      return isNaN(d.getTime()) ? new Date(NaN) : d
+    }
+
+    const monthMap = new Map<string, { year: number; month: number; workedDays: number }>()
+    const msPerDay = 24 * 60 * 60 * 1000
+
+    trips
+      .filter((trip: any) => {
+        if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
+        if (trip.status !== "voltooid") return false
+        if (!trip.start_datum || !trip.eind_datum) return false
+        return true
+      })
+      .forEach((trip: any) => {
+        try {
+          const tripStart = parseDate(trip.start_datum)
+          const tripEnd = parseDate(trip.eind_datum)
+          if (isNaN(tripStart.getTime()) || isNaN(tripEnd.getTime())) return
+
+          tripStart.setHours(0, 0, 0, 0)
+          tripEnd.setHours(0, 0, 0, 0)
+
+          let year = tripStart.getFullYear()
+          let month = tripStart.getMonth() + 1
+
+          // Loop door alle maanden waar deze reis overheen loopt
+          while (true) {
+            const monthStart = new Date(year, month - 1, 1)
+            monthStart.setHours(0, 0, 0, 0)
+            const monthEnd = new Date(year, month, 0)
+            monthEnd.setHours(0, 0, 0, 0)
+
+            // Check overlap
+            if (tripEnd < monthStart || tripStart > monthEnd) {
+              // Geen overlap in deze maand
+            } else {
+              const rangeStart = tripStart < monthStart ? monthStart : tripStart
+              const rangeEnd = tripEnd > monthEnd ? monthEnd : tripEnd
+
+              if (rangeEnd >= rangeStart) {
+                const daysInMonth = Math.floor((rangeEnd.getTime() - rangeStart.getTime()) / msPerDay) + 1
+                const key = `${year}-${month}`
+                const existing = monthMap.get(key) || { year, month, workedDays: 0 }
+                existing.workedDays += daysInMonth
+                monthMap.set(key, existing)
+              }
+            }
+
+            if (tripEnd <= monthEnd) break
+            // Volgende maand
+            if (month === 12) {
+              year += 1
+              month = 1
+            } else {
+              month += 1
+            }
+          }
+        } catch (err) {
+          console.error("Error building month summary for vaste dienst:", err, trip)
+        }
+      })
+
+    return Array.from(monthMap.values())
+  })()
+
+  // Calculate current balance op basis van huidige maand uit month summaries
   const currentBalance = (() => {
     if (!aflosser) return 0
-    
-    // Bereken gewerkte dagen deze maand voor ALLE aflossers
+
     const today = new Date()
     const currentYear = today.getFullYear()
     const currentMonth = today.getMonth() + 1
-    
-    const currentMonthTrips = trips.filter((trip: any) => {
-      if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
-      if (trip.status !== 'voltooid') return false
-      
-      const tripStart = new Date(trip.start_datum)
-      return tripStart.getFullYear() === currentYear && 
-             tripStart.getMonth() + 1 === currentMonth
-    })
-    
-    const gewerktDezeMaand = currentMonthTrips.reduce((total: number, trip: any) => {
-      // Use vaste dienst calculation for vaste dienst aflossers
-      const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-      return total + workDays
-    }, 0)
-    
+
+    const currentMonthSummary = vasteDienstMonthSummaries.find(
+      (m) => m.year === currentYear && m.month === currentMonth
+    )
+    const gewerktDezeMaand = currentMonthSummary?.workedDays ?? 0
+
     // Voor aflossers met startsaldo
     const parsedNotes = parseNotes(aflosser.notes)
-    const startsaldoNote = parsedNotes.find((note: any) => 
-      note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
+    const startsaldoNote = parsedNotes.find(
+      (note: any) => note.text && (note.text.includes("startsaldo") || note.text.includes("Startsaldo"))
     )
-    
+
     if (startsaldoNote) {
       const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
       if (match) {
         const startsaldo = parseFloat(match[1])
         const beginsaldo = -15 + startsaldo
-        
+
         // Actuele dagen = Beginsaldo + Gewerkt deze maand
         const actueleDagen = beginsaldo + gewerktDezeMaand
-        console.log(`📊 Aflosser ${aflosser.first_name}: startsaldo ${startsaldo}, beginsaldo ${beginsaldo}, gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
         return actueleDagen
       }
     }
-    
+
     // Voor bestaande aflossers zonder startsaldo: -15 + gewerkte dagen
     const actueleDagen = -15 + gewerktDezeMaand
-    console.log(`📊 Bestaande aflosser ${aflosser.first_name}: gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
     return actueleDagen
   })()
 
@@ -523,31 +591,18 @@ export default function AflosserDetailPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {aflosserVasteDienstRecords
-                        .sort((a: any, b: any) => b.year - a.year || b.month - a.month)
+                      {vasteDienstMonthSummaries
+                        .sort((a, b) => b.year - a.year || b.month - a.month)
                         .slice(0, 3) // Show only last 3 months
-                        .map((record: any) => {
-                          // BEREKEN ALLEEN GEWERKTE DAGEN voor deze maand
-                          const monthTrips = trips.filter((trip: any) => {
-                            if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
-                            if (trip.status !== 'voltooid') return false
-                            
-                            const tripStart = new Date(trip.start_datum)
-                            return tripStart.getFullYear() === record.year && 
-                                   tripStart.getMonth() + 1 === record.month
-                          })
-                          
-                          const gewerktDezeMaand = monthTrips.reduce((total: number, trip: any) => {
-                            // Use vaste dienst calculation for vaste dienst aflossers
-                            const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                            return total + workDays
-                          }, 0)
+                        .map((summary) => {
+                          const label = new Date(summary.year, summary.month - 1).toLocaleString('nl-NL', { month: 'short', year: 'numeric' })
+                          const gewerktDezeMaand = summary.workedDays
                           
                           return (
-                            <div key={record.id} className="flex items-center justify-between p-2 border rounded">
+                            <div key={`${summary.year}-${summary.month}`} className="flex items-center justify-between p-2 border rounded">
                               <div className="text-sm">
                                 <span className="font-medium">
-                                  {new Date(record.year, record.month - 1).toLocaleString('nl-NL', { month: 'short', year: 'numeric' })}
+                                  {label}
                                 </span>
                                 <span className="text-gray-600 ml-2">
                                   {gewerktDezeMaand}/15 dagen

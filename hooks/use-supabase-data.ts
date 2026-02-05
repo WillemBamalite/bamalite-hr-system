@@ -234,6 +234,40 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
   const currentMonth = today.getMonth() + 1 // JavaScript months are 0-based
   
   console.log(`🔧 Auto-managing vaste dienst records for ${currentYear}-${currentMonth}`)
+
+   // Helper om zowel ISO (YYYY-MM-DD) als DD-MM-YYYY goed te parsen
+   const parseTripDate = (dateStr: string): Date => {
+     if (!dateStr || typeof dateStr !== 'string') {
+       console.error('Invalid date string in vaste dienst trips:', dateStr)
+       return new Date(NaN)
+     }
+     
+     // ISO formaat (of al een geldige JS date string)
+     if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+       const date = new Date(dateStr)
+       if (isNaN(date.getTime())) {
+         console.error('Invalid ISO date in vaste dienst trips:', dateStr)
+       }
+       return date
+     }
+     
+     // Anders DD-MM-YYYY
+     const parts = dateStr.split('-')
+     if (parts.length !== 3) {
+       console.error('Invalid DD-MM-YYYY date format in vaste dienst trips:', dateStr)
+       return new Date(NaN)
+     }
+     
+     const [day, month, year] = parts
+     const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+     const date = new Date(isoDate)
+     
+     if (isNaN(date.getTime())) {
+       console.error('Invalid date after parsing in vaste dienst trips:', isoDate, 'from:', dateStr)
+     }
+     
+     return date
+   }
   
   // Get all aflossers in vaste dienst
   const vasteDienstAflossers = crewData.filter(member => member.vaste_dienst === true)
@@ -242,13 +276,13 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
     console.log(`📋 Processing vaste dienst aflosser: ${aflosser.first_name} ${aflosser.last_name}`)
     
     // Check if current month record exists
-    const existingRecord = vasteDienstRecords.find(record => 
+    let monthRecord = vasteDienstRecords.find(record => 
       record.aflosser_id === aflosser.id && 
       record.year === currentYear && 
       record.month === currentMonth
     )
     
-    if (!existingRecord) {
+    if (!monthRecord) {
       // Create new monthly record
       console.log(`📅 Creating new monthly record for ${aflosser.first_name} ${aflosser.last_name}`)
       
@@ -273,6 +307,7 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
           console.error('Error creating vaste dienst record:', error)
         } else {
           console.log(`✅ Created monthly record for ${aflosser.first_name}`)
+          monthRecord = data
         }
       } catch (err) {
         console.error('Error in vaste dienst record creation:', err)
@@ -280,32 +315,66 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
     }
     
     // Calculate actual days from completed trips for current month
-    const currentMonthTrips = tripsData.filter(trip => 
-      trip.aflosser_id === aflosser.id && 
-      trip.status === 'voltooid' &&
-      trip.eind_datum &&
-      new Date(trip.eind_datum).getFullYear() === currentYear &&
-      new Date(trip.eind_datum).getMonth() + 1 === currentMonth
-    )
+    // Belangrijk: tel alleen de dagen die in deze maand vallen, ook als de reis over maanden heen loopt
+    const monthStart = new Date(currentYear, currentMonth - 1, 1)
+    monthStart.setHours(0, 0, 0, 0)
+    const monthEnd = new Date(currentYear, currentMonth, 0) // laatste dag van maand
+    monthEnd.setHours(0, 0, 0, 0)
+
+    const currentMonthTrips = tripsData.filter((trip: any) => {
+      if (trip.aflosser_id !== aflosser.id) return false
+      if (trip.status !== 'voltooid') return false
+      if (!trip.start_datum || !trip.eind_datum) return false
+
+      const start = parseTripDate(trip.start_datum)
+      const end = parseTripDate(trip.eind_datum)
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return false
+
+      start.setHours(0, 0, 0, 0)
+      end.setHours(0, 0, 0, 0)
+
+      // Reis moet deze maand overlappen (start vóór einde van maand EN eind na begin van maand)
+      return end >= monthStart && start <= monthEnd
+    })
     
     let totalWorkDays = 0
     for (const trip of currentMonthTrips) {
-      const workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-      totalWorkDays += workDays
+      try {
+        const tripStart = parseTripDate(trip.start_datum)
+        const tripEnd = parseTripDate(trip.eind_datum)
+        if (isNaN(tripStart.getTime()) || isNaN(tripEnd.getTime())) continue
+
+        tripStart.setHours(0, 0, 0, 0)
+        tripEnd.setHours(0, 0, 0, 0)
+
+        // Clamp de reis binnen de grenzen van deze maand
+        const rangeStart = tripStart < monthStart ? monthStart : tripStart
+        const rangeEnd = tripEnd > monthEnd ? monthEnd : tripEnd
+
+        if (rangeEnd < rangeStart) continue
+
+        const msPerDay = 24 * 60 * 60 * 1000
+        const daysInThisMonth = Math.floor((rangeEnd.getTime() - rangeStart.getTime()) / msPerDay) + 1
+
+        totalWorkDays += daysInThisMonth
+      } catch (err) {
+        console.error('Error calculating work days for trip in vaste dienst auto-manage:', err, trip)
+      }
     }
     
     // Update the record with actual days and balance
-    if (existingRecord) {
+    if (monthRecord) {
       const requiredDays = 15
       
       // CORRECTE BEREKENING: Eindsaldo = Beginsaldo + (Gewerkt - 15)
       // Voor eerste maand: Beginsaldo = -15 + startsaldo
-      let beginsaldo = existingRecord.balance_days || 0
+      let beginsaldo = monthRecord.balance_days || 0
       
       // Als dit de eerste maand is en er is geen beginsaldo, gebruik -15 + startsaldo
       if (beginsaldo === 0 && currentMonth === 1) {
-        // Probeer startsaldo uit notes te halen
-        const startsaldoNote = aflosser.notes?.find((note: any) => 
+        // Probeer startsaldo uit notes te halen (alleen als notes een array is)
+        const notesArray = Array.isArray(aflosser.notes) ? aflosser.notes : []
+        const startsaldoNote = notesArray.find((note: any) => 
           note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
         )
         if (startsaldoNote) {
@@ -334,7 +403,7 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
       const cappedActualDays = Math.min(totalWorkDays, 999.9)
       const cappedBalanceDays = Math.min(Math.max(balanceDays, -999.9), 999.9)
       
-      if (existingRecord.actual_days !== cappedActualDays || existingRecord.balance_days !== cappedBalanceDays) {
+      if (monthRecord.actual_days !== cappedActualDays || monthRecord.balance_days !== cappedBalanceDays) {
         console.log(`📊 Updating record for ${aflosser.first_name}: ${cappedActualDays} days (balance: ${cappedBalanceDays})`)
         
         try {
@@ -344,12 +413,12 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
             actual_days: cappedActualDays,
             balance_days: cappedBalanceDays
           })
-          .eq('id', existingRecord.id)
+          .eq('id', monthRecord.id)
           
           if (error) {
             console.error('❌ Error updating vaste dienst record:', error)
             console.error('❌ Error details:', JSON.stringify(error, null, 2))
-            console.error('❌ Record data:', { id: existingRecord.id, actual_days: totalWorkDays, balance_days: balanceDays })
+            console.error('❌ Record data:', { id: monthRecord.id, actual_days: totalWorkDays, balance_days: balanceDays })
           } else {
             console.log(`✅ Updated record for ${aflosser.first_name}`)
           }
@@ -567,8 +636,9 @@ async function autoUpdateVasteDienstFromTrip(completedTrip: any) {
     // Voor eerste maand: Beginsaldo = -15 + startsaldo
     let beginsaldo = 0
     
-    // Probeer startsaldo uit notes te halen voor nieuwe aflossers
-    const startsaldoNote = aflosser.notes?.find((note: any) => 
+    // Probeer startsaldo uit notes te halen voor nieuwe aflossers (alleen als notes een array is)
+    const notesArray = Array.isArray(aflosser.notes) ? aflosser.notes : []
+    const startsaldoNote = notesArray.find((note: any) => 
       note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
     )
     if (startsaldoNote) {
@@ -683,8 +753,9 @@ async function forceRecalculateAllVasteDienstRecords(crewData: any[], tripsData:
         
         // Als dit de eerste maand is en er is geen beginsaldo, gebruik -15 + startsaldo
         if (beginsaldo === 0 && record.month === 1) {
-          // Probeer startsaldo uit notes te halen
-          const startsaldoNote = aflosser.notes?.find((note: any) => 
+          // Probeer startsaldo uit notes te halen (alleen als notes een array is)
+          const notesArray = Array.isArray(aflosser.notes) ? aflosser.notes : []
+          const startsaldoNote = notesArray.find((note: any) => 
             note.text && (note.text.includes('startsaldo') || note.text.includes('Startsaldo'))
           )
           if (startsaldoNote) {

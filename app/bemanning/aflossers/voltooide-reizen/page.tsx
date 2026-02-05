@@ -64,14 +64,17 @@ function calculateWorkDays(startDate: string, startTime: string, endDate: string
     return date
   }
 
-  const start = parseDate(startDate)
-  const end = parseDate(endDate)
+  const startParsed = parseDate(startDate)
+  const endParsed = parseDate(endDate)
 
-  // Validatie: afstapdatum mag niet voor instapdatum liggen
-  if (end < start) {
-    console.error('Error: end date is before start date')
+  if (isNaN(startParsed.getTime()) || isNaN(endParsed.getTime())) {
     return 0
   }
+
+  // Gebruik altijd de vroegste datum als start en de laatste als eind,
+  // ook als er per ongeluk iets omgedraaid is ingevoerd.
+  const start = startParsed <= endParsed ? startParsed : endParsed
+  const end = endParsed >= startParsed ? endParsed : startParsed
 
   // Simpele telling: tel kalenderdagen van start tot eind (inclusief beide)
   const timeDiff = end.getTime() - start.getTime()
