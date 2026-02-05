@@ -157,6 +157,7 @@ export default function AflosserDetailPage() {
     type: "beschikbaar" as "beschikbaar" | "afwezig",
     notes: ""
   })
+  const [showAllVasteDienstMonths, setShowAllVasteDienstMonths] = useState(false)
 
   // Find the aflosser
   const aflosser = crew.find((member: any) => member.id === params.id)
@@ -245,18 +246,18 @@ export default function AflosserDetailPage() {
     return Array.from(monthMap.values())
   })()
 
-  // Calculate current balance op basis van huidige maand uit month summaries
+  // Calculate current balance als volledig opgebouwd saldo over alle maanden:
+  // startsaldo + Σ(gewerkte dagen per maand - 15)
   const currentBalance = (() => {
     if (!aflosser) return 0
 
-    const today = new Date()
-    const currentYear = today.getFullYear()
-    const currentMonth = today.getMonth() + 1
+    if (vasteDienstMonthSummaries.length === 0) return 0
 
-    const currentMonthSummary = vasteDienstMonthSummaries.find(
-      (m) => m.year === currentYear && m.month === currentMonth
+    const totalWorked = vasteDienstMonthSummaries.reduce(
+      (total, m) => total + (m.workedDays || 0),
+      0
     )
-    const gewerktDezeMaand = currentMonthSummary?.workedDays ?? 0
+    const monthsCount = vasteDienstMonthSummaries.length
 
     // Voor aflossers met startsaldo
     const parsedNotes = parseNotes(aflosser.notes)
@@ -264,21 +265,17 @@ export default function AflosserDetailPage() {
       (note: any) => note.text && (note.text.includes("startsaldo") || note.text.includes("Startsaldo"))
     )
 
+    let startsaldo = 0
     if (startsaldoNote) {
       const match = startsaldoNote.text.match(/(-?\d+(?:\.\d+)?)/)
       if (match) {
-        const startsaldo = parseFloat(match[1])
-        const beginsaldo = -15 + startsaldo
-
-        // Actuele dagen = Beginsaldo + Gewerkt deze maand
-        const actueleDagen = beginsaldo + gewerktDezeMaand
-        return actueleDagen
+        startsaldo = parseFloat(match[1])
       }
     }
 
-    // Voor bestaande aflossers zonder startsaldo: -15 + gewerkte dagen
-    const actueleDagen = -15 + gewerktDezeMaand
-    return actueleDagen
+    const totaleVereisteDagen = monthsCount * 15
+    const saldo = startsaldo + totalWorked - totaleVereisteDagen
+    return saldo
   })()
 
 
@@ -583,7 +580,7 @@ export default function AflosserDetailPage() {
                 {/* Monthly Summary */}
                 <div className="p-6 rounded-lg border-2 bg-white shadow-sm">
                   <h3 className="text-lg font-semibold text-gray-700 mb-4">Maandelijkse Overzicht</h3>
-                  {aflosserVasteDienstRecords.length === 0 ? (
+                  {vasteDienstMonthSummaries.length === 0 ? (
                     <div className="text-center py-4 text-gray-500">
                       <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                       <p className="text-sm">Nog geen records</p>
@@ -591,10 +588,12 @@ export default function AflosserDetailPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {vasteDienstMonthSummaries
-                        .sort((a, b) => b.year - a.year || b.month - a.month)
-                        .slice(0, 3) // Show only last 3 months
-                        .map((summary) => {
+                      {(() => {
+                        const sorted = [...vasteDienstMonthSummaries].sort(
+                          (a, b) => b.year - a.year || b.month - a.month
+                        )
+                        const visible = showAllVasteDienstMonths ? sorted : sorted.slice(0, 3)
+                        return visible.map((summary) => {
                           const label = new Date(summary.year, summary.month - 1).toLocaleString('nl-NL', { month: 'short', year: 'numeric' })
                           const gewerktDezeMaand = summary.workedDays
                           
@@ -616,11 +615,18 @@ export default function AflosserDetailPage() {
                               </div>
                             </div>
                           )
-                        })}
-                      {aflosserVasteDienstRecords.length > 3 && (
-                        <p className="text-xs text-gray-500 text-center mt-2">
-                          +{aflosserVasteDienstRecords.length - 3} meer maanden
-                        </p>
+                        })
+                      })()}
+                      {vasteDienstMonthSummaries.length > 3 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllVasteDienstMonths((prev) => !prev)}
+                          className="block w-full text-xs text-blue-600 hover:text-blue-800 text-center mt-2 underline"
+                        >
+                          {showAllVasteDienstMonths
+                            ? "Toon minder maanden"
+                            : `+${vasteDienstMonthSummaries.length - 3} meer maanden`}
+                        </button>
                       )}
                       
                       {/* Startsaldo Info onderaan */}
