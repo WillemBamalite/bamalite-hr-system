@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag, Edit } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
-import { format, isPast, isToday, differenceInDays } from "date-fns"
+import { format, isPast, isToday, differenceInDays, startOfDay } from "date-fns"
 import { nl } from "date-fns/locale"
 import { supabase } from "@/lib/supabase"
 
@@ -87,9 +87,37 @@ export function TasksPanel() {
     return null
   }
 
+  // Helper: verberg bepaalde automatische onboarding-taken tot de dag dat ze "actief" worden
+  const isFutureAutoOnboardingTask = (task: any): boolean => {
+    if (!task) return false
+    if (task.created_by !== "HR-systeem") return false
+    if (!task.deadline) return false
+
+    const title = (task.title || "").toLowerCase()
+    const isOnboardingTitle =
+      title.startsWith("vragen naar functioneren") ||
+      title.startsWith("samenwerking doorzetten of stoppen")
+
+    if (!isOnboardingTitle) return false
+
+    try {
+      const today = startOfDay(new Date())
+      const deadlineDate = startOfDay(new Date(task.deadline))
+      // Verberg zolang de deadline nog in de toekomst ligt
+      return deadlineDate > today
+    } catch {
+      return false
+    }
+  }
+
   // Filter tasks - standaard alleen openstaande taken (niet voltooid)
   // Open tasks include both 'open' and 'in_progress' status
-  const openTasks = tasks.filter((t: any) => !t.completed && t.status !== 'completed')
+  const openTasks = tasks.filter(
+    (t: any) =>
+      !t.completed &&
+      t.status !== "completed" &&
+      !isFutureAutoOnboardingTask(t)
+  )
   const completedTasks = tasks.filter((t: any) => t.completed || t.status === 'completed')
   const filteredTasks = filter === "open" ? openTasks : completedTasks
 

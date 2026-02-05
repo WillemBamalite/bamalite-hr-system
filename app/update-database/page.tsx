@@ -188,6 +188,34 @@ export default function UpdateDatabasePage() {
     }
   }
 
+  const cleanupBackfilledOnboardingTasks = async () => {
+    setLoading(true)
+    setResult("")
+
+    try {
+      setResult("Bezig met verwijderen van automatisch gegenereerde onboarding-taken (backfill)...")
+
+      const { error, count } = await supabase
+        .from("tasks")
+        .delete({ count: "estimated" })
+        .eq("created_by", "HR-systeem (backfill)")
+
+      if (error) {
+        setResult(`❌ Fout bij het verwijderen van backfill-onboarding-taken: ${error.message}`)
+      } else {
+        setResult(
+          `✅ Verwijderen voltooid.\n` +
+          `Verwijderde taken (created_by = 'HR-systeem (backfill)'): ${count ?? "onbekend aantal"}.\n\n` +
+          `Bestaande onboarding-taken die via het normale formulier zijn aangemaakt (created_by = 'HR-systeem') blijven gewoon staan.`
+        )
+      }
+    } catch (err) {
+      setResult(`❌ Onverwachte fout bij het verwijderen van backfill-onboarding-taken: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
       <Card>
@@ -233,6 +261,15 @@ export default function UpdateDatabasePage() {
               className="w-full"
             >
               {loading ? "Bezig..." : "Verwijder oude jubileum-agendapunten (Over 10 dagen: ... jaar in dienst)"}
+            </Button>
+
+            <Button
+              onClick={cleanupBackfilledOnboardingTasks}
+              disabled={loading}
+              variant="outline"
+              className="w-full"
+            >
+              {loading ? "Bezig..." : "Verwijder backfill-onboarding-taken (HR-systeem backfill)"}
             </Button>
           </div>
 
