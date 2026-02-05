@@ -278,7 +278,12 @@ export default function ZiektePage() {
       const sickEndDate = new Date(recoveryDate)
       const daysCount = Math.floor((sickEndDate.getTime() - sickStartDate.getTime()) / (1000 * 60 * 60 * 24))
 
-      // Voeg 7 dagen "terug te staan" toe aan Supabase
+      // Bepaal hoeveel "terug te staan" dagen nodig zijn:
+      // - Is iemand korter dan 7 dagen ziek? Dan hetzelfde aantal dagen terug te staan.
+      // - Is iemand 7 dagen of langer ziek? Dan maximaal 7 terug te staan dagen.
+      const standBackDaysRequired = Math.min(daysCount, 7)
+
+      // Voeg stand-back record toe aan Supabase
       const standBackRecord = {
         id: crypto.randomUUID(), // Generate UUID for the record
         crew_member_id: recoveryRecord.crewMember.id,
@@ -289,9 +294,9 @@ export default function ZiektePage() {
         reason: 'ziekte', // Stand-back reason is always 'ziekte' for sick leave
         description: recoveryRecord.reason || 'Geen klacht opgegeven',
         notes: recoveryRecord.notes || '', // Pass through the notes from sick leave
-        stand_back_days_required: 7,
+        stand_back_days_required: standBackDaysRequired,
         stand_back_days_completed: 0,
-        stand_back_days_remaining: 7,
+        stand_back_days_remaining: standBackDaysRequired,
         stand_back_status: "openstaand",
         stand_back_history: []
       }
@@ -824,7 +829,7 @@ export default function ZiektePage() {
                     <AlertDialogTitle>Beter melden</AlertDialogTitle>
                     <AlertDialogDescription>
                       Weet je zeker dat je {editingRecord?.crewMember?.first_name} {editingRecord?.crewMember?.last_name} beter wilt melden? 
-                      Deze persoon wordt dan verplaatst naar de "nog in te delen" lijst met 7 verschuldigde dagen.
+                      Deze persoon wordt dan verplaatst naar de "nog in te delen" lijst met verschuldigde terug te staan dagen (maximaal 7).
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
