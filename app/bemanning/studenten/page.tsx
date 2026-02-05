@@ -27,6 +27,9 @@ export default function StudentenManagementPage() {
   const [educationStartDate, setEducationStartDate] = useState<string>("");
   const [educationEndDate, setEducationEndDate] = useState<string>("");
   const [completionDate, setCompletionDate] = useState<string>("");
+  const [showSchoolPeriodsDialog, setShowSchoolPeriodsDialog] = useState(false);
+  const [schoolPeriodsStudent, setSchoolPeriodsStudent] = useState<any>(null);
+  const [schoolPeriodsDraft, setSchoolPeriodsDraft] = useState<Array<{ fromDate: string; toDate: string; reason: string }>>([]);
 
   // Prevent hydration errors
   useEffect(() => {
@@ -106,6 +109,51 @@ export default function StudentenManagementPage() {
     } catch (error) {
       console.error("Fout bij afsluiten opleiding:", error);
       alert("Er is een fout opgetreden bij het afsluiten van de opleiding.");
+    }
+  };
+
+  const handleOpenSchoolPeriodsDialog = (student: any) => {
+    setSchoolPeriodsStudent(student);
+    const periods = Array.isArray(student.school_periods)
+      ? student.school_periods
+      : [];
+    setSchoolPeriodsDraft(
+      periods.map((p: any) => ({
+        fromDate: p.fromDate || "",
+        toDate: p.toDate || "",
+        reason: p.reason || ""
+      }))
+    );
+    if (periods.length === 0) {
+      setSchoolPeriodsDraft([{ fromDate: "", toDate: "", reason: "" }]);
+    }
+    setShowSchoolPeriodsDialog(true);
+  };
+
+  const handleAddSchoolPeriodRow = () => {
+    setSchoolPeriodsDraft(prev => [...prev, { fromDate: "", toDate: "", reason: "" }]);
+  };
+
+  const handleRemoveSchoolPeriodRow = (index: number) => {
+    setSchoolPeriodsDraft(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveSchoolPeriods = async () => {
+    if (!schoolPeriodsStudent) return;
+
+    // Filter lege regels eruit
+    const cleaned = schoolPeriodsDraft.filter(p => p.fromDate && p.toDate);
+
+    try {
+      await updateCrew(schoolPeriodsStudent.id, {
+        school_periods: cleaned
+      });
+      setShowSchoolPeriodsDialog(false);
+      setSchoolPeriodsStudent(null);
+      setSchoolPeriodsDraft([]);
+    } catch (error) {
+      console.error("Fout bij opslaan schoolperiodes:", error);
+      alert("Er is een fout opgetreden bij het opslaan van de schoolperiodes.");
     }
   };
 
@@ -369,21 +417,46 @@ export default function StudentenManagementPage() {
                       )}
 
                       {/* School Periods for BBL */}
-                      {student.education_type === "BBL" && student.school_periods && student.school_periods.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-sm font-medium text-gray-700">{t('schoolPeriods')}:</span>
-                          <div className="space-y-1">
-                            {student.school_periods.slice(0, 2).map((period: any, index: number) => (
-                              <div key={index} className="text-xs text-gray-600">
-                                {format(new Date(period.fromDate), 'dd-MM-yyyy')} - {format(new Date(period.toDate), 'dd-MM-yyyy')}
-                              </div>
-                            ))}
-                            {student.school_periods.length > 2 && (
-                              <div className="text-xs text-gray-500">
-                                +{student.school_periods.length - 2} meer...
-                              </div>
-                            )}
-                          </div>
+                      {student.education_type === "BBL" && (
+                        <div className="mt-3 rounded-md border border-purple-100 bg-purple-50/60 px-3 py-2 space-y-2">
+                          <span className="text-sm font-semibold text-purple-900">
+                            Schoolperiodes (BBL)
+                          </span>
+                          {student.school_periods && student.school_periods.length > 0 ? (
+                            <div className="space-y-1 text-xs text-purple-900">
+                              {student.school_periods.map((period: any, index: number) => {
+                                const from = period.fromDate || period.from || ""
+                                const to = period.toDate || period.to || ""
+                                let fromLabel = from
+                                let toLabel = to
+                                try {
+                                  if (from) fromLabel = format(new Date(from), "dd-MM-yyyy")
+                                  if (to) toLabel = format(new Date(to), "dd-MM-yyyy")
+                                } catch {
+                                  // laat oorspronkelijke string staan
+                                }
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-center justify-between rounded-sm bg-white/60 px-2 py-1"
+                                  >
+                                    <span className="font-medium">
+                                      {fromLabel || "?"} – {toLabel || "?"}
+                                    </span>
+                                    {period.reason && (
+                                      <span className="ml-2 italic text-[11px] text-purple-600">
+                                        {period.reason}
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-purple-700">
+                              Nog geen schoolperiodes ingevuld.
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -410,19 +483,32 @@ export default function StudentenManagementPage() {
                       )}
 
                       {/* Actions */}
-                      <div className="flex justify-end pt-3 border-t">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-green-600 border-green-200 hover:bg-green-50"
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setShowCompleteEducationDialog(true);
-                          }}
-                        >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Opleiding Afsluiten
-                        </Button>
+                      <div className="pt-3 border-t">
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-green-600 border-green-200 hover:bg-green-50"
+                            onClick={() => {
+                              setSelectedStudent(student);
+                              setShowCompleteEducationDialog(true);
+                            }}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Opleiding Afsluiten
+                          </Button>
+                          {student.education_type === "BBL" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full text-purple-600 border-purple-200 hover:bg-purple-50"
+                              onClick={() => handleOpenSchoolPeriodsDialog(student)}
+                            >
+                              <Calendar className="w-4 h-4 mr-1" />
+                              Schoolperiodes
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -501,21 +587,46 @@ export default function StudentenManagementPage() {
                       )}
 
                       {/* School Periods for BBL */}
-                      {student.education_type === "BBL" && student.school_periods && student.school_periods.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-sm font-medium text-gray-700">{t('schoolPeriods')}:</span>
-                          <div className="space-y-1">
-                            {student.school_periods.slice(0, 2).map((period: any, index: number) => (
-                              <div key={index} className="text-xs text-gray-600">
-                                {format(new Date(period.fromDate), 'dd-MM-yyyy')} - {format(new Date(period.toDate), 'dd-MM-yyyy')}
-                              </div>
-                            ))}
-                            {student.school_periods.length > 2 && (
-                              <div className="text-xs text-gray-500">
-                                +{student.school_periods.length - 2} meer...
-                              </div>
-                            )}
-                          </div>
+                      {student.education_type === "BBL" && (
+                        <div className="mt-3 rounded-md border border-purple-100 bg-purple-50/60 px-3 py-2 space-y-2">
+                          <span className="text-sm font-semibold text-purple-900">
+                            Schoolperiodes (BBL)
+                          </span>
+                          {student.school_periods && student.school_periods.length > 0 ? (
+                            <div className="space-y-1 text-xs text-purple-900">
+                              {student.school_periods.map((period: any, index: number) => {
+                                const from = period.fromDate || period.from || ""
+                                const to = period.toDate || period.to || ""
+                                let fromLabel = from
+                                let toLabel = to
+                                try {
+                                  if (from) fromLabel = format(new Date(from), "dd-MM-yyyy")
+                                  if (to) toLabel = format(new Date(to), "dd-MM-yyyy")
+                                } catch {
+                                  // laat oorspronkelijke string staan
+                                }
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-center justify-between rounded-sm bg-white/60 px-2 py-1"
+                                  >
+                                    <span className="font-medium">
+                                      {fromLabel || "?"} – {toLabel || "?"}
+                                    </span>
+                                    {period.reason && (
+                                      <span className="ml-2 italic text-[11px] text-purple-600">
+                                        {period.reason}
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-purple-700">
+                              Nog geen schoolperiodes ingevuld.
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -542,19 +653,32 @@ export default function StudentenManagementPage() {
                       )}
 
                       {/* Actions */}
-                      <div className="flex justify-end pt-3 border-t">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-green-600 border-green-200 hover:bg-green-50"
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setShowCompleteEducationDialog(true);
-                          }}
-                        >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Opleiding Afsluiten
-                        </Button>
+                      <div className="pt-3 border-t">
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-green-600 border-green-200 hover:bg-green-50"
+                            onClick={() => {
+                              setSelectedStudent(student);
+                              setShowCompleteEducationDialog(true);
+                            }}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Opleiding Afsluiten
+                          </Button>
+                          {student.education_type === "BBL" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full text-purple-600 border-purple-200 hover:bg-purple-50"
+                              onClick={() => handleOpenSchoolPeriodsDialog(student)}
+                            >
+                              <Calendar className="w-4 h-4 mr-1" />
+                              Schoolperiodes
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -685,6 +809,98 @@ export default function StudentenManagementPage() {
                 className="bg-green-600 hover:bg-green-700"
               >
                 Opleiding Afsluiten
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* School Periods Dialog for BBL */}
+      <Dialog open={showSchoolPeriodsDialog} onOpenChange={setShowSchoolPeriodsDialog}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Schoolperiodes BBL</DialogTitle>
+            <DialogDescription>
+              {schoolPeriodsStudent && `Schoolperiodes beheren voor ${schoolPeriodsStudent.first_name} ${schoolPeriodsStudent.last_name}.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {schoolPeriodsDraft.map((period, index) => (
+              <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end border border-gray-200 rounded-lg p-3">
+                <div>
+                  <Label>Van *</Label>
+                  <Input
+                    type="date"
+                    value={period.fromDate}
+                    onChange={e =>
+                      setSchoolPeriodsDraft(prev => {
+                        const next = [...prev];
+                        next[index] = { ...next[index], fromDate: e.target.value };
+                        return next;
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label>Tot *</Label>
+                  <Input
+                    type="date"
+                    value={period.toDate}
+                    onChange={e =>
+                      setSchoolPeriodsDraft(prev => {
+                        const next = [...prev];
+                        next[index] = { ...next[index], toDate: e.target.value };
+                        return next;
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label>Reden / omschrijving</Label>
+                    <Input
+                      value={period.reason}
+                      onChange={e =>
+                        setSchoolPeriodsDraft(prev => {
+                          const next = [...prev];
+                          next[index] = { ...next[index], reason: e.target.value };
+                          return next;
+                        })
+                      }
+                      placeholder="Bijv. Blok 1, stageperiode..."
+                    />
+                  </div>
+                  {schoolPeriodsDraft.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="mt-6"
+                      onClick={() => handleRemoveSchoolPeriodRow(index)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleAddSchoolPeriodRow}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Schoolperiode toevoegen
+            </Button>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setShowSchoolPeriodsDialog(false)}>
+                Annuleren
+              </Button>
+              <Button onClick={handleSaveSchoolPeriods} className="bg-purple-600 hover:bg-purple-700">
+                Opslaan
               </Button>
             </div>
           </div>
