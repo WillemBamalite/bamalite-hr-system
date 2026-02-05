@@ -120,6 +120,33 @@ export default function UpdateDatabasePage() {
     }
   }
 
+  const cleanupJubileeTasks = async () => {
+    setLoading(true)
+    setResult("")
+
+    try {
+      setResult("Bezig met opruimen van jubileum-taken...")
+
+      // Verwijder alle taken waarvan de titel met 'Jubileum' begint
+      const { error, count } = await supabase
+        .from("tasks")
+        .delete({ count: "estimated" })
+        .ilike("title", "Jubileum%")
+
+      if (error) {
+        setResult(`❌ Fout bij het verwijderen van jubileum-taken: ${error.message}`)
+      } else {
+        setResult(
+          `✅ Opruimen voltooid.\nVerwijderde jubileum-taken (titel begint met 'Jubileum'): ${count ?? "onbekend aantal"}.\n\nDe herinnerings-taken 'Over 10 dagen: ...' blijven staan.`
+        )
+      }
+    } catch (err) {
+      setResult(`❌ Onverwachte fout bij het verwijderen van jubileum-taken: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
       <Card>
@@ -147,6 +174,15 @@ export default function UpdateDatabasePage() {
               className="w-full"
             >
               {loading ? "Testing..." : "Test New Fields"}
+            </Button>
+
+            <Button 
+              onClick={cleanupJubileeTasks} 
+              disabled={loading}
+              variant="outline"
+              className="w-full"
+            >
+              {loading ? "Bezig..." : "Verwijder alle jubileum-taken (Jubileum X jaar in dienst)"}
             </Button>
           </div>
 

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle, Award } from "lucide-react"
 import { ShipOverview } from "@/components/ship-overview"
 import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
@@ -81,6 +81,53 @@ function DashboardContent() {
         return false
       }
     })
+  }, [crew])
+
+  // Check voor dienstjubilea (5,10,15,20,25,30 jaar en vanaf 30 elk jaar)
+  const workAnniversariesToday = useMemo(() => {
+    if (!crew || crew.length === 0) return []
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    return crew
+      .filter((member: any) => {
+        if (member.is_dummy === true) return false
+        if (!member.in_dienst_vanaf) return false
+
+        try {
+          const start = new Date(member.in_dienst_vanaf)
+          start.setHours(0, 0, 0, 0)
+          if (isNaN(start.getTime())) return false
+
+          const years = today.getFullYear() - start.getFullYear()
+          if (years < 5) return false
+
+          // Bepaal of vandaag de jubileumdatum is
+          const anniversaryThisYear = new Date(start)
+          anniversaryThisYear.setFullYear(start.getFullYear() + years)
+          anniversaryThisYear.setHours(0, 0, 0, 0)
+
+          const isToday =
+            anniversaryThisYear.getTime() === today.getTime()
+
+          if (!isToday) return false
+
+          // Alleen 5,10,15,20,25,30 en vanaf 30 elk jaar
+          if (years >= 30) return true
+          return years % 5 === 0
+        } catch {
+          return false
+        }
+      })
+      .map((member: any) => {
+        const start = new Date(member.in_dienst_vanaf)
+        const years = today.getFullYear() - start.getFullYear()
+        return {
+          ...member,
+          years
+        }
+      })
   }, [crew])
 
   // Helper: Get A/B designation from crew member notes
@@ -277,6 +324,28 @@ function DashboardContent() {
                 </span>
               ))}{" "}
               {birthdaysToday.length === 1 ? "is" : "zijn"} vandaag jarig! 🎂
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Dienstjubilea melding */}
+        {workAnniversariesToday.length > 0 && (
+          <Alert className="mb-6 bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+            <Award className="h-5 w-5 text-amber-600" />
+            <AlertDescription className="text-base font-medium">
+              🎖️{" "}
+              {workAnniversariesToday.length === 1 ? "Vandaag is" : "Vandaag zijn"}{" "}
+              {workAnniversariesToday.map((member: any, index: number) => (
+                <span key={member.id}>
+                  <strong>
+                    {member.first_name} {member.last_name}
+                  </strong>{" "}
+                  ({member.years} jaar in dienst)
+                  {index < workAnniversariesToday.length - 1 && ", "}
+                  {index === workAnniversariesToday.length - 2 && " en "}
+                </span>
+              ))}
+              {" "}jubileum! 🎉
             </AlertDescription>
           </Alert>
         )}
