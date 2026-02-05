@@ -84,7 +84,7 @@ interface NewCrewFormData {
 }
 
 export function NewCrewForm() {
-  const { addCrew, ships, loading, error } = useSupabaseData()
+  const { addCrew, addTask, ships, loading, error } = useSupabaseData()
   const { t } = useLanguage()
   const [formData, setFormData] = useState<NewCrewFormData>({
     firstName: "",
@@ -236,9 +236,82 @@ export function NewCrewForm() {
       // Bewaar via Supabase
       await addCrew(crewMember as any)
 
+      // Kleine helper voor datumformat (YYYY-MM-DD)
+      const formatDate = (date: Date) => date.toISOString().split("T")[0]
+
       // Haal scheepsnaam op
       const selectedShip = ships.find(ship => ship.id === formData.shipId)
       const shipName = selectedShip ? selectedShip.name : (formData.shipId === 'none' || formData.shipId === 'unassigned' ? '' : 'Onbekend schip')
+
+      // Automatische taken voor nieuw personeel
+      try {
+        const today = new Date()
+
+        // Basisgegevens voor alle automatische taken
+        const baseTaskData = {
+          task_type: "crew",
+          related_crew_id: id,
+          related_ship_id: (formData.shipId === "none" || formData.shipId === "unassigned") ? null : formData.shipId,
+          assigned_to: "Nautic",
+          priority: "normaal",
+          created_date: formatDate(today),
+          created_by: "HR-systeem",
+          status: "open",
+          completed: false
+        } as any
+
+        // 1) Een week voordat iemand aan boord gaat: in contact brengen met schip
+        if (
+          formData.shipId &&
+          formData.shipId !== "none" &&
+          formData.shipId !== "unassigned" &&
+          formData.startDate
+        ) {
+          const startDateObj = new Date(formData.startDate)
+          if (!isNaN(startDateObj.getTime())) {
+            const contactDeadline = new Date(startDateObj)
+            contactDeadline.setDate(contactDeadline.getDate() - 7)
+
+            await addTask({
+              ...baseTaskData,
+              title: `In contact brengen met ${shipName || "schip"}`,
+              description: `Breng ${formData.firstName} ${formData.lastName} in contact met het schip (${shipName || "schip"}) ongeveer een week voordat hij/zij aan boord gaat.`,
+              deadline: formatDate(contactDeadline)
+            })
+          }
+        }
+
+        // Zorg dat we een geldige in_dienst_vanaf datum hebben voor taken 2 en 3
+        if (formData.in_dienst_vanaf) {
+          const inDienstDate = new Date(formData.in_dienst_vanaf)
+          if (!isNaN(inDienstDate.getTime())) {
+            // 2) 10 dagen na in dienst: vragen naar functioneren
+            const functionerenDate = new Date(inDienstDate)
+            functionerenDate.setDate(functionerenDate.getDate() + 10)
+
+            await addTask({
+              ...baseTaskData,
+              title: `Vragen naar functioneren - ${formData.firstName} ${formData.lastName}`,
+              description: `Neem contact op met ${formData.firstName} ${formData.lastName} (en eventueel het schip) om na ongeveer 10 dagen te vragen naar het functioneren.`,
+              deadline: formatDate(functionerenDate)
+            })
+
+            // 3) 10 dagen voor einde proeftijd (uitgaande van 90 dagen proeftijd ⇒ dag 80)
+            const proefEindeReminderDate = new Date(inDienstDate)
+            proefEindeReminderDate.setDate(proefEindeReminderDate.getDate() + 80)
+
+            await addTask({
+              ...baseTaskData,
+              title: `Samenwerking doorzetten of stoppen - ${formData.firstName} ${formData.lastName}`,
+              description: `Beoordeel rond het einde van de proeftijd of de samenwerking met ${formData.firstName} ${formData.lastName} wordt doorgezet of gestopt.`,
+              deadline: formatDate(proefEindeReminderDate)
+            })
+          }
+        }
+      } catch (taskError) {
+        console.error("❌ Fout bij het aanmaken van automatische taken voor nieuw personeel:", taskError)
+        alert("Let op: het bemanningslid is opgeslagen, maar de automatische taken konden niet allemaal worden aangemaakt.")
+      }
 
       // Bereid contract data voor
       const contractData: ContractData = {
