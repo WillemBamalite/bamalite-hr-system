@@ -58,14 +58,14 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     <div className="space-y-4 p-6 bg-white border-b print-header">
       <div className="flex items-center justify-between">
         <Link href="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer">
-          <div className="w-16 h-16 flex items-center justify-center">
+          <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center shadow-lg">
             <Image
               src="/bemanningslijst-icon.png.png"
               alt="Bemanningslijst logo"
-              width={64}
-              height={64}
+              width={112}
+              height={112}
               priority
-              className="rounded-full shadow-lg border-4 border-[#1e3a8a] object-cover"
+              className="object-cover w-full h-full"
             />
           </div>
           <div>
