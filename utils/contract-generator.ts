@@ -565,6 +565,7 @@ function fillContractFields(
     const currentDate = format(new Date(), 'dd-MM-yyyy', { locale: nl })
     
     // Nieuwe veldnamen: regel1 tot regel19
+    const isGermanContract = options.language === 'de'
     const fieldMappings: Record<string, string> = {
       // Nieuwe regel-gebaseerde veldnamen
       'regel1': data.company, // Firma - Gecentreerd
@@ -575,9 +576,11 @@ function fillContractFields(
       'regel6': formatDate(data.birthDate), // geboortedatum - Links
       'regel7': data.birthPlace || '', // Geboorteplaats - Links
       'regel8': address, // Adres - Links
-      'regel9': formatDate(data.in_dienst_vanaf), // in dienst vanaf - Links
-      'regel10': data.position, // Functie - Links
-      'regel11': data.shipName || '', // Scheepsnaam - Links
+      // Voor NL: regel9 = in dienst vanaf, regel10 = functie, regel11 = scheepsnaam
+      // Voor DE (bamalite-s.a.-de): regel9 = functie, regel10 = scheepsnaam, regel11 = startdatum
+      'regel9': isGermanContract ? data.position : formatDate(data.in_dienst_vanaf),
+      'regel10': data.shipName || '',
+      'regel11': isGermanContract ? formatDate(data.in_dienst_vanaf) : (data.shipName || ''),
       // Regel12-regel21 verschillen per contract type en taal:
       // NL bepaalde tijd: regel12=einde datum, regel13=+3 maanden, regel14=einde datum, regel15-17=salaris, regel18-21=firma/datum/naam
       // NL onbepaalde tijd: regel12=+3 maanden, regel13-15=salaris, regel16-19=firma/datum/naam
