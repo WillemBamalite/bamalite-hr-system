@@ -36,7 +36,9 @@ import {
   Trash2,
   Check,
   Plus,
-  AlertTriangle
+  Minus,
+  AlertTriangle,
+  Printer,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -129,7 +131,20 @@ const parseNotes = (notes: any): any[] => {
 
 export default function AflosserDetailPage() {
   const params = useParams()
-  const { crew, ships, trips, vasteDienstRecords, loading, error, updateCrew, deleteAflosser, updateTrip } = useSupabaseData()
+  const { 
+    crew, 
+    ships, 
+    trips, 
+    vasteDienstRecords, 
+    vasteDienstMindagen,
+    loading, 
+    error, 
+    updateCrew, 
+    deleteAflosser, 
+    updateTrip,
+    addVasteDienstMindag,
+    deleteVasteDienstMindag
+  } = useSupabaseData()
   const { toast } = useToast()
   const { periods, loading: availabilityLoading, addPeriod, updatePeriod, deletePeriod } = useAflosserAvailability(params.id as string)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
@@ -158,6 +173,13 @@ export default function AflosserDetailPage() {
     notes: ""
   })
   const [showAllVasteDienstMonths, setShowAllVasteDienstMonths] = useState(false)
+  const [mindagenDialogOpen, setMindagenDialogOpen] = useState(false)
+  const [newMindag, setNewMindag] = useState({
+    start_date: "",
+    end_date: "",
+    days: "",
+    reason: ""
+  })
 
   // Find the aflosser
   const aflosser = crew.find((member: any) => member.id === params.id)
@@ -165,9 +187,41 @@ export default function AflosserDetailPage() {
   // Get vaste dienst records for this aflosser
   const aflosserVasteDienstRecords = vasteDienstRecords.filter((record: any) => record.aflosser_id === aflosser?.id)
 
+  // Extra mindagen voor deze aflosser
+  const aflosserMindagen = vasteDienstMindagen.filter((entry: any) => entry.aflosser_id === aflosser?.id)
+
+  const totalExtraMinusDays = aflosserMindagen.reduce((sum: number, entry: any) => {
+    const raw = (entry as any).days
+    const value = typeof raw === 'number' ? raw : parseFloat(raw || '0')
+    return sum + (isNaN(value) ? 0 : value)
+  }, 0)
+
+  // Extra mindagen gegroepeerd per maand (op basis van start_date)
+  const mindagenPerMonth = (() => {
+    const map = new Map<string, number>()
+
+    aflosserMindagen.forEach((entry: any) => {
+      if (!entry.start_date) return
+      const d = new Date(entry.start_date)
+      if (isNaN(d.getTime())) return
+
+      const year = d.getFullYear()
+      const month = d.getMonth() + 1
+      const key = `${year}-${month}`
+
+      const raw = (entry as any).days
+      const value = typeof raw === 'number' ? raw : parseFloat(raw || '0')
+      if (isNaN(value)) return
+
+      map.set(key, (map.get(key) || 0) + value)
+    })
+
+    return map
+  })()
+
   // Bereken per maand hoeveel dagen deze aflosser gewerkt heeft (op basis van alle voltooide reizen)
   const vasteDienstMonthSummaries = (() => {
-    if (!aflosser) return [] as { year: number; month: number; workedDays: number }[]
+    if (!aflosser) return [] as { year: number; month: number; workedDays: number; minusDays?: number }[]
 
     // Veilige date parser (ondersteunt YYYY-MM-DD en DD-MM-YYYY)
     const parseDate = (dateStr: string): Date => {
@@ -243,23 +297,27 @@ export default function AflosserDetailPage() {
         }
       })
 
-    return Array.from(monthMap.values())
+    // Zorg dat maanden waarin alleen mindagen zijn ook bestaan
+    mindagenPerMonth.forEach((minus, key) => {
+      if (!monthMap.has(key)) {
+        const [yearStr, monthStr] = key.split('-')
+        const year = parseInt(yearStr, 10)
+        const month = parseInt(monthStr, 10)
+        monthMap.set(key, { year, month, workedDays: 0 })
+      }
+    })
+
+    // Voeg per maand de mindagen toe
+    return Array.from(monthMap.entries()).map(([key, value]) => ({
+      ...value,
+      minusDays: mindagenPerMonth.get(key) || 0,
+    }))
   })()
 
-  // Calculate current balance als volledig opgebouwd saldo over alle maanden:
-  // startsaldo + Σ(gewerkte dagen per maand - 15)
-  const currentBalance = (() => {
+  // Startsaldo uit notities (één keer berekenen zodat we het overal kunnen tonen)
+  const startsaldoFromNotes = (() => {
     if (!aflosser) return 0
 
-    if (vasteDienstMonthSummaries.length === 0) return 0
-
-    const totalWorked = vasteDienstMonthSummaries.reduce(
-      (total, m) => total + (m.workedDays || 0),
-      0
-    )
-    const monthsCount = vasteDienstMonthSummaries.length
-
-    // Voor aflossers met startsaldo
     const parsedNotes = parseNotes(aflosser.notes)
     const startsaldoNote = parsedNotes.find(
       (note: any) => note.text && (note.text.includes("startsaldo") || note.text.includes("Startsaldo"))
@@ -273,10 +331,57 @@ export default function AflosserDetailPage() {
       }
     }
 
+    return isNaN(startsaldo) ? 0 : startsaldo
+  })()
+
+  // Calculate current balance als volledig opgebouwd saldo over alle maanden:
+  // startsaldo + Σ(gewerkte dagen per maand - 15)
+  const currentBalance = (() => {
+    if (!aflosser) return 0
+
+    if (vasteDienstMonthSummaries.length === 0) return 0
+
+    // Ruwe gewerkte dagen en minusdagen per maand
+    const totalWorkedRaw = vasteDienstMonthSummaries.reduce(
+      (total, m: any) => total + (m.workedDays || 0),
+      0
+    )
+    const totalMinusFromMonths = vasteDienstMonthSummaries.reduce(
+      (total, m: any) => total + ((m as any).minusDays || 0),
+      0
+    )
+    const totalWorked = totalWorkedRaw - totalMinusFromMonths
+    const monthsCount = vasteDienstMonthSummaries.length
+
+    const startsaldo = startsaldoFromNotes
     const totaleVereisteDagen = monthsCount * 15
     const saldo = startsaldo + totalWorked - totaleVereisteDagen
     return saldo
   })()
+
+  // Gegevens voor vaste dienst printoverzicht per maand
+  const vasteDienstPrintRows = (() => {
+    const sorted = [...vasteDienstMonthSummaries].sort(
+      (a, b) => a.year - b.year || a.month - b.month
+    )
+    return sorted.map((summary: any) => {
+      const label = new Date(summary.year, summary.month - 1).toLocaleString('nl-NL', { month: 'long', year: 'numeric' })
+      const rawWorked = summary.workedDays || 0
+      const minus = summary.minusDays || 0
+      const workedDays = rawWorked - minus
+      const requiredDays = 15
+      const monthSaldo = workedDays - requiredDays
+      return { label, workedDays, requiredDays, monthSaldo }
+    })
+  })()
+
+  const totalMonthSaldo = vasteDienstPrintRows.reduce(
+    (sum, row) => sum + row.monthSaldo,
+    0
+  )
+
+  // Som maandsaldi zonder mindagen (alleen gewerkte dagen - 15)
+  const totalMonthSaldoWithoutMinus = totalMonthSaldo + totalExtraMinusDays
 
 
   // Prevent hydration errors
@@ -396,6 +501,75 @@ export default function AflosserDetailPage() {
     }
   }
 
+  const handleAddMindag = async () => {
+    if (!aflosser) return
+
+    if (!newMindag.start_date || !newMindag.days) {
+      toast({
+        title: "Fout",
+        description: "Vul minimaal datum van en aantal dagen in",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const parsedDays = parseFloat(newMindag.days.replace(',', '.'))
+    if (isNaN(parsedDays) || parsedDays <= 0) {
+      toast({
+        title: "Fout",
+        description: "Aantal dagen moet een getal groter dan 0 zijn",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      await addVasteDienstMindag({
+        aflosser_id: aflosser.id,
+        start_date: newMindag.start_date,
+        end_date: newMindag.end_date || null,
+        days: parsedDays,
+        reason: newMindag.reason || null
+      })
+      toast({
+        title: "Succes",
+        description: "Mindagen toegevoegd"
+      })
+      setNewMindag({
+        start_date: "",
+        end_date: "",
+        days: "",
+        reason: ""
+      })
+      setMindagenDialogOpen(false)
+    } catch (error) {
+      console.error("Error adding mindagen:", error)
+      toast({
+        title: "Fout",
+        description: "Mindagen konden niet worden opgeslagen",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleDeleteMindag = async (id: string) => {
+    if (!confirm("Weet je zeker dat je deze mindagen wilt verwijderen?")) return
+    try {
+      await deleteVasteDienstMindag(id)
+      toast({
+        title: "Succes",
+        description: "Mindagen verwijderd"
+      })
+    } catch (error) {
+      console.error("Error deleting mindagen:", error)
+      toast({
+        title: "Fout",
+        description: "Mindagen konden niet worden verwijderd",
+        variant: "destructive"
+      })
+    }
+  }
+
   // Don't render until mounted
   if (!mounted) {
     return (
@@ -431,6 +605,20 @@ export default function AflosserDetailPage() {
       </div>
     )
   }
+
+  // Gecombineerde geschiedenis (reizen + extra mindagen), gesorteerd op datum (nieuwste eerst)
+  const combinedHistory = [
+    ...assignmentHistory.map((trip: any) => {
+      const sortDateSource = trip.start_datum || trip.start_date || trip.created_at
+      const sortDate = sortDateSource ? new Date(sortDateSource) : new Date(0)
+      return { type: 'trip' as const, sortDate, trip }
+    }),
+    ...aflosserMindagen.map((entry: any) => {
+      const sortDateSource = entry.start_date || entry.created_at
+      const sortDate = sortDateSource ? new Date(sortDateSource) : new Date(0)
+      return { type: 'mindag' as const, sortDate, entry }
+    })
+  ].sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime())
 
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
@@ -477,6 +665,52 @@ export default function AflosserDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
+      {/* Print CSS voor vaste dienst overzicht */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .vaste-dienst-print-root,
+            .vaste-dienst-print-root * {
+              visibility: visible;
+            }
+            .vaste-dienst-print-root {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 210mm;
+              min-height: 297mm;
+              padding: 20mm;
+              background: white;
+              font-family: 'Arial', sans-serif;
+              font-size: 11pt;
+              line-height: 1.5;
+            }
+            .vd-print-history-page {
+              page-break-before: always;
+            }
+            .no-print-vd,
+            header,
+            nav {
+              display: none !important;
+            }
+          }
+          @media screen {
+            .vaste-dienst-print-root {
+              display: none;
+            }
+          }
+          @page {
+            size: A4;
+            margin: 0;
+          }
+        `
+        }}
+      />
+
       <MobileHeaderNav />
       <BackButton />
       <DashboardButton />
@@ -545,9 +779,41 @@ export default function AflosserDetailPage() {
               <CardTitle className="flex items-center space-x-2 text-blue-800">
                 <Calendar className="w-6 h-6" />
                 <span>Vaste Dienst Tracking</span>
-                <div className="ml-auto flex items-center space-x-2">
+                <div className="ml-auto flex items-center space-x-3">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                   <span className="text-sm font-normal text-green-700">Automatisch</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (!vasteDienstPrintRows.length) {
+                        alert('Er zijn nog geen vaste dienst maanden om te printen.')
+                        return
+                      }
+                      window.print()
+                    }}
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 no-print-vd"
+                  >
+                    <Printer className="w-3 h-3 mr-1" />
+                    Print overzicht
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setNewMindag({
+                        start_date: "",
+                        end_date: "",
+                        days: "",
+                        reason: ""
+                      })
+                      setMindagenDialogOpen(true)
+                    }}
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                  >
+                    <Minus className="w-3 h-3 mr-1" />
+                    Mindagen toevoegen
+                  </Button>
                 </div>
               </CardTitle>
             </CardHeader>
@@ -593,9 +859,10 @@ export default function AflosserDetailPage() {
                           (a, b) => b.year - a.year || b.month - a.month
                         )
                         const visible = showAllVasteDienstMonths ? sorted : sorted.slice(0, 3)
-                        return visible.map((summary) => {
+                        return visible.map((summary: any) => {
                           const label = new Date(summary.year, summary.month - 1).toLocaleString('nl-NL', { month: 'short', year: 'numeric' })
-                          const gewerktDezeMaand = summary.workedDays
+                          const minusDays = summary.minusDays || 0
+                          const gewerktDezeMaand = (summary.workedDays || 0) - minusDays
                           
                           return (
                             <div key={`${summary.year}-${summary.month}`} className="flex items-center justify-between p-2 border rounded">
@@ -1205,64 +1472,103 @@ export default function AflosserDetailPage() {
 
       {/* Ship History - Full Width */}
       <div className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Ship className="w-5 h-5" />
-                <span>Reis Geschiedenis</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {assignmentHistory.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Ship className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p>Nog geen reizen toegewezen</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {assignmentHistory
-                    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                    .map((trip: any, index: number) => {
-                      const ship = ships.find((s: any) => s.id === trip.ship_id)
-                      const getStatusColor = (status: string) => {
-                        switch (status) {
-                          case 'gepland': return 'bg-orange-100 text-orange-800'
-                          case 'ingedeeld': return 'bg-blue-100 text-blue-800'
-                          case 'actief': return 'bg-green-100 text-green-800'
-                          case 'voltooid': return 'bg-gray-100 text-gray-800'
-                          default: return 'bg-gray-100 text-gray-800'
-                        }
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Ship className="w-5 h-5" />
+              <span>Reis Geschiedenis</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {combinedHistory.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Ship className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                <p>Nog geen reizen of mindagen geregistreerd</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {combinedHistory.map((item, index) => {
+                  if (item.type === 'trip') {
+                    const trip = item.trip
+                    const ship = ships.find((s: any) => s.id === trip.ship_id)
+                    const getStatusColor = (status: string) => {
+                      switch (status) {
+                        case 'gepland': return 'bg-orange-100 text-orange-800'
+                        case 'ingedeeld': return 'bg-blue-100 text-blue-800'
+                        case 'actief': return 'bg-green-100 text-green-800'
+                        case 'voltooid': return 'bg-gray-100 text-gray-800'
+                        default: return 'bg-gray-100 text-gray-800'
                       }
-                      const getStatusText = (status: string) => {
-                        switch (status) {
-                          case 'gepland': return 'Gepland'
-                          case 'ingedeeld': return 'Ingedeeld'
-                          case 'actief': return 'Actief'
-                          case 'voltooid': return 'Voltooid'
-                          default: return status
-                        }
+                    }
+                    const getStatusText = (status: string) => {
+                      switch (status) {
+                        case 'gepland': return 'Gepland'
+                        case 'ingedeeld': return 'Ingedeeld'
+                        case 'actief': return 'Actief'
+                        case 'voltooid': return 'Voltooid'
+                        default: return status
                       }
-                      
-                      return (
-                        <div key={trip.id || index} className="border rounded-lg p-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                <Ship className="w-5 h-5 text-blue-600" />
-                                <span className="font-medium">
-                                  {ship ? ship.name : 'Onbekend schip'}
-                                </span>
-                              </div>
-                              <Badge className={getStatusColor(trip.status)}>
-                                {getStatusText(trip.status)}
-                              </Badge>
+                    }
+                    
+                    return (
+                      <div key={trip.id || `trip-${index}`} className="border rounded-lg p-4">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Ship className="w-5 h-5 text-blue-600" />
+                              <span className="font-medium">
+                                {ship ? ship.name : 'Onbekend schip'}
+                              </span>
                             </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="flex items-center space-x-2 text-sm">
-                                <Calendar className="w-4 h-4 text-gray-500" />
-                                <span>
-                                  {trip.start_datum ? (() => {
+                            <Badge className={getStatusColor(trip.status)}>
+                              {getStatusText(trip.status)}
+                            </Badge>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="flex items-center space-x-2 text-sm">
+                              <Calendar className="w-4 h-4 text-gray-500" />
+                              <span>
+                                {trip.start_datum ? (() => {
+                                  const parseDate = (dateStr: string): Date => {
+                                    if (!dateStr || typeof dateStr !== 'string') {
+                                      console.error('Invalid date string:', dateStr)
+                                      return new Date()
+                                    }
+                                    
+                                    // Check if it's already an ISO date (contains T or has 4-digit year at start)
+                                    if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+                                      // It's already an ISO date, use it directly
+                                      const date = new Date(dateStr)
+                                      if (isNaN(date.getTime())) {
+                                        console.error('Invalid ISO date:', dateStr)
+                                        return new Date()
+                                      }
+                                      return date
+                                    }
+                                    
+                                    // Otherwise, parse as DD-MM-YYYY format
+                                    const parts = dateStr.split('-')
+                                    if (parts.length !== 3) {
+                                      console.error('Invalid date format:', dateStr)
+                                      return new Date()
+                                    }
+                                    
+                                    const [day, month, year] = parts
+                                    const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+                                    const date = new Date(isoDate)
+                                    
+                                    if (isNaN(date.getTime())) {
+                                      console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
+                                      return new Date()
+                                    }
+                                    
+                                    return date
+                                  }
+                                  return format(parseDate(trip.start_datum), 'dd-MM-yyyy')
+                                })() : 'Geen datum'}
+                                {trip.eind_datum && (
+                                  <> - {(() => {
                                     const parseDate = (dateStr: string): Date => {
                                       if (!dateStr || typeof dateStr !== 'string') {
                                         console.error('Invalid date string:', dateStr)
@@ -1298,241 +1604,238 @@ export default function AflosserDetailPage() {
                                       
                                       return date
                                     }
-                                    return format(parseDate(trip.start_datum), 'dd-MM-yyyy')
-                                  })() : 'Geen datum'}
-                                  {trip.eind_datum && (
-                                    <> - {(() => {
-                                      const parseDate = (dateStr: string): Date => {
-                                        if (!dateStr || typeof dateStr !== 'string') {
-                                          console.error('Invalid date string:', dateStr)
-                                          return new Date()
-                                        }
-                                        
-                                        // Check if it's already an ISO date (contains T or has 4-digit year at start)
-                                        if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-                                          // It's already an ISO date, use it directly
-                                          const date = new Date(dateStr)
-                                          if (isNaN(date.getTime())) {
-                                            console.error('Invalid ISO date:', dateStr)
+                                    return format(parseDate(trip.eind_datum), 'dd-MM-yyyy')
+                                  })()}</>
+                                )}
+                              </span>
+                            </div>
+                            
+                            <div className="flex items-center space-x-2 text-sm">
+                              <MapPin className="w-4 h-4 text-gray-500" />
+                              <span>{trip.trip_from} → {trip.trip_to}</span>
+                            </div>
+                          </div>
+
+                          <div className="text-sm text-gray-600">
+                            <strong>Reis:</strong> {trip.trip_name}
+                          </div>
+
+                          {/* Actual boarding/leaving times for completed trips */}
+                          {trip.status === 'voltooid' && (trip.start_datum || trip.eind_datum) && (
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Werkelijke tijden</h5>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                                {trip.start_datum && (
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-gray-600">Aan boord:</span>
+                                    <span className="font-medium">
+                                      {(() => {
+                                        const parseDate = (dateStr: string): Date => {
+                                          if (!dateStr || typeof dateStr !== 'string') {
+                                            console.error('Invalid date string:', dateStr)
                                             return new Date()
                                           }
+                                          
+                                          // Check if it's already an ISO date (contains T or has 4-digit year at start)
+                                          if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+                                            // It's already an ISO date, use it directly
+                                            const date = new Date(dateStr)
+                                            if (isNaN(date.getTime())) {
+                                              console.error('Invalid ISO date:', dateStr)
+                                              return new Date()
+                                            }
+                                            return date
+                                          }
+                                          
+                                          // Otherwise, parse as DD-MM-YYYY format
+                                          const parts = dateStr.split('-')
+                                          if (parts.length !== 3) {
+                                            console.error('Invalid date format:', dateStr)
+                                            return new Date()
+                                          }
+                                          
+                                          const [day, month, year] = parts
+                                          const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+                                          const date = new Date(isoDate)
+                                          
+                                          if (isNaN(date.getTime())) {
+                                            console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
+                                            return new Date()
+                                          }
+                                          
                                           return date
                                         }
-                                        
-                                        // Otherwise, parse as DD-MM-YYYY format
-                                        const parts = dateStr.split('-')
-                                        if (parts.length !== 3) {
-                                          console.error('Invalid date format:', dateStr)
-                                          return new Date()
+                                        return format(parseDate(trip.start_datum), 'dd-MM-yyyy')
+                                      })()} {trip.start_tijd || ''}
+                                    </span>
+                                  </div>
+                                )}
+                                {trip.eind_datum && (
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-gray-600">Afgestapt:</span>
+                                    <span className="font-medium">
+                                      {(() => {
+                                        const parseDate = (dateStr: string): Date => {
+                                          if (!dateStr || typeof dateStr !== 'string') {
+                                            console.error('Invalid date string:', dateStr)
+                                            return new Date()
+                                          }
+                                          
+                                          // Check if it's already an ISO date (contains T or has 4-digit year at start)
+                                          if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+                                            // It's already an ISO date, use it directly
+                                            const date = new Date(dateStr)
+                                            if (isNaN(date.getTime())) {
+                                              console.error('Invalid ISO date:', dateStr)
+                                              return new Date()
+                                            }
+                                            return date
+                                          }
+                                          
+                                          // Otherwise, parse as DD-MM-YYYY format
+                                          const parts = dateStr.split('-')
+                                          if (parts.length !== 3) {
+                                            console.error('Invalid date format:', dateStr)
+                                            return new Date()
+                                          }
+                                          
+                                          const [day, month, year] = parts
+                                          const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+                                          const date = new Date(isoDate)
+                                          
+                                          if (isNaN(date.getTime())) {
+                                            console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
+                                            return new Date()
+                                          }
+                                          
+                                          return date
                                         }
-                                        
-                                        const [day, month, year] = parts
-                                        const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-                                        const date = new Date(isoDate)
-                                        
-                                        if (isNaN(date.getTime())) {
-                                          console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
-                                          return new Date()
-                                        }
-                                        
-                                        return date
-                                      }
-                                      return format(parseDate(trip.eind_datum), 'dd-MM-yyyy')
-                                    })()}</>
-                                  )}
+                                        return format(parseDate(trip.eind_datum), 'dd-MM-yyyy')
+                                      })()} {trip.eind_tijd || ''}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Werkdagen berekening */}
+                          {trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd && (
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-600">Werkdagen:</span>
+                                <span className="font-medium text-blue-600">
+                                  {(() => {
+                                    // Use different calculation based on whether aflosser is in vaste dienst
+                                    let workDays
+                                    if (aflosser.vaste_dienst) {
+                                      // For vaste dienst aflossers, use hour-based calculation
+                                      workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                    } else {
+                                      // For other aflossers, use simple day calculation
+                                      workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                                    }
+                                    return workDays === Math.floor(workDays) 
+                                      ? `${workDays} dag${workDays !== 1 ? 'en' : ''}`
+                                      : `${workDays} dag${workDays !== 1 ? 'en' : ''}`
+                                  })()}
                                 </span>
                               </div>
-                              
-                                <div className="flex items-center space-x-2 text-sm">
-                                  <MapPin className="w-4 h-4 text-gray-500" />
-                                <span>{trip.trip_from} → {trip.trip_to}</span>
-                              </div>
                             </div>
+                          )}
+                        </div>
 
-                            <div className="text-sm text-gray-600">
-                              <strong>Reis:</strong> {trip.trip_name}
-                            </div>
-
-                            {/* Actual boarding/leaving times for completed trips */}
-                            {trip.status === 'voltooid' && (trip.start_datum || trip.eind_datum) && (
-                              <div className="bg-gray-50 p-3 rounded-lg">
-                                <h5 className="text-sm font-medium text-gray-700 mb-2">Werkelijke tijden</h5>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                                  {trip.start_datum && (
-                                    <div className="flex items-center space-x-2">
-                                      <span className="text-gray-600">Aan boord:</span>
-                                      <span className="font-medium">
-                                        {(() => {
-                                          const parseDate = (dateStr: string): Date => {
-                                            if (!dateStr || typeof dateStr !== 'string') {
-                                              console.error('Invalid date string:', dateStr)
-                                              return new Date()
-                                            }
-                                            
-                                            // Check if it's already an ISO date (contains T or has 4-digit year at start)
-                                            if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-                                              // It's already an ISO date, use it directly
-                                              const date = new Date(dateStr)
-                                              if (isNaN(date.getTime())) {
-                                                console.error('Invalid ISO date:', dateStr)
-                                                return new Date()
-                                              }
-                                              return date
-                                            }
-                                            
-                                            // Otherwise, parse as DD-MM-YYYY format
-                                            const parts = dateStr.split('-')
-                                            if (parts.length !== 3) {
-                                              console.error('Invalid date format:', dateStr)
-                                              return new Date()
-                                            }
-                                            
-                                            const [day, month, year] = parts
-                                            const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-                                            const date = new Date(isoDate)
-                                            
-                                            if (isNaN(date.getTime())) {
-                                              console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
-                                              return new Date()
-                                            }
-                                            
-                                            return date
-                                          }
-                                          return format(parseDate(trip.start_datum), 'dd-MM-yyyy')
-                                        })()} {trip.start_tijd || ''}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {trip.eind_datum && (
-                                    <div className="flex items-center space-x-2">
-                                      <span className="text-gray-600">Afgestapt:</span>
-                                      <span className="font-medium">
-                                        {(() => {
-                                          const parseDate = (dateStr: string): Date => {
-                                            if (!dateStr || typeof dateStr !== 'string') {
-                                              console.error('Invalid date string:', dateStr)
-                                              return new Date()
-                                            }
-                                            
-                                            // Check if it's already an ISO date (contains T or has 4-digit year at start)
-                                            if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-                                              // It's already an ISO date, use it directly
-                                              const date = new Date(dateStr)
-                                              if (isNaN(date.getTime())) {
-                                                console.error('Invalid ISO date:', dateStr)
-                                                return new Date()
-                                              }
-                                              return date
-                                            }
-                                            
-                                            // Otherwise, parse as DD-MM-YYYY format
-                                            const parts = dateStr.split('-')
-                                            if (parts.length !== 3) {
-                                              console.error('Invalid date format:', dateStr)
-                                              return new Date()
-                                            }
-                                            
-                                            const [day, month, year] = parts
-                                            const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-                                            const date = new Date(isoDate)
-                                            
-                                            if (isNaN(date.getTime())) {
-                                              console.error('Invalid date after parsing:', isoDate, 'from:', dateStr)
-                                              return new Date()
-                                            }
-                                            
-                                            return date
-                                          }
-                                          return format(parseDate(trip.eind_datum), 'dd-MM-yyyy')
-                                        })()} {trip.eind_tijd || ''}
-                                      </span>
-                                </div>
-                              )}
-                            </div>
-
-                                {/* Werkdagen berekening */}
-                                {trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd && (
-                                  <div className="mt-3 pt-3 border-t border-gray-200">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-sm text-gray-600">Werkdagen:</span>
-                                      <span className="font-medium text-blue-600">
-                                        {(() => {
-                                          // Use different calculation based on whether aflosser is in vaste dienst
-                                          let workDays
-                                          if (aflosser.vaste_dienst) {
-                                            // For vaste dienst aflossers, use hour-based calculation
-                                            workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                                          } else {
-                                            // For other aflossers, use simple day calculation
-                                            workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                                          }
-                                          return workDays === Math.floor(workDays) 
-                                            ? `${workDays} dag${workDays !== 1 ? 'en' : ''}`
-                                            : `${workDays} dag${workDays !== 1 ? 'en' : ''}`
-                                        })()}
-                                      </span>
-                              </div>
-                                    
-                              </div>
-                            )}
+                        {/* Aflosser opmerkingen for completed trips */}
+                        {trip.status === 'voltooid' && trip.aflosser_opmerkingen && (
+                          <div className="bg-blue-50 p-3 rounded-lg mt-3">
+                            <h5 className="text-sm font-medium text-blue-700 mb-1">Opmerkingen over aflosser</h5>
+                            <p className="text-sm text-blue-600 italic">{trip.aflosser_opmerkingen}</p>
                           </div>
-                            )}
+                        )}
 
-                            {/* Aflosser opmerkingen for completed trips */}
-                            {trip.status === 'voltooid' && trip.aflosser_opmerkingen && (
-                              <div className="bg-blue-50 p-3 rounded-lg">
-                                <h5 className="text-sm font-medium text-blue-700 mb-1">Opmerkingen over aflosser</h5>
-                                <p className="text-sm text-blue-600 italic">{trip.aflosser_opmerkingen}</p>
+                        {/* Betaald status voor zelfstandige aflossers */}
+                        {trip.status === 'voltooid' && (aflosser.is_zelfstandig || (!aflosser.vaste_dienst && !aflosser.is_uitzendbureau)) && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Betaald:</span>
+                              <Button
+                                size="sm"
+                                variant={trip.paid ? "default" : "outline"}
+                                onClick={async () => {
+                                  try {
+                                    await updateTrip(trip.id, { paid: !trip.paid })
+                                    // Reload data to show updated status
+                                    window.location.reload()
+                                  } catch (error) {
+                                    console.error("Error updating paid status:", error)
+                                    alert("Fout bij bijwerken betaald status")
+                                  }
+                                }}
+                                className={trip.paid ? "bg-green-600 hover:bg-green-700" : ""}
+                              >
+                                {trip.paid ? (
+                                  <>
+                                    <Check className="w-4 h-4 mr-2" />
+                                    Ja
+                                  </>
+                                ) : (
+                                  "Nee"
+                                )}
+                              </Button>
                             </div>
-                            )}
-
-                            {/* Betaald status voor zelfstandige aflossers */}
-                            {trip.status === 'voltooid' && (aflosser.is_zelfstandig || (!aflosser.vaste_dienst && !aflosser.is_uitzendbureau)) && (
-                              <div className="mt-3 pt-3 border-t border-gray-200">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm text-gray-600">Betaald:</span>
-                                  <Button
-                                    size="sm"
-                                    variant={trip.paid ? "default" : "outline"}
-                                    onClick={async () => {
-                                      try {
-                                        await updateTrip(trip.id, { paid: !trip.paid })
-                                        // Reload data to show updated status
-                                        window.location.reload()
-                                      } catch (error) {
-                                        console.error("Error updating paid status:", error)
-                                        alert("Fout bij bijwerken betaald status")
-                                      }
-                                    }}
-                                    className={trip.paid ? "bg-green-600 hover:bg-green-700" : ""}
-                                  >
-                                    {trip.paid ? (
-                                      <>
-                                        <Check className="w-4 h-4 mr-2" />
-                                        Ja
-                                      </>
-                                    ) : (
-                                      "Nee"
-                                    )}
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                            
-                            {trip.notes && (
-                              <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                                <strong>Notitie:</strong> {trip.notes}
-                              </div>
-                            )}
                           </div>
+                        )}
+                        
+                        {trip.notes && (
+                          <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded mt-2">
+                            <strong>Notitie:</strong> {trip.notes}
+                          </div>
+                        )}
                       </div>
-                      )
-                    })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                    )
+                  }
+
+                  // Mindagen entry
+                  const entry = item.entry
+                  return (
+                    <div key={entry.id || `mindag-${index}`} className="border rounded-lg p-4 bg-red-50">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <AlertTriangle className="w-4 h-4 text-red-600" />
+                            <span className="font-medium text-red-700">
+                              Extra mindagen: -{(entry as any).days} dag{(entry as any).days === 1 ? '' : 'en'}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-700 mt-1">
+                            {format(new Date(entry.start_date), 'dd-MM-yyyy')}
+                            {entry.end_date && (
+                              <> t/m {format(new Date(entry.end_date), 'dd-MM-yyyy')}</>
+                            )}
+                          </div>
+                          {entry.reason && (
+                            <div className="text-xs text-gray-600 mt-1 italic">
+                              {entry.reason}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="ml-4 text-red-600 hover:text-red-700 hover:bg-red-100"
+                          onClick={() => handleDeleteMindag(entry.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Statistics - Full Width */}
       <div className="mt-6">
@@ -1702,6 +2005,260 @@ export default function AflosserDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Mindagen Dialog voor vaste dienst */}
+      <Dialog open={mindagenDialogOpen} onOpenChange={setMindagenDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Extra mindagen toevoegen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="mindag_start_date">Datum van</Label>
+                <Input
+                  id="mindag_start_date"
+                  type="date"
+                  value={newMindag.start_date}
+                  onChange={(e) => setNewMindag({ ...newMindag, start_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="mindag_end_date">Datum tot (optioneel)</Label>
+                <Input
+                  id="mindag_end_date"
+                  type="date"
+                  value={newMindag.end_date}
+                  onChange={(e) => setNewMindag({ ...newMindag, end_date: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="mindag_days">Aantal dagen</Label>
+              <Input
+                id="mindag_days"
+                type="number"
+                step="0.5"
+                min="0.5"
+                value={newMindag.days}
+                onChange={(e) => setNewMindag({ ...newMindag, days: e.target.value })}
+                placeholder="Bijv. 1 of 0.5"
+              />
+            </div>
+            <div>
+              <Label htmlFor="mindag_reason">Reden</Label>
+              <Textarea
+                id="mindag_reason"
+                value={newMindag.reason}
+                onChange={(e) => setNewMindag({ ...newMindag, reason: e.target.value })}
+                placeholder="Bijv. opgenomen vrije dagen buiten vaste dienst"
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setMindagenDialogOpen(false)
+                  setNewMindag({
+                    start_date: "",
+                    end_date: "",
+                    days: "",
+                    reason: ""
+                  })
+                }}
+              >
+                Annuleren
+              </Button>
+              <Button
+                onClick={handleAddMindag}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Opslaan
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Vaste dienst printoverzicht (alleen zichtbaar bij print) */}
+      {aflosser.vaste_dienst && (
+        <div className="vaste-dienst-print-root">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">
+              Overzicht Aflosdagen
+            </h1>
+            <p className="text-gray-700">
+              {aflosser.first_name} {aflosser.last_name}
+            </p>
+            <p className="text-sm text-gray-500 mt-1">
+              Geprint op {format(new Date(), 'dd-MM-yyyy HH:mm')}
+            </p>
+          </div>
+
+          {/* Tabel per maand */}
+          <div>
+            <h2 className="text-lg font-semibold text-blue-700 mb-3">
+              Overzicht gewerkte dagen per maand
+            </h2>
+            {vasteDienstPrintRows.length === 0 ? (
+              <p className="text-sm text-gray-600">
+                Nog geen voltooide reizen geregistreerd voor vaste dienst.
+              </p>
+            ) : (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border px-3 py-2 text-left">Maand</th>
+                    <th className="border px-3 py-2 text-right">Gewerkte dagen</th>
+                    <th className="border px-3 py-2 text-right">Norm (15)</th>
+                    <th className="border px-3 py-2 text-right">Maandsaldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vasteDienstPrintRows.map((row, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="border px-3 py-1">{row.label}</td>
+                      <td className="border px-3 py-1 text-right">{row.workedDays}</td>
+                      <td className="border px-3 py-1 text-right">{row.requiredDays}</td>
+                      <td className="border px-3 py-1 text-right">
+                        {row.monthSaldo > 0 ? `+${row.monthSaldo}` : row.monthSaldo} dagen
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Samenvatting */}
+          <div className="mt-6 text-sm text-gray-700">
+            <h2 className="text-lg font-semibold text-blue-700 mb-2">
+              Samenvatting dagen & saldo
+            </h2>
+            <div className="inline-block bg-gray-50 border border-gray-200 rounded-md px-4 py-3 space-y-1">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-600">Startsaldo:</span>
+                <span className="font-semibold">
+                  {startsaldoFromNotes > 0 ? `+${startsaldoFromNotes}` : startsaldoFromNotes} dagen
+                </span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-600">Som maandsaldi (zonder extra mindagen):</span>
+                <span className="font-semibold">
+                  {totalMonthSaldoWithoutMinus > 0 ? `+${totalMonthSaldoWithoutMinus}` : totalMonthSaldoWithoutMinus} dagen
+                </span>
+              </div>
+              {aflosserMindagen.length > 0 && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-600">Extra mindagen (per maand verwerkt):</span>
+                  <span className="font-semibold">
+                    -{totalExtraMinusDays} dag{totalExtraMinusDays === 1 ? '' : 'en'}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between gap-4 border-t border-gray-200 pt-2 mt-1">
+                <span className="text-gray-700 font-medium">Eindsaldo (inclusief startsaldo en mindagen):</span>
+                <span
+                  className={`font-bold ${
+                    currentBalance > 0 ? 'text-green-700' : currentBalance < 0 ? 'text-red-700' : 'text-gray-800'
+                  }`}
+                >
+                  {currentBalance > 0 ? `+${currentBalance}` : currentBalance} dagen
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Reisgeschiedenis vanaf pagina 2 */}
+          <div className="vd-print-history-page mt-8">
+            <h2 className="text-lg font-semibold text-blue-700 mb-3">
+              Reisgeschiedenis
+            </h2>
+            {combinedHistory.length === 0 ? (
+              <p className="text-sm text-gray-600">
+                Nog geen reizen of extra mindagen geregistreerd.
+              </p>
+            ) : (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border px-3 py-2 text-left">Datum / periode</th>
+                    <th className="border px-3 py-2 text-left">Type</th>
+                    <th className="border px-3 py-2 text-left">Schip / omschrijving</th>
+                    <th className="border px-3 py-2 text-right">Dagen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {combinedHistory.map((item: any, idx: number) => {
+                    if (item.type === 'trip') {
+                      const trip = item.trip
+                      const ship = ships.find((s: any) => s.id === trip.ship_id)
+
+                      const formatDateSafe = (dateStr?: string | null) => {
+                        if (!dateStr) return ''
+                        try {
+                          return format(new Date(dateStr), 'dd-MM-yyyy')
+                        } catch {
+                          return dateStr
+                        }
+                      }
+
+                      let workDays: number | null = null
+                      if (trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd) {
+                        if (aflosser.vaste_dienst) {
+                          workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                        } else {
+                          workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+                        }
+                      }
+
+                      return (
+                        <tr key={trip.id || `trip-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="border px-3 py-1">
+                            {trip.start_datum ? formatDateSafe(trip.start_datum) : ''}
+                            {trip.eind_datum && (
+                              <> t/m {formatDateSafe(trip.eind_datum)}</>
+                            )}
+                          </td>
+                          <td className="border px-3 py-1">Reis</td>
+                          <td className="border px-3 py-1">
+                            {ship ? ship.name : 'Onbekend schip'}
+                            {trip.trip_name ? ` – ${trip.trip_name}` : ''}
+                          </td>
+                          <td className="border px-3 py-1 text-right">
+                            {workDays !== null ? workDays : ''}
+                          </td>
+                        </tr>
+                      )
+                    }
+
+                    const entry = item.entry
+                    return (
+                      <tr key={entry.id || `mindag-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="border px-3 py-1">
+                          {format(new Date(entry.start_date), 'dd-MM-yyyy')}
+                          {entry.end_date && (
+                            <> t/m {format(new Date(entry.end_date), 'dd-MM-yyyy')}</>
+                          )}
+                        </td>
+                        <td className="border px-3 py-1">Extra mindagen</td>
+                        <td className="border px-3 py-1">
+                          {entry.reason || 'Correctie vaste dienst'}
+                        </td>
+                        <td className="border px-3 py-1 text-right">
+                          -{(entry as any).days}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 } 
