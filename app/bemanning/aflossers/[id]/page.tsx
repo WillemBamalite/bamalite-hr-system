@@ -185,10 +185,14 @@ export default function AflosserDetailPage() {
   const aflosser = crew.find((member: any) => member.id === params.id)
 
   // Get vaste dienst records for this aflosser
-  const aflosserVasteDienstRecords = vasteDienstRecords.filter((record: any) => record.aflosser_id === aflosser?.id)
+  const aflosserVasteDienstRecords = (vasteDienstRecords || []).filter(
+    (record: any) => record.aflosser_id === aflosser?.id
+  )
 
   // Extra mindagen voor deze aflosser
-  const aflosserMindagen = vasteDienstMindagen.filter((entry: any) => entry.aflosser_id === aflosser?.id)
+  const aflosserMindagen = (vasteDienstMindagen || []).filter(
+    (entry: any) => entry.aflosser_id === aflosser?.id
+  )
 
   const totalExtraMinusDays = aflosserMindagen.reduce((sum: number, entry: any) => {
     const raw = (entry as any).days
@@ -392,7 +396,9 @@ export default function AflosserDetailPage() {
   // Load trip history from Supabase
   useEffect(() => {
     if (aflosser && aflosser.id && trips) {
-      const aflosserTrips = trips.filter((trip: any) => trip.aflosser_id === aflosser.id)
+      const aflosserTrips = (trips || []).filter(
+        (trip: any) => trip.aflosser_id === aflosser.id
+      )
       setAssignmentHistory(aflosserTrips)
     }
   }, [aflosser?.id, trips])
@@ -1188,7 +1194,9 @@ export default function AflosserDetailPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        const current = (aflosser.diplomas || []).filter((d: string) => DIPLOMA_OPTIONS.includes(d))
+                        const current = (aflosser.diplomas || []).filter((d: string) =>
+                          DIPLOMA_OPTIONS.includes(d)
+                        )
                         setEditedDiplomas(current)
                         setIsEditingDiplomas(true)
                       }}
@@ -1209,7 +1217,9 @@ export default function AflosserDetailPage() {
                           size="sm"
                           variant={editedDiplomas.includes(d) ? 'default' : 'outline'}
                           onClick={() => {
-                            setEditedDiplomas((prev) => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+                            setEditedDiplomas((prev = []) =>
+                              prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]
+                            )
                           }}
                         >
                           {d}
@@ -1221,7 +1231,9 @@ export default function AflosserDetailPage() {
                         size="sm"
                         onClick={async () => {
                           try {
-                            const toSave = editedDiplomas.filter((d) => DIPLOMA_OPTIONS.includes(d))
+                            const toSave = (editedDiplomas || []).filter((d) =>
+                              DIPLOMA_OPTIONS.includes(d)
+                            )
                             await updateCrew(aflosser.id, { diplomas: toSave })
                             setIsEditingDiplomas(false)
                           } catch (e) {
@@ -1266,7 +1278,7 @@ export default function AflosserDetailPage() {
               {(() => {
                 // Filter out startsaldo notes
                 const parsedNotes = parseNotes(aflosser.notes)
-                const filteredNotes = parsedNotes.filter((note: any) => {
+                const filteredNotes = (parsedNotes || []).filter((note: any) => {
                   const noteText = typeof note === 'string' ? note : note?.text || ''
                   return !noteText.toLowerCase().includes('startsaldo')
                 })
@@ -1854,19 +1866,21 @@ export default function AflosserDetailPage() {
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Voltooide reizen:</span>
               <span className="font-medium">
-                {assignmentHistory.filter((trip: any) => trip.status === 'voltooid').length}
+                {(assignmentHistory || []).filter((trip: any) => trip.status === 'voltooid').length}
               </span>
     </div>
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Actieve reizen:</span>
               <span className="font-medium">
-                {assignmentHistory.filter((trip: any) => trip.status === 'actief').length}
+                {(assignmentHistory || []).filter((trip: any) => trip.status === 'actief').length}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-gray-600">Geplande reizen:</span>
               <span className="font-medium">
-                {assignmentHistory.filter((trip: any) => trip.status === 'gepland' || trip.status === 'ingedeeld').length}
+                {(assignmentHistory || []).filter(
+                  (trip: any) => trip.status === 'gepland' || trip.status === 'ingedeeld'
+                ).length}
               </span>
             </div>
             <div className="flex justify-between border-t pt-2">
@@ -1874,7 +1888,7 @@ export default function AflosserDetailPage() {
               <span className="font-medium text-blue-600">
                 {(() => {
                   // Calculate total work days from all completed trips using the same logic as the trip cards
-                  const completedTrips = assignmentHistory.filter((trip: any) => 
+                  const completedTrips = (assignmentHistory || []).filter((trip: any) => 
                     trip.status === 'voltooid' && 
                     trip.start_datum && 
                     trip.eind_datum && 
