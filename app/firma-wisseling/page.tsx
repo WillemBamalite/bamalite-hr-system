@@ -30,6 +30,23 @@ const RANK_ORDER: Record<string, number> = {
   'deksman': 7,
 }
 
+const PRINT_TRANSLATIONS = {
+  nl: {
+    titlePrefix: 'Firma overzicht -',
+    description: 'Overzicht van alle bemanningsleden bij deze firma.',
+    totalLabel: 'Totaal',
+    crewSingular: 'bemanningslid',
+    crewPlural: 'bemanningsleden',
+  },
+  de: {
+    titlePrefix: 'Firmenübersicht -',
+    description: 'Übersicht aller Besatzungsmitglieder dieser Firma.',
+    totalLabel: 'Gesamt',
+    crewSingular: 'Besatzungsmitglied',
+    crewPlural: 'Besatzungsmitglieder',
+  },
+} as const
+
 function sortByRankAndName(a: any, b: any) {
   const posA = (a.position || '').toString().toLowerCase()
   const posB = (b.position || '').toString().toLowerCase()
@@ -46,6 +63,7 @@ function sortByRankAndName(a: any, b: any) {
 export default function FirmaWisselingPage() {
   const { crew, ships, loading } = useSupabaseData()
   const [activeTab, setActiveTab] = useState(COMPANIES[0].id)
+  const [printLanguage, setPrintLanguage] = useState<'nl' | 'de'>('nl')
 
   // Filter crew per firma
   const getCrewByCompany = (companyName: string) => {
@@ -71,6 +89,7 @@ export default function FirmaWisselingPage() {
 
   const activeCompany = COMPANIES.find((c) => c.id === activeTab) || COMPANIES[0]
   const activeCompanyCrew = getCrewByCompany(activeCompany.name)
+  const t = PRINT_TRANSLATIONS[printLanguage]
 
   if (loading) {
     return (
@@ -144,26 +163,55 @@ export default function FirmaWisselingPage() {
           <h1 className="text-3xl font-bold text-gray-900">Firma Wisseling</h1>
           <p className="text-gray-600">Overzicht van bemanningsleden per firma</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (activeCompanyCrew.length === 0) {
-                alert('Er zijn geen bemanningsleden bij deze firma om te printen.')
-                return
-              }
-              window.print()
-            }}
-          >
-            <Printer className="w-4 h-4 mr-2" />
-            Print firma ({activeCompanyCrew.length})
-          </Button>
-          <Link href="/firma-wisseling/wisseling">
-            <Button className="bg-blue-600 hover:bg-blue-700">
-              <UserPlus className="w-4 h-4 mr-2" />
-              Wisseling van Firma
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm text-gray-700">
+            <span className="font-medium">Taal printversie:</span>
+            <div className="inline-flex rounded-md border border-gray-300 bg-white p-0.5">
+              <button
+                type="button"
+                onClick={() => setPrintLanguage('nl')}
+                className={`px-2 py-1 text-xs font-medium rounded-sm ${
+                  printLanguage === 'nl'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                NL
+              </button>
+              <button
+                type="button"
+                onClick={() => setPrintLanguage('de')}
+                className={`px-2 py-1 text-xs font-medium rounded-sm ${
+                  printLanguage === 'de'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                DE
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (activeCompanyCrew.length === 0) {
+                  alert('Er zijn geen bemanningsleden bij deze firma om te printen.')
+                  return
+                }
+                window.print()
+              }}
+            >
+              <Printer className="w-4 h-4 mr-2" />
+              Print firma ({activeCompanyCrew.length})
             </Button>
-          </Link>
+            <Link href="/firma-wisseling/wisseling">
+              <Button className="bg-blue-600 hover:bg-blue-700">
+                <UserPlus className="w-4 h-4 mr-2" />
+                Wisseling van Firma
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -261,13 +309,14 @@ export default function FirmaWisselingPage() {
         {/* Inhoudsopgave */}
         <div className="firma-print-toc-page">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Firma overzicht - {activeCompany.name}
+            {t.titlePrefix} {activeCompany.name}
           </h1>
           <p className="text-gray-700 mb-4">
-            Overzicht van alle bemanningsleden bij deze firma.
+            {t.description}
           </p>
           <p className="text-sm text-gray-500 mb-6">
-            Totaal: {activeCompanyCrew.length} bemanningslid{activeCompanyCrew.length === 1 ? '' : 'en'}
+            {t.totalLabel}: {activeCompanyCrew.length}{' '}
+            {activeCompanyCrew.length === 1 ? t.crewSingular : t.crewPlural}
           </p>
           <ol className="space-y-1 text-sm">
             {activeCompanyCrew.map((member: any, index: number) => (
@@ -287,7 +336,7 @@ export default function FirmaWisselingPage() {
             <CrewMemberPrint
               key={member.id}
               crewMemberId={member.id}
-              language="nl"
+              language={printLanguage}
               variant="firma"
             />
           ))}
