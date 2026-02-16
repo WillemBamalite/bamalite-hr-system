@@ -321,7 +321,9 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
         color: formData.color || '#3b82f6'
       }
 
-      if (editingItem) {
+      const isEdit = !!editingItem
+
+      if (isEdit) {
         const { error } = await supabase
           .from('agenda_items')
           .update(itemData)
@@ -334,6 +336,20 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
           .insert([itemData])
         
         if (error) throw error
+
+        // Nieuwe afspraak: stuur optioneel een agenda-uitnodiging per e-mail
+        if (formData.voor_wie && formData.voor_wie !== 'Algemeen') {
+          try {
+            await fetch('/api/agenda-send-invite', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(itemData)
+            })
+          } catch (inviteError) {
+            console.error('Error sending agenda invite email:', inviteError)
+            // Geen alert: het agendapunt zelf is wel opgeslagen
+          }
+        }
       }
 
       setShowAddDialog(false)
