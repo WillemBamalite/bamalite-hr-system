@@ -529,11 +529,38 @@ export default function AflosserDetailPage() {
       return
     }
 
+    // Format dates to ISO format (YYYY-MM-DD) for Supabase
+    const formatDateForSupabase = (dateStr: string): string => {
+      if (!dateStr) return ''
+      // If already in ISO format, return as is
+      if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+        return dateStr
+      }
+      // If in DD-MM-YYYY format, convert to YYYY-MM-DD
+      if (/^\d{2}-\d{2}-\d{4}/.test(dateStr)) {
+        const [day, month, year] = dateStr.split('-')
+        return `${year}-${month}-${day}`
+      }
+      // Try to parse as Date and format
+      try {
+        const date = new Date(dateStr)
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0]
+        }
+      } catch (e) {
+        console.error('Error parsing date:', dateStr, e)
+      }
+      return dateStr
+    }
+
     try {
+      const formattedStartDate = formatDateForSupabase(newMindag.start_date)
+      const formattedEndDate = newMindag.end_date ? formatDateForSupabase(newMindag.end_date) : null
+
       await addVasteDienstMindag({
         aflosser_id: aflosser.id,
-        start_date: newMindag.start_date,
-        end_date: newMindag.end_date || null,
+        start_date: formattedStartDate,
+        end_date: formattedEndDate,
         days: parsedDays,
         reason: newMindag.reason || null
       })
@@ -548,11 +575,12 @@ export default function AflosserDetailPage() {
         reason: ""
       })
       setMindagenDialogOpen(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding mindagen:", error)
+      const errorMessage = error?.message || error?.error?.message || "Mindagen konden niet worden opgeslagen"
       toast({
         title: "Fout",
-        description: "Mindagen konden niet worden opgeslagen",
+        description: errorMessage,
         variant: "destructive"
       })
     }

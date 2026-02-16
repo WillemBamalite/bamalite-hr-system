@@ -904,6 +904,7 @@ export function useSupabaseData() {
   const [loans, setLoans] = useState<any[]>([])
   const [trips, setTrips] = useState<any[]>([])
   const [vasteDienstRecords, setVasteDienstRecords] = useState<any[]>([])
+  const [vasteDienstMindagen, setVasteDienstMindagen] = useState<any[]>([])
   const [tasks, setTasks] = useState<any[]>([])
   const [incidents, setIncidents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -1064,6 +1065,21 @@ export function useSupabaseData() {
               // Auto-manage vaste dienst records after loading all data
               console.log('🔧 Auto-managing vaste dienst records...')
               await autoManageVasteDienstRecords(crewData || [], vasteDienstData || [], tripsData || [])
+            }
+
+            // Load vaste dienst mindagen (handmatige extra mindagen)
+            console.log('Loading vaste dienst mindagen...')
+            const { data: vasteDienstMindagenData, error: vasteDienstMindagenError } = await supabase
+              .from('vaste_dienst_mindagen')
+              .select('*')
+              .order('start_date', { ascending: false })
+
+            if (vasteDienstMindagenError) {
+              console.error('Error loading vaste dienst mindagen:', vasteDienstMindagenError)
+              setVasteDienstMindagen([])
+            } else {
+              console.log('Vaste dienst mindagen loaded:', vasteDienstMindagenData?.length || 0)
+              setVasteDienstMindagen(vasteDienstMindagenData || [])
             }
 
       // Load tasks
@@ -1800,6 +1816,104 @@ export function useSupabaseData() {
     }
   }
 
+  const addVasteDienstMindag = async (entryData: any) => {
+    try {
+      console.log('Adding vaste dienst mindagen entry:', entryData)
+
+      // Validate required fields
+      const requiredFields = ['aflosser_id', 'start_date', 'days']
+      const missingFields = requiredFields.filter(
+        (field) => entryData[field] === undefined || entryData[field] === null || entryData[field] === ''
+      )
+
+      if (missingFields.length > 0) {
+        const error = new Error(`Missing required fields for mindagen: ${missingFields.join(', ')}`)
+        console.error('Validation error:', error)
+        throw error
+      }
+
+      // Ensure dates are in correct format (YYYY-MM-DD)
+      const formatDateForSupabase = (dateStr: string | null): string | null => {
+        if (!dateStr) return null
+        // If already in ISO format, return as is
+        if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+          return dateStr
+        }
+        // If in DD-MM-YYYY format, convert to YYYY-MM-DD
+        if (/^\d{2}-\d{2}-\d{4}/.test(dateStr)) {
+          const [day, month, year] = dateStr.split('-')
+          return `${year}-${month}-${day}`
+        }
+        // Try to parse as Date and format
+        try {
+          const date = new Date(dateStr)
+          if (!isNaN(date.getTime())) {
+            return date.toISOString().split('T')[0]
+          }
+        } catch (e) {
+          console.error('Error parsing date:', dateStr, e)
+        }
+        return dateStr
+      }
+
+      const formattedEntryData = {
+        ...entryData,
+        start_date: formatDateForSupabase(entryData.start_date),
+        end_date: formatDateForSupabase(entryData.end_date)
+      }
+
+      const { data, error } = await supabase
+        .from('vaste_dienst_mindagen')
+        .insert([formattedEntryData])
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Supabase error adding vaste dienst mindagen entry:', error)
+        // Create a more user-friendly error message
+        const errorMessage = error.message || error.details || 'Onbekende fout bij toevoegen van mindagen'
+        const friendlyError = new Error(errorMessage)
+        ;(friendlyError as any).originalError = error
+        throw friendlyError
+      }
+
+      console.log('Vaste dienst mindagen entry added successfully:', data)
+      await loadData() // Reload all data
+      return data
+    } catch (err: any) {
+      console.error('Error adding vaste dienst mindagen entry:', err)
+      // Re-throw with better error message if it's already a friendly error
+      if (err.message && !err.originalError) {
+        throw err
+      }
+      // Otherwise wrap in a more user-friendly error
+      const errorMessage = err?.message || err?.error?.message || 'Onbekende fout bij toevoegen van mindagen'
+      throw new Error(errorMessage)
+    }
+  }
+
+  const deleteVasteDienstMindag = async (entryId: string) => {
+    try {
+      console.log('Deleting vaste dienst mindagen entry:', entryId)
+
+      const { error } = await supabase
+        .from('vaste_dienst_mindagen')
+        .delete()
+        .eq('id', entryId)
+
+      if (error) {
+        console.error('Error deleting vaste dienst mindagen entry:', error)
+        throw error
+      }
+
+      console.log('Vaste dienst mindagen entry deleted successfully')
+      await loadData() // Reload all data
+    } catch (err) {
+      console.error('Error deleting vaste dienst mindagen entry:', err)
+      throw err
+    }
+  }
+
   const deleteVasteDienstRecord = async (recordId: string) => {
     try {
       console.log('Deleting vaste dienst record:', recordId)
@@ -1848,6 +1962,7 @@ export function useSupabaseData() {
     try {
       // First delete all related records
       await supabase.from('vaste_dienst_records').delete().eq('aflosser_id', aflosserId)
+      await supabase.from('vaste_dienst_mindagen').delete().eq('aflosser_id', aflosserId)
       await supabase.from('trips').delete().eq('aflosser_id', aflosserId)
       
       // Then delete the aflosser
@@ -2225,9 +2340,12 @@ export function useSupabaseData() {
     deleteTrip,
     deleteAflosser,
     vasteDienstRecords,
+    vasteDienstMindagen,
     addVasteDienstRecord,
     updateVasteDienstRecord,
     deleteVasteDienstRecord,
+    addVasteDienstMindag,
+    deleteVasteDienstMindag,
     addNoteToCrew,
     removeNoteFromCrew,
     deleteArchivedNote,
