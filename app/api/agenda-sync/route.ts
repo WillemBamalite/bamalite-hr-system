@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { ImapFlow } from 'imapflow'
-import { simpleParser } from 'mailparser'
-import * as ical from 'node-ical'
 
 // Zorg dat deze route altijd op de server runt
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs' // Force Node.js runtime (not edge)
 
 type AgendaItemInsert = {
   title: string
@@ -33,28 +31,12 @@ function getGmailCredentials() {
   return { user, pass }
 }
 
-function createImapConnection() {
-  const { user, pass } = getGmailCredentials()
-
-  const host = process.env.CALENDAR_SYNC_IMAP_HOST || 'imap.gmail.com'
-  const port = Number(process.env.CALENDAR_SYNC_IMAP_PORT || '993')
-
-  return new ImapFlow({
-    host,
-    port,
-    secure: true,
-    auth: {
-      user,
-      pass,
-    },
-    logger: false, // Disable verbose logging
-  })
-}
-
 async function parseIcsToAgendaItems(
   icsContent: Buffer,
   voorWie: string | null
 ): Promise<AgendaItemInsert[]> {
+  // Lazy load node-ical only when needed
+  const ical = await import('node-ical')
   const text = icsContent.toString('utf8')
   const events = ical.sync.parseICS(text)
 
@@ -124,7 +106,25 @@ async function processUnseenCalendarEmails(): Promise<{
   created: number
   skippedDuplicates: number
 }> {
-  const client = createImapConnection()
+  // Lazy load dependencies only when route is called (not during build)
+  const { ImapFlow } = await import('imapflow')
+  const { simpleParser } = await import('mailparser')
+
+  const { user, pass } = getGmailCredentials()
+  const host = process.env.CALENDAR_SYNC_IMAP_HOST || 'imap.gmail.com'
+  const port = Number(process.env.CALENDAR_SYNC_IMAP_PORT || '993')
+
+  const client = new ImapFlow({
+    host,
+    port,
+    secure: true,
+    auth: {
+      user,
+      pass,
+    },
+    logger: false, // Disable verbose logging
+  })
+
   let processed = 0
   let created = 0
   let skippedDuplicates = 0
