@@ -44,7 +44,10 @@ async function parseIcsToAgendaItems(
 
   for (const key of Object.keys(events)) {
     const ev: any = (events as any)[key]
-    if (!ev || ev.type !== 'VEVENT') continue
+
+    // Sommige ICS-bestanden hebben geen expliciete type === 'VEVENT',
+    // daarom checken we vooral op het bestaan van een start-datum.
+    if (!ev || !ev.start) continue
 
     const start: Date | undefined = ev.start
     const end: Date | undefined = ev.end
