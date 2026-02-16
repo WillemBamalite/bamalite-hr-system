@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import Imap from 'imap'
+import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
 import * as ical from 'node-ical'
 
@@ -39,21 +39,15 @@ function createImapConnection() {
   const host = process.env.CALENDAR_SYNC_IMAP_HOST || 'imap.gmail.com'
   const port = Number(process.env.CALENDAR_SYNC_IMAP_PORT || '993')
 
-  return new Imap({
-    user,
-    password: pass,
+  return new ImapFlow({
     host,
     port,
-    tls: true,
-  })
-}
-
-function openInbox(imap: Imap): Promise<Imap.Box> {
-  return new Promise((resolve, reject) => {
-    imap.openBox('INBOX', false, (err, box) => {
-      if (err || !box) return reject(err || new Error('Kon INBOX niet openen'))
-      resolve(box)
-    })
+    secure: true,
+    auth: {
+      user,
+      pass,
+    },
+    logger: false, // Disable verbose logging
   })
 }
 
@@ -130,136 +124,136 @@ async function processUnseenCalendarEmails(): Promise<{
   created: number
   skippedDuplicates: number
 }> {
-  const imap = createImapConnection()
+  const client = createImapConnection()
+  let processed = 0
+  let created = 0
+  let skippedDuplicates = 0
 
-  return new Promise((resolve, reject) => {
-    let processed = 0
-    let created = 0
-    let skippedDuplicates = 0
+  try {
+    await client.connect()
 
-    imap.once('ready', () => {
-      openInbox(imap)
-        .then(() => {
-          // Zoek naar ongelezen berichten van de laatste 30 dagen
-          const sinceDate = new Date()
-          sinceDate.setDate(sinceDate.getDate() - 30)
-          const sinceStr = sinceDate.toDateString() // IMAP gebruikt bijv. "1-Feb-2025"
+    // Open INBOX
+    const lock = await client.getMailboxLock('INBOX')
+    try {
+      // Zoek naar ongelezen berichten van de laatste 30 dagen
+      const sinceDate = new Date()
+      sinceDate.setDate(sinceDate.getDate() - 30)
 
-          imap.search(['UNSEEN', ['SINCE', sinceStr]], (err, results) => {
-            if (err) {
-              return reject(err)
-            }
+      // Search for unseen messages since the date
+      const messages = await client.search({
+        seen: false,
+        since: sinceDate,
+      })
 
-            if (!results || results.length === 0) {
-              imap.end()
-              return resolve({ processed: 0, created: 0, skippedDuplicates: 0 })
-            }
+      if (!messages || messages.length === 0) {
+        return { processed: 0, created: 0, skippedDuplicates: 0 }
+      }
 
-            const f = imap.fetch(results, { bodies: '', struct: true, markSeen: true })
-
-            f.on('message', (msg, seqno) => {
-              let buffer = ''
-
-              msg.on('body', (stream) => {
-                stream.on('data', (chunk) => {
-                  buffer += chunk.toString('utf8')
-                })
-              })
-
-              msg.once('end', async () => {
-                processed += 1
-                try {
-                  const parsed = await simpleParser(buffer)
-
-                  const voorWie = detectVoorWieFromHeaders(parsed.headers)
-
-                  const icsAttachments =
-                    (parsed.attachments || []).filter(
-                      (att) =>
-                        att.contentType === 'text/calendar' ||
-                        (att.filename && att.filename.toLowerCase().endsWith('.ics'))
-                    ) || []
-
-                  if (!icsAttachments.length) {
-                    return
-                  }
-
-                  for (const att of icsAttachments) {
-                    const items = await parseIcsToAgendaItems(att.content, voorWie)
-
-                    for (const item of items) {
-                      // Duplicaten voorkomen: zelfde titel + datum + voor_wie
-                      const { data: existing, error: existingError } = await supabase
-                        .from('agenda_items')
-                        .select('id')
-                        .eq('title', item.title)
-                        .eq('date', item.date)
-                        .eq('voor_wie', item.voor_wie)
-                        .limit(1)
-                        .maybeSingle()
-
-                      if (existingError) {
-                        console.error('Error checking existing agenda item:', existingError)
-                        continue
-                      }
-
-                      if (existing) {
-                        skippedDuplicates += 1
-                        continue
-                      }
-
-                      const { error: insertError } = await supabase
-                        .from('agenda_items')
-                        .insert([
-                          {
-                            title: item.title,
-                            description: item.description,
-                            date: item.date,
-                            end_date: item.end_date || null,
-                            time: item.time,
-                            voor_wie: item.voor_wie,
-                            color: item.color || '#3b82f6',
-                          },
-                        ])
-
-                      if (insertError) {
-                        console.error('Error inserting agenda item from ICS:', insertError)
-                        continue
-                      }
-
-                      created += 1
-                    }
-                  }
-                } catch (e) {
-                  console.error('Error processing calendar email:', e)
-                }
-              })
-            })
-
-            f.once('error', (fetchErr) => {
-              reject(fetchErr)
-            })
-
-            f.once('end', () => {
-              imap.end()
-            })
+      // Fetch messages
+      for (const seq of messages) {
+        try {
+          const message = await client.fetchOne(seq, {
+            source: true,
+            envelope: true,
           })
-        })
-        .catch((openErr) => {
-          reject(openErr)
-        })
-    })
 
-    imap.once('error', (err) => {
-      reject(err)
-    })
+          if (!message || !message.source) {
+            continue
+          }
 
-    imap.once('end', () => {
-      resolve({ processed, created, skippedDuplicates })
-    })
+          processed += 1
 
-    imap.connect()
-  })
+          // Parse email
+          const parsed = await simpleParser(message.source)
+
+          const voorWie = detectVoorWieFromHeaders(parsed.headers)
+
+          // Find ICS attachments
+          const icsAttachments =
+            (parsed.attachments || []).filter(
+              (att) =>
+                att.contentType === 'text/calendar' ||
+                (att.filename && att.filename.toLowerCase().endsWith('.ics'))
+            ) || []
+
+          if (!icsAttachments.length) {
+            continue
+          }
+
+          // Process each ICS attachment
+          for (const att of icsAttachments) {
+            const items = await parseIcsToAgendaItems(att.content, voorWie)
+
+            for (const item of items) {
+              // Duplicaten voorkomen: zelfde titel + datum + voor_wie
+              const { data: existing, error: existingError } = await supabase
+                .from('agenda_items')
+                .select('id')
+                .eq('title', item.title)
+                .eq('date', item.date)
+                .eq('voor_wie', item.voor_wie)
+                .limit(1)
+                .maybeSingle()
+
+              if (existingError) {
+                console.error('Error checking existing agenda item:', existingError)
+                continue
+              }
+
+              if (existing) {
+                skippedDuplicates += 1
+                continue
+              }
+
+              const { error: insertError } = await supabase
+                .from('agenda_items')
+                .insert([
+                  {
+                    title: item.title,
+                    description: item.description,
+                    date: item.date,
+                    end_date: item.end_date || null,
+                    time: item.time,
+                    voor_wie: item.voor_wie,
+                    color: item.color || '#3b82f6',
+                  },
+                ])
+
+              if (insertError) {
+                console.error('Error inserting agenda item from ICS:', insertError)
+                continue
+              }
+
+              created += 1
+            }
+          }
+
+          // Mark message as seen
+          await client.messageFlagsAdd(seq, ['\\Seen'])
+        } catch (msgError) {
+          console.error('Error processing message:', msgError)
+        }
+      }
+    } finally {
+      lock.release()
+    }
+
+    await client.logout()
+  } catch (error) {
+    console.error('IMAP connection error:', error)
+    throw error
+  } finally {
+    // Ensure connection is closed
+    try {
+      if (client && !client.socket.destroyed) {
+        await client.logout()
+      }
+    } catch (e) {
+      // Ignore logout errors
+    }
+  }
+
+  return { processed, created, skippedDuplicates }
 }
 
 export async function GET(_req: NextRequest) {
@@ -285,4 +279,3 @@ export async function GET(_req: NextRequest) {
     )
   }
 }
-
