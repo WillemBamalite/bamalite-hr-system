@@ -105,6 +105,8 @@ async function processUnseenCalendarEmails(): Promise<{
   processed: number
   created: number
   skippedDuplicates: number
+  messagesWithIcs: number
+  totalIcsEvents: number
 }> {
   // Lazy load dependencies only when route is called (not during build)
   const { ImapFlow } = await import('imapflow')
@@ -128,6 +130,8 @@ async function processUnseenCalendarEmails(): Promise<{
   let processed = 0
   let created = 0
   let skippedDuplicates = 0
+  let messagesWithIcs = 0
+  let totalIcsEvents = 0
 
   try {
     await client.connect()
@@ -144,7 +148,7 @@ async function processUnseenCalendarEmails(): Promise<{
       const messages = await client.search({ since: sinceDate })
 
       if (!messages || messages.length === 0) {
-        return { processed: 0, created: 0, skippedDuplicates: 0 }
+        return { processed: 0, created: 0, skippedDuplicates: 0, messagesWithIcs: 0, totalIcsEvents: 0 }
       }
 
       // Fetch messages
@@ -166,21 +170,24 @@ async function processUnseenCalendarEmails(): Promise<{
 
           const voorWie = detectVoorWieFromHeaders(parsed.headers)
 
-          // Find ICS attachments
+          // Find ICS attachments (ruime check op calendar/ics)
           const icsAttachments =
-            (parsed.attachments || []).filter(
-              (att) =>
-                att.contentType === 'text/calendar' ||
-                (att.filename && att.filename.toLowerCase().endsWith('.ics'))
-            ) || []
+            (parsed.attachments || []).filter((att) => {
+              const ct = (att.contentType || '').toLowerCase()
+              const fn = (att.filename || '').toLowerCase()
+              return ct.includes('calendar') || fn.endsWith('.ics')
+            }) || []
 
           if (!icsAttachments.length) {
             continue
           }
 
+          messagesWithIcs += 1
+
           // Process each ICS attachment
           for (const att of icsAttachments) {
             const items = await parseIcsToAgendaItems(att.content, voorWie)
+            totalIcsEvents += items.length
 
             for (const item of items) {
               // Duplicaten voorkomen: zelfde titel + datum + voor_wie
@@ -251,7 +258,7 @@ async function processUnseenCalendarEmails(): Promise<{
     }
   }
 
-  return { processed, created, skippedDuplicates }
+  return { processed, created, skippedDuplicates, messagesWithIcs, totalIcsEvents }
 }
 
 export async function GET(_req: NextRequest) {
