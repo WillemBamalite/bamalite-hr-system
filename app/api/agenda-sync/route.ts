@@ -35,41 +35,107 @@ async function parseIcsToAgendaItems(
   icsContent: Buffer,
   voorWie: string | null
 ): Promise<AgendaItemInsert[]> {
-  // Lazy load node-ical only when needed
-  const ical = await import('node-ical')
+  // Eenvoudige, robuuste parser die direct de tekstregels van de ICS leest.
+  // We vertrouwen niet op externe libs omdat Outlook/Google soms net andere
+  // varianten sturen.
   const text = icsContent.toString('utf8')
-  const events = ical.sync.parseICS(text)
+
+  // Regels normaliseren en continuation lines samenvoegen
+  const rawLines = text.split(/\r?\n/)
+  const lines: string[] = []
+  for (const line of rawLines) {
+    if ((line.startsWith(' ') || line.startsWith('\t')) && lines.length > 0) {
+      // Vervolgregel van vorige property
+      lines[lines.length - 1] += line.slice(1)
+    } else {
+      lines.push(line)
+    }
+  }
+
+  // VEVENT-blokken vinden
+  const blocks: string[][] = []
+  let current: string[] | null = null
+
+  for (const line of lines) {
+    if (line.startsWith('BEGIN:VEVENT')) {
+      if (current) blocks.push(current)
+      current = [line]
+    } else if (line.startsWith('END:VEVENT')) {
+      if (current) {
+        current.push(line)
+        blocks.push(current)
+        current = null
+      }
+    } else if (current) {
+      current.push(line)
+    }
+  }
+
+  if (!blocks.length) {
+    // Geen expliciete VEVENT-blokken; gebruik het hele bestand als één blok
+    blocks.push(lines)
+  }
+
+  const getProp = (block: string[], name: string): string | null => {
+    const prefix = name.toUpperCase()
+    for (const line of block) {
+      const upper = line.toUpperCase()
+      if (upper.startsWith(prefix)) {
+        const idx = line.indexOf(':')
+        if (idx !== -1) {
+          return line.slice(idx + 1).trim()
+        }
+      }
+    }
+    return null
+  }
+
+  const parseDateTime = (
+    value: string
+  ): { dateStr: string; timeStr: string | null } | null => {
+    if (!value) return null
+    let v = value.trim()
+    // Tijdzone-suffix Z negeren voor datum/tijd weergave
+    if (v.endsWith('Z')) v = v.slice(0, -1)
+
+    // Verwachte formaten: YYYYMMDD of YYYYMMDDTHHMMSS
+    if (v.length < 8) return null
+    const year = parseInt(v.slice(0, 4), 10)
+    const month = parseInt(v.slice(4, 6), 10)
+    const day = parseInt(v.slice(6, 8), 10)
+    if (!year || !month || !day) return null
+
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+
+    let timeStr: string | null = null
+    const tIndex = v.indexOf('T')
+    if (tIndex >= 0 && v.length >= tIndex + 5) {
+      const hour = parseInt(v.slice(tIndex + 1, tIndex + 3), 10) || 0
+      const minute = parseInt(v.slice(tIndex + 3, tIndex + 5), 10) || 0
+      timeStr = `${pad(hour)}:${pad(minute)}`
+    }
+
+    return { dateStr, timeStr }
+  }
 
   const items: AgendaItemInsert[] = []
 
-  for (const key of Object.keys(events)) {
-    const ev: any = (events as any)[key]
+  for (const block of blocks) {
+    const dtStartRaw = getProp(block, 'DTSTART')
+    if (!dtStartRaw) continue
 
-    // Sommige ICS-bestanden hebben geen expliciete type === 'VEVENT',
-    // daarom checken we vooral op het bestaan van een start-datum.
-    if (!ev || !ev.start) continue
+    const parsed = parseDateTime(dtStartRaw)
+    if (!parsed) continue
 
-    const start: Date | undefined = ev.start
-    const end: Date | undefined = ev.end
-    const summary: string = ev.summary || 'Agenda item'
-    const description: string | undefined = ev.description
-    const location: string | undefined = ev.location
+    const dtEndRaw = getProp(block, 'DTEND')
+    const parsedEnd = dtEndRaw ? parseDateTime(dtEndRaw) : null
 
-    if (!start || !(start instanceof Date) || isNaN(start.getTime())) {
-      continue
-    }
-
-    const startDateStr = start.toISOString().split('T')[0] // yyyy-MM-dd
-    const endDateStr =
-      end && end instanceof Date && !isNaN(end.getTime())
-        ? end.toISOString().split('T')[0]
-        : null
-
-    // Tijd als HH:mm (locale onafhankelijk)
-    const timeStr =
-      start instanceof Date && !isNaN(start.getTime())
-        ? start.toTimeString().slice(0, 5)
-        : null
+    const summary =
+      getProp(block, 'SUMMARY') ||
+      'Agenda item (uit e-mail uitnodiging)'
+    const description = getProp(block, 'DESCRIPTION')
+    const location = getProp(block, 'LOCATION')
 
     let fullDescription = description || ''
     if (location) {
@@ -81,9 +147,9 @@ async function parseIcsToAgendaItems(
     items.push({
       title: summary,
       description: fullDescription || null,
-      date: startDateStr,
-      end_date: endDateStr,
-      time: timeStr,
+      date: parsed.dateStr,
+      end_date: parsedEnd ? parsedEnd.dateStr : null,
+      time: parsed.timeStr,
       voor_wie: voorWie,
       color: '#3b82f6',
     })
