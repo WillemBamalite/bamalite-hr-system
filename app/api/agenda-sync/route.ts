@@ -139,11 +139,9 @@ async function processUnseenCalendarEmails(): Promise<{
       const sinceDate = new Date()
       sinceDate.setDate(sinceDate.getDate() - 30)
 
-      // Search for unseen messages since the date
-      const messages = await client.search({
-        seen: false,
-        since: sinceDate,
-      })
+      // Search for messages since the date (ook gelezen berichten)
+      // We filter later op ICS-bijlagen en voorkomen duplicaten in de database
+      const messages = await client.search({ since: sinceDate })
 
       if (!messages || messages.length === 0) {
         return { processed: 0, created: 0, skippedDuplicates: 0 }
