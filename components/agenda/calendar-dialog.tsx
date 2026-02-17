@@ -371,6 +371,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
       setFormData({
         title: '',
         description: '',
+        location: '',
         date: format(selectedDate || new Date(), 'yyyy-MM-dd'),
         end_date: '',
         time: '',
@@ -830,6 +831,15 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                     <SelectItem value="Bart">Bart</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="location">Locatie (optioneel)</Label>
+                <Input
+                  id="location"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="bijv. kantoor Dordrecht, MS Example, Teams"
+                />
               </div>
               <div>
                 <Label htmlFor="extra_emails">Extra e-mailadressen (optioneel)</Label>
