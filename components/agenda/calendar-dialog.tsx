@@ -69,6 +69,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
     end_date: '',
     time: '',
     voor_wie: '',
+    extra_emails: '',
     color: '#3b82f6'
   })
 
@@ -338,12 +339,15 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
         if (error) throw error
 
         // Nieuwe afspraak: stuur optioneel een agenda-uitnodiging per e-mail
-        if (formData.voor_wie && formData.voor_wie !== 'Algemeen') {
+        if ((formData.voor_wie && formData.voor_wie !== 'Algemeen') || (formData.extra_emails && formData.extra_emails.trim() !== '')) {
           try {
             await fetch('/api/agenda-send-invite', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(itemData)
+              body: JSON.stringify({
+                ...itemData,
+                extra_emails: formData.extra_emails || null,
+              })
             })
           } catch (inviteError) {
             console.error('Error sending agenda invite email:', inviteError)
@@ -361,6 +365,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
         end_date: '',
         time: '',
         voor_wie: '',
+        extra_emails: '',
         color: '#3b82f6'
       })
       await loadAgendaItems()
@@ -396,6 +401,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
       end_date: item.end_date || '',
       time: item.time || '',
       voor_wie: item.voor_wie || '',
+      extra_emails: '',
       color: item.color || '#3b82f6'
     })
     setShowAddDialog(true)
@@ -804,6 +810,18 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                     <SelectItem value="Bart">Bart</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="extra_emails">Extra e-mailadressen (optioneel)</Label>
+                <Input
+                  id="extra_emails"
+                  value={formData.extra_emails}
+                  onChange={(e) => setFormData({ ...formData, extra_emails: e.target.value })}
+                  placeholder="bijv. klant@bedrijf.nl, planner@bedrijf.nl"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Meerdere adressen scheiden met komma, spatie of enter.
+                </p>
               </div>
               <div>
                 <Label htmlFor="description">Beschrijving (optioneel)</Label>

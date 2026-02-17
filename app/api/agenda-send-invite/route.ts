@@ -11,6 +11,7 @@ type AgendaInvitePayload = {
   end_date?: string | null
   time?: string | null // HH:mm
   voor_wie?: string | null
+  extra_emails?: string | null // comma/space separated
 }
 
 function getRecipients(voorWie?: string | null): string[] {
@@ -33,6 +34,30 @@ function getRecipients(voorWie?: string | null): string[] {
 
   const email = emailMap[key]
   return email ? [email] : []
+}
+
+function parseExtraEmails(input?: string | null): string[] {
+  if (!input) return []
+  const raw = input
+    .split(/[,;\n\r\t ]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  // Very lightweight validation; Outlook will reject obviously invalid addresses anyway
+  const valid = raw.filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  return valid
+}
+
+function uniqueEmails(emails: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const e of emails) {
+    const key = e.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(e)
+  }
+  return out
 }
 
 function buildDateTimeStrings(date: string, time?: string | null): {
@@ -119,7 +144,7 @@ function buildIcsContent(payload: AgendaInvitePayload, recipients: string[]): st
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as AgendaInvitePayload
-    const { title, description, date, time, voor_wie } = body
+    const { title, description, date, time, voor_wie, extra_emails } = body
 
     if (!title || !date) {
       return NextResponse.json(
@@ -128,7 +153,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const recipients = getRecipients(voor_wie)
+    const recipients = uniqueEmails([
+      ...getRecipients(voor_wie),
+      ...parseExtraEmails(extra_emails),
+    ])
     if (!recipients.length) {
       // Geen ontvangers (bijv. Algemeen of leeg) -> geen fout, gewoon niets doen
       return NextResponse.json(
