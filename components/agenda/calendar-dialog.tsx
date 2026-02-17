@@ -65,6 +65,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    location: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     end_date: '',
     time: '',
@@ -312,9 +313,18 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
     }
 
     try {
+      // Beschrijving + optionele locatie combineren
+      const baseDescription = formData.description || ''
+      const descriptionWithLocation =
+        formData.location && formData.location.trim() !== ''
+          ? (baseDescription
+              ? `${baseDescription}\nLocatie: ${formData.location.trim()}`
+              : `Locatie: ${formData.location.trim()}`)
+          : baseDescription
+
       const itemData = {
         title: formData.title,
-        description: formData.description || null,
+        description: descriptionWithLocation || null,
         date: formData.date,
         end_date: formData.end_date || null,
         time: formData.time || null,
@@ -397,6 +407,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
     setFormData({
       title: item.title,
       description: item.description || '',
+      location: '',
       date: item.date,
       end_date: item.end_date || '',
       time: item.time || '',
@@ -495,6 +506,15 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                     {day}
                   </div>
                 ))}
+              </div>
+              <div>
+                <Label htmlFor="location">Locatie (optioneel)</Label>
+                <Input
+                  id="location"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="bijv. kantoor Dordrecht, MS Example, Teams"
+                />
               </div>
 
               {/* Calendar days */}
