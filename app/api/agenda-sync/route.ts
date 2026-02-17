@@ -212,9 +212,12 @@ async function processUnseenCalendarEmails(): Promise<{
       const sinceDate = new Date()
       sinceDate.setDate(sinceDate.getDate() - 30)
 
-      // Search for messages since the date (ook gelezen berichten)
-      // We filter later op ICS-bijlagen en voorkomen duplicaten in de database
-      const messages = await client.search({ since: sinceDate })
+      // Search alleen ongelezen berichten sinds de datum
+      // (anders gaan we dezelfde invites steeds opnieuw verwerken in de cron)
+      const messages = await client.search({
+        seen: false,
+        since: sinceDate,
+      })
 
       if (!messages || messages.length === 0) {
         return { processed: 0, created: 0, skippedDuplicates: 0, messagesWithIcs: 0, totalIcsEvents: 0 }
@@ -260,12 +263,20 @@ async function processUnseenCalendarEmails(): Promise<{
 
             for (const item of items) {
               // Duplicaten voorkomen: zelfde titel + datum + voor_wie
-              const { data: existing, error: existingError } = await supabase
+              // Let op: voor_wie kan NULL zijn, dan moet je `.is(..., null)` gebruiken i.p.v. `.eq(..., null)`
+              let existingQuery = supabase
                 .from('agenda_items')
                 .select('id')
                 .eq('title', item.title)
                 .eq('date', item.date)
-                .eq('voor_wie', item.voor_wie)
+
+              if (item.voor_wie === null) {
+                existingQuery = existingQuery.is('voor_wie', null)
+              } else {
+                existingQuery = existingQuery.eq('voor_wie', item.voor_wie)
+              }
+
+              const { data: existing, error: existingError } = await existingQuery
                 .limit(1)
                 .maybeSingle()
 
