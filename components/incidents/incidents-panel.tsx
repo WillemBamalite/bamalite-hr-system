@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { AlertCircle, Plus, X, Edit, Ship as ShipIcon, User, AlertTriangle, Shield, Wrench, Users, CheckCircle2 } from "lucide-react"
+import { AlertCircle, Plus, X, Edit, Ship as ShipIcon, User, AlertTriangle, Shield, Wrench, Users, CheckCircle2, FileText } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
+import Link from "next/link"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -738,7 +739,8 @@ export function IncidentsPanel() {
                               onClick={() => handleResolve(incident.id)}
                               className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700"
                             >
-                              Oplossen
+                              <CheckCircle2 className="w-4 h-4" />
+                              Afronden
                             </Button>
                           </div>
                         </>
