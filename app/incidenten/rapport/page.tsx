@@ -238,6 +238,9 @@ export default function IncidentRapportWizardPage() {
     }
   }
 
+  const getAttachmentsForAction = (actionId: string) =>
+    attachments.filter((a) => a.linked_to_action_id === actionId)
+
   const generateIncidentNarrative = () => {
     if (!currentReport) return ""
 
@@ -4466,6 +4469,31 @@ export default function IncidentRapportWizardPage() {
                                           size="xs"
                                           onClick={(e) => {
                                             e.stopPropagation()
+                                            // Direct een nieuwe bijlage aan deze actie koppelen
+                                            resetAttachmentForm()
+                                            setActiveTab("bijlagen")
+                                            setAttachmentForm((f) => ({
+                                              ...f,
+                                              linkedToTimelineEventId: "",
+                                              linkedToFactId: "",
+                                              linkedToInterviewId: "",
+                                              linkedToActionId: a.id,
+                                              description: f.description
+                                                ? f.description
+                                                : `Bijlage bij actie: ${a.description.substring(
+                                                    0,
+                                                    80
+                                                  )}${a.description.length > 80 ? "..." : ""}`,
+                                            }))
+                                          }}
+                                        >
+                                          Bijlage
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          size="xs"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
                                             setAnalysisForm({
                                               id: a.id,
                                               analysisType: a.analysis_type,
@@ -5429,6 +5457,80 @@ export default function IncidentRapportWizardPage() {
                                 </div>
                               </div>
                             )}
+
+                            {(() => {
+                              const relatedAttachments = getAttachmentsForAction(
+                                selectedAction.id
+                              )
+                              if (!relatedAttachments.length) return null
+                              return (
+                                <div>
+                                  <div className="font-semibold text-xs text-gray-500">
+                                    Bijlagen bij deze actie
+                                  </div>
+                                  <div className="space-y-1 mt-1">
+                                    {relatedAttachments.map((att) => (
+                                      <div
+                                        key={att.id}
+                                        className="flex items-center justify-between gap-2 text-xs"
+                                      >
+                                        <div className="flex-1">
+                                          <div className="font-medium">
+                                            {att.file_name ||
+                                              att.description ||
+                                              "Bijlage"}
+                                          </div>
+                                          {att.description && (
+                                            <div className="text-gray-600">
+                                              {att.description}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <Button
+                                          variant="outline"
+                                          size="xs"
+                                          onClick={() =>
+                                            window.open(att.file_url, "_blank")
+                                          }
+                                        >
+                                          Openen
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })()}
+
+                            <div className="pt-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  resetAttachmentForm()
+                                  setActiveTab("bijlagen")
+                                  setAttachmentForm((f) => ({
+                                    ...f,
+                                    linkedToTimelineEventId: "",
+                                    linkedToFactId: "",
+                                    linkedToInterviewId: "",
+                                    linkedToActionId: selectedAction.id,
+                                    description: f.description
+                                      ? f.description
+                                      : `Bijlage bij actie: ${selectedAction.description.substring(
+                                          0,
+                                          80
+                                        )}${
+                                          selectedAction.description.length > 80
+                                            ? "..."
+                                            : ""
+                                        }`,
+                                  }))
+                                }}
+                              >
+                                Bijlage toevoegen aan deze actie
+                              </Button>
+                            </div>
                           </CardContent>
                         </Card>
                       )}

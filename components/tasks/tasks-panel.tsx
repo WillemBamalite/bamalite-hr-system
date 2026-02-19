@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag, Edit } from "lucide-react"
+import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag, Edit, Paperclip, Trash2 } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
 import { format, isPast, isToday, differenceInDays, startOfDay } from "date-fns"
@@ -75,6 +75,12 @@ export function TasksPanel() {
   const assignees = ["Nautic", "Leo", "Willem", "Jos", "Bart"] as const
   const [selectedAssignee, setSelectedAssignee] = useState<(typeof assignees)[number]>("Nautic")
 
+  // Bijlagen bij taken
+  const [taskAttachments, setTaskAttachments] = useState<any[]>([])
+  const [loadingTaskAttachments, setLoadingTaskAttachments] = useState(false)
+  const [uploadingAttachmentForTask, setUploadingAttachmentForTask] = useState<string | null>(null)
+  const [newTaskAttachmentFile, setNewTaskAttachmentFile] = useState<File | null>(null)
+
   // Hulp: bepaal assignee naam op basis van e-mail
   const resolveAssigneeFromEmail = (email: string | null | undefined): (typeof assignees)[number] | null => {
     if (!email) return null
@@ -107,6 +113,163 @@ export function TasksPanel() {
       return deadlineDate > today
     } catch {
       return false
+    }
+  }
+
+  // Task attachments laden
+  const loadTaskAttachments = async () => {
+    try {
+      setLoadingTaskAttachments(true)
+      const { data, error } = await supabase
+        .from("task_attachments")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("Error loading task attachments:", error)
+        setTaskAttachments([])
+      } else {
+        setTaskAttachments(data || [])
+      }
+    } catch (err) {
+      console.error("Unexpected error loading task attachments:", err)
+      setTaskAttachments([])
+    } finally {
+      setLoadingTaskAttachments(false)
+    }
+  }
+
+  useEffect(() => {
+    loadTaskAttachments()
+  }, [])
+
+  const getAttachmentsForTask = (taskId: string) =>
+    taskAttachments.filter((att) => String(att.task_id || "") === String(taskId || ""))
+
+  const handleUploadTaskAttachment = async (taskId: string, file: File | null) => {
+    if (!file) return
+    try {
+      setUploadingAttachmentForTask(taskId)
+
+      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const filePath = `${taskId}/${Date.now()}-${safeFileName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("task-attachments")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error("Storage upload fout (task-attachments):", uploadError)
+        alert(
+          `Fout bij uploaden bijlage: ${
+            uploadError.message || (uploadError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      if (!uploadData?.path) {
+        alert("Fout bij uploaden bijlage: geen pad teruggekregen van Storage")
+        return
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("task-attachments")
+        .getPublicUrl(uploadData.path)
+
+      const publicUrl = publicUrlData?.publicUrl
+      if (!publicUrl) {
+        alert("Fout bij uploaden bijlage: geen publieke URL gegenereerd")
+        return
+      }
+
+      const payload: any = {
+        task_id: taskId,
+        file_name: file.name,
+        storage_path: uploadData.path,
+        file_url: publicUrl,
+        file_size: file.size,
+        mime_type: file.type,
+      }
+
+      const { error: insertError } = await supabase.from("task_attachments").insert([payload])
+
+      if (insertError) {
+        console.error("Database insert fout (task_attachments):", insertError)
+        alert(
+          `Fout bij opslaan bijlage: ${
+            insertError.message || (insertError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      await loadTaskAttachments()
+    } catch (error: any) {
+      console.error("Onbekende fout bij uploaden taak-bijlage:", error)
+      alert(
+        `Fout bij uploaden bijlage: ${
+          error?.message || error?.error?.message || "Onbekende fout"
+        }`
+      )
+    } finally {
+      setUploadingAttachmentForTask(null)
+    }
+  }
+
+  const handleDeleteTaskAttachment = async (attachment: any) => {
+    if (
+      !confirm(
+        `Weet je zeker dat je deze bijlage wilt verwijderen?\n\n${attachment.file_name}`
+      )
+    ) {
+      return
+    }
+    try {
+      if (attachment.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from("task-attachments")
+          .remove([attachment.storage_path])
+
+        if (storageError) {
+          console.error("Fout bij verwijderen bestand uit Storage:", storageError)
+          alert(
+            `Fout bij verwijderen bestand uit Storage: ${
+              storageError.message ||
+              (storageError as any)?.error?.message ||
+              "Onbekende fout"
+            }`
+          )
+          // Ga wel door met DB delete, zodat de UI opschoont
+        }
+      }
+
+      const { error: dbError } = await supabase
+        .from("task_attachments")
+        .delete()
+        .eq("id", attachment.id)
+
+      if (dbError) {
+        console.error("Fout bij verwijderen bijlage uit database:", dbError)
+        alert(
+          `Fout bij verwijderen bijlage: ${
+            dbError.message || (dbError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      await loadTaskAttachments()
+    } catch (error: any) {
+      console.error("Onbekende fout bij verwijderen taak-bijlage:", error)
+      alert(
+        `Fout bij verwijderen bijlage: ${
+          error?.message || error?.error?.message || "Onbekende fout"
+        }`
+      )
     }
   }
 
@@ -172,6 +335,7 @@ export function TasksPanel() {
     setAddToAgenda(false)
     setIsEditing(false)
     setEditingTaskId("")
+    setNewTaskAttachmentFile(null)
   }
 
   const handleSubmit = async () => {
@@ -224,6 +388,8 @@ export function TasksPanel() {
         taskData.deadline = deadline
       }
 
+      let createdTaskId: string | null = null
+
       if (isEditing && editingTaskId) {
         // Update bestaande taak
         const updates: any = {
@@ -245,9 +411,16 @@ export function TasksPanel() {
           updates.related_crew_id = null
         }
         await updateTask(editingTaskId, updates)
+        createdTaskId = editingTaskId
       } else {
         // Nieuwe taak
-        await addTask(taskData)
+        const created = await addTask(taskData)
+        createdTaskId = created?.id || null
+      }
+
+      // Eventuele bijlage uit het formulier uploaden
+      if (newTaskAttachmentFile && createdTaskId) {
+        await handleUploadTaskAttachment(createdTaskId, newTaskAttachmentFile)
       }
       
       // Verstuur e-mail alleen bij nieuwe taken, niet bij bewerken
@@ -799,6 +972,47 @@ export function TasksPanel() {
                                   )
                                 })()}
 
+                                {/* Bijlagen bij deze taak - altijd zichtbaar */}
+                                <div className="space-y-1">
+                                  <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                    <Paperclip className="w-3 h-3" />
+                                    Bijlagen
+                                  </div>
+                                  {getAttachmentsForTask(task.id).length > 0 ? (
+                                    <div className="space-y-1">
+                                      {getAttachmentsForTask(task.id).map((att) => (
+                                        <div
+                                          key={att.id}
+                                          className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                                        >
+                                          <div className="truncate">
+                                            {att.file_name}
+                                          </div>
+                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(att.file_url, "_blank")}
+                                            >
+                                              Openen
+                                            </Button>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="text-red-600 hover:text-red-700 border-red-200"
+                                              onClick={() => handleDeleteTaskAttachment(att)}
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-gray-500">Geen bijlagen</p>
+                                  )}
+                                </div>
+
         {task.deadline && (
                                   <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${deadlineStatus?.bg || "bg-gray-50"}`}>
                                     <Clock className={`w-4 h-4 ${deadlineStatus?.color || "text-gray-600"} flex-shrink-0`} />
@@ -836,6 +1050,24 @@ export function TasksPanel() {
                                         Bewerken
                                       </Button>
                                     )}
+                                    <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        onChange={(e) =>
+                                          handleUploadTaskAttachment(
+                                            task.id,
+                                            e.target.files?.[0] || null
+                                          )
+                                        }
+                                      />
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                                        <Paperclip className="w-3 h-3" />
+                                        {uploadingAttachmentForTask === task.id
+                                          ? "Uploaden..."
+                                          : "Bijlage"}
+                                      </span>
+                                    </label>
                                   </div>
                                 </div>
                                 
@@ -1083,6 +1315,47 @@ export function TasksPanel() {
                                   )
                                 })()}
 
+                                {/* Bijlagen bij deze taak - altijd zichtbaar */}
+                                <div className="space-y-1">
+                                  <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                    <Paperclip className="w-3 h-3" />
+                                    Bijlagen
+                                  </div>
+                                  {getAttachmentsForTask(task.id).length > 0 ? (
+                                    <div className="space-y-1">
+                                      {getAttachmentsForTask(task.id).map((att) => (
+                                        <div
+                                          key={att.id}
+                                          className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                                        >
+                                          <div className="truncate">
+                                            {att.file_name}
+                                          </div>
+                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(att.file_url, "_blank")}
+                                            >
+                                              Openen
+                                            </Button>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="text-red-600 hover:text-red-700 border-red-200"
+                                              onClick={() => handleDeleteTaskAttachment(att)}
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-gray-500">Geen bijlagen</p>
+                                  )}
+                                </div>
+
         {task.deadline && (
                                   <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${deadlineStatus?.bg || "bg-gray-50"}`}>
                                     <Clock className={`w-4 h-4 ${deadlineStatus?.color || "text-gray-600"} flex-shrink-0`} />
@@ -1120,6 +1393,24 @@ export function TasksPanel() {
                                         Bewerken
                                       </Button>
                                     )}
+                                    <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        onChange={(e) =>
+                                          handleUploadTaskAttachment(
+                                            task.id,
+                                            e.target.files?.[0] || null
+                                          )
+                                        }
+                                      />
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                                        <Paperclip className="w-3 h-3" />
+                                        {uploadingAttachmentForTask === task.id
+                                          ? "Uploaden..."
+                                          : "Bijlage"}
+                                      </span>
+                                    </label>
                                   </div>
                                 </div>
                                 
@@ -1367,6 +1658,47 @@ export function TasksPanel() {
                                   )
                                 })()}
 
+                                {/* Bijlagen bij deze taak - altijd zichtbaar */}
+                                <div className="space-y-1">
+                                  <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                    <Paperclip className="w-3 h-3" />
+                                    Bijlagen
+                                  </div>
+                                  {getAttachmentsForTask(task.id).length > 0 ? (
+                                    <div className="space-y-1">
+                                      {getAttachmentsForTask(task.id).map((att) => (
+                                        <div
+                                          key={att.id}
+                                          className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                                        >
+                                          <div className="truncate">
+                                            {att.file_name}
+                                          </div>
+                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(att.file_url, "_blank")}
+                                            >
+                                              Openen
+                                            </Button>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="text-red-600 hover:text-red-700 border-red-200"
+                                              onClick={() => handleDeleteTaskAttachment(att)}
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-gray-500">Geen bijlagen</p>
+                                  )}
+                                </div>
+
         {task.deadline && (
                                   <div className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${deadlineStatus?.bg || "bg-gray-50"}`}>
                                     <Clock className={`w-4 h-4 ${deadlineStatus?.color || "text-gray-600"} flex-shrink-0`} />
@@ -1404,6 +1736,24 @@ export function TasksPanel() {
                                         Bewerken
                                       </Button>
                                     )}
+                                    <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        onChange={(e) =>
+                                          handleUploadTaskAttachment(
+                                            task.id,
+                                            e.target.files?.[0] || null
+                                          )
+                                        }
+                                      />
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                                        <Paperclip className="w-3 h-3" />
+                                        {uploadingAttachmentForTask === task.id
+                                          ? "Uploaden..."
+                                          : "Bijlage"}
+                                      </span>
+                                    </label>
                                   </div>
                                 </div>
                                 
@@ -1649,6 +1999,34 @@ export function TasksPanel() {
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
               />
+            </div>
+
+            <div>
+              <Label htmlFor="task-attachment">Bijlage (optioneel)</Label>
+              <div className="mt-1 flex items-center gap-2 text-sm">
+                <label
+                  htmlFor="task-attachment"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 border rounded cursor-pointer hover:bg-gray-50"
+                >
+                  <Paperclip className="w-4 h-4" />
+                  <span>
+                    {newTaskAttachmentFile ? "Andere bijlage kiezen" : "Bijlage kiezen"}
+                  </span>
+                </label>
+                {newTaskAttachmentFile && (
+                  <span className="text-xs text-gray-600 truncate max-w-[220px]">
+                    Geselecteerd: {newTaskAttachmentFile.name}
+                  </span>
+                )}
+                <input
+                  id="task-attachment"
+                  type="file"
+                  className="hidden"
+                  onChange={(e) =>
+                    setNewTaskAttachmentFile(e.target.files?.[0] || null)
+                  }
+                />
+              </div>
             </div>
 
             {deadline && (
