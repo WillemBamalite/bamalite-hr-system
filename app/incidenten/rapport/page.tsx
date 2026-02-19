@@ -559,6 +559,11 @@ export default function IncidentRapportWizardPage() {
       // Laad het PDF template
       const templateUrl = "/contracts/Incident_rapporten.pdf"
       const templateResponse = await fetch(templateUrl)
+      if (!templateResponse.ok) {
+        throw new Error(
+          `Kon PDF-template niet laden (status ${templateResponse.status})`
+        )
+      }
       const templateBytes = await templateResponse.arrayBuffer()
 
       // Laad het PDF document
