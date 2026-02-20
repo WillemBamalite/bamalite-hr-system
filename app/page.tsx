@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle, Award } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle, Award, Mail } from "lucide-react"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { ShipOverview } from "@/components/ship-overview"
 import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
 import { DashboardStats } from "@/components/dashboard-stats"
@@ -263,6 +264,95 @@ function DashboardContent() {
     })
   }, [tasks])
 
+  // Ziektebriefjes die over 3 dagen verlopen
+  const expiringCertificates = useMemo(() => {
+    if (!sickLeave || sickLeave.length === 0) return []
+    const today = startOfDay(new Date())
+    
+    return sickLeave
+      .filter((record: any) => {
+        // Moet actief zijn en een certificate_valid_until hebben
+        if (!record.certificate_valid_until) return false
+        if (record.status !== 'actief' && record.status !== 'wacht-op-briefje') return false
+        
+        const validUntil = new Date(record.certificate_valid_until)
+        validUntil.setHours(0, 0, 0, 0)
+        
+        // Bereken dagen tot expiratie
+        const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        
+        // Precies 3 dagen van tevoren
+        return daysUntilExpiry === 3
+      })
+      .map((record: any) => {
+        const crewMember = crew.find((c: any) => c.id === record.crew_member_id)
+        const validUntil = new Date(record.certificate_valid_until)
+        validUntil.setHours(0, 0, 0, 0)
+        
+        return {
+          ...record,
+          crewMember,
+          expiryDate: validUntil,
+          daysUntilExpiry: 3
+        }
+      })
+      .filter((record: any) => record.crewMember) // Alleen records met crew member
+  }, [sickLeave, crew])
+
+  // State voor e-mail bevestigingsdialoog
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false)
+  const [selectedSickLeave, setSelectedSickLeave] = useState<any>(null)
+  const [sendingEmail, setSendingEmail] = useState(false)
+
+  // Functie om e-mail te versturen
+  const handleSendCertificateEmail = async () => {
+    if (!selectedSickLeave || !selectedSickLeave.crewMember) return
+    
+    setSendingEmail(true)
+    try {
+      const crewName = `${selectedSickLeave.crewMember.first_name} ${selectedSickLeave.crewMember.last_name}`
+      const expiryDate = selectedSickLeave.expiryDate.toLocaleDateString('nl-NL', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+      const expiryDateForPDF = selectedSickLeave.expiryDate.toLocaleDateString('nl-NL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
+
+      const response = await fetch('/api/send-certificate-expiry-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          crewName,
+          expiryDate,
+          expiryDateForPDF,
+          daysUntilExpiry: 3,
+          recipientEmail: selectedSickLeave.crewMember.email
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        alert(`E-mail succesvol verstuurd naar ${crewName}`)
+        setEmailDialogOpen(false)
+        setSelectedSickLeave(null)
+      } else {
+        alert(`Fout bij versturen e-mail: ${result.error || 'Onbekende fout'}`)
+      }
+    } catch (error) {
+      console.error('Error sending email:', error)
+      alert(`Fout bij versturen e-mail: ${error instanceof Error ? error.message : 'Onbekende fout'}`)
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true);
@@ -362,6 +452,62 @@ function DashboardContent() {
                     {item.years} jaar in dienst.
                   </li>
                 ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Ziektebriefjes die over 3 dagen verlopen */}
+        {expiringCertificates.length > 0 && (
+          <Alert className="mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200">
+            <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <AlertDescription>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-base font-medium">
+                  ⚠️ Ziektebriefjes die over 3 dagen verlopen:
+                </span>
+              </div>
+              <ul className="space-y-2 mt-2">
+                {expiringCertificates.map((record: any) => {
+                  const crewName = `${record.crewMember.first_name} ${record.crewMember.last_name}`
+                  const expiryDate = record.expiryDate.toLocaleDateString('nl-NL', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                  })
+                  
+                  return (
+                    <li key={record.id} className="flex items-center justify-between bg-white p-3 rounded border border-orange-200">
+                      <div>
+                        <strong>{crewName}</strong>
+                        <span className="text-sm text-gray-600 ml-2">
+                          - Verloopt op: {expiryDate}
+                        </span>
+                        {record.crewMember.email && (
+                          <span className="text-xs text-gray-500 block mt-1">
+                            E-mail: {record.crewMember.email}
+                          </span>
+                        )}
+                      </div>
+                      {record.crewMember.email ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedSickLeave(record)
+                            setEmailDialogOpen(true)
+                          }}
+                          className="ml-4"
+                        >
+                          <Mail className="w-4 h-4 mr-2" />
+                          E-mail versturen
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-gray-500 ml-4">Geen e-mailadres</span>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             </AlertDescription>
           </Alert>
@@ -520,6 +666,41 @@ function DashboardContent() {
           {/* Schepen overzicht */}
           <ShipOverview />
         </div>
+
+        {/* E-mail bevestigingsdialoog */}
+        <AlertDialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>E-mail versturen</AlertDialogTitle>
+              <AlertDialogDescription>
+                {selectedSickLeave && selectedSickLeave.crewMember && (
+                  <>
+                    Weet je zeker dat je een e-mail wilt versturen naar{' '}
+                    <strong>
+                      {selectedSickLeave.crewMember.first_name}{' '}
+                      {selectedSickLeave.crewMember.last_name}
+                    </strong>
+                    ?
+                    <br />
+                    <br />
+                    De e-mail bevat een herinnering dat het ziektebriefje over 3 dagen verloopt
+                    en een ingevulde PDF met informatie over het verlengen van het ziektebriefje.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={sendingEmail}>Nee</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleSendCertificateEmail}
+                disabled={sendingEmail}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {sendingEmail ? 'Verzenden...' : 'Ja, versturen'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   )
