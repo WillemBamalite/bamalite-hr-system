@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone, Edit, Heart } from "lucide-react"
+import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone, Edit, Heart, Paperclip, Trash2 } from "lucide-react"
 import { BackButton } from "@/components/ui/back-button"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { format } from "date-fns"
@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StandBackManagement } from "@/components/sick-leave/stand-back-management"
+import { supabase } from "@/lib/supabase"
 
 export default function ZiektePage() {
   const { crew, sickLeave, loading, error, updateCrew, updateSickLeave, addStandBackRecord } = useSupabaseData()
@@ -37,6 +38,169 @@ export default function ZiektePage() {
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
   const [recoveryRecord, setRecoveryRecord] = useState<any>(null)
   const [recoveryDate, setRecoveryDate] = useState("")
+  
+  // Bijlagen bij ziekmeldingen
+  const [sickLeaveAttachments, setSickLeaveAttachments] = useState<any[]>([])
+  const [loadingAttachments, setLoadingAttachments] = useState(false)
+  const [uploadingAttachmentForSickLeave, setUploadingAttachmentForSickLeave] = useState<string | null>(null)
+
+  // Bijlagen laden
+  const loadSickLeaveAttachments = async () => {
+    try {
+      setLoadingAttachments(true)
+      const { data, error } = await supabase
+        .from("sick_leave_attachments")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("Error loading sick leave attachments:", error)
+        setSickLeaveAttachments([])
+      } else {
+        setSickLeaveAttachments(data || [])
+      }
+    } catch (err) {
+      console.error("Unexpected error loading sick leave attachments:", err)
+      setSickLeaveAttachments([])
+    } finally {
+      setLoadingAttachments(false)
+    }
+  }
+
+  useEffect(() => {
+    loadSickLeaveAttachments()
+  }, [])
+
+  const getAttachmentsForSickLeave = (sickLeaveId: string) =>
+    sickLeaveAttachments.filter((att) => String(att.sick_leave_id || "") === String(sickLeaveId || ""))
+
+  const handleUploadSickLeaveAttachment = async (sickLeaveId: string, file: File | null) => {
+    if (!file) return
+    try {
+      setUploadingAttachmentForSickLeave(sickLeaveId)
+
+      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const filePath = `${sickLeaveId}/${Date.now()}-${safeFileName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("sick-leave-attachments")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error("Storage upload fout (sick-leave-attachments):", uploadError)
+        alert(
+          `Fout bij uploaden bijlage: ${
+            uploadError.message || (uploadError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      if (!uploadData?.path) {
+        alert("Fout bij uploaden bijlage: geen pad teruggekregen van Storage")
+        return
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("sick-leave-attachments")
+        .getPublicUrl(uploadData.path)
+
+      const publicUrl = publicUrlData?.publicUrl
+      if (!publicUrl) {
+        alert("Fout bij uploaden bijlage: geen publieke URL gegenereerd")
+        return
+      }
+
+      const payload: any = {
+        sick_leave_id: sickLeaveId,
+        file_name: file.name,
+        storage_path: uploadData.path,
+        file_url: publicUrl,
+        file_size: file.size,
+        mime_type: file.type,
+      }
+
+      const { error: insertError } = await supabase
+        .from("sick_leave_attachments")
+        .insert([payload])
+
+      if (insertError) {
+        console.error("Database insert fout (sick_leave_attachments):", insertError)
+        alert(
+          `Fout bij opslaan bijlage: ${
+            insertError.message || (insertError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      await loadSickLeaveAttachments()
+    } catch (error: any) {
+      console.error("Onbekende fout bij uploaden bijlage:", error)
+      alert(
+        `Fout bij uploaden bijlage: ${
+          error?.message || error?.error?.message || "Onbekende fout"
+        }`
+      )
+    } finally {
+      setUploadingAttachmentForSickLeave(null)
+    }
+  }
+
+  const handleDeleteSickLeaveAttachment = async (attachment: any) => {
+    if (
+      !confirm(
+        `Weet je zeker dat je deze bijlage wilt verwijderen?\n\n${attachment.file_name}`
+      )
+    ) {
+      return
+    }
+    try {
+      if (attachment.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from("sick-leave-attachments")
+          .remove([attachment.storage_path])
+
+        if (storageError) {
+          console.error("Fout bij verwijderen bestand uit Storage:", storageError)
+          alert(
+            `Fout bij verwijderen bestand uit Storage: ${
+              storageError.message ||
+              (storageError as any)?.error?.message ||
+              "Onbekende fout"
+            }`
+          )
+        }
+      }
+
+      const { error: dbError } = await supabase
+        .from("sick_leave_attachments")
+        .delete()
+        .eq("id", attachment.id)
+
+      if (dbError) {
+        console.error("Fout bij verwijderen bijlage uit database:", dbError)
+        alert(
+          `Fout bij verwijderen bijlage: ${
+            dbError.message || (dbError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      await loadSickLeaveAttachments()
+    } catch (error: any) {
+      console.error("Onbekende fout bij verwijderen bijlage:", error)
+      alert(
+        `Fout bij verwijderen bijlage: ${
+          error?.message || error?.error?.message || "Onbekende fout"
+        }`
+      )
+    }
+  }
 
   // Filter actieve ziekmeldingen (inclusief wacht-op-briefje, EXCLUSIEF afgerond)
   const activeSickLeaves = sickLeave.filter((s: any) => 
@@ -492,6 +656,65 @@ export default function ZiektePage() {
               <p className="text-sm text-gray-700 mt-1 italic">{record.notes}</p>
             </div>
           )}
+
+          {/* Bijlagen bij deze ziekmelding - altijd zichtbaar */}
+          <div className="pt-3 border-t space-y-2">
+            <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+              <Paperclip className="w-3 h-3" />
+              Bijlagen
+            </div>
+            {getAttachmentsForSickLeave(record.id).length > 0 ? (
+              <div className="space-y-1">
+                {getAttachmentsForSickLeave(record.id).map((att) => (
+                  <div
+                    key={att.id}
+                    className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                  >
+                    <div className="truncate">
+                      {att.file_name}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(att.file_url, "_blank")}
+                      >
+                        Openen
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 border-red-200"
+                        onClick={() => handleDeleteSickLeaveAttachment(att)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">Geen bijlagen</p>
+            )}
+            <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) =>
+                  handleUploadSickLeaveAttachment(
+                    record.id,
+                    e.target.files?.[0] || null
+                  )
+                }
+              />
+              <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                <Paperclip className="w-3 h-3" />
+                {uploadingAttachmentForSickLeave === record.id
+                  ? "Uploaden..."
+                  : "Bijlage toevoegen"}
+              </span>
+            </label>
+          </div>
         </CardContent>
       </Card>
     )
@@ -705,6 +928,65 @@ export default function ZiektePage() {
                     <p className="text-xs text-gray-700 mt-1 italic">{record.notes}</p>
             </div>
                 )}
+
+                {/* Bijlagen bij deze ziekmelding - altijd zichtbaar */}
+                <div className="pt-2 border-t space-y-2">
+                  <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                    <Paperclip className="w-3 h-3" />
+                    Bijlagen
+                  </div>
+                  {getAttachmentsForSickLeave(record.id).length > 0 ? (
+                    <div className="space-y-1">
+                      {getAttachmentsForSickLeave(record.id).map((att) => (
+                        <div
+                          key={att.id}
+                          className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                        >
+                          <div className="truncate">
+                            {att.file_name}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(att.file_url, "_blank")}
+                            >
+                              Openen
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 border-red-200"
+                              onClick={() => handleDeleteSickLeaveAttachment(att)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">Geen bijlagen</p>
+                  )}
+                  <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleUploadSickLeaveAttachment(
+                          record.id,
+                          e.target.files?.[0] || null
+                        )
+                      }
+                    />
+                    <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                      <Paperclip className="w-3 h-3" />
+                      {uploadingAttachmentForSickLeave === record.id
+                        ? "Uploaden..."
+                        : "Bijlage toevoegen"}
+                    </span>
+                  </label>
+                </div>
               </CardContent>
             </Card>
           )
@@ -805,6 +1087,64 @@ export default function ZiektePage() {
                 placeholder="Optionele notities..."
               />
             </div>
+
+            {/* Bijlagen bij deze ziekmelding */}
+            {editingRecord && (
+              <div className="space-y-2 border-t pt-4">
+                <Label>Bijlagen</Label>
+                {getAttachmentsForSickLeave(editingRecord.id).length > 0 ? (
+                  <div className="space-y-1">
+                    {getAttachmentsForSickLeave(editingRecord.id).map((att) => (
+                      <div
+                        key={att.id}
+                        className="flex items-center justify-between gap-2 text-sm bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                      >
+                        <div className="truncate">
+                          {att.file_name}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(att.file_url, "_blank")}
+                          >
+                            Openen
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 border-red-200"
+                            onClick={() => handleDeleteSickLeaveAttachment(att)}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">Geen bijlagen</p>
+                )}
+                <label className="inline-flex items-center gap-1 cursor-pointer text-sm text-gray-600">
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleUploadSickLeaveAttachment(
+                        editingRecord.id,
+                        e.target.files?.[0] || null
+                      )
+                    }
+                  />
+                  <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                    <Paperclip className="w-3 h-3" />
+                    {uploadingAttachmentForSickLeave === editingRecord.id
+                      ? "Uploaden..."
+                      : "Bijlage toevoegen"}
+                  </span>
+                </label>
+              </div>
+            )}
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button variant="outline" onClick={() => setEditDialogOpen(false)}>

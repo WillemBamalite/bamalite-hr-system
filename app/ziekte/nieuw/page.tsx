@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { UserX, ArrowLeft, Search } from "lucide-react"
+import { UserX, ArrowLeft, Search, Paperclip } from "lucide-react"
 import { useState } from "react"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import Link from "next/link"
@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { BackButton } from "@/components/ui/back-button"
+import { supabase } from "@/lib/supabase"
 
 export default function NieuwZiektePage() {
   const { crew, sickLeave, updateCrew, addSickLeave } = useSupabaseData()
@@ -33,6 +34,8 @@ export default function NieuwZiektePage() {
   })
   const [searchQuery, setSearchQuery] = useState("")
   const [showSearchResults, setShowSearchResults] = useState(false)
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
 
   // Haal alle crew members op
   const crewMembers = crew.filter((member: any) => 
@@ -92,7 +95,71 @@ export default function NieuwZiektePage() {
       }
 
       // Voeg ziekmelding toe via Supabase
-      await addSickLeave(newSickLeave)
+      const createdSickLeave = await addSickLeave(newSickLeave)
+      const sickLeaveId = createdSickLeave?.id || newSickLeave.id
+
+      // Upload bijlage als er een bestand is geselecteerd
+      if (attachmentFile && sickLeaveId) {
+        try {
+          setUploadingAttachment(true)
+          const safeFileName = attachmentFile.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+          const filePath = `${sickLeaveId}/${Date.now()}-${safeFileName}`
+
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from("sick-leave-attachments")
+            .upload(filePath, attachmentFile, {
+              cacheControl: "3600",
+              upsert: false,
+            })
+
+          if (uploadError) {
+            console.error("Storage upload fout (sick-leave-attachments):", uploadError)
+            alert(
+              `Ziekmelding aangemaakt, maar bijlage kon niet worden geüpload: ${
+                uploadError.message || (uploadError as any)?.error?.message || "Onbekende fout"
+              }`
+            )
+          } else if (uploadData?.path) {
+            const { data: publicUrlData } = supabase.storage
+              .from("sick-leave-attachments")
+              .getPublicUrl(uploadData.path)
+
+            const publicUrl = publicUrlData?.publicUrl
+            if (publicUrl) {
+              const payload: any = {
+                sick_leave_id: sickLeaveId,
+                file_name: attachmentFile.name,
+                storage_path: uploadData.path,
+                file_url: publicUrl,
+                file_size: attachmentFile.size,
+                mime_type: attachmentFile.type,
+              }
+
+              const { error: insertError } = await supabase
+                .from("sick_leave_attachments")
+                .insert([payload])
+
+              if (insertError) {
+                console.error("Database insert fout (sick_leave_attachments):", insertError)
+                alert(
+                  `Ziekmelding aangemaakt, maar bijlage kon niet worden opgeslagen: ${
+                    insertError.message || (insertError as any)?.error?.message || "Onbekende fout"
+                  }`
+                )
+              }
+            }
+          }
+        } catch (attachmentError: any) {
+          console.error("Onbekende fout bij uploaden bijlage:", attachmentError)
+          alert(
+            `Ziekmelding aangemaakt, maar bijlage kon niet worden geüpload: ${
+              attachmentError?.message || attachmentError?.error?.message || "Onbekende fout"
+            }`
+          )
+        } finally {
+          setUploadingAttachment(false)
+        }
+      }
 
       // Update crew member status naar ziek
       const currentCrewMember = crew.find((c: any) => c.id === formData.crewMemberId)
@@ -311,6 +378,41 @@ export default function NieuwZiektePage() {
               />
             </div>
 
+            {/* Bijlage (ziektebriefje) */}
+            <div className="space-y-2">
+              <Label htmlFor="attachment">Bijlage (ziektebriefje, foto, etc.)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="attachment"
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)}
+                />
+                <label
+                  htmlFor="attachment"
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-sm"
+                >
+                  <Paperclip className="w-4 h-4" />
+                  {attachmentFile ? attachmentFile.name : "Bestand kiezen"}
+                </label>
+                {attachmentFile && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAttachmentFile(null)}
+                  >
+                    Verwijderen
+                  </Button>
+                )}
+              </div>
+              {attachmentFile && (
+                <p className="text-xs text-gray-500">
+                  Geselecteerd: {attachmentFile.name} ({(attachmentFile.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+            </div>
+
             {/* E-mail met ziekte instructies */}
             <div className="flex items-center space-x-2 border-t border-gray-200 pt-4 mt-2">
               <input
@@ -335,9 +437,9 @@ export default function NieuwZiektePage() {
                   Annuleren
                 </Button>
               </Link>
-              <Button type="submit" className="bg-red-600 hover:bg-red-700">
+              <Button type="submit" className="bg-red-600 hover:bg-red-700" disabled={uploadingAttachment}>
                 <UserX className="w-4 h-4 mr-2" />
-                Ziekmelding registreren
+                {uploadingAttachment ? "Uploaden..." : "Ziekmelding registreren"}
               </Button>
             </div>
           </form>
