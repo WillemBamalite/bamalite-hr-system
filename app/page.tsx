@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle, Award, Mail } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle, Award, Mail, CheckCircle2 } from "lucide-react"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { ShipOverview } from "@/components/ship-overview"
 import { CrewQuickActions } from "@/components/crew/crew-quick-actions"
@@ -13,6 +13,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { useToast } from "@/hooks/use-toast"
 import { useState, useEffect, useMemo } from "react"
 import { format, isToday, isPast, startOfDay } from "date-fns"
 import Link from "next/link"
@@ -28,9 +29,10 @@ export default function Dashboard() {
 function DashboardContent() {
   const [mounted, setMounted] = useState(false);
   const { t } = useLanguage();
+  const { toast } = useToast();
   
   // Gebruik Supabase data
-  const { ships, crew, sickLeave, incidents, tasks, loading, error } = useSupabaseData()
+  const { ships, crew, sickLeave, incidents, tasks, loading, error, loadData } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
 
   // Check voor proeftijd aflopend (dag 70 = nog 20 dagen)
@@ -264,7 +266,7 @@ function DashboardContent() {
     })
   }, [tasks])
 
-  // Ziektebriefjes die over 3 dagen verlopen
+  // Ziektebriefjes die over 3 dagen verlopen (en waar nog geen e-mail is verstuurd)
   const expiringCertificates = useMemo(() => {
     if (!sickLeave || sickLeave.length === 0) return []
     const today = startOfDay(new Date())
@@ -274,6 +276,9 @@ function DashboardContent() {
         // Moet actief zijn en een certificate_valid_until hebben
         if (!record.certificate_valid_until) return false
         if (record.status !== 'actief' && record.status !== 'wacht-op-briefje') return false
+        
+        // Als er al een e-mail is verstuurd, toon niet in notificaties
+        if (record.expiry_email_sent_at) return false
         
         const validUntil = new Date(record.certificate_valid_until)
         validUntil.setHours(0, 0, 0, 0)
@@ -332,23 +337,40 @@ function DashboardContent() {
           expiryDate,
           expiryDateForPDF,
           daysUntilExpiry: 3,
-          recipientEmail: selectedSickLeave.crewMember.email
+          recipientEmail: selectedSickLeave.crewMember.email,
+          sickLeaveId: selectedSickLeave.id
         }),
       })
 
       const result = await response.json()
 
       if (result.success) {
-        alert(`E-mail succesvol verstuurd naar ${crewName}`)
+        // Toon success melding
+        toast({
+          title: "E-mail verstuurd",
+          description: `Herinneringse-mail succesvol verstuurd naar ${crewName}`,
+        })
+        
+        // Refresh de data zodat de notificatie verdwijnt
+        await loadData()
         setEmailDialogOpen(false)
         setSelectedSickLeave(null)
+        setSendingEmail(false)
       } else {
-        alert(`Fout bij versturen e-mail: ${result.error || 'Onbekende fout'}`)
+        toast({
+          title: "Fout bij versturen e-mail",
+          description: result.error || 'Onbekende fout',
+          variant: "destructive"
+        })
+        setSendingEmail(false)
       }
     } catch (error) {
       console.error('Error sending email:', error)
-      alert(`Fout bij versturen e-mail: ${error instanceof Error ? error.message : 'Onbekende fout'}`)
-    } finally {
+      toast({
+        title: "Fout bij versturen e-mail",
+        description: error instanceof Error ? error.message : 'Onbekende fout',
+        variant: "destructive"
+      })
       setSendingEmail(false)
     }
   }

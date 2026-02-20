@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import fs from 'fs'
 import path from 'path'
+import { supabase } from '@/lib/supabase'
 
 // Zorg dat deze route altijd op de Node.js runtime draait
 export const runtime = 'nodejs'
@@ -143,7 +144,7 @@ async function generateFilledCertificatePDF(crewName: string, expiryDate: string
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { crewName, expiryDate, expiryDateForPDF, daysUntilExpiry, recipientEmail } = body
+    const { crewName, expiryDate, expiryDateForPDF, daysUntilExpiry, recipientEmail, sickLeaveId } = body
 
     if (!crewName || !expiryDate || !recipientEmail) {
       return NextResponse.json(
@@ -237,6 +238,25 @@ Team Nautic Bamalite
       date: new Date(),
       encoding: 'utf8',
     })
+    
+    // Update sick_leave record om aan te geven dat e-mail is verstuurd
+    if (sickLeaveId) {
+      try {
+        const { error: updateError } = await supabase
+          .from('sick_leave')
+          .update({ expiry_email_sent_at: new Date().toISOString() })
+          .eq('id', sickLeaveId)
+        
+        if (updateError) {
+          console.error('⚠️ Fout bij updaten expiry_email_sent_at:', updateError)
+          // We loggen de fout maar stoppen niet - de e-mail is al verstuurd
+        } else {
+          console.log('✅ expiry_email_sent_at bijgewerkt voor sick_leave:', sickLeaveId)
+        }
+      } catch (updateError) {
+        console.error('⚠️ Onbekende fout bij updaten expiry_email_sent_at:', updateError)
+      }
+    }
     
     return NextResponse.json({
       success: true,

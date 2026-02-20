@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
       // Moet een certificate_valid_until hebben
       if (!record.certificate_valid_until) return false
       
+      // Als er al een e-mail is verstuurd, skip deze
+      if (record.expiry_email_sent_at) return false
+      
       const validUntil = new Date(record.certificate_valid_until)
       validUntil.setHours(0, 0, 0, 0)
       
@@ -194,6 +197,7 @@ export async function GET(request: NextRequest) {
         })
 
         // Stuur ook e-mail naar de werknemer zelf met ingevulde PDF
+        let employeeEmailSent = false
         if (crewMember.email) {
           const employeeEmailResult = await sendCertificateExpiryEmailToEmployee({
             crewName,
@@ -203,25 +207,37 @@ export async function GET(request: NextRequest) {
             recipientEmail: crewMember.email
           })
           
+          employeeEmailSent = employeeEmailResult.success
           console.log(`📧 E-mail naar werknemer ${employeeEmailResult.success ? 'verstuurd' : 'mislukt'} voor ${crewName}`)
+        }
+        
+        // Update sick_leave record om aan te geven dat e-mail is verstuurd
+        // (alleen als e-mail naar werknemer succesvol is verstuurd)
+        if (employeeEmailSent || gmailResult.success) {
+          try {
+            const { error: updateError } = await supabase
+              .from('sick_leave')
+              .update({ expiry_email_sent_at: new Date().toISOString() })
+              .eq('id', record.id)
+            
+            if (updateError) {
+              console.error('⚠️ Fout bij updaten expiry_email_sent_at voor record', record.id, ':', updateError)
+            } else {
+              console.log('✅ expiry_email_sent_at bijgewerkt voor sick_leave:', record.id)
+            }
+          } catch (updateError) {
+            console.error('⚠️ Onbekende fout bij updaten expiry_email_sent_at:', updateError)
+          }
         }
         
         emailResults.push({
           recordId: record.id,
           crewName,
           daysUntilExpiry,
-          emailSent: gmailResult.success,
+          emailSent: gmailResult.success || employeeEmailSent,
           emailError: gmailResult.error
         })
       }
-      
-      emailResults.push({
-        recordId: record.id,
-        crewName,
-        daysUntilExpiry,
-        emailSent: gmailResult.success,
-        emailError: gmailResult.error
-      })
       
       // Deze regel is verplaatst naar binnen de if/else block hierboven
     }

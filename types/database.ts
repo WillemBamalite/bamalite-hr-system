@@ -150,6 +150,7 @@ export interface Database {
           start_date: string
           end_date: string | null
           certificate_valid_until: string | null
+          expiry_email_sent_at: string | null
           notes: string
           status: 'actief' | 'wacht-op-briefje' | 'afgerond'
           paid_by: string
@@ -163,6 +164,7 @@ export interface Database {
           start_date: string
           end_date?: string | null
           certificate_valid_until?: string | null
+          expiry_email_sent_at?: string | null
           notes: string
           status: 'actief' | 'wacht-op-briefje' | 'afgerond'
           paid_by: string
@@ -176,6 +178,7 @@ export interface Database {
           start_date?: string
           end_date?: string | null
           certificate_valid_until?: string | null
+          expiry_email_sent_at?: string | null
           notes?: string
           status?: 'actief' | 'wacht-op-briefje' | 'afgerond'
           paid_by?: string
