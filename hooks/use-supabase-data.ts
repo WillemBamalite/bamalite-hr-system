@@ -315,7 +315,7 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
     }
     
     // Calculate actual days from completed trips for current month
-    // Belangrijk: tel alleen de dagen die in deze maand vallen, ook als de reis over maanden heen loopt
+    // Belangrijk: gebruik unieke dagen om overlappende reizen niet dubbel te tellen
     const monthStart = new Date(currentYear, currentMonth - 1, 1)
     monthStart.setHours(0, 0, 0, 0)
     const monthEnd = new Date(currentYear, currentMonth, 0) // laatste dag van maand
@@ -336,8 +336,8 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
       // Reis moet deze maand overlappen (start vóór einde van maand EN eind na begin van maand)
       return end >= monthStart && start <= monthEnd
     })
-    
-    let totalWorkDays = 0
+
+    const uniqueDaysInMonth = new Set<string>()
     for (const trip of currentMonthTrips) {
       try {
         const tripStart = parseTripDate(trip.start_datum)
@@ -347,20 +347,21 @@ async function autoManageVasteDienstRecords(crewData: any[], vasteDienstRecords:
         tripStart.setHours(0, 0, 0, 0)
         tripEnd.setHours(0, 0, 0, 0)
 
-        // Clamp de reis binnen de grenzen van deze maand
         const rangeStart = tripStart < monthStart ? monthStart : tripStart
         const rangeEnd = tripEnd > monthEnd ? monthEnd : tripEnd
 
         if (rangeEnd < rangeStart) continue
 
-        const msPerDay = 24 * 60 * 60 * 1000
-        const daysInThisMonth = Math.floor((rangeEnd.getTime() - rangeStart.getTime()) / msPerDay) + 1
-
-        totalWorkDays += daysInThisMonth
+        const d = new Date(rangeStart)
+        while (d <= rangeEnd) {
+          uniqueDaysInMonth.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+          d.setDate(d.getDate() + 1)
+        }
       } catch (err) {
         console.error('Error calculating work days for trip in vaste dienst auto-manage:', err, trip)
       }
     }
+    const totalWorkDays = uniqueDaysInMonth.size
     
     // Update the record with actual days and balance
     if (monthRecord) {

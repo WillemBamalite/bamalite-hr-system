@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
-import { useSupabaseData, calculateWorkDaysVasteDienst } from "@/hooks/use-supabase-data"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { supabase } from '@/lib/supabase'
 import { useAflosserAvailability } from "@/hooks/use-aflosser-availability"
 import { useToast } from "@/hooks/use-toast"
@@ -224,6 +224,7 @@ export default function AflosserDetailPage() {
   })()
 
   // Bereken per maand hoeveel dagen deze aflosser gewerkt heeft (op basis van alle voltooide reizen)
+  // BELANGRIJK: gebruik unieke dagen per maand om overlappende reizen niet dubbel te tellen
   const vasteDienstMonthSummaries = (() => {
     if (!aflosser) return [] as { year: number; month: number; workedDays: number; minusDays?: number }[]
 
@@ -242,8 +243,8 @@ export default function AflosserDetailPage() {
       return isNaN(d.getTime()) ? new Date(NaN) : d
     }
 
-    const monthMap = new Map<string, { year: number; month: number; workedDays: number }>()
-    const msPerDay = 24 * 60 * 60 * 1000
+    // Verzamel unieke werkdagen per maand (voorkomt dubbeltelling bij overlappende reizen)
+    const monthToUniqueDays = new Map<string, Set<string>>()
 
     trips
       .filter((trip: any) => {
@@ -271,24 +272,27 @@ export default function AflosserDetailPage() {
             const monthEnd = new Date(year, month, 0)
             monthEnd.setHours(0, 0, 0, 0)
 
-            // Check overlap
-            if (tripEnd < monthStart || tripStart > monthEnd) {
-              // Geen overlap in deze maand
-            } else {
+            if (tripEnd >= monthStart && tripStart <= monthEnd) {
               const rangeStart = tripStart < monthStart ? monthStart : tripStart
               const rangeEnd = tripEnd > monthEnd ? monthEnd : tripEnd
 
               if (rangeEnd >= rangeStart) {
-                const daysInMonth = Math.floor((rangeEnd.getTime() - rangeStart.getTime()) / msPerDay) + 1
                 const key = `${year}-${month}`
-                const existing = monthMap.get(key) || { year, month, workedDays: 0 }
-                existing.workedDays += daysInMonth
-                monthMap.set(key, existing)
+                let daySet = monthToUniqueDays.get(key)
+                if (!daySet) {
+                  daySet = new Set<string>()
+                  monthToUniqueDays.set(key, daySet)
+                }
+                // Voeg elke dag toe als YYYY-MM-DD (unieke waarden)
+                const d = new Date(rangeStart)
+                while (d <= rangeEnd) {
+                  daySet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`)
+                  d.setDate(d.getDate() + 1)
+                }
               }
             }
 
             if (tripEnd <= monthEnd) break
-            // Volgende maand
             if (month === 12) {
               year += 1
               month = 1
@@ -300,6 +304,17 @@ export default function AflosserDetailPage() {
           console.error("Error building month summary for vaste dienst:", err, trip)
         }
       })
+
+    // Converteer naar monthMap met workedDays = aantal unieke dagen
+    const monthMap = new Map<string, { year: number; month: number; workedDays: number }>()
+    monthToUniqueDays.forEach((daySet, key) => {
+      const [yearStr, monthStr] = key.split("-")
+      monthMap.set(key, {
+        year: parseInt(yearStr, 10),
+        month: parseInt(monthStr, 10),
+        workedDays: daySet.size,
+      })
+    })
 
     // Zorg dat maanden waarin alleen mindagen zijn ook bestaan
     mindagenPerMonth.forEach((minus, key) => {
@@ -1766,15 +1781,13 @@ export default function AflosserDetailPage() {
                                 <span className="text-sm text-gray-600">Werkdagen:</span>
                                 <span className="font-medium text-blue-600">
                                   {(() => {
-                                    // Use different calculation based on whether aflosser is in vaste dienst
-                                    let workDays
-                                    if (aflosser.vaste_dienst) {
-                                      // For vaste dienst aflossers, use hour-based calculation
-                                      workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                                    } else {
-                                      // For other aflossers, use simple day calculation
-                                      workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                                    }
+                                    // Gebruik overal dezelfde (kalenderdagen) berekening
+                                    const workDays = calculateWorkDays(
+                                      trip.start_datum,
+                                      trip.start_tijd,
+                                      trip.eind_datum,
+                                      trip.eind_tijd
+                                    )
                                     return workDays === Math.floor(workDays) 
                                       ? `${workDays} dag${workDays !== 1 ? 'en' : ''}`
                                       : `${workDays} dag${workDays !== 1 ? 'en' : ''}`
@@ -1927,15 +1940,13 @@ export default function AflosserDetailPage() {
                   let totalWorkDays = 0
                   
                   completedTrips.forEach((trip: any) => {
-                    // Use the same calculation logic as in the trip cards
-                    let workDays
-                    if (aflosser?.vaste_dienst) {
-                      // For vaste dienst aflossers, use hour-based calculation
-                      workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                    } else {
-                      // For other aflossers, use simple day calculation
-                      workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                    }
+                    // Gebruik dezelfde (kalenderdagen) logica als in de maand-overzichten
+                    const workDays = calculateWorkDays(
+                      trip.start_datum,
+                      trip.start_tijd,
+                      trip.eind_datum,
+                      trip.eind_tijd
+                    )
                     totalWorkDays += workDays
                   })
                   
@@ -2249,11 +2260,12 @@ export default function AflosserDetailPage() {
 
                       let workDays: number | null = null
                       if (trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd) {
-                        if (aflosser.vaste_dienst) {
-                          workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                        } else {
-                          workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                        }
+                        workDays = calculateWorkDays(
+                          trip.start_datum,
+                          trip.start_tijd,
+                          trip.eind_datum,
+                          trip.eind_tijd
+                        )
                       }
 
                       return (
