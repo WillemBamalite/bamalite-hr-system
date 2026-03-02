@@ -60,8 +60,11 @@ export function ContractDialog({ open, onOpenChange, crewData, onComplete }: Con
       }
 
       // Voeg salaris data toe aan crewData
+      // BELANGRIJK: Gebruik de geselecteerde firma uit de dialog, niet de crewData.company
+      // Anders wordt bij Europeshipping/andere firma's altijd Bamalite data ingevuld
       const contractDataWithSalary: ContractData = {
         ...crewData,
+        company, // Override met geselecteerde firma - anders kloppen regels niet
         in_dienst_tot: contractType === 'bepaalde_tijd' ? einddatum : undefined,
         basisSalaris: basisSalaris || undefined,
         kledinggeld: kledinggeld || undefined,

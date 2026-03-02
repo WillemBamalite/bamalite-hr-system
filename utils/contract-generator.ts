@@ -294,36 +294,52 @@ export async function generateContract(
 }
 
 /**
- * Bepaalt het pad naar het template bestand op basis van taal, firma en contract type
+ * Mapping van firma naar template bestandsnaam (zonder /contracts/ prefix).
+ * Alleen firma's met eigen template staan hier; anderen gebruiken het generieke Bamalite template
+ * met de geselecteerde firma naam en nummer ingevuld.
+ */
+const COMPANY_TEMPLATE_MAP: Record<string, { nl: string; nlBepaaldeTijd?: string; de: string }> = {
+  'Bamalite S.A.': {
+    nl: 'bamalite-s.a.-nl.pdf',
+    nlBepaaldeTijd: 'bamalite-s.a.-nl - Bepaalde tijd.pdf',
+    de: 'bamalite-s.a.-de.pdf',
+  },
+  // Voeg hier firma-specifieke templates toe wanneer beschikbaar, bijv.:
+  // 'Europe Shipping AG.': { nl: 'europe-shipping-ag-nl.pdf', de: 'europe-shipping-ag-de.pdf' },
+}
+
+/**
+ * Bepaalt het pad naar het template bestand op basis van taal, firma en contract type.
+ * Gebruikt firma-specifiek template indien beschikbaar, anders het generieke Bamalite template
+ * (firma naam en nummer worden automatisch ingevuld op basis van de selectie).
  */
 function getTemplatePath(language: 'nl' | 'de', company: string, contractType?: 'onbepaalde_tijd' | 'bepaalde_tijd'): string {
   const langCode = language === 'nl' ? 'nl' : 'de'
   
-  // Voor Nederlandse contracten
+  // Zoek firma-specifiek template (case-insensitive)
+  const normalize = (s: string) => s.trim().toLowerCase().replace(/[\s.]/g, '')
+  const companyNorm = normalize(company)
+  for (const [key, templates] of Object.entries(COMPANY_TEMPLATE_MAP)) {
+    if (companyNorm === normalize(key)) {
+      if (language === 'nl') {
+        if (contractType === 'bepaalde_tijd' && templates.nlBepaaldeTijd) {
+          return `/contracts/${templates.nlBepaaldeTijd}`
+        }
+        return `/contracts/${templates.nl}`
+      }
+      return `/contracts/${templates.de}`
+    }
+  }
+  
+  // Geen firma-specifiek template: gebruik het generieke Bamalite template
+  // De firma naam en firma nummer worden correct ingevuld via fillContractFields
   if (language === 'nl') {
-    // Contract voor bepaalde tijd
     if (contractType === 'bepaalde_tijd') {
       return '/contracts/bamalite-s.a.-nl - Bepaalde tijd.pdf'
     }
-    // Contract voor onbepaalde tijd (default)
     return '/contracts/bamalite-s.a.-nl.pdf'
   }
-  
-  // Voor Duitse contracten: gebruik hetzelfde template voor alle firma's
-  // De firma naam en firma nummer worden automatisch ingevuld op basis van de selectie
-  if (language === 'de') {
-    // Later kunnen we ook Duitse contracten voor bepaalde tijd toevoegen
-    return '/contracts/bamalite-s.a.-de.pdf'
-  }
-  
-  // Fallback (zou niet moeten voorkomen)
-  const companySlug = company
-    .toLowerCase()
-    .replace(/\./g, '')
-    .replace(/\s+/g, '-')
-    .replace(/\./g, '')
-  
-  return `/contracts/${companySlug}-${langCode}.pdf`
+  return '/contracts/bamalite-s.a.-de.pdf'
 }
 
 /**
@@ -579,7 +595,7 @@ function fillContractFields(
       // Voor NL: regel9 = in dienst vanaf, regel10 = functie, regel11 = scheepsnaam
       // Voor DE (bamalite-s.a.-de): regel9 = functie, regel10 = scheepsnaam, regel11 = startdatum
       'regel9': isGermanContract ? data.position : formatDate(data.in_dienst_vanaf),
-      'regel10': data.shipName || '',
+      'regel10': isGermanContract ? (data.shipName || '') : data.position,
       'regel11': isGermanContract ? formatDate(data.in_dienst_vanaf) : (data.shipName || ''),
       // Regel12-regel21 verschillen per contract type en taal:
       // NL bepaalde tijd: regel12=einde datum, regel13=+3 maanden, regel14=einde datum, regel15-17=salaris, regel18-21=firma/datum/naam
@@ -1327,17 +1343,35 @@ function getNationalityLabel(code: string): string {
 
 /**
  * Haalt het firma nummer op op basis van de firma naam
+ * Ondersteunt verschillende schrijfwijzen (case-insensitive, met/zonder spaties)
  */
 function getCompanyNumber(company: string): string {
   const companyNumberMap: Record<string, string> = {
     'Bamalite S.A.': 'B 44356',
     'Alcina S.A.': 'B 129072',
     'Europe Shipping AG.': 'B 83558',
+    'EUROPE SHIPPING AG.': 'B 83558',
+    'Europeshipping': 'B 83558',
     'Brugo Shipping SARL.': 'B 277323',
+    'BRUGO SHIPPING SARL': 'B 277323',
     'Devel Shipping S.A.': 'B 139046',
+    'Develshipping S.A.': 'B 139046',
+    'DEVELSHIPPING S.A.': 'B 139046',
   }
   
-  return companyNumberMap[company] || ''
+  // Exacte match
+  if (companyNumberMap[company]) {
+    return companyNumberMap[company]
+  }
+  
+  // Case-insensitive match: normaliseer door punten en spaties te verwijderen
+  const normalize = (s: string) => s.trim().toLowerCase().replace(/[\s.]/g, '')
+  const companyNorm = normalize(company)
+  for (const [key, value] of Object.entries(companyNumberMap)) {
+    if (companyNorm === normalize(key)) return value
+  }
+  
+  return ''
 }
 
 /**
