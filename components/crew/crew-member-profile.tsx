@@ -322,6 +322,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         status: editData.status,
         phone: editData.phone,
         email: editData.email,
+        birth_place: editData.birth_place ? editData.birth_place.trim() : null,
         matricule: editData.matricule ? editData.matricule.trim() : "",
         arbeidsovereenkomst: editData.arbeidsovereenkomst,
         ingeschreven_luxembourg: editData.ingeschreven_luxembourg,
