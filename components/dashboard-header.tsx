@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Calendar, Globe, Printer, Clock } from "lucide-react"
+import { LogOut, User, Calendar, Globe, Printer, Clock, ListTodo } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -124,6 +124,17 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
           )}
           {user && (
             <div className="flex items-center gap-3">
+              {/* Snelknop: Nieuwe taak overal in de app */}
+              <Link href="/taken?newTask=1">
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <ListTodo className="w-4 h-4" />
+                  Nieuwe taak
+                </Button>
+              </Link>
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
                 <User className="w-4 h-4 text-gray-600" />
                 <span className="text-sm text-gray-700">{user.email}</span>

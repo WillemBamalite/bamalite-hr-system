@@ -21,6 +21,7 @@ import { supabase } from "@/lib/supabase"
 export function TasksPanel() {
   const searchParams = useSearchParams()
   const highlightedTaskId = searchParams.get('taskId')
+  const newTaskParam = searchParams.get('newTask')
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
   const { user } = useAuth()
   const [showDialog, setShowDialog] = useState(false)
@@ -58,6 +59,13 @@ export function TasksPanel() {
       }
     }
   }, [highlightedTaskId, tasks])
+
+  // Open direct de "Nieuwe taak" dialoog als ?newTask=1 in de URL staat
+  useEffect(() => {
+    if (newTaskParam === "1") {
+      setShowDialog(true)
+    }
+  }, [newTaskParam])
   const [selectedTaskType, setSelectedTaskType] = useState<"ship" | "crew" | "algemeen" | "">("")
   const [selectedShipId, setSelectedShipId] = useState<string>("")
   const [selectedCrewId, setSelectedCrewId] = useState<string>("")
