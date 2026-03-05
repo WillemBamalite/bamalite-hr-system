@@ -12,6 +12,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ListTodo, Plus, AlertCircle, CheckCircle2, X, Calendar, User, Ship as ShipIcon, Clock, Flag, Edit, Paperclip, Trash2 } from "lucide-react"
+import { WritingAssistantButton } from "@/components/writing/writing-assistant-button"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
 import { format, isPast, isToday, differenceInDays, startOfDay } from "date-fns"
@@ -1894,13 +1895,20 @@ export function TasksPanel() {
 
             <div>
               <Label htmlFor="description">Beschrijving</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optionele beschrijving van de taak"
-                rows={3}
-              />
+          <Textarea
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optionele beschrijving van de taak"
+            rows={3}
+          />
+          <div className="mt-2 flex justify-end">
+            <WritingAssistantButton
+              value={description}
+              onChange={setDescription}
+              language="nl"
+            />
+          </div>
             </div>
 
             <div>
