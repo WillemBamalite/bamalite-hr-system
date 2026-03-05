@@ -33,7 +33,7 @@ import {
   Edit,
   X
 } from 'lucide-react'
-import { useSupabaseData, calculateWorkDaysVasteDienst } from '@/hooks/use-supabase-data'
+import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 export default function ReizenAflossersPage() {
@@ -105,29 +105,68 @@ export default function ReizenAflossersPage() {
     return flags[nationality] || '🏳️'
   }
 
+  // Huidige maand vaste-dienst balans op basis van unieke kalenderdagen in deze maand
   const getVasteDienstBalance = (aflosserId: string) => {
     const aflosser = crew.find((c: any) => c.id === aflosserId)
     if (!aflosser) return 0
-    
-    // Bereken gewerkte dagen deze maand voor ALLE aflossers
+
     const today = new Date()
     const currentYear = today.getFullYear()
     const currentMonth = today.getMonth() + 1
-    
-    const currentMonthTrips = trips.filter((trip: any) => {
-      if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
-      if (trip.status !== 'voltooid') return false
-      
-      const tripStart = new Date(trip.start_datum)
-      return tripStart.getFullYear() === currentYear && 
-             tripStart.getMonth() + 1 === currentMonth
-    })
-    
-    const gewerktDezeMaand = currentMonthTrips.reduce((total: number, trip: any) => {
-      // Use vaste dienst calculation for vaste dienst aflossers
-      const workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-      return total + workDays
-    }, 0)
+
+    const monthStart = new Date(currentYear, currentMonth - 1, 1)
+    monthStart.setHours(0, 0, 0, 0)
+    const monthEnd = new Date(currentYear, currentMonth, 0)
+    monthEnd.setHours(0, 0, 0, 0)
+
+    // Veilige date parser (YYYY-MM-DD of DD-MM-YYYY)
+    const parseTripDate = (dateStr: string): Date => {
+      if (!dateStr || typeof dateStr !== 'string') return new Date(NaN)
+      if (dateStr.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+        const d = new Date(dateStr)
+        return isNaN(d.getTime()) ? new Date(NaN) : d
+      }
+      const parts = dateStr.split('-')
+      if (parts.length !== 3) return new Date(NaN)
+      const [d, m, y] = parts
+      const iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+      const parsed = new Date(iso)
+      return isNaN(parsed.getTime()) ? new Date(NaN) : parsed
+    }
+
+    // Verzamel alle unieke kalenderdagen in deze maand uit alle voltooide reizen
+    const uniqueDaysInMonth = new Set<string>()
+
+    ;(trips || [])
+      .filter((trip: any) => {
+        if (!trip.aflosser_id || trip.aflosser_id !== aflosser.id) return false
+        if (trip.status !== 'voltooid') return false
+        if (!trip.start_datum || !trip.eind_datum) return false
+        return true
+      })
+      .forEach((trip: any) => {
+        const tripStart = parseTripDate(trip.start_datum)
+        const tripEnd = parseTripDate(trip.eind_datum)
+        if (isNaN(tripStart.getTime()) || isNaN(tripEnd.getTime())) return
+
+        tripStart.setHours(0, 0, 0, 0)
+        tripEnd.setHours(0, 0, 0, 0)
+
+        const rangeStart = tripStart < monthStart ? monthStart : tripStart
+        const rangeEnd = tripEnd > monthEnd ? monthEnd : tripEnd
+
+        if (rangeEnd < rangeStart) return
+
+        const d = new Date(rangeStart)
+        while (d <= rangeEnd) {
+          uniqueDaysInMonth.add(
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          )
+          d.setDate(d.getDate() + 1)
+        }
+      })
+
+    const gewerktDezeMaand = uniqueDaysInMonth.size
     
     // Voor aflossers met startsaldo
     const startsaldoNote = aflosser.notes?.find((note: any) => 
@@ -142,14 +181,12 @@ export default function ReizenAflossersPage() {
         
         // Actuele dagen = Beginsaldo + Gewerkt deze maand
         const actueleDagen = beginsaldo + gewerktDezeMaand
-        console.log(`📊 Aflosser ${aflosser.first_name}: startsaldo ${startsaldo}, beginsaldo ${beginsaldo}, gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
         return actueleDagen
       }
     }
     
     // Voor bestaande aflossers zonder startsaldo: -15 + gewerkte dagen
     const actueleDagen = -15 + gewerktDezeMaand
-    console.log(`📊 Bestaande aflosser ${aflosser.first_name}: gewerkt ${gewerktDezeMaand}, actueel ${actueleDagen}`)
     return actueleDagen
   }
 

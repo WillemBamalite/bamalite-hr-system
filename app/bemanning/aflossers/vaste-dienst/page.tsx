@@ -83,7 +83,7 @@ export default function VasteDienstPage() {
     return flags[nationality] || "🌍"
   }
 
-  // Calculate days worked in current month based on ship assignments
+  // Calculate days worked in current month based on ship assignments (unique calendar days)
   const calculateDaysWorked = (aflosser: any) => {
     const monthStart = startOfMonth(currentMonth)
     const monthEnd = endOfMonth(currentMonth)
@@ -109,26 +109,34 @@ export default function VasteDienstPage() {
       )
     })
 
-    let totalDays = 0
+    // Verzamel unieke kalenderdagen binnen deze maand
+    const uniqueDays = new Set<string>()
 
     relevantAssignments.forEach((assignment: any) => {
       const assignmentStart = parseISO(assignment.start_date)
       const assignmentEnd = assignment.end_date ? parseISO(assignment.end_date) : monthEnd
       
-      // Calculate overlap with current month
       const effectiveStart = assignmentStart > monthStart ? assignmentStart : monthStart
       const effectiveEnd = assignmentEnd < monthEnd ? assignmentEnd : monthEnd
       
       if (effectiveStart <= effectiveEnd) {
-        const daysInAssignment = differenceInDays(effectiveEnd, effectiveStart) + 1
-        totalDays += daysInAssignment
+        const d = new Date(effectiveStart)
+        d.setHours(0, 0, 0, 0)
+        const end = new Date(effectiveEnd)
+        end.setHours(0, 0, 0, 0)
+        while (d <= end) {
+          uniqueDays.add(
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          )
+          d.setDate(d.getDate() + 1)
+        }
       }
     })
 
-    return totalDays
+    return uniqueDays.size
   }
 
-  // Calculate carryover from previous month
+  // Calculate carryover from previous month (also using unique days)
   const calculateCarryover = (aflosser: any) => {
     const previousMonth = subMonths(currentMonth, 1)
     const previousMonthStart = startOfMonth(previousMonth)
@@ -154,7 +162,7 @@ export default function VasteDienstPage() {
       )
     })
 
-    let previousMonthDays = 0
+    const uniqueDaysPrev = new Set<string>()
 
     relevantAssignments.forEach((assignment: any) => {
       const assignmentStart = parseISO(assignment.start_date)
@@ -164,11 +172,20 @@ export default function VasteDienstPage() {
       const effectiveEnd = assignmentEnd < previousMonthEnd ? assignmentEnd : previousMonthEnd
       
       if (effectiveStart <= effectiveEnd) {
-        const daysInAssignment = differenceInDays(effectiveEnd, effectiveStart) + 1
-        previousMonthDays += daysInAssignment
+        const d = new Date(effectiveStart)
+        d.setHours(0, 0, 0, 0)
+        const end = new Date(effectiveEnd)
+        end.setHours(0, 0, 0, 0)
+        while (d <= end) {
+          uniqueDaysPrev.add(
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          )
+          d.setDate(d.getDate() + 1)
+        }
       }
     })
 
+    const previousMonthDays = uniqueDaysPrev.size
     return previousMonthDays - 15 // Difference from required 15 days
   }
 
