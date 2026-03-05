@@ -121,7 +121,32 @@ export default function VasteDienstPage() {
 
   const getCurrentMonthData = (aflosser: any) => {
     const monthTrips = getTripsForMonth(aflosser.id)
-    const actualDaysThisMonth = monthTrips.reduce((sum: number, t: any) => sum + calculateDaysFromTrip(t), 0)
+    // Tel unieke kalenderdagen in deze maand (voorkomt dubbeltelling bij overlappende reizen of scheepswissels op dezelfde dag)
+    const uniqueDaysInMonth = new Set<string>()
+
+    for (const trip of monthTrips) {
+      const tripStart = parseTripDate(trip.start_datum)
+      const tripEnd = parseTripDate(trip.eind_datum)
+      if (isNaN(tripStart.getTime()) || isNaN(tripEnd.getTime())) continue
+
+      tripStart.setHours(0, 0, 0, 0)
+      tripEnd.setHours(0, 0, 0, 0)
+
+      const rangeStart = tripStart < monthStart ? monthStart : tripStart
+      const rangeEnd = tripEnd > monthEnd ? monthEnd : tripEnd
+
+      if (rangeEnd < rangeStart) continue
+
+      const d = new Date(rangeStart)
+      while (d <= rangeEnd) {
+        uniqueDaysInMonth.add(
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        )
+        d.setDate(d.getDate() + 1)
+      }
+    }
+
+    const actualDaysThisMonth = uniqueDaysInMonth.size
     
     const record = (vasteDienstRecords || []).find(
       (r: any) => r.aflosser_id === aflosser.id && r.year === viewYear && r.month === viewMonth
