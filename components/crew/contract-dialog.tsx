@@ -27,7 +27,6 @@ const companyOptions = [
 ]
 
 export function ContractDialog({ open, onOpenChange, crewData, onComplete }: ContractDialogProps) {
-  const [language, setLanguage] = useState<'nl' | 'de'>('nl')
   const [company, setCompany] = useState<string>(crewData.company || companyOptions[0])
   const [contractType, setContractType] = useState<'onbepaalde_tijd' | 'bepaalde_tijd'>('onbepaalde_tijd')
   const [einddatum, setEinddatum] = useState<string>('')
@@ -53,12 +52,6 @@ export function ContractDialog({ open, onOpenChange, crewData, onComplete }: Con
     setError(null)
 
     try {
-      const options: ContractOptions = {
-        language,
-        company,
-        contractType
-      }
-
       // Voeg salaris data toe aan crewData
       // BELANGRIJK: Gebruik de geselecteerde firma uit de dialog, niet de crewData.company
       // Anders wordt bij Europeshipping/andere firma's altijd Bamalite data ingevuld
@@ -71,17 +64,32 @@ export function ContractDialog({ open, onOpenChange, crewData, onComplete }: Con
         reiskosten: reiskosten || undefined,
       }
 
-      // Genereer het contract
-      const contractBlob = await generateContract(contractDataWithSalary, options)
-
-      // Genereer bestandsnaam: "Arbeidsovereenkomst (Naam bemanningslid) firma (naam firma)"
+      // Basis bestandsnaam: "Arbeidsovereenkomst (Naam bemanningslid) firma (naam firma)"
       const crewName = `${crewData.firstName} ${crewData.lastName}`
       const companyName = company.replace(/\./g, '').replace(/\s+/g, ' ') // Normaliseer firma naam
       const contractTypeText = contractType === 'bepaalde_tijd' ? ' - Bepaalde tijd' : ''
-      const fileName = `Arbeidsovereenkomst (${crewName}) firma (${companyName})${contractTypeText}.pdf`
+      
+      // Genereer en download altijd zowel Nederlands als Duits contract
+      const optionsNl: ContractOptions = {
+        language: 'nl',
+        company,
+        contractType,
+      }
+      const optionsDe: ContractOptions = {
+        language: 'de',
+        company,
+        contractType,
+      }
 
-      // Download het contract
-      downloadContract(contractBlob, fileName)
+      // Nederlands
+      const nlBlob = await generateContract(contractDataWithSalary, optionsNl)
+      const nlFileName = `Arbeidsovereenkomst (${crewName}) firma (${companyName})${contractTypeText} - NL.pdf`
+      downloadContract(nlBlob, nlFileName)
+
+      // Duits
+      const deBlob = await generateContract(contractDataWithSalary, optionsDe)
+      const deFileName = `Arbeidsovereenkomst (${crewName}) firma (${companyName})${contractTypeText} - DE.pdf`
+      downloadContract(deBlob, deFileName)
 
       // Sluit de dialog en roep onComplete aan
       onComplete()
@@ -116,17 +124,8 @@ export function ContractDialog({ open, onOpenChange, crewData, onComplete }: Con
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="language">Taal *</Label>
-            <Select value={language} onValueChange={(value: 'nl' | 'de') => setLanguage(value)}>
-              <SelectTrigger id="language">
-                <SelectValue placeholder="Selecteer taal" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nl">Nederlands</SelectItem>
-                <SelectItem value="de">Duits</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
+            Er worden automatisch twee contracten gegenereerd en gedownload: één in het Nederlands en één in het Duits.
           </div>
 
           <div className="space-y-2">

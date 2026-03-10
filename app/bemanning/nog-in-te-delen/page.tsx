@@ -766,8 +766,8 @@ export default function NogInTeDelenPage() {
                                   await updateCrew(member.id, {
                                     recruitment_status: "aangenomen"
                                   });
-                                  // Ga naar profiel
-                                  window.location.href = `/bemanning/${member.id}?edit=true&hired=true`;
+                                  // Ga naar het nieuwe bemanningslid formulier met vooringevulde gegevens
+                                  window.location.href = `/bemanning/nieuw?candidateId=${member.id}`;
                                 } catch (error) {
                                   console.error('Error updating recruitment status:', error);
                                 }

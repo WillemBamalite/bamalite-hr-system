@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { ContractDialog } from "./contract-dialog"
 import type { ContractData } from "@/utils/contract-generator"
+import { useSearchParams } from "next/navigation"
 
 const diplomaOptions = [
   "Vaarbewijs",
@@ -84,7 +85,7 @@ interface NewCrewFormData {
 }
 
 export function NewCrewForm() {
-  const { addCrew, addTask, ships, loading, error } = useSupabaseData()
+  const { addCrew, updateCrew, addTask, ships, crew, loading, error } = useSupabaseData()
   const { t } = useLanguage()
   const [formData, setFormData] = useState<NewCrewFormData>({
     firstName: "",
@@ -128,6 +129,45 @@ export function NewCrewForm() {
   const [isSuccess, setIsSuccess] = useState(false)
   const [showContractDialog, setShowContractDialog] = useState(false)
   const [savedCrewData, setSavedCrewData] = useState<ContractData | null>(null)
+  const searchParams = useSearchParams()
+  const [prefilledFromCandidate, setPrefilledFromCandidate] = useState(false)
+
+  // Prefill vanuit kandidaat als candidateId in de URL staat
+  useEffect(() => {
+    if (prefilledFromCandidate) return
+    if (!crew || crew.length === 0) return
+
+    const candidateId = searchParams.get("candidateId")
+    if (!candidateId) return
+
+    const candidate = crew.find((m: any) => m.id === candidateId)
+    if (!candidate) return
+
+    let notesText = ""
+    if (candidate.notes && candidate.notes.length > 0) {
+      const firstNote = candidate.notes[0]
+      notesText =
+        typeof firstNote === "string"
+          ? firstNote
+          : (firstNote?.content || firstNote?.text || "")
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      firstName: candidate.first_name || prev.firstName,
+      lastName: candidate.last_name || prev.lastName,
+      phone: candidate.phone || prev.phone,
+      email: candidate.email || prev.email,
+      nationality: candidate.nationality || prev.nationality,
+      position: candidate.position || prev.position,
+      notes: notesText || prev.notes,
+      isStudent: candidate.is_student || prev.isStudent,
+      educationType: candidate.education_type || prev.educationType,
+      smoking: candidate.smoking || prev.smoking,
+    }))
+
+    setPrefilledFromCandidate(true)
+  }, [crew, searchParams, prefilledFromCandidate])
 
   const validateForm = () => {
     const errors: string[] = []
@@ -175,6 +215,8 @@ export function NewCrewForm() {
     setIsSubmitting(true)
 
     try {
+      const candidateId = searchParams.get("candidateId")
+
       // Bereken status op basis van startdatum en regime
       let status = "nog-in-te-delen"
       let onBoardSince = null
@@ -187,8 +229,8 @@ export function NewCrewForm() {
         thuisSinds = calculatedStatus.thuisSinds
       }
 
-      // Genereer client-side id (zelfde patroon als aflossers)
-      const id = `crew-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      // Gebruik bestaand kandidaat-id als die er is, anders nieuw id
+      const id = candidateId || `crew-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
       // Maak crew member object voor Supabase
       const crewMember = {
@@ -232,9 +274,14 @@ export function NewCrewForm() {
       }
 
       console.log('Saving crew member to Supabase:', crewMember)
-
+      
       // Bewaar via Supabase
-      await addCrew(crewMember as any)
+      if (candidateId) {
+        // Bestaande kandidaat "promoveren" naar volledig bemanningslid
+        await updateCrew(candidateId, crewMember as any)
+      } else {
+        await addCrew(crewMember as any)
+      }
 
       // Kleine helper voor datumformat (YYYY-MM-DD)
       const formatDate = (date: Date) => date.toISOString().split("T")[0]
