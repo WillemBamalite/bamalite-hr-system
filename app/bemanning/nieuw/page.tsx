@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { NewCrewForm } from "@/components/crew/new-crew-form"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -25,7 +26,9 @@ export default function NewCrewPage() {
 
       {/* Main content */}
       <main className="w-full px-4 py-6">
-        <NewCrewForm />
+        <Suspense fallback={<div className="text-center py-8 text-gray-500">Formulier laden...</div>}>
+          <NewCrewForm />
+        </Suspense>
       </main>
 
       {/* Mobiele actieknoppen */}
