@@ -55,7 +55,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   }
 
   return (
-    <div className="space-y-4 p-6 bg-white border-b print-header">
+    <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40">
       <div className="flex items-center justify-between">
         <Link href="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer">
           <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center shadow-lg">
@@ -91,37 +91,6 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         </button>
         
         <div className="flex items-center gap-4">
-          {/* Last activity indicator */}
-          {user && !activityLoading && lastActivity.timestamp && (
-            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
-              <Clock className="w-4 h-4 text-gray-600 flex-shrink-0" />
-              <div className="text-xs text-gray-600 whitespace-nowrap">
-                <span className="font-medium">Laatst gewijzigd</span>
-                {lastActivity.user && (
-                  <span className="ml-1">door {lastActivity.user}</span>
-                )}
-                <span className="ml-1 text-gray-500">
-                  {formatDistanceToNow(lastActivity.timestamp, { addSuffix: true, locale: nl })}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Language switch */}
-          {user && (
-            <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-2 py-1">
-              <Globe className="w-4 h-4 text-gray-600" />
-              {(['nl','de','fr'] as const).map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLocale(l)}
-                  className={`text-xs px-2 py-1 rounded ${locale===l ? 'bg-white border border-gray-300 text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  {l.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          )}
           {user && (
             <div className="flex items-center gap-3">
               {/* Snelknop: Nieuwe taak overal in de app */}
