@@ -14,6 +14,7 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { generateOutOfServiceLetter, downloadContract } from "@/utils/contract-generator"
 
 const POSITION_OPTIONS = [
   "Kapitein",
@@ -95,6 +96,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   const [showOutDialog, setShowOutDialog] = useState(false)
   const [outDate, setOutDate] = useState("")
   const [outReason, setOutReason] = useState("")
+  const [noticeMonths, setNoticeMonths] = useState<"1" | "2" | "3">("1")
   const [resetRotation, setResetRotation] = useState(false)
   const [newRotationDate, setNewRotationDate] = useState("")
 
@@ -112,10 +114,34 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         out_of_service_reason: outReason
       } as any)
 
+      // Genereer beëindiging dienstverband PDF
+      try {
+        const address = crewMember.address || {
+          street: "",
+          city: "",
+          postalCode: "",
+          country: ""
+        }
+
+        const letterBlob = await generateOutOfServiceLetter({
+          firstName: crewMember.first_name || "",
+          lastName: crewMember.last_name || "",
+          address,
+          outOfServiceDate: outDate,
+          noticeMonths: parseInt(noticeMonths, 10),
+        })
+
+        const fileName = `Beeindiging dienstverband (${crewMember.first_name || ""} ${crewMember.last_name || ""}).pdf`
+        downloadContract(letterBlob, fileName)
+      } catch (pdfError) {
+        console.error('Error generating out-of-service PDF:', pdfError)
+      }
+
       // Sluit dialoog en reset velden
       setShowOutDialog(false)
       setOutDate("")
       setOutReason("")
+      setNoticeMonths("1")
       if (onProfileUpdate) onProfileUpdate()
     } catch (e) {
       console.error(e)
@@ -1127,6 +1153,19 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           <div>
             <label className="text-sm font-medium text-gray-700">Reden</label>
             <Textarea value={outReason} onChange={(e) => setOutReason(e.target.value)} placeholder="Bijv. einde contract, eigen verzoek, etc." />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">Opzegtermijn</label>
+            <Select value={noticeMonths} onValueChange={(value) => setNoticeMonths(value as "1" | "2" | "3")}>
+              <SelectTrigger>
+                <SelectValue placeholder="Kies opzegtermijn" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 maand</SelectItem>
+                <SelectItem value="2">2 maanden</SelectItem>
+                <SelectItem value="3">3 maanden</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>

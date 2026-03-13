@@ -53,6 +53,19 @@ export interface AddendumData {
   language?: 'nl' | 'de' // Taal voor addendum (default: 'nl')
 }
 
+export interface OutOfServiceData {
+  firstName: string
+  lastName: string
+  address: {
+    street: string
+    city: string
+    postalCode: string
+    country: string
+  }
+  outOfServiceDate: string // Datum uit dienst (yyyy-MM-dd of dd-MM-yyyy)
+  noticeMonths: number // Opzegtermijn in maanden (1,2,3)
+}
+
 /**
  * Normaliseert tekst voor PDF-velden door Unicode-karakters te vervangen met ASCII-equivalenten
  * Dit voorkomt encoding errors met WinAnsi encoding die niet alle Unicode-karakters ondersteunt
@@ -1277,6 +1290,62 @@ function calculateDatePlus3Months(dateString: string): string {
 }
 
 /**
+ * Berekent een datum + N maanden en geeft dd-MM-yyyy terug.
+ */
+function calculateDatePlusMonths(dateString: string, months: number): string {
+  if (!dateString || !months) {
+    return ''
+  }
+  
+  try {
+    // Parse de datum - gebruik vergelijkbare logica als calculateDatePlus3Months
+    let date: Date
+    if (dateString.includes('-')) {
+      const parts = dateString.split('-')
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          // yyyy-MM-dd formaat
+          const year = parseInt(parts[0])
+          const month = parseInt(parts[1]) - 1
+          const day = parseInt(parts[2])
+          date = new Date(year, month, day)
+        } else {
+          // dd-MM-yyyy formaat
+          const day = parseInt(parts[0])
+          const month = parseInt(parts[1]) - 1
+          const year = parseInt(parts[2])
+          date = new Date(year, month, day)
+        }
+      } else {
+        date = new Date(dateString)
+      }
+    } else {
+      date = new Date(dateString)
+    }
+    
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date in calculateDatePlusMonths:', dateString)
+      return ''
+    }
+    
+    const originalMonth = date.getMonth()
+    date.setMonth(date.getMonth() + months)
+    
+    if (date.getMonth() !== (originalMonth + months) % 12) {
+      date.setDate(0)
+    }
+    
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}-${month}-${year}`
+  } catch (error) {
+    console.error('Error calculating date + months:', dateString, months, error)
+    return ''
+  }
+}
+
+/**
  * Formatteert een datum string (yyyy-MM-dd) naar dd-MM-yyyy formaat
  * Voorkomt timezone problemen door de datum direct te parsen
  */
@@ -1563,6 +1632,78 @@ export async function generateAddendum(
   } catch (error) {
     console.error('Error generating addendum:', error)
     throw new Error(`Fout bij het genereren van het addendum: ${error instanceof Error ? error.message : 'Onbekende fout'}`)
+  }
+}
+
+/**
+ * Genereert een beëindiging dienstverband PDF op basis van het template beeindiging_dienstverband.pdf
+ * en vult de vijf tekstvelden (Text1..Text5) met de gegevens van het bemanningslid.
+ */
+export async function generateOutOfServiceLetter(
+  data: OutOfServiceData
+): Promise<Blob> {
+  try {
+    const templatePath = '/contracts/beeindiging_dienstverband.pdf'
+
+    let fullTemplatePath = templatePath
+    if (typeof window !== 'undefined') {
+      fullTemplatePath = `${window.location.origin}${templatePath}?v=${Date.now()}`
+    }
+
+    console.log('Loading out-of-service PDF template from:', fullTemplatePath)
+
+    const templateResponse = await fetch(fullTemplatePath, { cache: 'no-store' })
+    if (!templateResponse.ok) {
+      console.error(`Failed to load template: ${fullTemplatePath}`, {
+        status: templateResponse.status,
+        statusText: templateResponse.statusText,
+        url: templateResponse.url,
+      })
+      throw new Error(`Kon template niet laden: ${fullTemplatePath} (Status: ${templateResponse.status})`)
+    }
+
+    const templateBytes = await templateResponse.arrayBuffer()
+    if (templateBytes.byteLength === 0) {
+      throw new Error('PDF template is leeg (0 bytes)')
+    }
+
+    const pdfDoc = await PDFDocument.load(templateBytes)
+    const form = pdfDoc.getForm()
+
+    const fullName = `${data.firstName} ${data.lastName}`.trim()
+    const streetAndNumber = data.address.street || ''
+    const postalAndCity = `${data.address.postalCode || ''} ${data.address.city || ''}`.trim()
+
+    // Bereken datum uit dienst + opzegtermijn (1/2/3 maanden)
+    const finalDate = calculateDatePlusMonths(data.outOfServiceDate, data.noticeMonths)
+
+    try {
+      form.getTextField('Text1').setText(normalizeTextForPDF(fullName))
+    } catch {}
+    try {
+      form.getTextField('Text2').setText(normalizeTextForPDF(streetAndNumber))
+    } catch {}
+    try {
+      form.getTextField('Text3').setText(normalizeTextForPDF(postalAndCity))
+    } catch {}
+    try {
+      form.getTextField('Text4').setText(normalizeTextForPDF(fullName))
+    } catch {}
+    try {
+      form.getTextField('Text5').setText(normalizeTextForPDF(finalDate))
+    } catch {}
+
+    form.flatten()
+
+    const pdfBytes = await pdfDoc.save()
+    return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
+  } catch (error) {
+    console.error('Error generating out-of-service letter:', error)
+    throw new Error(
+      `Fout bij het genereren van de beëindiging dienstverband brief: ${
+        error instanceof Error ? error.message : 'Onbekende fout'
+      }`,
+    )
   }
 }
 
