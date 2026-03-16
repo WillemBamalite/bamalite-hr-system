@@ -9,10 +9,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav";
 import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { BackButton } from "@/components/ui/back-button";
 import { ContractDialog } from "@/components/crew/contract-dialog";
@@ -36,6 +37,10 @@ export default function NogInTeDelenPage() {
   const [showContractDialog, setShowContractDialog] = useState(false);
   const [selectedMemberForContract, setSelectedMemberForContract] = useState<any>(null);
   const [contractData, setContractData] = useState<ContractData | null>(null);
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteMember, setNoteMember] = useState<any | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [quickNotes, setQuickNotes] = useState<Record<string, string>>({});
   const [candidateForm, setCandidateForm] = useState({
     firstName: "",
     lastName: "",
@@ -56,6 +61,52 @@ export default function NogInTeDelenPage() {
     startMogelijkheid: "",
     datumGeplaatst: ""
   });
+
+  // Quick notes per kandidaat uit localStorage laden
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("recruitmentQuickNotes") || "{}";
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setQuickNotes(parsed);
+      }
+    } catch {
+      // negeer parse fouten
+    }
+  }, []);
+
+  const getNotePreview = (member: any): string | null => {
+    const text = quickNotes[member.id];
+    if (!text) return null;
+    return text.length > 120 ? text.slice(0, 117) + "..." : text;
+  };
+
+  const openNoteDialog = (member: any) => {
+    setNoteMember(member);
+    setNoteText(quickNotes[member.id] || "");
+    setNoteDialogOpen(true);
+  };
+
+  const handleSaveNote = async () => {
+    if (!noteMember) return;
+    const trimmed = noteText.trim();
+
+    // Lege tekst = opmerking verwijderen
+    const updated: Record<string, string> = { ...quickNotes };
+    if (!trimmed) {
+      delete updated[noteMember.id];
+    } else {
+      updated[noteMember.id] = trimmed;
+    }
+
+    setQuickNotes(updated);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("recruitmentQuickNotes", JSON.stringify(updated));
+    }
+    setNoteDialogOpen(false);
+    setNoteMember(null);
+  };
 
   // Prevent hydration errors
   useEffect(() => {
@@ -639,7 +690,14 @@ export default function NogInTeDelenPage() {
                 {nogTeBenaderen.map((member: any) => {
                   const stage = getStageColor(member);
                   return (
-                    <Card key={member.id} className={`hover:shadow-lg transition-shadow border ${stage.border} ${stage.bg}`}>
+                    <Card
+                      key={member.id}
+                      className={`hover:shadow-lg transition-shadow border ${stage.border} ${stage.bg}`}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        openNoteDialog(member);
+                      }}
+                    >
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center space-x-3">
@@ -728,6 +786,14 @@ export default function NogInTeDelenPage() {
                                 </Badge>
                               ))}
                             </div>
+                          </div>
+                        )}
+
+                        {/* Recruitment note preview */}
+                        {getNotePreview(member) && (
+                          <div className="mt-2 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+                            <span className="font-medium">Opmerking:</span>{" "}
+                            <span>{getNotePreview(member)}</span>
                           </div>
                         )}
 
@@ -825,7 +891,14 @@ export default function NogInTeDelenPage() {
                   const checklistComplete = isChecklistComplete(member);
                   
                   return (
-                  <Card key={member.id} className="hover:shadow-lg transition-shadow border-blue-200">
+                  <Card
+                    key={member.id}
+                    className="hover:shadow-lg transition-shadow border-blue-200"
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      openNoteDialog(member);
+                    }}
+                  >
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
@@ -941,7 +1014,14 @@ export default function NogInTeDelenPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {nogAfTeRonden.map((member: any) => (
-            <Card key={member.id} className="hover:shadow-lg transition-shadow border-orange-200">
+            <Card
+              key={member.id}
+              className="hover:shadow-lg transition-shadow border-orange-200"
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                openNoteDialog(member);
+              }}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
@@ -1055,7 +1135,14 @@ export default function NogInTeDelenPage() {
               <p className="text-sm text-gray-600 mb-4">Kandidaten waar we later op terug kunnen komen</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {laterTerugkomen.map((member: any) => (
-                  <Card key={member.id} className="hover:shadow-lg transition-shadow border-gray-200">
+                  <Card
+                    key={member.id}
+                    className="hover:shadow-lg transition-shadow border-gray-200"
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      openNoteDialog(member);
+                    }}
+                  >
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
@@ -1712,6 +1799,34 @@ export default function NogInTeDelenPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Opmerking dialoog (dubbelklik op kaart) */}
+      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Opmerking voor{" "}
+              {noteMember ? `${noteMember.first_name || ""} ${noteMember.last_name || ""}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Bijvoorbeeld: 3x gebeld, belt zelf terug, voorkeur schip Caritas, etc."
+              rows={4}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>
+              Annuleren
+            </Button>
+            <Button onClick={handleSaveNote}>
+              Opslaan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Assignment Dialog */}
       <Dialog open={showAssignmentDialog} onOpenChange={setShowAssignmentDialog}>
         <DialogContent>
@@ -1770,5 +1885,6 @@ export default function NogInTeDelenPage() {
     </div>
   );
 } 
+
 
 
