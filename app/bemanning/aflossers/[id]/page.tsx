@@ -375,7 +375,7 @@ export default function AflosserDetailPage() {
       const workedDays = rawWorked - minus
       const requiredDays = 15
       const monthSaldo = workedDays - requiredDays
-      return { label, workedDays, requiredDays, monthSaldo }
+      return { label, workedDays, requiredDays, monthSaldo, minusDays: minus, rawWorked }
     })
   })()
 
@@ -2154,6 +2154,7 @@ export default function AflosserDetailPage() {
                   <tr className="bg-gray-100">
                     <th className="border px-3 py-2 text-left">Maand</th>
                     <th className="border px-3 py-2 text-right">Gewerkte dagen</th>
+                    <th className="border px-3 py-2 text-right">Terug gestaan</th>
                     <th className="border px-3 py-2 text-right">Norm (15)</th>
                     <th className="border px-3 py-2 text-right">Maandsaldo</th>
                   </tr>
@@ -2163,6 +2164,9 @@ export default function AflosserDetailPage() {
                     <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       <td className="border px-3 py-1">{row.label}</td>
                       <td className="border px-3 py-1 text-right">{row.workedDays}</td>
+                      <td className="border px-3 py-1 text-right">
+                        {row.minusDays ? `-${row.minusDays}` : '0'}
+                      </td>
                       <td className="border px-3 py-1 text-right">{row.requiredDays}</td>
                       <td className="border px-3 py-1 text-right">
                         {row.monthSaldo > 0 ? `+${row.monthSaldo}` : row.monthSaldo} dagen

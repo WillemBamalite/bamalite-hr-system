@@ -23,6 +23,7 @@ import {
   UserX,
   Trash2
 } from "lucide-react"
+import { PDFDocument, StandardFonts } from "pdf-lib"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { supabase } from "@/lib/supabase"
 
@@ -46,6 +47,126 @@ export function StandBackManagement() {
   })
   
   const { standBackRecords, crew, ships, loading, error, updateStandBackRecord, addStandBackRecord, loadData } = useSupabaseData()
+
+  const downloadMemberOverviewPdf = async (group: any) => {
+    if (!group || !group.crewMember) return
+
+    const name = `${group.crewMember.firstName || ""} ${group.crewMember.lastName || ""}`.trim() || "Onbekend"
+
+    const pdfDoc = await PDFDocument.create()
+    const page = pdfDoc.addPage()
+    const { width, height } = page.getSize()
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    const fontSize = 11
+    const lineHeight = 14
+    const margin = 40
+    let y = height - margin
+
+    const drawText = (text: string, options?: { bold?: boolean }) => {
+      const usedFont = options?.bold ? fontBold : font
+      page.drawText(text, { x: margin, y, size: fontSize, font: usedFont })
+      y -= lineHeight
+      if (y < margin) {
+        const newPage = pdfDoc.addPage()
+        y = newPage.getSize().height - margin
+      }
+    }
+
+    // Koptekst
+    drawText("Overzicht terug te staan dagen", { bold: true })
+    drawText(`Naam: ${name}`)
+    drawText("")
+    drawText("Totaaloverzicht:", { bold: true })
+    drawText(`- Verplicht terug te staan: ${group.totalRequired} dagen`)
+    drawText(`- Al terug gestaan:        ${group.totalCompleted} dagen`)
+    drawText(`- Nog te staan:            ${group.totalRemaining} dagen`)
+    drawText("")
+
+    const formatDateShort = (value: string | null | undefined) => {
+      if (!value) return "-"
+      const d = new Date(value)
+      if (isNaN(d.getTime())) return value
+      const day = String(d.getDate()).padStart(2, "0")
+      const month = String(d.getMonth() + 1).padStart(2, "0")
+      const year = String(d.getFullYear()).slice(-2)
+      return `${day}/${month}/${year}`
+    }
+
+    // 1. Opgebouwde mindagen per registratie
+    drawText("1. Opgebouwde mindagen (schuld per registratie)", { bold: true })
+
+    ;(group.records || []).forEach((record: any, index: number) => {
+      const start = formatDateShort(record.startDate)
+      const end = formatDateShort(record.endDate)
+      const reason = record.reason || ""
+      const required = record.standBackDaysRequired ?? ""
+      const remaining = record.standBackDaysRemaining ?? ""
+      const status = record.standBackStatus || ""
+
+      if (index > 0) {
+        drawText("")
+      }
+
+      drawText(`Periode: ${start} t/m ${end}`)
+      drawText(`Reden: ${reason || "-"}`)
+      drawText(`Schuld: ${required} dagen | Nog te staan: ${remaining} dagen | Status: ${status || "-"}`)
+
+      if (record.description) {
+        const desc = `Opmerking: ${record.description}`.replace(/[\r\n]+/g, " ")
+        drawText(desc)
+      }
+    })
+
+    drawText("")
+    drawText("2. Ingehaalde dagen (wanneer is er teruggestaan)", { bold: true })
+
+    // 2. Ingehaalde dagen: alle historyregels onder elkaar
+    const allHistory: { date: string; days: number | string; note: string }[] = []
+
+    ;(group.records || []).forEach((record: any) => {
+      const history = Array.isArray(record.standBackHistory) ? record.standBackHistory : []
+      history.forEach((h: any) => {
+        const dateStr = formatDateShort(h.date)
+        const daysNum =
+          typeof h.daysCompleted === "number"
+            ? h.daysCompleted
+            : h.daysCompleted
+            ? Number(h.daysCompleted)
+            : NaN
+        const daysStr = Number.isNaN(daysNum) ? "-" : daysNum
+        const noteStr = (h.note || "").replace(/[\r\n]+/g, " ")
+        allHistory.push({ date: dateStr, days: daysStr, note: noteStr })
+      })
+    })
+
+    if (allHistory.length === 0) {
+      drawText("Nog geen dagen terug gestaan.")
+    } else {
+      allHistory
+        .sort((a, b) => {
+          const da = a.date.split("-").reverse().join("-")
+          const db = b.date.split("-").reverse().join("-")
+          return da.localeCompare(db)
+        })
+        .forEach((h) => {
+          const base = `- ${h.date}: ${h.days} dag(en) terug gestaan`
+          drawText(h.note ? `${base} – ${h.note}` : base)
+        })
+    }
+
+    const pdfBytes = await pdfDoc.save()
+    const blob = new Blob([pdfBytes], { type: "application/pdf" })
+    const url = URL.createObjectURL(blob)
+
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `Terug-te-staan-overzicht-${name.replace(/\s+/g, "_")}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   // Filter and map records by status
   const openStandBackRecordsRaw = standBackRecords
@@ -669,6 +790,15 @@ export function StandBackManagement() {
                         <Badge variant="destructive" className="text-sm">
                           {group.totalRemaining} dagen totaal resterend
                         </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => downloadMemberOverviewPdf(group)}
+                          className="flex items-center"
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Overzicht
+                        </Button>
                         
                         <Dialog
                           open={isAddDaysOpen && selectedRecord?.crewMemberId === group.crewMemberId}
