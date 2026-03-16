@@ -977,6 +977,14 @@ export default function NogInTeDelenPage() {
                         </div>
                       )}
 
+                      {/* Recruitment note preview */}
+                      {getNotePreview(member) && (
+                        <div className="mt-1 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+                          <span className="font-medium">Opmerking:</span>{" "}
+                          <span>{getNotePreview(member)}</span>
+                        </div>
+                      )}
+
                       {/* Actions */}
                       <div className="flex flex-col gap-2 pt-3 border-t">
                         <Button 
@@ -1102,6 +1110,14 @@ export default function NogInTeDelenPage() {
                   </div>
                 )}
 
+                {/* Recruitment note preview */}
+                {getNotePreview(member) && (
+                  <div className="mt-1 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+                    <span className="font-medium">Opmerking:</span>{" "}
+                    <span>{getNotePreview(member)}</span>
+                  </div>
+                )}
+
                 {/* Contract opstellen knop (alleen als contract nog niet is afgevinkt) */}
                 {!member.arbeidsovereenkomst && (
                   <div className="pt-2 border-t">
@@ -1172,6 +1188,14 @@ export default function NogInTeDelenPage() {
                       {member.phone && (
                         <div className="text-sm text-gray-600">
                           <span className="font-medium">Telefoon:</span> {member.phone}
+                        </div>
+                      )}
+
+                      {/* Recruitment note preview */}
+                      {getNotePreview(member) && (
+                        <div className="mt-1 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+                          <span className="font-medium">Opmerking:</span>{" "}
+                          <span>{getNotePreview(member)}</span>
                         </div>
                       )}
                       <div className="pt-3 border-t">
