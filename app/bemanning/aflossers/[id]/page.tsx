@@ -173,6 +173,7 @@ export default function AflosserDetailPage() {
     notes: ""
   })
   const [showAllVasteDienstMonths, setShowAllVasteDienstMonths] = useState(false)
+  const [isRemovingStartsaldo, setIsRemovingStartsaldo] = useState(false)
   const [mindagenDialogOpen, setMindagenDialogOpen] = useState(false)
   const [newMindag, setNewMindag] = useState({
     start_date: "",
@@ -243,7 +244,50 @@ export default function AflosserDetailPage() {
     }
 
     const monthMap = new Map<string, { year: number; month: number; workedDays: number }>()
-    const msPerDay = 24 * 60 * 60 * 1000
+
+    // Verdeel vaste-dienst credits (0.5 per 12 uur) over maanden op basis van de start van elke 12u-blok.
+    const addTripCreditsByMonth = (trip: any) => {
+      const startDate = parseDate(trip.start_datum)
+      const endDate = parseDate(trip.eind_datum)
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return
+
+      const startTime = (trip.start_tijd || "00:00") as string
+      const endTime = (trip.eind_tijd || "00:00") as string
+
+      const parseTimeHours = (timeStr: string): number => {
+        if (!timeStr || typeof timeStr !== "string") return 0
+        const [hh, mm] = timeStr.split(":")
+        const h = parseInt(hh || "0", 10)
+        const m = parseInt(mm || "0", 10)
+        return (isNaN(h) ? 0 : h) + (isNaN(m) ? 0 : m) / 60
+      }
+
+      const startHours = parseTimeHours(startTime)
+      const endHours = parseTimeHours(endTime)
+
+      const startDateTime = new Date(startDate)
+      startDateTime.setHours(Math.floor(startHours), Math.round((startHours % 1) * 60), 0, 0)
+
+      const endDateTime = new Date(endDate)
+      endDateTime.setHours(Math.floor(endHours), Math.round((endHours % 1) * 60), 0, 0)
+
+      if (endDateTime < startDateTime) return
+
+      const totalHours = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60)
+      const blocks = Math.ceil(totalHours / 12) // elke block = 12 uur => 0.5 dag
+      if (!blocks || blocks <= 0) return
+
+      const blockMs = 12 * 60 * 60 * 1000
+      for (let i = 0; i < blocks; i++) {
+        const blockStart = new Date(startDateTime.getTime() + i * blockMs)
+        const year = blockStart.getFullYear()
+        const month = blockStart.getMonth() + 1
+        const key = `${year}-${month}`
+        const existing = monthMap.get(key) || { year, month, workedDays: 0 }
+        existing.workedDays += 0.5
+        monthMap.set(key, existing)
+      }
+    }
 
     trips
       .filter((trip: any) => {
@@ -254,48 +298,9 @@ export default function AflosserDetailPage() {
       })
       .forEach((trip: any) => {
         try {
-          const tripStart = parseDate(trip.start_datum)
-          const tripEnd = parseDate(trip.eind_datum)
-          if (isNaN(tripStart.getTime()) || isNaN(tripEnd.getTime())) return
-
-          tripStart.setHours(0, 0, 0, 0)
-          tripEnd.setHours(0, 0, 0, 0)
-
-          let year = tripStart.getFullYear()
-          let month = tripStart.getMonth() + 1
-
-          // Loop door alle maanden waar deze reis overheen loopt
-          while (true) {
-            const monthStart = new Date(year, month - 1, 1)
-            monthStart.setHours(0, 0, 0, 0)
-            const monthEnd = new Date(year, month, 0)
-            monthEnd.setHours(0, 0, 0, 0)
-
-            // Check overlap
-            if (tripEnd < monthStart || tripStart > monthEnd) {
-              // Geen overlap in deze maand
-            } else {
-              const rangeStart = tripStart < monthStart ? monthStart : tripStart
-              const rangeEnd = tripEnd > monthEnd ? monthEnd : tripEnd
-
-              if (rangeEnd >= rangeStart) {
-                const daysInMonth = Math.floor((rangeEnd.getTime() - rangeStart.getTime()) / msPerDay) + 1
-                const key = `${year}-${month}`
-                const existing = monthMap.get(key) || { year, month, workedDays: 0 }
-                existing.workedDays += daysInMonth
-                monthMap.set(key, existing)
-              }
-            }
-
-            if (tripEnd <= monthEnd) break
-            // Volgende maand
-            if (month === 12) {
-              year += 1
-              month = 1
-            } else {
-              month += 1
-            }
-          }
+          // Verdeel credits over maanden i.p.v. alles op startmaand te zetten.
+          // Hiermee klopt het maand-overzicht met reizen die over maandgrenzen lopen.
+          addTripCreditsByMonth(trip)
         } catch (err) {
           console.error("Error building month summary for vaste dienst:", err, trip)
         }
@@ -337,6 +342,28 @@ export default function AflosserDetailPage() {
 
     return isNaN(startsaldo) ? 0 : startsaldo
   })()
+
+  const removeStartsaldo = async () => {
+    if (!aflosser) return
+    const ok = confirm("Weet je zeker dat je het startsaldo wilt verwijderen?")
+    if (!ok) return
+    try {
+      setIsRemovingStartsaldo(true)
+      const parsedNotes = parseNotes(aflosser.notes)
+      const filteredNotes = (parsedNotes || []).filter((note: any) => {
+        const noteText = typeof note === "string" ? note : note?.text || ""
+        return !String(noteText).toLowerCase().includes("startsaldo")
+      })
+      await updateCrew(aflosser.id, {
+        notes: JSON.stringify(filteredNotes),
+      })
+    } catch (e) {
+      console.error("Error removing startsaldo:", e)
+      alert("Fout bij verwijderen startsaldo")
+    } finally {
+      setIsRemovingStartsaldo(false)
+    }
+  }
 
   // Calculate current balance als volledig opgebouwd saldo over alle maanden:
   // startsaldo + Σ(gewerkte dagen per maand - 15)
@@ -944,8 +971,28 @@ export default function AflosserDetailPage() {
                             const beginsaldo = -15 + startsaldo
                             return (
                               <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600">
-                                <div>Startsaldo: <span className="font-medium">{startsaldo > 0 ? '+' : ''}{startsaldo}</span> dagen</div>
-                                <div>Beginsaldo eerste maand: <span className="font-medium">{beginsaldo}</span> dagen</div>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <div>
+                                      Startsaldo:{" "}
+                                      <span className="font-medium">
+                                        {startsaldo > 0 ? '+' : ''}{startsaldo}
+                                      </span>{" "}
+                                      dagen
+                                    </div>
+                                    <div>Beginsaldo eerste maand: <span className="font-medium">{beginsaldo}</span> dagen</div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={removeStartsaldo}
+                                    disabled={isRemovingStartsaldo}
+                                    className="h-7 px-2 text-red-600 border-red-200 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="w-3 h-3 mr-1" />
+                                    Verwijder
+                                  </Button>
+                                </div>
                               </div>
                             )
                           }
