@@ -907,6 +907,7 @@ export function useSupabaseData() {
   const [vasteDienstMindagen, setVasteDienstMindagen] = useState<any[]>([])
   const [tasks, setTasks] = useState<any[]>([])
   const [incidents, setIncidents] = useState<any[]>([])
+  const [officialWarnings, setOfficialWarnings] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [crewColorTags, setCrewColorTags] = useState<Record<string, string>>({})  // Load all data from Supabase
@@ -931,6 +932,7 @@ export function useSupabaseData() {
         setVasteDienstRecords([])
         setTasks([])
         setIncidents([])
+        setOfficialWarnings([])
         setLoading(false)
         return
       }
@@ -1110,6 +1112,26 @@ export function useSupabaseData() {
       } else {
         console.log('Incidents loaded:', incidentsData?.length || 0)
         setIncidents(incidentsData || [])
+      }
+
+      // Load official warnings
+      console.log('Loading official warnings...')
+      const { data: officialWarningsData, error: officialWarningsError } = await supabase
+        .from('official_warnings')
+        .select('*')
+        .order('test_date', { ascending: false })
+
+      if (officialWarningsError) {
+        const msg =
+          (officialWarningsError as any)?.message ||
+          (officialWarningsError as any)?.error?.message ||
+          JSON.stringify(officialWarningsError)
+        // Dit is niet kritiek voor de rest van de app; log als waarschuwing zodat Next geen error-overlay forceert.
+        console.warn('Skipping official_warnings (table missing or no access):', msg)
+        setOfficialWarnings([])
+      } else {
+        console.log('Official warnings loaded:', officialWarningsData?.length || 0)
+        setOfficialWarnings(officialWarningsData || [])
       }
       
       console.log('Data loading completed!')
@@ -1312,6 +1334,59 @@ export function useSupabaseData() {
       return data
     } catch (err) {
       console.error('Error updating crew:', err)
+      throw err
+    }
+  }
+
+  // Add official warning
+  const addOfficialWarning = async (warning: any) => {
+    try {
+      const { data, error } = await supabase.from('official_warnings').insert([warning]).select().single()
+      if (error) {
+        const msg =
+          (error as any)?.message ||
+          (error as any)?.error?.message ||
+          (error as any)?.details ||
+          (error as any)?.hint ||
+          JSON.stringify(error)
+        console.warn('Supabase error adding official warning:', msg)
+        throw new Error(msg && msg !== '{}' ? msg : 'Supabase insert error (official_warnings)')
+      }
+      await loadData()
+      return data
+    } catch (err) {
+      const msg =
+        (err as any)?.message ||
+        (err as any)?.error?.message ||
+        (err as any)?.details ||
+        JSON.stringify(err)
+      console.warn('Error adding official warning:', msg)
+      throw err
+    }
+  }
+
+  // Delete official warning (row only; storage removal is handled by caller)
+  const deleteOfficialWarning = async (id: string) => {
+    try {
+      const { error } = await supabase.from('official_warnings').delete().eq('id', id)
+      if (error) {
+        const msg =
+          (error as any)?.message ||
+          (error as any)?.error?.message ||
+          (error as any)?.details ||
+          (error as any)?.hint ||
+          JSON.stringify(error)
+        console.warn('Supabase error deleting official warning:', msg)
+        throw new Error(msg && msg !== '{}' ? msg : 'Supabase delete error (official_warnings)')
+      }
+      await loadData()
+    } catch (err) {
+      const msg =
+        (err as any)?.message ||
+        (err as any)?.error?.message ||
+        (err as any)?.details ||
+        JSON.stringify(err)
+      console.warn('Error deleting official warning:', msg)
       throw err
     }
   }
@@ -2283,6 +2358,7 @@ export function useSupabaseData() {
     trips,
     tasks,
     incidents,
+    officialWarnings,
     loading,
     error,
     loadData,
@@ -2324,6 +2400,8 @@ export function useSupabaseData() {
     },
     addCrew,
     updateCrew,
+    addOfficialWarning,
+    deleteOfficialWarning,
     deleteCrew,
     addShip,
     updateShip,

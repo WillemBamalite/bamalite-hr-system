@@ -3,14 +3,14 @@
 import { useState, useEffect } from "react"
 import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2 } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, FileWarning } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import Link from "next/link"
 
 export function DashboardStats() {
-  const { crew, ships, sickLeave, loans, tasks, trips, incidents } = useSupabaseData()
+  const { crew, ships, sickLeave, loans, tasks, trips, incidents, officialWarnings } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
   const { t } = useLanguage()
   
@@ -19,6 +19,15 @@ export function DashboardStats() {
   
   // Count open incidents
   const openIncidentsCount = incidents.filter((i: any) => i.status === 'open' || i.status === 'in_behandeling').length
+
+  const activeOfficialWarningsCount = (officialWarnings || []).filter((w: any) => {
+    const exp = new Date(w?.expires_at || 0)
+    if (isNaN(exp.getTime())) return true
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    exp.setHours(0, 0, 0, 0)
+    return exp >= today
+  }).length
   
   // Bereken stats uit Supabase data
   const aflossers = crew.filter((c) => 
@@ -448,6 +457,20 @@ export function DashboardStats() {
                 Geen actie nodig
               </div>
             )}
+          </Link>
+        </div>
+
+        {/* 13. Officiële waarschuwingen */}
+        <div className="aspect-[3/1]">
+          <Link
+            href="/bemanning/officiele-waarschuwingen"
+            className="h-full flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-lg p-2 md:p-4 text-center hover:bg-rose-100 transition cursor-pointer"
+          >
+            <div className="text-lg md:text-2xl font-bold text-rose-800">{activeOfficialWarningsCount}</div>
+            <div className="text-[10px] md:text-xs text-rose-700 mt-1 flex items-center justify-center gap-1">
+              <FileWarning className="w-2.5 h-2.5 md:w-3 md:h-3" />
+              <span>Waarschuwingen</span>
+            </div>
           </Link>
         </div>
       </div>

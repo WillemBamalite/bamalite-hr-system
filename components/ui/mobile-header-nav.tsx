@@ -13,6 +13,7 @@ export function MobileHeaderNav() {
     { href: "/bemanning/overzicht", label: t('crew'), icon: "👥" },
     { href: "/bemanning/aflossers", label: t('reliefCrew'), icon: "🔄" },
     { href: "/bemanning/studenten", label: t('students'), icon: "🎓" },
+    { href: "/bemanning/officiele-waarschuwingen", label: "Waarschuwingen", icon: "⚠️" },
     { href: "/bemanning/leningen", label: t('loans'), icon: "💰" },
     { href: "/documenten", label: t('documents'), icon: "📄" },
     { href: "/ziekte", label: t('sick'), icon: "🏥" },

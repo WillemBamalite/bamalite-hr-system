@@ -66,6 +66,22 @@ export interface OutOfServiceData {
   noticeMonths: number // Opzegtermijn in maanden (1,2,3)
 }
 
+export interface OfficialWarningData {
+  company: string
+  firstName: string
+  lastName: string
+  address: {
+    street: string
+    city: string
+    postalCode: string
+    country: string
+  }
+  testDate: string // yyyy-MM-dd of dd-MM-yyyy
+  testType: 'alcohol' | 'drugs'
+  performedBy: 'W.van der Bent' | 'L.Godde' | 'BFT'
+  language: 'nl' | 'de'
+}
+
 /**
  * Normaliseert tekst voor PDF-velden door Unicode-karakters te vervangen met ASCII-equivalenten
  * Dit voorkomt encoding errors met WinAnsi encoding die niet alle Unicode-karakters ondersteunt
@@ -1701,6 +1717,99 @@ export async function generateOutOfServiceLetter(
     console.error('Error generating out-of-service letter:', error)
     throw new Error(
       `Fout bij het genereren van de beëindiging dienstverband brief: ${
+        error instanceof Error ? error.message : 'Onbekende fout'
+      }`,
+    )
+  }
+}
+
+/**
+ * Genereert een officiële waarschuwing PDF op basis van het template (NL of DE) en vult Text1..Text9 in.
+ * Genereert géén storage record; dat doet de aanroepende pagina.
+ */
+export async function generateOfficialWarningLetter(
+  data: OfficialWarningData
+): Promise<Blob> {
+  try {
+    const templateFile =
+      data.language === 'de' ? 'officiele_waarschuwing.de.pdf' : 'officiele_waarschuwing.nl.pdf'
+    const templatePath = `/contracts/${templateFile}`
+
+    let fullTemplatePath = templatePath
+    if (typeof window !== 'undefined') {
+      fullTemplatePath = `${window.location.origin}${templatePath}?v=${Date.now()}`
+    }
+
+    const templateResponse = await fetch(fullTemplatePath, { cache: 'no-store' })
+    if (!templateResponse.ok) {
+      throw new Error(`Kon template niet laden: ${fullTemplatePath} (Status: ${templateResponse.status})`)
+    }
+
+    const templateBytes = await templateResponse.arrayBuffer()
+    if (templateBytes.byteLength === 0) {
+      throw new Error('PDF template is leeg (0 bytes)')
+    }
+
+    const pdfDoc = await PDFDocument.load(templateBytes)
+    const form = pdfDoc.getForm()
+
+    const fullName = `${data.firstName} ${data.lastName}`.trim()
+    const street = data.address.street || ''
+    const postalCityCountry = `${data.address.postalCode || ''} ${data.address.city || ''} ${data.address.country || ''}`.trim()
+
+    const expiryDate = calculateDatePlusMonths(data.testDate, 24) // +2 jaar
+
+    const testDateFormatted = formatDate(data.testDate)
+    const testTypeNl = data.testType === 'alcohol' ? 'alcohol' : 'drugs'
+    const testTypeDe = data.testType === 'alcohol' ? 'Alkoholtest' : 'Drogentest'
+    const testTypeLabel = data.language === 'de' ? testTypeDe : testTypeNl
+
+    // NL mapping
+    // Text1 firma, Text2 naam, Text3 straat, Text4 pc stad land, Text5 testdatum,
+    // Text6 soort test, Text7 controleur, Text8 vervaldatum, Text9 naam
+    //
+    // DE mapping (zoals door jou opgegeven)
+    // Text1 firma, Text2 naam, Text3 straat, Text4 pc stad land,
+    // Text5 naam, Text6 soort test, Text7 controleur, Text8 testdatum, Text9 vervaldatum
+    const textMap: Record<string, string> =
+      data.language === 'de'
+        ? {
+            Text1: data.company || '',
+            Text2: fullName,
+            Text3: street,
+            Text4: postalCityCountry,
+            Text5: fullName,
+            Text6: testTypeLabel,
+            Text7: data.performedBy,
+            Text8: testDateFormatted,
+            Text9: expiryDate,
+          }
+        : {
+            Text1: data.company || '',
+            Text2: fullName,
+            Text3: street,
+            Text4: postalCityCountry,
+            Text5: testDateFormatted,
+            Text6: testTypeLabel,
+            Text7: data.performedBy,
+            Text8: expiryDate,
+            Text9: fullName,
+          }
+
+    ;(Object.entries(textMap) as Array<[string, string]>).forEach(([field, value]) => {
+      try {
+        form.getTextField(field).setText(normalizeTextForPDF(value || ''))
+      } catch {}
+    })
+
+    form.flatten()
+
+    const pdfBytes = await pdfDoc.save()
+    return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
+  } catch (error) {
+    console.error('Error generating official warning letter:', error)
+    throw new Error(
+      `Fout bij het genereren van de officiële waarschuwing: ${
         error instanceof Error ? error.message : 'Onbekende fout'
       }`,
     )
