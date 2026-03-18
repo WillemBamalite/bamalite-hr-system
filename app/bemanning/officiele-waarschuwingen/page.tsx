@@ -55,7 +55,7 @@ const addYearsIso = (isoDate: string, years: number) => {
 }
 
 export default function OfficieleWaarschuwingenPage() {
-  const { crew, loading, error, officialWarnings, addOfficialWarning, deleteOfficialWarning } = useSupabaseData()
+  const { crew, loading, error, officialWarnings, addOfficialWarning, deleteOfficialWarning, loadData } = useSupabaseData()
   const [mounted, setMounted] = useState(false)
 
   const [crewId, setCrewId] = useState<string>("")
@@ -162,6 +162,9 @@ export default function OfficieleWaarschuwingenPage() {
 
       // We gebruiken pdf_nl_* als "handmatige PDF" veld (één bestand).
       await updateWarningPdfNl(String(warning.id), upload)
+
+      // Herlaad data zodat de kaart direct de nieuwe PDF-link toont
+      await loadData()
     } catch (e: any) {
       alert(`Fout bij uploaden PDF: ${getErrMsg(e)}`)
     } finally {
