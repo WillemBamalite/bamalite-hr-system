@@ -59,11 +59,13 @@ export default function OfficieleWaarschuwingenPage() {
   const [mounted, setMounted] = useState(false)
 
   const [crewId, setCrewId] = useState<string>("")
-  const [testDate, setTestDate] = useState<string>("")
-  const [testType, setTestType] = useState<"alcohol" | "drugs">("alcohol")
+  const [warningDate, setWarningDate] = useState<string>("")
+  const [testType, setTestType] = useState<"alcohol" | "drugs" | "other">("alcohol")
+  const [otherReason, setOtherReason] = useState<string>("")
   const [performedBy, setPerformedBy] = useState<"W.van der Bent" | "L.Godde" | "BFT">("W.van der Bent")
   const [submitting, setSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
 
   useEffect(() => setMounted(true), [])
 
@@ -112,6 +114,61 @@ export default function OfficieleWaarschuwingenPage() {
     return { storagePath: uploadData.path, publicUrl }
   }
 
+  const uploadFileToStorage = async (path: string, file: File) => {
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || "application/pdf",
+      } as any)
+
+    if (uploadError) throw uploadError
+    if (!uploadData?.path) throw new Error("Geen storage pad teruggekregen")
+
+    const { data: publicUrlData } = supabase.storage.from(BUCKET).getPublicUrl(uploadData.path)
+    const publicUrl = publicUrlData?.publicUrl
+    if (!publicUrl) throw new Error("Geen publieke URL kunnen maken")
+
+    return { storagePath: uploadData.path, publicUrl }
+  }
+
+  const updateWarningPdfNl = async (warningId: string, pdf: { storagePath: string; publicUrl: string }) => {
+    const { error: updateError } = await supabase
+      .from("official_warnings")
+      .update({
+        pdf_nl_url: pdf.publicUrl,
+        pdf_nl_storage_path: pdf.storagePath,
+      })
+      .eq("id", warningId)
+    if (updateError) throw updateError
+  }
+
+  const handleUploadPdfForWarning = async (warning: any, file: File | null) => {
+    if (!warning?.id || !file) return
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      alert("Upload a.u.b. een PDF bestand.")
+      return
+    }
+    try {
+      setUploadingId(String(warning.id))
+
+      const crewIdForPath = String(warning.crew_id || "unknown")
+      const ts = Date.now()
+      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const path = `${crewIdForPath}/${warning.id}/${ts}-${safeFileName}`
+
+      const upload = await uploadFileToStorage(path, file)
+
+      // We gebruiken pdf_nl_* als "handmatige PDF" veld (één bestand).
+      await updateWarningPdfNl(String(warning.id), upload)
+    } catch (e: any) {
+      alert(`Fout bij uploaden PDF: ${getErrMsg(e)}`)
+    } finally {
+      setUploadingId(null)
+    }
+  }
+
   const handleDelete = async (warning: any) => {
     if (!warning?.id) return
     const name = (() => {
@@ -156,8 +213,8 @@ export default function OfficieleWaarschuwingenPage() {
       alert("Kies eerst een bemanningslid.")
       return
     }
-    if (!testDate) {
-      alert("Vul de datum van de test in.")
+    if (!warningDate) {
+      alert("Vul de datum van de waarschuwing in.")
       return
     }
 
@@ -170,56 +227,73 @@ export default function OfficieleWaarschuwingenPage() {
     try {
       setSubmitting(true)
 
-      const expiresAt = addYearsIso(toIsoDate(testDate), 2)
+      const expiresAt = addYearsIso(toIsoDate(warningDate), 2)
       const company = (member.company || "").trim() || "Bamalite S.A."
       const address = member.address || { street: "", city: "", postalCode: "", country: "" }
 
-      const nlBlob = await generateOfficialWarningLetter({
-        company,
-        firstName: member.first_name || "",
-        lastName: member.last_name || "",
-        address,
-        testDate: toIsoDate(testDate),
-        testType,
-        performedBy,
-        language: "nl",
-      })
+      const reasonText =
+        testType === "other" ? (otherReason || "").trim() : testType === "alcohol" ? "alcohol" : "drugs"
 
-      const deBlob = await generateOfficialWarningLetter({
-        company,
-        firstName: member.first_name || "",
-        lastName: member.last_name || "",
-        address,
-        testDate: toIsoDate(testDate),
-        testType,
-        performedBy,
-        language: "de",
-      })
+      if (testType === "other" && !reasonText) {
+        alert("Vul een reden in bij 'Overig'.")
+        return
+      }
 
-      const ts = Date.now()
-      const safeName = `${(member.first_name || "").trim()} ${(member.last_name || "").trim()}`.trim().replace(/[^a-zA-Z0-9._ -]/g, "_")
-      const basePath = `${crewId}/${ts}-${safeName || "crew"}`
+      let nlUpload: { storagePath: string; publicUrl: string } | null = null
+      let deUpload: { storagePath: string; publicUrl: string } | null = null
 
-      const nlUpload = await uploadPdfToStorage(`${basePath}-officiele_waarschuwing.nl.pdf`, nlBlob)
-      const deUpload = await uploadPdfToStorage(`${basePath}-officiele_waarschuwing.de.pdf`, deBlob)
+      if (testType !== "other") {
+        const nlBlob = await generateOfficialWarningLetter({
+          company,
+          firstName: member.first_name || "",
+          lastName: member.last_name || "",
+          address,
+          testDate: toIsoDate(warningDate),
+          testType: testType as any,
+          performedBy,
+          language: "nl",
+        })
+
+        const deBlob = await generateOfficialWarningLetter({
+          company,
+          firstName: member.first_name || "",
+          lastName: member.last_name || "",
+          address,
+          testDate: toIsoDate(warningDate),
+          testType: testType as any,
+          performedBy,
+          language: "de",
+        })
+
+        const ts = Date.now()
+        const safeName = `${(member.first_name || "").trim()} ${(member.last_name || "").trim()}`
+          .trim()
+          .replace(/[^a-zA-Z0-9._ -]/g, "_")
+        const basePath = `${crewId}/${ts}-${safeName || "crew"}`
+
+        nlUpload = await uploadPdfToStorage(`${basePath}-officiele_waarschuwing.nl.pdf`, nlBlob)
+        deUpload = await uploadPdfToStorage(`${basePath}-officiele_waarschuwing.de.pdf`, deBlob)
+      }
 
       await addOfficialWarning({
         crew_id: String(crewId),
         company,
-        test_date: toIsoDate(testDate),
+        test_date: toIsoDate(warningDate),
         test_type: testType,
-        performed_by: performedBy,
+        reason_text: reasonText || null,
+        performed_by: testType === "other" ? null : performedBy,
         expires_at: expiresAt,
-        pdf_nl_url: nlUpload.publicUrl,
-        pdf_de_url: deUpload.publicUrl,
-        pdf_nl_storage_path: nlUpload.storagePath,
-        pdf_de_storage_path: deUpload.storagePath,
+        pdf_nl_url: nlUpload?.publicUrl || null,
+        pdf_de_url: deUpload?.publicUrl || null,
+        pdf_nl_storage_path: nlUpload?.storagePath || null,
+        pdf_de_storage_path: deUpload?.storagePath || null,
       })
 
       // reset minimal
       setCrewId("")
-      setTestDate("")
+      setWarningDate("")
       setTestType("alcohol")
+      setOtherReason("")
       setPerformedBy("W.van der Bent")
     } catch (e: any) {
       // Niet console.error gebruiken: Next toont dan een error overlay. We tonen de echte melding via alert.
@@ -258,7 +332,12 @@ export default function OfficieleWaarschuwingenPage() {
                   const m = crewById.get(String(w.crew_id))
                   const name =
                     m ? `${m.first_name || ""} ${m.last_name || ""}`.trim() : `Onbekend (${w.crew_id})`
-                  const typeLabel = w.test_type === "drugs" ? "Drogentest" : "Alcoholtest"
+                  const typeLabel =
+                    w.test_type === "other"
+                      ? (w.reason_text || "Overig")
+                      : w.test_type === "drugs"
+                        ? "Drugs"
+                        : "Alcohol"
                   return (
                     <Card key={w.id} className="border">
                       <CardHeader>
@@ -267,14 +346,16 @@ export default function OfficieleWaarschuwingenPage() {
                       <CardContent className="text-sm text-gray-700 space-y-2">
                         <div>
                           <div>
-                            <span className="font-medium">Testdatum:</span> {formatDateShort(w.test_date)}
+                            <span className="font-medium">Datum waarschuwing:</span> {formatDateShort(w.test_date)}
                           </div>
                           <div>
-                            <span className="font-medium">Soort:</span> {typeLabel}
+                            <span className="font-medium">Reden:</span> {typeLabel}
                           </div>
-                          <div>
-                            <span className="font-medium">Uitgevoerd door:</span> {w.performed_by || "-"}
-                          </div>
+                          {w.test_type !== "other" && (
+                            <div>
+                              <span className="font-medium">Uitgevoerd door:</span> {w.performed_by || "-"}
+                            </div>
+                          )}
                           <div>
                             <span className="font-medium">Verloopt op:</span> {formatDateShort(w.expires_at)}
                           </div>
@@ -293,12 +374,27 @@ export default function OfficieleWaarschuwingenPage() {
                           ) : null}
                         </div>
 
+                        {(w.test_type === "other") ? (
+                          <div className="pt-1">
+                            <Label className="text-xs">PDF uploaden</Label>
+                            <Input
+                              type="file"
+                              accept="application/pdf"
+                              disabled={uploadingId === String(w.id)}
+                              onChange={(e) => handleUploadPdfForWarning(w, e.target.files?.[0] || null)}
+                            />
+                            <div className="text-xs text-gray-500 mt-1">
+                              Tip: upload hier het document dat je zelf hebt gemaakt.
+                            </div>
+                          </div>
+                        ) : null}
+
                         <div className="pt-2">
                           <Button
                             size="sm"
                             variant="outline"
                             className="text-red-600 border-red-200 hover:bg-red-50"
-                            disabled={!!deletingId}
+                            disabled={!!deletingId || !!uploadingId}
                             onClick={() => handleDelete(w)}
                           >
                             {deletingId === String(w.id) ? "Verwijderen..." : "Verwijder"}
@@ -339,12 +435,12 @@ export default function OfficieleWaarschuwingenPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Datum van test</Label>
-              <Input type="date" value={testDate} onChange={(e) => setTestDate(e.target.value)} />
+              <Label>Datum van waarschuwing</Label>
+              <Input type="date" value={warningDate} onChange={(e) => setWarningDate(e.target.value)} />
             </div>
 
             <div className="space-y-2">
-              <Label>Positief op</Label>
+              <Label>Reden</Label>
               <Select value={testType} onValueChange={(v: any) => setTestType(v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecteer type" />
@@ -352,30 +448,44 @@ export default function OfficieleWaarschuwingenPage() {
                 <SelectContent>
                   <SelectItem value="alcohol">Alcohol</SelectItem>
                   <SelectItem value="drugs">Drugs</SelectItem>
+                  <SelectItem value="other">Overig</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Test uitgevoerd door</Label>
-              <Select value={performedBy} onValueChange={(v: any) => setPerformedBy(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecteer controleur" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="W.van der Bent">W.van der Bent</SelectItem>
-                  <SelectItem value="L.Godde">L.Godde</SelectItem>
-                  <SelectItem value="BFT">BFT</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {testType === "other" ? (
+              <div className="space-y-2">
+                <Label>Reden (overig)</Label>
+                <Input
+                  value={otherReason}
+                  onChange={(e) => setOtherReason(e.target.value)}
+                  placeholder="Bijv. onbehoorlijk gedrag / niet goed uitvoeren werkzaamheden"
+                />
+              </div>
+            ) : null}
+
+            {testType !== "other" ? (
+              <div className="space-y-2">
+                <Label>Test uitgevoerd door</Label>
+                <Select value={performedBy} onValueChange={(v: any) => setPerformedBy(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecteer controleur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="W.van der Bent">W.van der Bent</SelectItem>
+                    <SelectItem value="L.Godde">L.Godde</SelectItem>
+                    <SelectItem value="BFT">BFT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
 
             <Button onClick={handleCreate} disabled={submitting}>
               {submitting ? "Bezig..." : "Aanmaken + PDFs uploaden"}
             </Button>
 
             <div className="text-xs text-gray-500">
-              Let op: dit maakt automatisch 2 PDFs (NL + DE) en zet de vervaldatum op testdatum + 2 jaar.
+              Let op: waarschuwingen verlopen automatisch 2 jaar na de datum van waarschuwing.
             </div>
           </CardContent>
         </Card>
