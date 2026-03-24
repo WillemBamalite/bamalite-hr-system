@@ -681,6 +681,99 @@ export default function AflosserDetailPage() {
     })
   ].sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime())
 
+  const aflosserCategoryLabel = aflosser.is_uitzendbureau
+    ? 'Aflosser via uitzendbureau'
+    : 'Zelfstandige aflosser'
+
+  const formatDateSafeForPrint = (dateStr?: string | null) => {
+    if (!dateStr) return ''
+    try {
+      return format(new Date(dateStr), 'dd-MM-yyyy')
+    } catch {
+      return String(dateStr)
+    }
+  }
+
+  const dagTariefRaw = aflosser.dag_tarief
+  const dagTariefNum =
+    dagTariefRaw != null && dagTariefRaw !== ''
+      ? parseFloat(String(dagTariefRaw))
+      : NaN
+  const showPrintBedrag = Number.isFinite(dagTariefNum) && dagTariefNum > 0
+
+  const formatEuroPrint = (n: number) =>
+    new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
+
+  const getTripWorkDaysForPrint = (trip: any): number | null => {
+    if (!trip.start_datum || !trip.eind_datum || !trip.start_tijd || !trip.eind_tijd) return null
+    if (aflosser.vaste_dienst) {
+      return calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+    }
+    return calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
+  }
+
+  const printHistoryRows = combinedHistory.map((item: any, idx: number) => {
+    if (item.type === 'trip') {
+      const trip = item.trip
+      const ship = ships.find((s: any) => s.id === trip.ship_id)
+      const workDays = getTripWorkDaysForPrint(trip)
+      const bedrag =
+        showPrintBedrag && workDays !== null ? formatEuroPrint(workDays * dagTariefNum) : null
+      return (
+        <tr key={trip.id || `trip-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+          <td className="border px-3 py-1">
+            {trip.start_datum ? formatDateSafeForPrint(trip.start_datum) : ''}
+            {trip.eind_datum && <> t/m {formatDateSafeForPrint(trip.eind_datum)}</>}
+          </td>
+          <td className="border px-3 py-1">
+            {aflosser.vaste_dienst ? 'Reis' : `Reis (${trip.status || '—'})`}
+          </td>
+          <td className="border px-3 py-1">
+            {ship ? ship.name : 'Onbekend schip'}
+            {!aflosser.vaste_dienst && (trip.trip_from || trip.trip_to) ? (
+              <> — {trip.trip_from || '?'} → {trip.trip_to || '?'}</>
+            ) : null}
+            {trip.trip_name ? ` — ${trip.trip_name}` : ''}
+          </td>
+          <td className="border px-3 py-1 text-right">{workDays !== null ? workDays : ''}</td>
+          {showPrintBedrag ? (
+            <td className="border px-3 py-1 text-right">{bedrag ?? '—'}</td>
+          ) : null}
+        </tr>
+      )
+    }
+
+    const entry = item.entry
+    return (
+      <tr key={entry.id || `mindag-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+        <td className="border px-3 py-1">
+          {formatDateSafeForPrint(entry.start_date)}
+          {entry.end_date && <> t/m {formatDateSafeForPrint(entry.end_date)}</>}
+        </td>
+        <td className="border px-3 py-1">Extra mindagen</td>
+        <td className="border px-3 py-1">{entry.reason || 'Correctie vaste dienst'}</td>
+        <td className="border px-3 py-1 text-right">-{(entry as any).days}</td>
+        {showPrintBedrag ? (
+          <td className="border px-3 py-1 text-right">—</td>
+        ) : null}
+      </tr>
+    )
+  })
+
+  const printHistoryBedragSom =
+    showPrintBedrag
+      ? combinedHistory.reduce((sum, item: any) => {
+          if (item.type !== 'trip') return sum
+          const dagen = getTripWorkDaysForPrint(item.trip)
+          if (dagen === null) return sum
+          return sum + dagen * dagTariefNum
+        }, 0)
+      : 0
+
+  const availabilityPeriodsForPrint = [...periods].sort(
+    (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+  )
+
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
       NL: "🇳🇱",
@@ -726,7 +819,7 @@ export default function AflosserDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-2">
-      {/* Print CSS voor vaste dienst overzicht */}
+      {/* Print CSS: vaste dienst maandoverzicht + reisgeschiedenis, of zelfstandig/uitzend overzicht */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -734,11 +827,11 @@ export default function AflosserDetailPage() {
             body * {
               visibility: hidden;
             }
-            .vaste-dienst-print-root,
-            .vaste-dienst-print-root * {
+            .aflosser-print-root,
+            .aflosser-print-root * {
               visibility: visible;
             }
-            .vaste-dienst-print-root {
+            .aflosser-print-root {
               position: absolute;
               left: 0;
               top: 0;
@@ -753,14 +846,14 @@ export default function AflosserDetailPage() {
             .vd-print-history-page {
               page-break-before: always;
             }
-            .no-print-vd,
+            .no-print-aflosser,
             header,
             nav {
               display: none !important;
             }
           }
           @media screen {
-            .vaste-dienst-print-root {
+            .aflosser-print-root {
               display: none;
             }
           }
@@ -853,7 +946,7 @@ export default function AflosserDetailPage() {
                       }
                       window.print()
                     }}
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50 no-print-vd"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 no-print-aflosser"
                   >
                     <Printer className="w-3 h-3 mr-1" />
                     Print overzicht
@@ -1561,9 +1654,23 @@ export default function AflosserDetailPage() {
       <div className="mt-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Ship className="w-5 h-5" />
-              <span>Reis Geschiedenis</span>
+            <CardTitle className="flex flex-wrap items-center justify-between gap-2 w-full">
+              <div className="flex items-center space-x-2">
+                <Ship className="w-5 h-5" />
+                <span>Reis Geschiedenis</span>
+              </div>
+              {!aflosser.vaste_dienst && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.print()}
+                  className="border-gray-300 text-gray-800 hover:bg-gray-50 no-print-aflosser shrink-0"
+                >
+                  <Printer className="w-3 h-3 mr-1" />
+                  Print overzicht
+                </Button>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -2170,20 +2277,25 @@ export default function AflosserDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Vaste dienst printoverzicht (alleen zichtbaar bij print) */}
+      {/* Printoverzicht (alleen zichtbaar bij print) */}
       {aflosser.vaste_dienst && (
-        <div className="vaste-dienst-print-root">
+        <div className="aflosser-print-root">
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900 mb-1">
               Overzicht Aflosdagen
             </h1>
             <p className="text-gray-700">
-              {aflosser.first_name} {aflosser.last_name}
+              {aflosser.first_name} {aflosser.last_name} — Vaste dienst
             </p>
             <p className="text-sm text-gray-500 mt-1">
               Geprint op {format(new Date(), 'dd-MM-yyyy HH:mm')}
             </p>
+            {showPrintBedrag ? (
+              <p className="text-sm text-gray-800 mt-2">
+                Dagtarief: {formatEuroPrint(dagTariefNum)}/dag (indicatie bedrag bij reizen)
+              </p>
+            ) : null}
           </div>
 
           {/* Tabel per maand */}
@@ -2281,75 +2393,105 @@ export default function AflosserDetailPage() {
                     <th className="border px-3 py-2 text-left">Type</th>
                     <th className="border px-3 py-2 text-left">Schip / omschrijving</th>
                     <th className="border px-3 py-2 text-right">Dagen</th>
+                    {showPrintBedrag ? (
+                      <th className="border px-3 py-2 text-right">Bedrag (indic.)</th>
+                    ) : null}
                   </tr>
                 </thead>
-                <tbody>
-                  {combinedHistory.map((item: any, idx: number) => {
-                    if (item.type === 'trip') {
-                      const trip = item.trip
-                      const ship = ships.find((s: any) => s.id === trip.ship_id)
-
-                      const formatDateSafe = (dateStr?: string | null) => {
-                        if (!dateStr) return ''
-                        try {
-                          return format(new Date(dateStr), 'dd-MM-yyyy')
-                        } catch {
-                          return dateStr
-                        }
-                      }
-
-                      let workDays: number | null = null
-                      if (trip.start_datum && trip.eind_datum && trip.start_tijd && trip.eind_tijd) {
-                        if (aflosser.vaste_dienst) {
-                          workDays = calculateWorkDaysVasteDienst(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                        } else {
-                          workDays = calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
-                        }
-                      }
-
-                      return (
-                        <tr key={trip.id || `trip-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="border px-3 py-1">
-                            {trip.start_datum ? formatDateSafe(trip.start_datum) : ''}
-                            {trip.eind_datum && (
-                              <> t/m {formatDateSafe(trip.eind_datum)}</>
-                            )}
-                          </td>
-                          <td className="border px-3 py-1">Reis</td>
-                          <td className="border px-3 py-1">
-                            {ship ? ship.name : 'Onbekend schip'}
-                            {trip.trip_name ? ` – ${trip.trip_name}` : ''}
-                          </td>
-                          <td className="border px-3 py-1 text-right">
-                            {workDays !== null ? workDays : ''}
-                          </td>
-                        </tr>
-                      )
-                    }
-
-                    const entry = item.entry
-                    return (
-                      <tr key={entry.id || `mindag-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="border px-3 py-1">
-                          {format(new Date(entry.start_date), 'dd-MM-yyyy')}
-                          {entry.end_date && (
-                            <> t/m {format(new Date(entry.end_date), 'dd-MM-yyyy')}</>
-                          )}
-                        </td>
-                        <td className="border px-3 py-1">Extra mindagen</td>
-                        <td className="border px-3 py-1">
-                          {entry.reason || 'Correctie vaste dienst'}
-                        </td>
-                        <td className="border px-3 py-1 text-right">
-                          -{(entry as any).days}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
+                <tbody>{printHistoryRows}</tbody>
+                {showPrintBedrag && combinedHistory.length > 0 ? (
+                  <tfoot>
+                    <tr className="bg-gray-100 font-semibold">
+                      <td className="border px-3 py-2 text-right" colSpan={4}>
+                        Totaal (dagen × dagtarief, alleen volledig ingevoerde reizen):
+                      </td>
+                      <td className="border px-3 py-2 text-right">{formatEuroPrint(printHistoryBedragSom)}</td>
+                    </tr>
+                  </tfoot>
+                ) : null}
               </table>
             )}
           </div>
+        </div>
+      )}
+
+      {!aflosser.vaste_dienst && (
+        <div className="aflosser-print-root">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">Overzicht reizen aflosser</h1>
+            <p className="text-gray-700 font-medium">{aflosserCategoryLabel}</p>
+            <p className="text-gray-800">
+              {aflosser.first_name} {aflosser.last_name}
+            </p>
+            <p className="text-sm text-gray-500 mt-1">Geprint op {format(new Date(), 'dd-MM-yyyy HH:mm')}</p>
+            {showPrintBedrag ? (
+              <p className="text-sm text-gray-800 mt-2">
+                Dagtarief: {formatEuroPrint(dagTariefNum)}/dag (bedragen zijn indicatief per getelde reisdagen)
+              </p>
+            ) : null}
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold text-blue-700 mb-3">Reisgeschiedenis</h2>
+            {combinedHistory.length === 0 ? (
+              <p className="text-sm text-gray-600">Nog geen reizen of extra mindagen geregistreerd.</p>
+            ) : (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border px-3 py-2 text-left">Datum / periode</th>
+                    <th className="border px-3 py-2 text-left">Type</th>
+                    <th className="border px-3 py-2 text-left">Schip / route / omschrijving</th>
+                    <th className="border px-3 py-2 text-right">Dagen</th>
+                    {showPrintBedrag ? (
+                      <th className="border px-3 py-2 text-right">Bedrag (indic.)</th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>{printHistoryRows}</tbody>
+                {showPrintBedrag ? (
+                  <tfoot>
+                    <tr className="bg-gray-100 font-semibold">
+                      <td className="border px-3 py-2 text-right" colSpan={4}>
+                        Totaal (dagen × dagtarief, alleen volledig ingevoerde reizen):
+                      </td>
+                      <td className="border px-3 py-2 text-right">{formatEuroPrint(printHistoryBedragSom)}</td>
+                    </tr>
+                  </tfoot>
+                ) : null}
+              </table>
+            )}
+          </div>
+
+          {availabilityPeriodsForPrint.length > 0 && (
+            <div className="vd-print-history-page mt-8">
+              <h2 className="text-lg font-semibold text-blue-700 mb-3">Beschikbaarheid &amp; afwezigheid</h2>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border px-3 py-2 text-left">Van</th>
+                    <th className="border px-3 py-2 text-left">Tot</th>
+                    <th className="border px-3 py-2 text-left">Type</th>
+                    <th className="border px-3 py-2 text-left">Opmerking</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {availabilityPeriodsForPrint.map((period: any, idx: number) => (
+                    <tr key={period.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="border px-3 py-1">{formatDateSafeForPrint(period.start_date)}</td>
+                      <td className="border px-3 py-1">
+                        {period.end_date ? formatDateSafeForPrint(period.end_date) : '—'}
+                      </td>
+                      <td className="border px-3 py-1">
+                        {period.type === 'beschikbaar' ? 'Beschikbaar' : 'Afwezig'}
+                      </td>
+                      <td className="border px-3 py-1">{period.notes || ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
