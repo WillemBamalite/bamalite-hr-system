@@ -24,6 +24,7 @@ export default function NogInTeDelenPage() {
   const { crew, ships, loading, error, updateCrew, addCrew, deleteCrew } = useSupabaseData();
   const { t } = useLanguage();
   const [mounted, setMounted] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [selectedShip, setSelectedShip] = useState<string>("");
   const [onBoardDate, setOnBoardDate] = useState<string>("");
@@ -82,6 +83,34 @@ export default function NogInTeDelenPage() {
     return text.length > 120 ? text.slice(0, 117) + "..." : text;
   };
 
+  type PoolAvailabilityUi = "te-delen" | "ziek" | "afwezig";
+
+  const poolAvailabilityFromMember = (member: any): PoolAvailabilityUi => {
+    const s = member?.pool_availability_status;
+    if (s === "ziek" || s === "afwezig") return s;
+    return "te-delen";
+  };
+
+  const setPoolAvailabilityStatus = async (memberId: string, value: PoolAvailabilityUi) => {
+    try {
+      await updateCrew(memberId, {
+        pool_availability_status: value === "te-delen" ? null : value,
+      });
+    } catch (e) {
+      console.warn("Pool availability update failed:", e);
+      alert(
+        "Status opslaan mislukt. Voer eventueel dit script uit in Supabase: scripts/add-pool-availability-status.sql"
+      );
+    }
+  };
+
+  const cyclePoolAvailabilityStatus = async (member: any) => {
+    const current = poolAvailabilityFromMember(member);
+    const next: PoolAvailabilityUi =
+      current === "te-delen" ? "ziek" : current === "ziek" ? "afwezig" : "te-delen";
+    await setPoolAvailabilityStatus(member.id, next);
+  };
+
   const openNoteDialog = (member: any) => {
     setNoteMember(member);
     setNoteText(quickNotes[member.id] || "");
@@ -113,6 +142,14 @@ export default function NogInTeDelenPage() {
     setMounted(true);
   }, []);
 
+  // Na de eerste succesvolle load blijven we de pagina tonen
+  // (voorkomt "naar boven springen" bij kleine updates zoals statusklik).
+  useEffect(() => {
+    if (!loading) {
+      setHasLoadedOnce(true);
+    }
+  }, [loading]);
+
   // Don't render until mounted
   if (!mounted) {
     return (
@@ -122,8 +159,8 @@ export default function NogInTeDelenPage() {
     );
   }
 
-  // Loading state
-  if (loading) {
+  // Loading state (alleen voor de allereerste load)
+  if (loading && !hasLoadedOnce) {
     return (
       <div className="max-w-4xl mx-auto py-8 px-2">
         <div className="text-center py-8 text-gray-500">Data laden...</div>
@@ -208,6 +245,21 @@ export default function NogInTeDelenPage() {
     
     // Moet GEEN schip hebben
     return !hasShip(member);
+  });
+  const nogInTeDelenSorted = [...nogInTeDelen].sort((a: any, b: any) => {
+    const rank = (m: any) => {
+      const s = m?.pool_availability_status;
+      if (s === "ziek") return 1;
+      if (s === "afwezig") return 2;
+      return 0; // nog in te delen (groen) eerst
+    };
+
+    const rankDiff = rank(a) - rank(b);
+    if (rankDiff !== 0) return rankDiff;
+
+    const aName = `${a?.first_name || ""} ${a?.last_name || ""}`.trim();
+    const bName = `${b?.first_name || ""} ${b?.last_name || ""}`.trim();
+    return aName.localeCompare(bName, "nl");
   });
   
   // Wachtlijst verwijderd op verzoek; er is geen aparte wachtlijstcategorie meer
@@ -299,7 +351,8 @@ export default function NogInTeDelenPage() {
         ship_id: selectedShip,
         status: "thuis", // Start met thuis status
         on_board_since: onBoardDate,
-        thuis_sinds: new Date().toISOString().split('T')[0] // Vandaag als thuis sinds
+        thuis_sinds: new Date().toISOString().split('T')[0], // Vandaag als thuis sinds
+        pool_availability_status: null,
       }
       
       // Behoud de bestaande company als die er is
@@ -887,13 +940,17 @@ export default function NogInTeDelenPage() {
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {nogInTeDelen.map((member: any) => {
+                {nogInTeDelenSorted.map((member: any) => {
                   const checklistComplete = isChecklistComplete(member);
-                  
+                  const poolUi = poolAvailabilityFromMember(member);
+                  const poolUnavailable = poolUi === "ziek" || poolUi === "afwezig";
+
                   return (
                   <Card
                     key={member.id}
-                    className="hover:shadow-lg transition-shadow border-blue-200"
+                    className={`hover:shadow-lg transition-shadow ${
+                      poolUnavailable ? "border-2 border-red-400 ring-1 ring-red-100" : "border border-blue-200"
+                    }`}
                     onDoubleClick={(e) => {
                       e.preventDefault();
                       openNoteDialog(member);
@@ -922,6 +979,22 @@ export default function NogInTeDelenPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => cyclePoolAvailabilityStatus(member)}
+                        className={`rounded-md border-2 px-3 py-2 text-center text-sm font-semibold shadow-sm ${
+                          poolUi === "te-delen"
+                            ? "bg-green-100 border-green-600 text-green-900"
+                            : "bg-red-100 border-red-600 text-red-900"
+                        } hover:brightness-95 transition cursor-pointer w-full`}
+                      >
+                        {poolUi === "te-delen"
+                          ? "Nog in te delen"
+                          : poolUi === "ziek"
+                            ? "Ziek"
+                            : "Afwezig"}
+                      </button>
+
                       <div className="text-sm text-gray-600">
                         <span className="font-medium">Functie:</span> {member.position}
                       </div>
