@@ -795,12 +795,12 @@ export function ShipOverview() {
                 {/* Dummy opmerking */}
                 {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).length > 0 && (
                   <div className="mt-2 space-y-1 border-t pt-2">
-                    <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
+                    <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
-                      Opmerking:
+                      OPMERKING:
                     </div>
                     {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).map((note: any) => (
-                      <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200">
+                      <div key={note.id} className="text-xs text-orange-950 bg-amber-200 p-2 rounded border-2 border-amber-500 shadow-sm font-medium">
                         {note.content}
                       </div>
                     ))}
@@ -929,12 +929,12 @@ export function ShipOverview() {
             {/* Active Notes */}
             {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).length > 0 && (
               <div className="mt-2 space-y-1 border-t pt-2">
-                <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
+                <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />
-                  Notities:
+                  OPMERKINGEN:
                 </div>
                 {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).map((note: any) => (
-                  <div key={note.id} className="text-xs text-gray-600 bg-orange-50 p-2 rounded border-l-2 border-orange-200 flex items-start justify-between gap-2">
+                  <div key={note.id} className="text-xs text-orange-950 bg-amber-200 p-2 rounded border-2 border-amber-500 shadow-sm font-medium flex items-start justify-between gap-2">
                     <span className="flex-1">{note.content}</span>
                     <button
                       onClick={(e) => {
