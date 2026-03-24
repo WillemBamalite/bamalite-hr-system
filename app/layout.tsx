@@ -5,6 +5,7 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
+import { DashboardSearchProvider } from "@/contexts/DashboardSearchContext"
 import { Toaster } from "@/components/ui/toaster"
 import { Inter } from "next/font/google"
 
@@ -47,10 +48,12 @@ export default function RootLayout({
         >
           <AuthProvider>
             <LanguageProvider>
-              <DashboardHeader />
-              <div className="app-container">
-                {children}
-              </div>
+              <DashboardSearchProvider>
+                <DashboardHeader />
+                <div className="app-container">
+                  {children}
+                </div>
+              </DashboardSearchProvider>
               <Toaster />
             </LanguageProvider>
           </AuthProvider>

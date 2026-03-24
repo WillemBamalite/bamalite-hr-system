@@ -1,7 +1,8 @@
 "use client"
 
-import { LogOut, User, Calendar, Globe, Printer, Clock, ListTodo } from "lucide-react"
+import { LogOut, User, Calendar, Globe, Printer, Clock, ListTodo, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { usePathname } from "next/navigation"
@@ -12,6 +13,7 @@ import { format, formatDistanceToNow } from "date-fns"
 import { nl, de, fr } from "date-fns/locale"
 import { useLastActivity } from "@/hooks/use-last-activity"
 import { CalendarDialog } from "@/components/agenda/calendar-dialog"
+import { useDashboardSearchOptional } from "@/contexts/DashboardSearchContext"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -25,6 +27,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const [mounted, setMounted] = useState(false)
   const [agendaOpen, setAgendaOpen] = useState(false)
   const { lastActivity, loading: activityLoading } = useLastActivity()
+  const dashboardSearch = useDashboardSearchOptional()
   
   // Prevent hydration errors
   useEffect(() => {
@@ -54,10 +57,12 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     return null
   }
 
+  const showDashboardSearch = pathname === "/" && dashboardSearch
+
   return (
-    <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40">
-      <div className="flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer">
+    <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <Link href="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer shrink-0">
           <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shadow-lg">
             <Image
               src="/bemanningslijst-icon.png.png"
@@ -73,6 +78,32 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
             <p className="text-gray-600">Beheer bemanning en schepen</p>
           </div>
         </Link>
+
+        {showDashboardSearch && (
+          <div className="flex flex-1 items-center gap-2 min-w-0 max-w-xl basis-full sm:basis-auto sm:min-w-[14rem] print:hidden">
+            <div className="relative flex-1 min-w-0">
+              <Input
+                value={dashboardSearch.searchQuery}
+                onChange={(e) => dashboardSearch.setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") dashboardSearch.runSearch()
+                }}
+                placeholder="Zoek schip of bemanningslid..."
+                className="pl-8 w-full bg-white"
+                aria-label="Zoek schip of bemanningslid"
+              />
+              <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="shrink-0 bg-gray-900 text-white hover:bg-gray-800"
+              onClick={() => dashboardSearch.runSearch()}
+            >
+              Zoek
+            </Button>
+          </div>
+        )}
 
         {/* Live Datum & Tijd - Midden */}
         <button

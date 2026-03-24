@@ -5,11 +5,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus, Search, AlertCircle } from "lucide-react"
+import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus, AlertCircle } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { format } from "date-fns"
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { supabase } from "@/lib/supabase"
+import { useDashboardSearch } from "@/contexts/DashboardSearchContext"
 
 // Helper functie om lokale datum + tijd te parsen (geen UTC conversie)
 function parseLocalDateTime(dateStr: string, timeStr: string): Date {
@@ -64,8 +65,8 @@ const sortCrewByRank = (crew: any[]) => {
 export function ShipOverview() {
   const { ships, crew, sickLeave, trips, tasks, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag, loadData } = useSupabaseData()
   const { t } = useLanguage()
+  const { searchQuery, setSearchQuery, setSearchRunner } = useDashboardSearch()
   const [mounted, setMounted] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("")
   const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null)
   
   // Notes functionality state
@@ -351,6 +352,39 @@ export function ShipOverview() {
     })
   }
 
+  const performSearch = useCallback(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return
+    const shipMatch = ships.find((s: any) => (s.name || "").toLowerCase().includes(q))
+    if (shipMatch) {
+      const elId = `ship-${shipMatch.id}`
+      const el = typeof window !== "undefined" ? document.getElementById(elId) : null
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" })
+        setHighlightTargetId(elId)
+        setTimeout(() => setHighlightTargetId(null), 2000)
+      }
+      return
+    }
+    const crewMatch = crew.find((m: any) =>
+      `${m.first_name || ""} ${m.last_name || ""}`.toLowerCase().includes(q)
+    )
+    if (crewMatch) {
+      const elId = `crew-${crewMatch.id}`
+      const el = typeof window !== "undefined" ? document.getElementById(elId) : null
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" })
+        setHighlightTargetId(elId)
+        setTimeout(() => setHighlightTargetId(null), 2000)
+      }
+    }
+  }, [searchQuery, ships, crew])
+
+  useEffect(() => {
+    setSearchRunner(performSearch)
+    return () => setSearchRunner(null)
+  }, [performSearch, setSearchRunner])
+
   // Don't render until mounted
   if (!mounted) {
     return (
@@ -391,35 +425,6 @@ export function ShipOverview() {
         </CardContent>
       </Card>
     );
-  }
-
-  const performSearch = () => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return
-    // Try ship first
-    const shipMatch = ships.find((s: any) => (s.name || "").toLowerCase().includes(q))
-    if (shipMatch) {
-      const elId = `ship-${shipMatch.id}`
-      const el = typeof window !== 'undefined' ? document.getElementById(elId) : null
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        setHighlightTargetId(elId)
-        setTimeout(() => setHighlightTargetId(null), 2000)
-      }
-      return
-    }
-    // Then crew by full name
-    const crewMatch = crew.find((m: any) => `${m.first_name || ''} ${m.last_name || ''}`.toLowerCase().includes(q))
-    if (crewMatch) {
-      const elId = `crew-${crewMatch.id}`
-      const el = typeof window !== 'undefined' ? document.getElementById(elId) : null
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        setHighlightTargetId(elId)
-        setTimeout(() => setHighlightTargetId(null), 2000)
-      }
-      return
-    }
   }
 
   const getNationalityFlag = (nationality: string) => {
@@ -1491,24 +1496,9 @@ export function ShipOverview() {
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Ship className="w-5 h-5" />
-              <span>Schepen Overzicht</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') performSearch() }}
-                  placeholder="Zoek schip of bemanningslid..."
-                  className="pl-8 w-64"
-                />
-                <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2" />
-              </div>
-              <Button size="sm" onClick={performSearch}>Zoek</Button>
-            </div>
+          <CardTitle className="flex items-center space-x-2">
+            <Ship className="w-5 h-5" />
+            <span>Schepen Overzicht</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
