@@ -176,6 +176,8 @@ export default function AflosserDetailPage() {
   const [showAllVasteDienstMonths, setShowAllVasteDienstMonths] = useState(false)
   const [isRemovingStartsaldo, setIsRemovingStartsaldo] = useState(false)
   const [mindagenDialogOpen, setMindagenDialogOpen] = useState(false)
+  const [printIncludeBedrag, setPrintIncludeBedrag] = useState(true)
+  const [printBedragDialogOpen, setPrintBedragDialogOpen] = useState(false)
   const [newMindag, setNewMindag] = useState({
     start_date: "",
     end_date: "",
@@ -717,7 +719,22 @@ export default function AflosserDetailPage() {
     dagTariefRaw != null && dagTariefRaw !== ''
       ? parseFloat(String(dagTariefRaw))
       : NaN
-  const showPrintBedrag = Number.isFinite(dagTariefNum) && dagTariefNum > 0
+  const hasDagtariefForPrint = Number.isFinite(dagTariefNum) && dagTariefNum > 0
+  const showPrintBedrag = hasDagtariefForPrint && printIncludeBedrag
+
+  const openPrintOverzicht = () => {
+    if (!hasDagtariefForPrint) {
+      window.print()
+      return
+    }
+    setPrintBedragDialogOpen(true)
+  }
+
+  const applyPrintBedragChoiceAndPrint = (includeBedrag: boolean) => {
+    setPrintIncludeBedrag(includeBedrag)
+    setPrintBedragDialogOpen(false)
+    window.setTimeout(() => window.print(), 100)
+  }
 
   const formatEuroPrint = (n: number) =>
     new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n)
@@ -730,7 +747,27 @@ export default function AflosserDetailPage() {
     return calculateWorkDays(trip.start_datum, trip.start_tijd, trip.eind_datum, trip.eind_tijd)
   }
 
-  const printHistoryRows = combinedHistory.map((item: any, idx: number) => {
+  /** Voorkomt dubbele route in print (trip_name kopieert vaak hetzelfde als trip_from → trip_to). */
+  const routeFromTripPortsForPrint = (trip: any): string | null => {
+    if (!trip.trip_from && !trip.trip_to) return null
+    return `${trip.trip_from || '?'} → ${trip.trip_to || '?'}`
+  }
+
+  const routeLabelEqualsTripName = (routeFormatted: string | null, tripName: string | undefined | null) => {
+    if (!routeFormatted || !tripName?.trim()) return false
+    const norm = (s: string) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[–—−]/g, '-')
+        .replace(/\s*->\s*/g, '→')
+        .replace(/\s*→\s*/g, '→')
+    return norm(routeFormatted) === norm(tripName.trim())
+  }
+
+  const renderPrintHistoryRow = (item: any, idx: number, rowKey: string) => {
+    const stripe = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
     if (item.type === 'trip') {
       const trip = item.trip
       const ship = ships.find((s: any) => s.id === trip.ship_id)
@@ -738,7 +775,7 @@ export default function AflosserDetailPage() {
       const bedrag =
         showPrintBedrag && workDays !== null ? formatEuroPrint(workDays * dagTariefNum) : null
       return (
-        <tr key={trip.id || `trip-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+        <tr key={rowKey} className={stripe}>
           <td className="border px-3 py-1">
             {trip.start_datum ? formatDateSafeForPrint(trip.start_datum) : ''}
             {trip.eind_datum && <> t/m {formatDateSafeForPrint(trip.eind_datum)}</>}
@@ -748,10 +785,19 @@ export default function AflosserDetailPage() {
           </td>
           <td className="border px-3 py-1">
             {ship ? ship.name : 'Onbekend schip'}
-            {!aflosser.vaste_dienst && (trip.trip_from || trip.trip_to) ? (
-              <> — {trip.trip_from || '?'} → {trip.trip_to || '?'}</>
-            ) : null}
-            {trip.trip_name ? ` — ${trip.trip_name}` : ''}
+            {(() => {
+              const routeSeg = !aflosser.vaste_dienst ? routeFromTripPortsForPrint(trip) : null
+              const nameExtra =
+                trip.trip_name?.trim() && !routeLabelEqualsTripName(routeSeg, trip.trip_name)
+                  ? ` — ${trip.trip_name}`
+                  : ''
+              return (
+                <>
+                  {routeSeg ? <> — {routeSeg}</> : null}
+                  {nameExtra}
+                </>
+              )
+            })()}
           </td>
           <td className="border px-3 py-1 text-right">{workDays !== null ? workDays : ''}</td>
           {showPrintBedrag ? (
@@ -765,7 +811,7 @@ export default function AflosserDetailPage() {
     const plusEntry = isMindagPlusEntry(entry)
     const d = (entry as any).days
     return (
-      <tr key={entry.id || `mindag-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+      <tr key={rowKey} className={stripe}>
         <td className="border px-3 py-1">
           {formatDateSafeForPrint(entry.start_date)}
           {entry.end_date && <> t/m {formatDateSafeForPrint(entry.end_date)}</>}
@@ -780,7 +826,53 @@ export default function AflosserDetailPage() {
         ) : null}
       </tr>
     )
-  })
+  }
+
+  const printHistoryRows = combinedHistory.map((item: any, idx: number) =>
+    renderPrintHistoryRow(
+      item,
+      idx,
+      item.type === 'trip'
+        ? String(item.trip?.id ?? `trip-print-${idx}`)
+        : String(item.entry?.id ?? `mindag-print-${idx}`)
+    )
+  )
+
+  /** Alleen voor print zelfstandige aflosser: zelfde rijen als printHistoryRows, met jaarkoppen (sortDate-jaar). */
+  const printHistoryRowsSelfEmployed =
+    !aflosser.vaste_dienst && combinedHistory.length > 0
+      ? (() => {
+          const colCount = showPrintBedrag ? 5 : 4
+          const groups: Array<{ year: number; items: typeof combinedHistory }> = []
+          for (const item of combinedHistory) {
+            const y = item.sortDate.getFullYear()
+            const last = groups[groups.length - 1]
+            if (!last || last.year !== y) groups.push({ year: y, items: [item] })
+            else last.items.push(item)
+          }
+          const out: React.ReactNode[] = []
+          for (const g of groups) {
+            out.push(
+              <tr key={`print-year-${g.year}`} className="bg-slate-200">
+                <td
+                  colSpan={colCount}
+                  className="border px-3 py-2 font-semibold text-gray-900"
+                >
+                  {g.year}
+                </td>
+              </tr>
+            )
+            g.items.forEach((item, idx) => {
+              const rowKey =
+                item.type === 'trip'
+                  ? `trip-${g.year}-${item.trip?.id ?? idx}`
+                  : `mindag-${g.year}-${item.entry?.id ?? idx}`
+              out.push(renderPrintHistoryRow(item, idx, rowKey))
+            })
+          }
+          return out
+        })()
+      : []
 
   const printHistoryBedragSom =
     showPrintBedrag
@@ -966,7 +1058,7 @@ export default function AflosserDetailPage() {
                         alert('Er zijn nog geen vaste dienst maanden om te printen.')
                         return
                       }
-                      window.print()
+                      openPrintOverzicht()
                     }}
                     className="border-blue-300 text-blue-700 hover:bg-blue-50 no-print-aflosser"
                   >
@@ -1687,7 +1779,7 @@ export default function AflosserDetailPage() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => window.print()}
+                  onClick={openPrintOverzicht}
                   className="border-gray-300 text-gray-800 hover:bg-gray-50 no-print-aflosser shrink-0"
                 >
                   <Printer className="w-3 h-3 mr-1" />
@@ -2332,6 +2424,40 @@ export default function AflosserDetailPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={printBedragDialogOpen} onOpenChange={setPrintBedragDialogOpen}>
+        <DialogContent className="max-w-[min(28rem,calc(100vw-2rem))] no-print-aflosser overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Print overzicht</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Er is een dagtarief ingevuld. Wil je op de print geldopsomming tonen (bedragen op basis van dagtarief ×
+            dagen) of alleen reizen, datums en dagen zonder bedragen?
+          </p>
+          <div className="mt-2 flex min-w-0 w-full flex-col gap-2">
+            <Button
+              variant="outline"
+              className="h-auto w-full shrink-0 whitespace-normal py-2.5 text-center"
+              onClick={() => setPrintBedragDialogOpen(false)}
+            >
+              Annuleren
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => applyPrintBedragChoiceAndPrint(false)}
+              className="h-auto w-full shrink-0 whitespace-normal border-gray-400 py-2.5 text-center"
+            >
+              Zonder geldopsomming
+            </Button>
+            <Button
+              className="h-auto w-full shrink-0 whitespace-normal bg-blue-600 py-2.5 text-center hover:bg-blue-700"
+              onClick={() => applyPrintBedragChoiceAndPrint(true)}
+            >
+              Met geldopsomming
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Printoverzicht (alleen zichtbaar bij print) */}
       {aflosser.vaste_dienst && (
         <div className="aflosser-print-root">
@@ -2507,7 +2633,7 @@ export default function AflosserDetailPage() {
                     ) : null}
                   </tr>
                 </thead>
-                <tbody>{printHistoryRows}</tbody>
+                <tbody>{printHistoryRowsSelfEmployed}</tbody>
                 {showPrintBedrag ? (
                   <tfoot>
                     <tr className="bg-gray-100 font-semibold">
