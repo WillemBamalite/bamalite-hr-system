@@ -7,12 +7,14 @@ import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertC
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 
 export function DashboardStats() {
   const { crew, ships, sickLeave, loans, tasks, trips, incidents, officialWarnings } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
   const { t } = useLanguage()
+  const [loonBemerkingenCount, setLoonBemerkingenCount] = useState(0)
   
   // Count open tasks from Supabase
   const tasksCount = tasks.filter((t: any) => !t.completed).length
@@ -28,6 +30,29 @@ export function DashboardStats() {
     exp.setHours(0, 0, 0, 0)
     return exp >= today
   }).length
+
+  useEffect(() => {
+    const loadLoonBemerkingenCount = async () => {
+      try {
+        const d = new Date()
+        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+        const { count, error } = await supabase
+          .from("loon_bemerkingen")
+          .select("*", { count: "exact", head: true })
+          .eq("month_key", monthKey)
+
+        if (error) {
+          console.warn("Loon bemerkingen count niet geladen:", (error as any)?.message || error)
+          setLoonBemerkingenCount(0)
+          return
+        }
+        setLoonBemerkingenCount(count || 0)
+      } catch {
+        setLoonBemerkingenCount(0)
+      }
+    }
+    loadLoonBemerkingenCount()
+  }, [])
   
   // Bereken stats uit Supabase data
   const aflossers = crew.filter((c) => 
@@ -470,6 +495,19 @@ export function DashboardStats() {
             <div className="text-[10px] md:text-xs text-rose-700 mt-1 flex items-center justify-center gap-1">
               <FileWarning className="w-2.5 h-2.5 md:w-3 md:h-3" />
               <span>Waarschuwingen</span>
+            </div>
+          </Link>
+        </div>
+
+        {/* 14. Loon bemerkingen */}
+        <div className="aspect-[3/1]">
+          <Link
+            href="/bemanning/loon-bemerkingen"
+            className="h-full flex flex-col items-center justify-center bg-cyan-50 border border-cyan-200 rounded-lg p-2 md:p-4 text-center hover:bg-cyan-100 transition cursor-pointer"
+          >
+            <div className="text-lg md:text-2xl font-bold text-cyan-800">{loonBemerkingenCount}</div>
+            <div className="text-[10px] md:text-xs text-cyan-700 mt-1">
+              Loon bemerkingen
             </div>
           </Link>
         </div>
