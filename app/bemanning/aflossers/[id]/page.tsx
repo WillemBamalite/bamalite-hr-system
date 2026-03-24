@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { BackButton } from "@/components/ui/back-button"
@@ -179,7 +180,8 @@ export default function AflosserDetailPage() {
     start_date: "",
     end_date: "",
     days: "",
-    reason: ""
+    reason: "",
+    adjustment_kind: "minus" as "minus" | "plus",
   })
 
   // Find the aflosser
@@ -195,13 +197,22 @@ export default function AflosserDetailPage() {
     (entry: any) => entry.aflosser_id === aflosser?.id
   )
 
-  const totalExtraMinusDays = aflosserMindagen.reduce((sum: number, entry: any) => {
+  const isMindagPlusEntry = (entry: any) => entry?.adjustment_kind === 'plus'
+
+  /** Positief = netto aftrek (klassieke mindagen), negatief = netto opslag (plusdagen). */
+  const mindagSignedMonthContribution = (entry: any): number => {
     const raw = (entry as any).days
     const value = typeof raw === 'number' ? raw : parseFloat(raw || '0')
-    return sum + (isNaN(value) ? 0 : value)
-  }, 0)
+    if (isNaN(value) || value === 0) return 0
+    return isMindagPlusEntry(entry) ? -value : value
+  }
 
-  // Extra mindagen gegroepeerd per maand (op basis van start_date)
+  const mindagenNetSubtractDays = aflosserMindagen.reduce(
+    (sum: number, entry: any) => sum + mindagSignedMonthContribution(entry),
+    0
+  )
+
+  // Handmatige correcties gegroepeerd per maand (op basis van start_date)
   const mindagenPerMonth = (() => {
     const map = new Map<string, number>()
 
@@ -214,11 +225,10 @@ export default function AflosserDetailPage() {
       const month = d.getMonth() + 1
       const key = `${year}-${month}`
 
-      const raw = (entry as any).days
-      const value = typeof raw === 'number' ? raw : parseFloat(raw || '0')
-      if (isNaN(value)) return
+      const delta = mindagSignedMonthContribution(entry)
+      if (delta === 0) return
 
-      map.set(key, (map.get(key) || 0) + value)
+      map.set(key, (map.get(key) || 0) + delta)
     })
 
     return map
@@ -411,8 +421,14 @@ export default function AflosserDetailPage() {
     0
   )
 
-  // Som maandsaldi zonder mindagen (alleen gewerkte dagen - 15)
-  const totalMonthSaldoWithoutMinus = totalMonthSaldo + totalExtraMinusDays
+  // Som maandsaldi zonder handmatige correcties (alleen gewerkte dagen - 15)
+  const totalMonthSaldoWithoutMinus = totalMonthSaldo + mindagenNetSubtractDays
+
+  const formatTerugGestaanPrint = (minus: number) => {
+    if (!minus || minus === 0) return '0'
+    if (minus > 0) return `−${minus}`
+    return `+${Math.abs(minus)}`
+  }
 
 
   // Prevent hydration errors
@@ -589,17 +605,19 @@ export default function AflosserDetailPage() {
         start_date: formattedStartDate,
         end_date: formattedEndDate,
         days: parsedDays,
-        reason: newMindag.reason || null
+        reason: newMindag.reason || null,
+        adjustment_kind: newMindag.adjustment_kind,
       })
       toast({
         title: "Succes",
-        description: "Mindagen toegevoegd"
+        description: "Dagen toegevoegd"
       })
       setNewMindag({
         start_date: "",
         end_date: "",
         days: "",
-        reason: ""
+        reason: "",
+        adjustment_kind: "minus",
       })
       setMindagenDialogOpen(false)
     } catch (error: any) {
@@ -744,15 +762,19 @@ export default function AflosserDetailPage() {
     }
 
     const entry = item.entry
+    const plusEntry = isMindagPlusEntry(entry)
+    const d = (entry as any).days
     return (
       <tr key={entry.id || `mindag-print-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
         <td className="border px-3 py-1">
           {formatDateSafeForPrint(entry.start_date)}
           {entry.end_date && <> t/m {formatDateSafeForPrint(entry.end_date)}</>}
         </td>
-        <td className="border px-3 py-1">Extra mindagen</td>
+        <td className="border px-3 py-1">{plusEntry ? 'Plusdagen' : 'Mindagen'}</td>
         <td className="border px-3 py-1">{entry.reason || 'Correctie vaste dienst'}</td>
-        <td className="border px-3 py-1 text-right">-{(entry as any).days}</td>
+        <td className="border px-3 py-1 text-right">
+          {plusEntry ? `+${d}` : `−${d}`}
+        </td>
         {showPrintBedrag ? (
           <td className="border px-3 py-1 text-right">—</td>
         ) : null}
@@ -959,14 +981,15 @@ export default function AflosserDetailPage() {
                         start_date: "",
                         end_date: "",
                         days: "",
-                        reason: ""
+                        reason: "",
+                        adjustment_kind: "minus",
                       })
                       setMindagenDialogOpen(true)
                     }}
                     className="border-blue-300 text-blue-700 hover:bg-blue-50"
                   >
                     <Minus className="w-3 h-3 mr-1" />
-                    Mindagen toevoegen
+                    Dagen toevoegen
                   </Button>
                 </div>
               </CardTitle>
@@ -1989,16 +2012,21 @@ export default function AflosserDetailPage() {
                     )
                   }
 
-                  // Mindagen entry
+                  // Mindagen / plusdagen entry
                   const entry = item.entry
+                  const isPlus = isMindagPlusEntry(entry)
                   return (
-                    <div key={entry.id || `mindag-${index}`} className="border rounded-lg p-4 bg-red-50">
+                    <div
+                      key={entry.id || `mindag-${index}`}
+                      className={`border rounded-lg p-4 ${isPlus ? 'bg-green-50' : 'bg-red-50'}`}
+                    >
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2 text-sm">
-                            <AlertTriangle className="w-4 h-4 text-red-600" />
-                            <span className="font-medium text-red-700">
-                              Extra mindagen: -{(entry as any).days} dag{(entry as any).days === 1 ? '' : 'en'}
+                            <AlertTriangle className={`w-4 h-4 ${isPlus ? 'text-green-700' : 'text-red-600'}`} />
+                            <span className={`font-medium ${isPlus ? 'text-green-800' : 'text-red-700'}`}>
+                              {isPlus ? 'Plusdagen' : 'Mindagen'}: {isPlus ? '+' : '−'}
+                              {(entry as any).days} dag{(entry as any).days === 1 ? '' : 'en'}
                             </span>
                           </div>
                           <div className="text-xs text-gray-700 mt-1">
@@ -2202,13 +2230,39 @@ export default function AflosserDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Mindagen Dialog voor vaste dienst */}
+      {/* Dagen toevoegen (mindagen of plusdagen) — vaste dienst */}
       <Dialog open={mindagenDialogOpen} onOpenChange={setMindagenDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Extra mindagen toevoegen</DialogTitle>
+            <DialogTitle>Dagen toevoegen</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
+            <div>
+              <Label className="text-sm font-medium">Soort</Label>
+              <RadioGroup
+                value={newMindag.adjustment_kind}
+                onValueChange={(v) =>
+                  setNewMindag({
+                    ...newMindag,
+                    adjustment_kind: v as 'minus' | 'plus',
+                  })
+                }
+                className="mt-2 grid gap-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="minus" id="mindag-kind-minus" />
+                  <Label htmlFor="mindag-kind-minus" className="font-normal cursor-pointer">
+                    − Dagen (mindagen / aftrek)
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="plus" id="mindag-kind-plus" />
+                  <Label htmlFor="mindag-kind-plus" className="font-normal cursor-pointer">
+                    + Dagen (plusdagen / opslag)
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="mindag_start_date">Datum van</Label>
@@ -2260,7 +2314,8 @@ export default function AflosserDetailPage() {
                     start_date: "",
                     end_date: "",
                     days: "",
-                    reason: ""
+                    reason: "",
+                    adjustment_kind: 'minus',
                   })
                 }}
               >
@@ -2324,7 +2379,7 @@ export default function AflosserDetailPage() {
                       <td className="border px-3 py-1">{row.label}</td>
                       <td className="border px-3 py-1 text-right">{row.workedDays}</td>
                       <td className="border px-3 py-1 text-right">
-                        {row.minusDays ? `-${row.minusDays}` : '0'}
+                        {formatTerugGestaanPrint(row.minusDays)}
                       </td>
                       <td className="border px-3 py-1 text-right">{row.requiredDays}</td>
                       <td className="border px-3 py-1 text-right">
@@ -2357,9 +2412,13 @@ export default function AflosserDetailPage() {
               </div>
               {aflosserMindagen.length > 0 && (
                 <div className="flex justify-between gap-4">
-                  <span className="text-gray-600">Extra mindagen (per maand verwerkt):</span>
+                  <span className="text-gray-600">Handmatige correctie (netto, per maand verwerkt):</span>
                   <span className="font-semibold">
-                    -{totalExtraMinusDays} dag{totalExtraMinusDays === 1 ? '' : 'en'}
+                    {mindagenNetSubtractDays === 0
+                      ? '0 dagen'
+                      : mindagenNetSubtractDays > 0
+                        ? `−${mindagenNetSubtractDays} dag${mindagenNetSubtractDays === 1 ? '' : 'en'}`
+                        : `+${Math.abs(mindagenNetSubtractDays)} dag${Math.abs(mindagenNetSubtractDays) === 1 ? '' : 'en'}`}
                   </span>
                 </div>
               )}
