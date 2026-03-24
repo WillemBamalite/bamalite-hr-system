@@ -44,6 +44,7 @@ export default function ReizenAflossersPage() {
   const { t } = useLanguage()
   const { getAvailabilityStatus, allPeriods } = useAllAflosserAvailability()
   const [activeTab, setActiveTab] = useState('reizen')
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const DIPLOMA_OPTIONS = [
     "Vaarbewijs",
     "Rijnpatent tot Wesel",
@@ -115,6 +116,36 @@ export default function ReizenAflossersPage() {
     eind_tijd: "",
     aflosser_opmerkingen: ""
   })
+
+  type ZelfstandigePoolFunctie = 'kapitein' | 'stuurman' | 'matroos'
+
+  const zelfstandigePoolFunctieFromMember = (m: any): ZelfstandigePoolFunctie | null => {
+    const v = m?.aflosser_pool_functie
+    if (v === 'kapitein' || v === 'stuurman' || v === 'matroos') return v
+    return null
+  }
+
+  const cycleZelfstandigePoolFunctie = async (
+    aflosserId: string,
+    current: ZelfstandigePoolFunctie | null
+  ) => {
+    const order: ZelfstandigePoolFunctie[] = ['kapitein', 'stuurman', 'matroos']
+    let next: ZelfstandigePoolFunctie
+    if (current === null) {
+      next = 'kapitein'
+    } else {
+      const i = order.indexOf(current)
+      next = order[(i < 0 ? 0 : i + 1) % order.length]
+    }
+    try {
+      await updateCrew(aflosserId, { aflosser_pool_functie: next })
+    } catch (e) {
+      console.warn('aflosser_pool_functie update failed:', e)
+      alert(
+        'Functie opslaan mislukt. Voer eventueel dit script uit in Supabase: scripts/add-aflosser-pool-functie.sql'
+      )
+    }
+  }
 
   // Helper functions
   const getNationalityFlag = (nationality: string) => {
@@ -476,6 +507,11 @@ export default function ReizenAflossersPage() {
     }
   }
 
+  // Na eerste succesvolle load geen volledige loading-screen meer (voorkomt scroll naar boven bij o.a. functie-klik).
+  useEffect(() => {
+    if (!loading) setHasLoadedOnce(true)
+  }, [loading])
+
   // Load overwerkers from crew members with OVERWERKER note
   useEffect(() => {
     if (!crew || crew.length === 0) return
@@ -644,6 +680,24 @@ export default function ReizenAflossersPage() {
       return b.tripCount - a.tripCount
     }).map(item => item.aflosser)
   }, [filteredAflossers, trips])
+
+  const zelfstandigeAflossersSorted = useMemo(() => {
+    const list = aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau)
+    const rankPoolFunctie = (m: any) => {
+      const f = m?.aflosser_pool_functie
+      if (f === 'kapitein') return 0
+      if (f === 'stuurman') return 1
+      if (f === 'matroos') return 2
+      return 3
+    }
+    return [...list].sort((a, b) => {
+      const d = rankPoolFunctie(a) - rankPoolFunctie(b)
+      if (d !== 0) return d
+      const aName = `${a?.first_name || ''} ${a?.last_name || ''}`.trim()
+      const bName = `${b?.first_name || ''} ${b?.last_name || ''}`.trim()
+      return aName.localeCompare(bName, 'nl')
+    })
+  }, [aflossers])
 
   // Filter trips by status
   const geplandeTrips = trips
@@ -869,7 +923,7 @@ export default function ReizenAflossersPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !hasLoadedOnce) {
     return (
       <div className="max-w-7xl mx-auto py-8 px-4">
         <MobileHeaderNav />
@@ -1474,14 +1528,33 @@ export default function ReizenAflossersPage() {
             )}
 
             {/* Zelfstandige Aflossers */}
-            {aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).length > 0 && (
+            {zelfstandigeAflossersSorted.length > 0 && (
               <div>
                 <h3 className="text-xl font-semibold text-green-800 mb-4 flex items-center">
                   <UserX className="w-5 h-5 mr-2" />
-                  Zelfstandige Aflossers ({aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).length})
+                  Zelfstandige Aflossers ({zelfstandigeAflossersSorted.length})
                 </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {aflossers.filter((a: any) => !a.vaste_dienst && !a.is_uitzendbureau).map((aflosser: any) => (
+                  {zelfstandigeAflossersSorted.map((aflosser: any) => {
+                    const poolFn = zelfstandigePoolFunctieFromMember(aflosser)
+                    const poolFnLabel =
+                      poolFn === 'kapitein'
+                        ? 'Kapitein'
+                        : poolFn === 'stuurman'
+                          ? 'Stuurman'
+                          : poolFn === 'matroos'
+                            ? 'Matroos'
+                            : 'Kies functie (klik)'
+                    const poolFnStyles =
+                      poolFn === null
+                        ? 'bg-slate-100 border-slate-500 text-slate-900'
+                        : poolFn === 'kapitein'
+                          ? 'bg-amber-100 border-amber-600 text-amber-950'
+                          : poolFn === 'stuurman'
+                            ? 'bg-sky-100 border-sky-600 text-sky-950'
+                            : 'bg-emerald-100 border-emerald-600 text-emerald-950'
+
+                    return (
                     <Card 
                       key={aflosser.id} 
                       className="hover:shadow-md transition-shadow cursor-pointer"
@@ -1506,6 +1579,18 @@ export default function ReizenAflossersPage() {
                           </div>
                         </div>
                       </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              e.preventDefault()
+                              cycleZelfstandigePoolFunctie(aflosser.id, poolFn)
+                            }}
+                            className={`rounded-md border-2 px-3 py-2 text-center text-sm font-semibold shadow-sm w-full hover:brightness-95 transition cursor-pointer ${poolFnStyles}`}
+                          >
+                            {poolFnLabel}
+                          </button>
 
                           {/* Beschikbaar Checkbox */}
                           <div 
@@ -1543,7 +1628,8 @@ export default function ReizenAflossersPage() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
