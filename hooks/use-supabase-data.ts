@@ -1653,6 +1653,52 @@ export function useSupabaseData() {
     }
   }
 
+  /** YYYY-MM string helpers voor automatische maandtermijnen */
+  const loanNextYm = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number)
+    if (m === 12) return `${y + 1}-01`
+    return `${y}-${String(m + 1).padStart(2, '0')}`
+  }
+  const loanMaxYm = (a: string, b: string) => (a.localeCompare(b) >= 0 ? a : b)
+  const loanCurrentYm = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+  const loanYmRangeInclusive = (from: string, to: string) => {
+    if (from > to) return [] as string[]
+    const out: string[] = []
+    let cur = from
+    while (cur <= to) {
+      out.push(cur)
+      cur = loanNextYm(cur)
+    }
+    return out
+  }
+
+  /** Volgende YYYY-MM na exact één jaar (zelfde kalendermaand volgend jaar). */
+  const loanAddYearsYm = (ym: string, years: number) => {
+    const [y, m] = ym.split("-").map(Number)
+    const d = new Date(y, m - 1 + years * 12, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  }
+
+  const loanYearlyYmRangeInclusive = (from: string, to: string) => {
+    if (from > to) return [] as string[]
+    const out: string[] = []
+    let cur = from
+    while (cur <= to) {
+      out.push(cur)
+      cur = loanAddYearsYm(cur, 1)
+    }
+    return out
+  }
+
+  const updateLoan = async (loanId: string, updates: Record<string, unknown>) => {
+    const { error } = await supabase.from('loans').update(updates).eq('id', loanId)
+    if (error) throw error
+    await loadData()
+  }
+
   const completeLoan = async (loanId: string, notes?: string) => {
     try {
       console.log('Completing loan in Supabase:', loanId)
@@ -1680,7 +1726,12 @@ export function useSupabaseData() {
     }
   }
 
-  const makePayment = async (loanId: string, paymentAmount: number, note?: string) => {
+  const makePayment = async (
+    loanId: string,
+    paymentAmount: number,
+    note?: string,
+    opts?: { setInstallmentPeriodYm?: string }
+  ) => {
     try {
       console.log('Making payment for loan:', loanId, paymentAmount)
       
@@ -1708,16 +1759,21 @@ export function useSupabaseData() {
         paidBy: 'User'
       }
       
+      const updatePayload: Record<string, unknown> = {
+        amount_paid: newPaid,
+        amount_remaining: newRemaining,
+        status: newStatus,
+        completed_at: newStatus === 'voltooid' ? new Date().toISOString() : null,
+        payment_history: [...(loan.payment_history || []), paymentEntry],
+      }
+      if (opts?.setInstallmentPeriodYm && /^\d{4}-\d{2}$/.test(opts.setInstallmentPeriodYm)) {
+        updatePayload.last_installment_period = opts.setInstallmentPeriodYm
+      }
+
       // Update loan
       const { data, error } = await supabase
         .from('loans')
-        .update({
-          amount_paid: newPaid,
-          amount_remaining: newRemaining,
-          status: newStatus,
-          completed_at: newStatus === 'voltooid' ? new Date().toISOString() : null,
-          payment_history: [...(loan.payment_history || []), paymentEntry]
-        })
+        .update(updatePayload)
         .eq('id', loanId)
         .select()
       
@@ -1732,6 +1788,60 @@ export function useSupabaseData() {
     } catch (err) {
       console.error('Error making payment:', err)
       throw err
+    }
+  }
+
+  /**
+   * Boekt openstaande automatische termijnen (maandelijks of jaarlijks) t/m de huidige kalendermaand.
+   * Aanroepen bij laden van de leningen-pagina (geen aparte server-cron nodig).
+   */
+  const applyPendingLoanInstallments = async () => {
+    const { data: rows, error } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('status', 'open')
+      .eq('auto_installment_enabled', true)
+    if (error) {
+      console.warn('applyPendingLoanInstallments:', error)
+      return
+    }
+    const curYm = loanCurrentYm()
+    for (const loan of rows || []) {
+      const perPeriod = Number(loan.monthly_installment_amount)
+      if (!Number.isFinite(perPeriod) || perPeriod <= 0) continue
+      const startStr = loan.installment_start_period as string | undefined
+      if (!startStr || !/^\d{4}-\d{2}$/.test(startStr)) continue
+      if (startStr > curYm) continue
+
+      const periodType = ((loan.installment_period_type as string) || "month").toLowerCase()
+      const isYearly = periodType === "year"
+
+      const lastStr = loan.last_installment_period as string | null | undefined
+      let firstYm = startStr
+      if (lastStr && /^\d{4}-\d{2}$/.test(lastStr)) {
+        const afterLast = isYearly ? loanAddYearsYm(lastStr, 1) : loanNextYm(lastStr)
+        firstYm = loanMaxYm(afterLast, startStr)
+      }
+      if (firstYm > curYm) continue
+
+      const periods = isYearly
+        ? loanYearlyYmRangeInclusive(firstYm, curYm)
+        : loanYmRangeInclusive(firstYm, curYm)
+      for (const ym of periods) {
+        const { data: fresh, error: ferr } = await supabase.from("loans").select("*").eq("id", loan.id).single()
+        if (ferr || !fresh || fresh.status !== "open") break
+        const paid = Number(fresh.amount_paid || 0)
+        const total = Number(fresh.amount)
+        const remaining = Number(
+          fresh.amount_remaining != null ? fresh.amount_remaining : total - paid
+        )
+        if (remaining <= 0) break
+        const pay = Math.min(perPeriod, remaining)
+        const note = isYearly
+          ? `Automatische jaartermijn (${ym})`
+          : `Automatische maandtermijn (${ym})`
+        await makePayment(loan.id, pay, note, { setInstallmentPeriodYm: ym })
+      }
     }
   }
 
@@ -2411,8 +2521,10 @@ export function useSupabaseData() {
     addStandBackRecord,
     updateStandBackRecord,
     addLoan,
+    updateLoan,
     completeLoan,
     makePayment,
+    applyPendingLoanInstallments,
     addTrip,
     updateTrip,
     deleteTrip,
