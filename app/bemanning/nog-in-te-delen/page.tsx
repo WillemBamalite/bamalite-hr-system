@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSupabaseData } from "@/hooks/use-supabase-data";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,10 @@ import { format } from "date-fns";
 import { BackButton } from "@/components/ui/back-button";
 import { ContractDialog } from "@/components/crew/contract-dialog";
 import type { ContractData } from "@/utils/contract-generator";
-import { FileText } from "lucide-react";
+import { FileText, MessageSquare } from "lucide-react";
+
+/** Vaste id voor de opmerking uit deze pagina (dubbelklik); zichtbaar voor iedereen via Supabase active_notes. */
+const RECRUITMENT_QUICK_NOTE_ID = "recruitment-quick-note";
 
 export default function NogInTeDelenPage() {
   const { crew, ships, loading, error, updateCrew, addCrew, deleteCrew } = useSupabaseData();
@@ -41,7 +44,8 @@ export default function NogInTeDelenPage() {
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteMember, setNoteMember] = useState<any | null>(null);
   const [noteText, setNoteText] = useState("");
-  const [quickNotes, setQuickNotes] = useState<Record<string, string>>({});
+  const [savingRecruitmentNote, setSavingRecruitmentNote] = useState(false);
+  const recruitmentLocalNotesMigrationDone = useRef(false);
   const [candidateForm, setCandidateForm] = useState({
     firstName: "",
     lastName: "",
@@ -63,25 +67,67 @@ export default function NogInTeDelenPage() {
     datumGeplaatst: ""
   });
 
-  // Quick notes per kandidaat uit localStorage laden
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem("recruitmentQuickNotes") || "{}";
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        setQuickNotes(parsed);
-      }
-    } catch {
-      // negeer parse fouten
-    }
-  }, []);
-
-  const getNotePreview = (member: any): string | null => {
-    const text = quickNotes[member.id];
-    if (!text) return null;
-    return text.length > 120 ? text.slice(0, 117) + "..." : text;
+  const getRecruitmentQuickNoteText = (member: any): string | null => {
+    const notes = member?.active_notes;
+    if (!Array.isArray(notes)) return null;
+    const n = notes.find((x: any) => x?.id === RECRUITMENT_QUICK_NOTE_ID);
+    const c = n?.content;
+    if (c == null || String(c).trim() === "") return null;
+    return String(c);
   };
+
+  /** Eenmalig: oude browser-only notities naar Supabase (active_notes) overzetten. */
+  useEffect(() => {
+    if (recruitmentLocalNotesMigrationDone.current || typeof window === "undefined" || !crew?.length) return;
+    const raw = window.localStorage.getItem("recruitmentQuickNotes");
+    if (!raw) {
+      recruitmentLocalNotesMigrationDone.current = true;
+      return;
+    }
+    recruitmentLocalNotesMigrationDone.current = true;
+    let parsed: Record<string, string> = {};
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      try {
+        window.localStorage.removeItem("recruitmentQuickNotes");
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    void (async () => {
+      for (const [memberId, text] of Object.entries(parsed)) {
+        const trimmed = String(text || "").trim();
+        if (!trimmed) continue;
+        const member = crew.find((c: any) => c.id === memberId);
+        if (!member) continue;
+        const existing = member.active_notes || [];
+        if (existing.some((n: any) => n.id === RECRUITMENT_QUICK_NOTE_ID)) continue;
+        const filtered = existing.filter((n: any) => n.id !== RECRUITMENT_QUICK_NOTE_ID);
+        try {
+          await updateCrew(memberId, {
+            active_notes: [
+              ...filtered,
+              {
+                id: RECRUITMENT_QUICK_NOTE_ID,
+                content: trimmed,
+                createdAt: new Date().toISOString(),
+                createdBy: "migrated-from-local",
+              },
+            ],
+          });
+        } catch (e) {
+          console.warn("Migrate recruitment note failed", memberId, e);
+        }
+      }
+      try {
+        window.localStorage.removeItem("recruitmentQuickNotes");
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [crew, updateCrew]);
 
   type PoolAvailabilityUi = "te-delen" | "ziek" | "afwezig";
 
@@ -113,28 +159,58 @@ export default function NogInTeDelenPage() {
 
   const openNoteDialog = (member: any) => {
     setNoteMember(member);
-    setNoteText(quickNotes[member.id] || "");
+    setNoteText(getRecruitmentQuickNoteText(member) || "");
     setNoteDialogOpen(true);
   };
 
   const handleSaveNote = async () => {
     if (!noteMember) return;
     const trimmed = noteText.trim();
+    const existing = noteMember.active_notes || [];
+    const filtered = existing.filter((n: any) => n.id !== RECRUITMENT_QUICK_NOTE_ID);
 
-    // Lege tekst = opmerking verwijderen
-    const updated: Record<string, string> = { ...quickNotes };
-    if (!trimmed) {
-      delete updated[noteMember.id];
-    } else {
-      updated[noteMember.id] = trimmed;
+    setSavingRecruitmentNote(true);
+    try {
+      if (!trimmed) {
+        await updateCrew(noteMember.id, { active_notes: filtered });
+      } else {
+        await updateCrew(noteMember.id, {
+          active_notes: [
+            ...filtered,
+            {
+              id: RECRUITMENT_QUICK_NOTE_ID,
+              content: trimmed,
+              createdAt: new Date().toISOString(),
+              createdBy: "user",
+            },
+          ],
+        });
+      }
+      setNoteDialogOpen(false);
+      setNoteMember(null);
+    } catch (e) {
+      console.error(e);
+      alert("Opslaan van opmerking is mislukt. Probeer het opnieuw.");
+    } finally {
+      setSavingRecruitmentNote(false);
     }
+  };
 
-    setQuickNotes(updated);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("recruitmentQuickNotes", JSON.stringify(updated));
-    }
-    setNoteDialogOpen(false);
-    setNoteMember(null);
+  /** Zelfde visuele taal als opmerkingen op het schipen-dashboard (ship-overview). */
+  const renderRecruitmentOpmerking = (member: any) => {
+    const text = getRecruitmentQuickNoteText(member);
+    if (!text) return null;
+    return (
+      <div className="mt-2 space-y-1 border-t pt-2">
+        <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
+          <MessageSquare className="w-3 h-3" />
+          OPMERKING:
+        </div>
+        <div className="text-xs text-orange-950 bg-amber-200 p-2 rounded border-2 border-amber-500 shadow-sm font-medium whitespace-pre-wrap">
+          {text}
+        </div>
+      </div>
+    );
   };
 
   // Prevent hydration errors
@@ -202,7 +278,16 @@ export default function NogInTeDelenPage() {
   };
 
   // Categoriseer op basis van sub_status veld - alleen kandidaten die nog niet aangenomen zijn
-  const contactStages = [null, undefined, "", "nog-te-benaderen", "benaderen", "in-gesprek", "kennismaking-gepland"];
+  const contactStages = [
+    null,
+    undefined,
+    "",
+    "nog-te-benaderen",
+    "benaderen",
+    "potentie",
+    "in-gesprek",
+    "kennismaking-gepland",
+  ];
   const nogTeBenaderen = unassignedCrew.filter((m: any) => 
     contactStages.includes(m.sub_status) &&
     m.status !== 'uit-dienst' &&
@@ -425,7 +510,10 @@ export default function NogInTeDelenPage() {
     }
   };
 
-  const setContactStage = async (member: any, stage: "benaderen" | "in-gesprek" | "kennismaking-gepland") => {
+  const setContactStage = async (
+    member: any,
+    stage: "benaderen" | "potentie" | "in-gesprek" | "kennismaking-gepland"
+  ) => {
     try {
       let updates: any = { sub_status: stage };
       if (stage === "kennismaking-gepland") {
@@ -458,6 +546,8 @@ export default function NogInTeDelenPage() {
     switch (member.sub_status) {
       case "benaderen":
         return { border: "border-yellow-300", bg: "bg-yellow-50", dot: "bg-yellow-400" };
+      case "potentie":
+        return { border: "border-green-300", bg: "bg-green-50", dot: "bg-green-500" };
       case "in-gesprek":
         return { border: "border-blue-300", bg: "bg-blue-50", dot: "bg-blue-500" };
       case "kennismaking-gepland":
@@ -717,10 +807,14 @@ export default function NogInTeDelenPage() {
             </div>
             <div className="space-y-1 text-sm text-gray-600 mb-4">
               <p>Nieuwe aanmeldingen die nog telefonisch benaderd moeten worden</p>
-              <div className="flex items-center gap-3 text-xs text-gray-500">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                 <div className="flex items-center gap-1">
                   <span className="w-3 h-3 rounded-sm bg-yellow-400 border border-yellow-500"></span>
                   <span>Benaderd</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-sm bg-green-500 border border-green-600"></span>
+                  <span>Potentie</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="w-3 h-3 rounded-sm bg-blue-500 border border-blue-600"></span>
@@ -776,6 +870,11 @@ export default function NogInTeDelenPage() {
                               aria-label="Stage benaderen (geel)"
                               className={`w-4 h-4 rounded-sm border border-yellow-400 ${member.sub_status === "benaderen" ? "bg-yellow-400" : "bg-white"} hover:ring-2 hover:ring-yellow-300`}
                               onClick={() => setContactStage(member, "benaderen")}
+                            />
+                            <button
+                              aria-label="Stage potentie (groen)"
+                              className={`w-4 h-4 rounded-sm border border-green-600 ${member.sub_status === "potentie" ? "bg-green-500" : "bg-white"} hover:ring-2 hover:ring-green-300`}
+                              onClick={() => setContactStage(member, "potentie")}
                             />
                             <button
                               aria-label="Stage in gesprek (blauw)"
@@ -842,13 +941,7 @@ export default function NogInTeDelenPage() {
                           </div>
                         )}
 
-                        {/* Recruitment note preview */}
-                        {getNotePreview(member) && (
-                          <div className="mt-2 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
-                            <span className="font-medium">Opmerking:</span>{" "}
-                            <span>{getNotePreview(member)}</span>
-                          </div>
-                        )}
+                        {renderRecruitmentOpmerking(member)}
 
                         {/* Notes */}
                         {member.notes && member.notes.length > 0 && (() => {
@@ -1050,13 +1143,7 @@ export default function NogInTeDelenPage() {
                         </div>
                       )}
 
-                      {/* Recruitment note preview */}
-                      {getNotePreview(member) && (
-                        <div className="mt-1 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
-                          <span className="font-medium">Opmerking:</span>{" "}
-                          <span>{getNotePreview(member)}</span>
-                        </div>
-                      )}
+                      {renderRecruitmentOpmerking(member)}
 
                       {/* Actions */}
                       <div className="flex flex-col gap-2 pt-3 border-t">
@@ -1183,13 +1270,7 @@ export default function NogInTeDelenPage() {
                   </div>
                 )}
 
-                {/* Recruitment note preview */}
-                {getNotePreview(member) && (
-                  <div className="mt-1 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
-                    <span className="font-medium">Opmerking:</span>{" "}
-                    <span>{getNotePreview(member)}</span>
-                  </div>
-                )}
+                {renderRecruitmentOpmerking(member)}
 
                 {/* Contract opstellen knop (alleen als contract nog niet is afgevinkt) */}
                 {!member.arbeidsovereenkomst && (
@@ -1264,13 +1345,7 @@ export default function NogInTeDelenPage() {
                         </div>
                       )}
 
-                      {/* Recruitment note preview */}
-                      {getNotePreview(member) && (
-                        <div className="mt-1 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
-                          <span className="font-medium">Opmerking:</span>{" "}
-                          <span>{getNotePreview(member)}</span>
-                        </div>
-                      )}
+                      {renderRecruitmentOpmerking(member)}
                       <div className="pt-3 border-t">
                         <div className="flex flex-wrap gap-2">
                           <Button 
@@ -1917,8 +1992,8 @@ export default function NogInTeDelenPage() {
             <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>
               Annuleren
             </Button>
-            <Button onClick={handleSaveNote}>
-              Opslaan
+            <Button onClick={handleSaveNote} disabled={savingRecruitmentNote}>
+              {savingRecruitmentNote ? "Opslaan…" : "Opslaan"}
             </Button>
           </DialogFooter>
         </DialogContent>
