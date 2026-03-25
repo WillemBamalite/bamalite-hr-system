@@ -327,20 +327,19 @@ export function DashboardStats() {
 
   return (
     <div className="space-y-4 mb-6">
-      {/* Mobiel: 4 tegels naast elkaar, Desktop: 6 tegels naast elkaar */}
-      <div className="grid grid-cols-4 md:grid-cols-6 gap-2 md:gap-4">
+      <div className="grid grid-cols-4 md:grid-cols-6 gap-2 md:gap-4 dashboard-tiles">
         {/* 0. Meldingen */}
         <div className="aspect-[3/1]">
           <Link
             href="/meldingen"
-            className={`h-full flex flex-col items-center justify-center rounded-lg p-2 md:p-4 text-center transition cursor-pointer border ${
+            className={`h-full flex flex-col items-center justify-center rounded-lg p-2 md:p-4 text-center transition cursor-pointer border dashboard-tile ${
               notificationCount > 0
                 ? "bg-red-600 border-red-700 hover:bg-red-700"
                 : "bg-gray-50 border-gray-200 hover:bg-gray-100"
             }`}
           >
             <div
-              className={`flex items-center gap-1 md:gap-2 text-[10px] md:text-sm font-semibold ${
+              className={`flex items-center gap-1 md:gap-2 text-[10px] md:text-sm font-semibold dashboard-tile-title ${
                 notificationCount > 0 ? "text-white" : "text-gray-800"
               }`}
             >
@@ -348,13 +347,13 @@ export function DashboardStats() {
               Meldingen
             </div>
             <div
-              className={`text-lg md:text-2xl font-bold ${
+              className={`text-lg md:text-2xl font-bold dashboard-tile-number ${
                 notificationCount > 0 ? "text-white" : "text-gray-900"
               }`}
             >
               {notificationCount}
             </div>
-            <div className={`text-[10px] md:text-xs ${notificationCount > 0 ? "text-red-100" : "text-gray-600"}`}>
+            <div className={`text-[10px] md:text-xs dashboard-tile-sub ${notificationCount > 0 ? "text-red-100" : "text-gray-600"}`}>
               open
             </div>
           </Link>

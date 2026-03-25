@@ -80,8 +80,8 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   })()
 
   return (
-    <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm dashboard-header">
+      <div className="flex flex-wrap items-center justify-between gap-4 dashboard-header-row">
         <Link href="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer shrink-0">
           <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shadow-lg">
             <Image
@@ -100,7 +100,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         </Link>
 
         {showDashboardSearch && (
-          <div className="flex flex-1 items-center gap-2 min-w-0 max-w-xl basis-full sm:basis-auto sm:min-w-[14rem] print:hidden">
+          <div className="flex flex-1 items-center gap-2 min-w-0 max-w-xl basis-full sm:basis-auto sm:min-w-[14rem] print:hidden dashboard-header-search">
             <div className="relative flex-1 min-w-0">
               <Input
                 value={dashboardSearch.searchQuery}
@@ -141,9 +141,9 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
           </div>
         </button>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 dashboard-header-actions-row">
               <Link href="/meldingen" className="relative">
                 <Button
                   variant="outline"

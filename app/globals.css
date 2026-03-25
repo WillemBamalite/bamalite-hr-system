@@ -21,6 +21,64 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Mobile-only typography tweaks for dashboard tiles.
+   We still force desktop viewport on mobile (width=1200),
+   so we use device-based media queries to target real phones. */
+@media (max-device-width: 480px), (pointer: coarse) {
+  .dashboard-header-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* Keep search bar inside header on mobile */
+  .dashboard-header-search {
+    flex: 1 1 100% !important;
+    max-width: none !important;
+    order: 2 !important;
+  }
+
+  .dashboard-header-actions {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    order: 3 !important;
+  }
+
+  .dashboard-header-actions-row {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .dashboard-header-actions-row > * {
+    flex: 0 0 auto !important;
+  }
+
+  .dashboard-tiles .dashboard-tile-title {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    white-space: normal !important;
+    text-align: center !important;
+  }
+
+  .dashboard-tiles .dashboard-tile-number {
+    font-size: 16px !important;
+    line-height: 1.1 !important;
+  }
+
+  .dashboard-tiles .dashboard-tile-sub {
+    font-size: 9px !important;
+    line-height: 1.1 !important;
+    white-space: normal !important;
+  }
+
+  .dashboard-tiles .dashboard-tile {
+    padding: 6px !important;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
