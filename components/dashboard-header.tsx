@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Calendar, Globe, Printer, Clock, ListTodo, Search } from "lucide-react"
+import { Bell, LogOut, User, Calendar, Globe, Printer, Clock, ListTodo, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
@@ -14,6 +14,9 @@ import { nl, de, fr } from "date-fns/locale"
 import { useLastActivity } from "@/hooks/use-last-activity"
 import { CalendarDialog } from "@/components/agenda/calendar-dialog"
 import { useDashboardSearchOptional } from "@/contexts/DashboardSearchContext"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useShipVisits } from "@/hooks/use-ship-visits"
+import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -28,6 +31,8 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const [agendaOpen, setAgendaOpen] = useState(false)
   const { lastActivity, loading: activityLoading } = useLastActivity()
   const dashboardSearch = useDashboardSearchOptional()
+  const { crew, tasks, ships, sickLeave, loading: dataLoading } = useSupabaseData()
+  const { visits, getShipsNotVisitedInDays } = useShipVisits()
   
   // Prevent hydration errors
   useEffect(() => {
@@ -58,6 +63,21 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   }
 
   const showDashboardSearch = pathname === "/" && dashboardSearch
+  const notificationCount = (() => {
+    if (dataLoading) return 0
+    try {
+      return buildDashboardNotifications({
+        crew: crew || [],
+        tasks: tasks || [],
+        ships: ships || [],
+        sickLeave: sickLeave || [],
+        visits: visits || [],
+        getShipsNotVisitedInDays,
+      }).length
+    } catch {
+      return 0
+    }
+  })()
 
   return (
     <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm">
@@ -124,6 +144,25 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         <div className="flex items-center gap-4">
           {user && (
             <div className="flex items-center gap-3">
+              <Link href="/meldingen" className="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`flex items-center gap-2 ${
+                    notificationCount > 0
+                      ? "border-red-400 text-red-700 hover:bg-red-50 hover:text-red-800"
+                      : ""
+                  }`}
+                >
+                  <Bell className="w-4 h-4" />
+                  Meldingen
+                </Button>
+                {notificationCount > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
+                    {notificationCount > 99 ? "99+" : notificationCount}
+                  </span>
+                )}
+              </Link>
               {/* Snelknop: Nieuwe taak overal in de app */}
               <Link href="/taken?newTask=1">
                 <Button

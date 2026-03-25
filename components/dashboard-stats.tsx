@@ -1,20 +1,36 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, FileWarning } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, FileWarning, Bell } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
+import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 
 export function DashboardStats() {
   const { crew, ships, sickLeave, loans, tasks, trips, incidents, officialWarnings } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
   const { t } = useLanguage()
   const [loonBemerkingenCount, setLoonBemerkingenCount] = useState(0)
+
+  const notificationCount = useMemo(() => {
+    try {
+      return buildDashboardNotifications({
+        crew: crew || [],
+        tasks: tasks || [],
+        ships: ships || [],
+        sickLeave: sickLeave || [],
+        visits: visits || [],
+        getShipsNotVisitedInDays,
+      }).length
+    } catch {
+      return 0
+    }
+  }, [crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays])
   
   // Count open tasks from Supabase
   const tasksCount = tasks.filter((t: any) => !t.completed).length
@@ -313,6 +329,37 @@ export function DashboardStats() {
     <div className="space-y-4 mb-6">
       {/* Mobiel: 4 tegels naast elkaar, Desktop: 6 tegels naast elkaar */}
       <div className="grid grid-cols-4 md:grid-cols-6 gap-2 md:gap-4">
+        {/* 0. Meldingen */}
+        <div className="aspect-[3/1]">
+          <Link
+            href="/meldingen"
+            className={`h-full flex flex-col items-center justify-center rounded-lg p-2 md:p-4 text-center transition cursor-pointer border ${
+              notificationCount > 0
+                ? "bg-red-600 border-red-700 hover:bg-red-700"
+                : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+            }`}
+          >
+            <div
+              className={`flex items-center gap-1 md:gap-2 text-[10px] md:text-sm font-semibold ${
+                notificationCount > 0 ? "text-white" : "text-gray-800"
+              }`}
+            >
+              <Bell className={`w-3 h-3 md:w-4 md:h-4 ${notificationCount > 0 ? "text-white" : "text-gray-600"}`} />
+              Meldingen
+            </div>
+            <div
+              className={`text-lg md:text-2xl font-bold ${
+                notificationCount > 0 ? "text-white" : "text-gray-900"
+              }`}
+            >
+              {notificationCount}
+            </div>
+            <div className={`text-[10px] md:text-xs ${notificationCount > 0 ? "text-red-100" : "text-gray-600"}`}>
+              open
+            </div>
+          </Link>
+        </div>
+
         {/* 1. Totaal bemanningsleden */}
         <div className="aspect-[3/1]">
           <Link href="/bemanning/overzicht" className="h-full flex flex-col items-center justify-center bg-blue-50 border border-blue-200 rounded-lg p-2 md:p-4 text-center hover:bg-blue-100 transition cursor-pointer">
