@@ -18,6 +18,7 @@ import { MobileHeaderNav } from '@/components/ui/mobile-header-nav'
 import { DashboardButton } from '@/components/ui/dashboard-button'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { isRealCrewMember } from '@/utils/crew-filters'
 import { 
   Plus, 
   CheckCircle, 
@@ -89,6 +90,7 @@ export default function LeningenPage() {
     periodType: "month",
   })
   const [savingInstallment, setSavingInstallment] = useState(false)
+  const selectableCrew = crew.filter((member: any) => isRealCrewMember(member))
 
   const openInstallmentDialog = (loan: any) => {
     const ym = new Date().toISOString().slice(0, 7)
@@ -751,12 +753,12 @@ export default function LeningenPage() {
                   <SelectValue placeholder="Selecteer bemanningslid" />
                 </SelectTrigger>
                                  <SelectContent>
-                   {crew.length === 0 ? (
+                   {selectableCrew.length === 0 ? (
                      <SelectItem value="no-crew" disabled>
                        Geen bemanningsleden beschikbaar
                      </SelectItem>
                    ) : (
-                     crew.map((member) => (
+                     selectableCrew.map((member) => (
                        <SelectItem key={member.id} value={member.id}>
                          {member.first_name} {member.last_name} - {member.position}
                        </SelectItem>
@@ -764,7 +766,7 @@ export default function LeningenPage() {
                    )}
                  </SelectContent>
               </Select>
-              {crew.length === 0 && (
+              {selectableCrew.length === 0 && (
                 <p className="text-sm text-red-600 mt-1">
                   Geen bemanningsleden geladen. Controleer of de data correct wordt geladen.
                 </p>

@@ -14,6 +14,7 @@ import { DashboardButton } from "@/components/ui/dashboard-button";
 import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle, GraduationCap, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { format } from 'date-fns';
+import { isRealCrewMember } from "@/utils/crew-filters";
 
 export default function StudentenManagementPage() {
   const { crew, ships, loading, error, updateCrew } = useSupabaseData();
@@ -84,7 +85,7 @@ export default function StudentenManagementPage() {
   // Filter bestaande bemanningsleden die nog geen student zijn
   const availableCrewMembers = crew.filter((member: any) => 
     !member.is_student && 
-    member.status !== 'uit-dienst' && 
+    isRealCrewMember(member) && 
     !member.is_aflosser
   );
 

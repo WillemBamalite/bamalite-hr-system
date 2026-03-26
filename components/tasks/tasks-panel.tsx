@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { format, isPast, isToday, differenceInDays, startOfDay } from "date-fns"
 import { nl } from "date-fns/locale"
 import { supabase } from "@/lib/supabase"
+import { isRealCrewMember } from "@/utils/crew-filters"
 
 export function TasksPanel() {
   const searchParams = useSearchParams()
@@ -1959,7 +1960,7 @@ export function TasksPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     {crew
-                      .filter((c: any) => c.status !== "uit-dienst")
+                      .filter((c: any) => isRealCrewMember(c))
                       .map((member: any) => (
                         <SelectItem key={member.id} value={member.id}>
                           {member.first_name} {member.last_name} - {member.position}

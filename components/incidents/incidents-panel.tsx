@@ -16,6 +16,7 @@ import Link from "next/link"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
 import { Checkbox } from "@/components/ui/checkbox"
+import { isRealCrewMember } from "@/utils/crew-filters"
 
 export function IncidentsPanel() {
   const { incidents, crew, ships, tasks, loading, addIncident, updateIncident, deleteIncident, addTask } = useSupabaseData()
@@ -867,7 +868,7 @@ export function IncidentsPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     {crew
-                      .filter((c: any) => c.status !== "uit-dienst")
+                      .filter((c: any) => isRealCrewMember(c))
                       .map((member: any) => (
                         <SelectItem key={member.id} value={member.id}>
                           {member.first_name} {member.last_name} - {member.position}

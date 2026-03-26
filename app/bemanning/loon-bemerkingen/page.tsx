@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
+import { isRealCrewMember } from "@/utils/crew-filters"
 
 const getCurrentMonthKey = () => {
   const d = new Date()
@@ -84,7 +85,7 @@ export default function LoonBemerkingenPage() {
   }, [crew])
 
   const crewSorted = useMemo(() => {
-    const list = [...(crew || [])].filter((c: any) => !c?.is_dummy)
+    const list = [...(crew || [])].filter((c: any) => isRealCrewMember(c))
     list.sort((a: any, b: any) => {
       const an = `${a?.first_name || ""} ${a?.last_name || ""}`.trim().toLowerCase()
       const bn = `${b?.first_name || ""} ${b?.last_name || ""}`.trim().toLowerCase()

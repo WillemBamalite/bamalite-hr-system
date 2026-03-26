@@ -12,6 +12,7 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
 import { generateOfficialWarningLetter } from "@/utils/contract-generator"
 import { supabase } from "@/lib/supabase"
+import { isRealCrewMember } from "@/utils/crew-filters"
 
 const BUCKET = "official-warnings"
 
@@ -70,7 +71,7 @@ export default function OfficieleWaarschuwingenPage() {
   useEffect(() => setMounted(true), [])
 
   const crewSorted = useMemo(() => {
-    const list = Array.isArray(crew) ? [...crew] : []
+    const list = Array.isArray(crew) ? [...crew].filter((m: any) => isRealCrewMember(m)) : []
     list.sort((a: any, b: any) => {
       const an = `${a?.first_name || ""} ${a?.last_name || ""}`.trim().toLowerCase()
       const bn = `${b?.first_name || ""} ${b?.last_name || ""}`.trim().toLowerCase()

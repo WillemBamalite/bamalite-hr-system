@@ -15,6 +15,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { BackButton } from "@/components/ui/back-button"
 import { supabase } from "@/lib/supabase"
+import { isRealCrewMember } from "@/utils/crew-filters"
 
 export default function NieuwZiektePage() {
   const { crew, sickLeave, updateCrew, addSickLeave } = useSupabaseData()
@@ -39,7 +40,7 @@ export default function NieuwZiektePage() {
 
   // Haal alle crew members op
   const crewMembers = crew.filter((member: any) => 
-    member.status !== "uit-dienst" // Filter alleen uit-dienst uit
+    isRealCrewMember(member)
   )
 
   // Filter crew members op basis van zoekopdracht

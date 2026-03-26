@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft } from 'lucide-react'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { DashboardButton } from '@/components/ui/dashboard-button'
+import { isRealCrewMember } from '@/utils/crew-filters'
 
 const COMPANIES = [
   'Bamalite S.A.',
@@ -92,7 +93,7 @@ export default function FirmaWisselingFormPage() {
               </SelectTrigger>
               <SelectContent>
                 {crew
-                  .filter((m: any) => !m.is_dummy && m.status !== 'uit-dienst')
+                  .filter((m: any) => isRealCrewMember(m))
                   .map((member: any) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.first_name} {member.last_name} - {member.position}
