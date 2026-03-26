@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, LogOut, User, Calendar, Globe, Printer, Clock, ListTodo, Search } from "lucide-react"
+import { Bell, LogOut, User, Calendar, Globe, Printer, Clock, ListTodo, Search, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
@@ -13,7 +13,6 @@ import { format, formatDistanceToNow } from "date-fns"
 import { nl, de, fr } from "date-fns/locale"
 import { useLastActivity } from "@/hooks/use-last-activity"
 import { CalendarDialog } from "@/components/agenda/calendar-dialog"
-import { useDashboardSearchOptional } from "@/contexts/DashboardSearchContext"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
@@ -29,8 +28,9 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
   const [agendaOpen, setAgendaOpen] = useState(false)
+  const [headerFindQuery, setHeaderFindQuery] = useState("")
+  const [headerFindMatches, setHeaderFindMatches] = useState(0)
   const { lastActivity, loading: activityLoading } = useLastActivity()
-  const dashboardSearch = useDashboardSearchOptional()
   const { crew, tasks, ships, sickLeave, loading: dataLoading } = useSupabaseData()
   const { visits, getShipsNotVisitedInDays } = useShipVisits()
   
@@ -48,6 +48,20 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     return () => clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    const q = headerFindQuery.trim()
+    if (!q || typeof window === "undefined") {
+      setHeaderFindMatches(0)
+      return
+    }
+
+    const bodyText = document.body?.innerText || ""
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const regex = new RegExp(escaped, "gi")
+    const matches = bodyText.match(regex)
+    setHeaderFindMatches(matches ? matches.length : 0)
+  }, [headerFindQuery, pathname])
+
   // Get date locale for formatting
   const getDateLocale = () => {
     switch (locale) {
@@ -62,7 +76,19 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     return null
   }
 
-  const showDashboardSearch = pathname === "/" && dashboardSearch
+  const runFind = (direction: "next" | "prev") => {
+    const query = headerFindQuery.trim()
+    if (!query || typeof window === "undefined" || typeof window.find !== "function") return
+    window.find(
+      query,
+      false, // caseSensitive
+      direction === "prev", // backwards
+      true, // wrapAround
+      false, // wholeWord
+      false, // searchInFrames
+      false, // showDialog
+    )
+  }
   const notificationCount = (() => {
     if (dataLoading) return 0
     try {
@@ -99,31 +125,45 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
           </div>
         </Link>
 
-        {showDashboardSearch && (
-          <div className="flex flex-1 items-center gap-2 min-w-0 max-w-xl basis-full sm:basis-auto sm:min-w-[14rem] print:hidden dashboard-header-search">
-            <div className="relative flex-1 min-w-0">
-              <Input
-                value={dashboardSearch.searchQuery}
-                onChange={(e) => dashboardSearch.setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") dashboardSearch.runSearch()
-                }}
-                placeholder="Zoek schip of bemanningslid..."
-                className="pl-8 w-full bg-white"
-                aria-label="Zoek schip of bemanningslid"
-              />
-              <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              className="shrink-0 bg-gray-900 text-white hover:bg-gray-800"
-              onClick={() => dashboardSearch.runSearch()}
-            >
-              Zoek
-            </Button>
+        <div className="flex flex-1 items-center gap-2 min-w-0 max-w-xl basis-full sm:basis-auto sm:min-w-[14rem] print:hidden dashboard-header-search">
+          <div className="relative flex-1 min-w-0">
+            <Input
+              value={headerFindQuery}
+              onChange={(e) => setHeaderFindQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runFind("next")
+              }}
+              placeholder="Zoek in pagina..."
+              className="pl-8 w-full bg-white"
+              aria-label="Zoek in pagina"
+            />
+            <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
-        )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => runFind("prev")}
+            title="Vorige resultaat"
+          >
+            <ChevronUp className="w-4 h-4" />
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0 bg-gray-900 text-white hover:bg-gray-800"
+            onClick={() => runFind("next")}
+            title="Volgende resultaat"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </Button>
+          <div className="text-xs text-gray-600 whitespace-nowrap min-w-[74px] text-right">
+            {headerFindQuery.trim()
+              ? `${headerFindMatches} ${headerFindMatches === 1 ? "treffer" : "treffers"}`
+              : ""}
+          </div>
+        </div>
 
         {/* Live Datum & Tijd - Midden */}
         <button
