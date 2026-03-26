@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,7 +29,8 @@ import {
   Search,
   Wallet,
   RefreshCw,
-  Trash2
+  Trash2,
+  Printer
 } from 'lucide-react'
 
 export default function LeningenPage() {
@@ -328,10 +330,18 @@ export default function LeningenPage() {
           <h1 className="text-3xl font-bold text-gray-900">{t('loansAndTraining')}</h1>
           <p className="text-gray-600">Overzicht van alle leningen en opleidingen voor bemanning</p>
         </div>
-        <Button onClick={() => setNewLoanDialog(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          {t('newLoan')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/bemanning/leningen/print">
+              <Printer className="w-4 h-4 mr-2" />
+              Printversie
+            </Link>
+          </Button>
+          <Button onClick={() => setNewLoanDialog(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            {t('newLoan')}
+          </Button>
+        </div>
       </div>
 
       {/* Statistics */}
