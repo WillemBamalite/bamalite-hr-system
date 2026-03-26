@@ -321,6 +321,55 @@ export default function NogInTeDelenPage() {
     // Checklist moet incompleet zijn
     return !isChecklistComplete(member);
   });
+
+  const getNogAfTeRondenPriority = (member: any) => {
+    const hasContract = member.arbeidsovereenkomst === true;
+    const isRegistered = member.ingeschreven_luxembourg === true;
+    const isInsured = member.verzekerd === true;
+
+    // 1) Geen contract = hoogste prioriteit
+    if (!hasContract) {
+      return {
+        order: 1,
+        label: "Contract ontbreekt",
+        cardClass: "border-red-300 bg-red-50/40",
+        avatarClass: "bg-red-100 text-red-700",
+        checklistClass: "bg-red-50 border-red-200",
+        checklistTitleClass: "text-red-800",
+      };
+    }
+
+    // 2) Wel contract, nog niet ingeschreven
+    if (!isRegistered) {
+      return {
+        order: 2,
+        label: "Inschrijving ontbreekt",
+        cardClass: "border-orange-300 bg-orange-50/40",
+        avatarClass: "bg-orange-100 text-orange-700",
+        checklistClass: "bg-orange-50 border-orange-200",
+        checklistTitleClass: "text-orange-800",
+      };
+    }
+
+    // 3) Alleen verzekering ontbreekt
+    return {
+      order: 3,
+      label: "Verzekering ontbreekt",
+      cardClass: "border-yellow-300 bg-yellow-50/40",
+      avatarClass: "bg-yellow-100 text-yellow-700",
+      checklistClass: "bg-yellow-50 border-yellow-200",
+      checklistTitleClass: "text-yellow-800",
+    };
+  };
+
+  const nogAfTeRondenSorted = [...nogAfTeRonden].sort((a: any, b: any) => {
+    const priorityDiff = getNogAfTeRondenPriority(a).order - getNogAfTeRondenPriority(b).order;
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const aName = `${a?.first_name || ""} ${a?.last_name || ""}`.trim();
+    const bName = `${b?.first_name || ""} ${b?.last_name || ""}`.trim();
+    return aName.localeCompare(bName, "nl");
+  });
   
   // Nog In Te Delen: aangenomen, ZONDER schip (ongeacht checklist status)
   // Dit bevat zowel mensen met complete als incomplete checklist
@@ -1181,10 +1230,12 @@ export default function NogInTeDelenPage() {
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {nogAfTeRonden.map((member: any) => (
+                {nogAfTeRondenSorted.map((member: any) => {
+            const priorityUi = getNogAfTeRondenPriority(member);
+            return (
             <Card
               key={member.id}
-              className="hover:shadow-lg transition-shadow border-orange-200"
+              className={`hover:shadow-lg transition-shadow ${priorityUi.cardClass}`}
               onDoubleClick={(e) => {
                 e.preventDefault();
                 openNoteDialog(member);
@@ -1194,7 +1245,7 @@ export default function NogInTeDelenPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-orange-100 text-orange-700">
+                      <AvatarFallback className={priorityUi.avatarClass}>
                         {(member.first_name?.[0] || "?")}{(member.last_name?.[0] || "")}
                       </AvatarFallback>
                     </Avatar>
@@ -1210,6 +1261,9 @@ export default function NogInTeDelenPage() {
                       </div>
                     </div>
                   </div>
+                  <Badge className={priorityUi.order === 1 ? "bg-red-100 text-red-800 border border-red-200" : priorityUi.order === 2 ? "bg-orange-100 text-orange-800 border border-orange-200" : "bg-yellow-100 text-yellow-800 border border-yellow-200"}>
+                    {priorityUi.label}
+                  </Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -1229,11 +1283,11 @@ export default function NogInTeDelenPage() {
                 )}
 
                 {/* Checklist Status */}
-                <div className="bg-orange-50 p-2 rounded border border-orange-200">
-                  <div className="text-xs font-medium text-orange-800 mb-1">{t('checklist')}:</div>
+                <div className={`p-2 rounded border ${priorityUi.checklistClass}`}>
+                  <div className={`text-xs font-medium mb-1 ${priorityUi.checklistTitleClass}`}>{t('checklist')}:</div>
                   <div className="space-y-0.5">
                     <div 
-                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-orange-100 p-1 rounded"
+                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-white/60 p-1 rounded"
                       onClick={() => handleChecklistToggle(member.id, 'arbeidsovereenkomst', !member.arbeidsovereenkomst)}
                     >
                       <span>Contract:</span>
@@ -1242,7 +1296,7 @@ export default function NogInTeDelenPage() {
                       </span>
                     </div>
                     <div 
-                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-orange-100 p-1 rounded"
+                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-white/60 p-1 rounded"
                       onClick={() => handleChecklistToggle(member.id, 'ingeschreven_luxembourg', !member.ingeschreven_luxembourg)}
                     >
                       <span>Luxembourg:</span>
@@ -1251,7 +1305,7 @@ export default function NogInTeDelenPage() {
                       </span>
                     </div>
                     <div 
-                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-orange-100 p-1 rounded"
+                      className="flex items-center justify-between text-xs cursor-pointer hover:bg-white/60 p-1 rounded"
                       onClick={() => handleChecklistToggle(member.id, 'verzekerd', !member.verzekerd)}
                     >
                       <span>Verzekerd:</span>
@@ -1290,7 +1344,7 @@ export default function NogInTeDelenPage() {
                 {/* Checklist kan direct in de kaart worden afgerond door op de items te klikken */}
               </CardContent>
             </Card>
-                ))}
+            )})}
               </div>
             )}
           </div>
