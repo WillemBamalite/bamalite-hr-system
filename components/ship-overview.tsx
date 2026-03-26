@@ -107,6 +107,10 @@ export function ShipOverview() {
     shipName: ""
   });
   const [dummyForm, setDummyForm] = useState({
+    sourceMode: "empty" as "empty" | "copy",
+    sourceCrewId: "",
+    expectedStartDate: "",
+    abDesignation: "" as "" | "A" | "B",
     position: "",
     nationality: "",
     diplomas: "",
@@ -117,6 +121,17 @@ export function ShipOverview() {
   // Drag and drop state for dummies
   const [draggedDummyId, setDraggedDummyId] = useState<string | null>(null);
   const [dummyLocations, setDummyLocations] = useState<Record<string, 'thuis' | 'aan-boord'>>({});
+
+  const isCopiedCrewMember = (member: any) => {
+    const notePool = [
+      ...(Array.isArray(member?.active_notes) ? member.active_notes : []),
+      ...(Array.isArray(member?.notes) ? member.notes : []),
+    ]
+    return notePool.some((n: any) => {
+      const content = String(n?.content || "")
+      return content.startsWith("COPIED_FROM:") || content.startsWith("Gekopieerd van:")
+    })
+  }
 
   // Scroll position preservation
   const scrollPositionRef = useRef<number>(0);
@@ -309,7 +324,7 @@ export function ShipOverview() {
     if (crew) {
       const locations: Record<string, 'thuis' | 'aan-boord'> = {}
       crew.forEach((member: any) => {
-        if (member.is_dummy) {
+        if (member.is_dummy || isCopiedCrewMember(member)) {
           // Check if location is stored in notes
           const locationNote = member.active_notes?.find((n: any) => 
             n.content?.startsWith('DUMMY_LOCATION:')
@@ -318,8 +333,12 @@ export function ShipOverview() {
             const location = locationNote.content.replace('DUMMY_LOCATION:', '') as 'thuis' | 'aan-boord'
             locations[member.id] = location || 'thuis'
           } else {
-            // Default to 'thuis'
-            locations[member.id] = 'thuis'
+            // Default: copied crew follows status, dummy defaults thuis
+            if (isCopiedCrewMember(member)) {
+              locations[member.id] = member.status === 'aan-boord' ? 'aan-boord' : 'thuis'
+            } else {
+              locations[member.id] = 'thuis'
+            }
           }
         }
       })
@@ -514,6 +533,23 @@ export function ShipOverview() {
     const sickInfo = getSickInfo()
 
     const isDummy = member.is_dummy === true
+    const notePool = [
+      ...(Array.isArray(member.active_notes) ? member.active_notes : []),
+      ...(Array.isArray(member.notes) ? member.notes : []),
+    ]
+    const copiedMetaNote = notePool.find((n: any) => {
+      const content = String(n?.content || "")
+      return content.startsWith("COPIED_FROM:") || content.startsWith("Gekopieerd van:")
+    })
+    const copiedFromName = copiedMetaNote
+      ? String(copiedMetaNote.content || "")
+          .replace("COPIED_FROM:", "")
+          .replace("Gekopieerd van:", "")
+          .trim()
+      : ""
+    const isCopied = !!copiedFromName
+    const isPurePlaceholderDummy = isDummy && !isCopied
+    const isMovableLikeDummy = isDummy || isCopied
     const isAflosser = member.position === "Aflosser" || member.is_aflosser === true
     const isOverigPersoneel = member.ship_id?.toString().toLowerCase().trim() === 'overig'
     
@@ -541,19 +577,19 @@ export function ShipOverview() {
     return (
       <div
         id={`crew-${member.id}`}
-        className={`p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative ${isDummy ? 'opacity-75 border-dashed cursor-move' : ''} ${draggedDummyId === member.id ? 'opacity-50' : ''}`}
+        className={`p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative ${isMovableLikeDummy ? 'opacity-75 border-dashed cursor-move' : ''} ${draggedDummyId === member.id ? 'opacity-50' : ''}`}
         style={{
-          backgroundColor: isDummy ? '#f9fafb' : (crewColorTags[member.id] || undefined),
+          backgroundColor: isMovableLikeDummy ? '#f9fafb' : (crewColorTags[member.id] || undefined),
           boxShadow: crewColorTags[member.id] && !isDummy ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
-          borderColor: highlightTargetId === `crew-${member.id}` ? "#f59e0b" : (borderColor || "#e5e7eb"),
+          borderColor: isCopied ? "#eab308" : (highlightTargetId === `crew-${member.id}` ? "#f59e0b" : (borderColor || "#e5e7eb")),
           borderWidth: "2px",
           transition: 'border-color 0.2s ease',
-          backgroundImage: isDummy ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)' : undefined
+          backgroundImage: isMovableLikeDummy ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)' : undefined
         }}
-        onDoubleClick={() => !isDummy && onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
-        draggable={isDummy}
-        onDragStart={(e) => isDummy && onDragStart && onDragStart(e, member.id)}
-        onDragEnd={isDummy ? onDragEnd : undefined}
+        onDoubleClick={() => !isMovableLikeDummy && onDoubleClick(member.id, `${member.first_name} ${member.last_name}`)}
+        draggable={isMovableLikeDummy}
+        onDragStart={(e) => isMovableLikeDummy && onDragStart && onDragStart(e, member.id)}
+        onDragEnd={isMovableLikeDummy ? onDragEnd : undefined}
       >
         {/* Top-right controls: A/B designation + color button + optional student badge + dummy delete button */}
         <div className="absolute top-2 right-2 flex items-center gap-2">
@@ -616,16 +652,14 @@ export function ShipOverview() {
               )}
             </div>
           )}
-          {isDummy && (
+          {(isDummy || isCopied) && (
             <button
               type="button"
               className="w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm text-red-600 hover:bg-red-50"
-              title="Dummy verwijderen"
+              title={isDummy ? "Dummy verwijderen" : "Kopie verwijderen"}
               onClick={(e) => {
                 e.stopPropagation();
-                if (confirm('Weet je zeker dat je deze dummy wilt verwijderen?')) {
-                  handleDeleteDummy(member.id);
-                }
+                handleDeleteDummy(member.id, isDummy ? "dummy" : "kopie");
               }}
             >
               <X className="w-4 h-4" />
@@ -707,15 +741,20 @@ export function ShipOverview() {
 
         <div className="flex items-start space-x-3">
           <Avatar className="w-8 h-8 flex-shrink-0">
-            <AvatarFallback className={`text-xs ${isDummy ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
-              {isDummy ? '?' : (member.first_name[0] || '') + (member.last_name[0] || '')}
+            <AvatarFallback className={`text-xs ${isPurePlaceholderDummy ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
+              {isPurePlaceholderDummy ? '?' : (member.first_name?.[0] || '') + (member.last_name?.[0] || '')}
             </AvatarFallback>
           </Avatar>
           
           <div className="flex-1 min-w-0">
             {/* Name and Nationality */}
             <div className="flex items-center space-x-2 mb-1">
-              {isDummy ? (
+              {isCopied && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 bg-blue-50">
+                  KOPIE
+                </Badge>
+              )}
+              {isPurePlaceholderDummy ? (
                 <span className="font-medium text-gray-500 italic text-sm">
                   Ontbreekt: {member.position || 'Onbekende functie'}
                   {member.nationality && ` (${member.nationality})`}
@@ -798,13 +837,13 @@ export function ShipOverview() {
                   </div>
                 )}
                 {/* Dummy opmerking */}
-                {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).length > 0 && (
+                {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
                   <div className="mt-2 space-y-1 border-t pt-2">
                     <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
                       OPMERKING:
                     </div>
-                    {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).map((note: any) => (
+                    {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).map((note: any) => (
                       <div key={note.id} className="text-xs text-orange-950 bg-amber-200 p-2 rounded border-2 border-amber-500 shadow-sm font-medium">
                         {note.content}
                       </div>
@@ -827,8 +866,16 @@ export function ShipOverview() {
               </div>
             )}
 
-            {/* Regime en Next Rotation (alleen voor niet-zieke bemanningsleden, geen aflossers en geen dummy's) */}
-            {!sickInfo && !isDummy && member.position !== "Aflosser" && (
+            {isCopied && member.expected_start_date && (
+              <div className="mb-1">
+                <Badge className="bg-yellow-100 text-yellow-900 border border-yellow-400 text-[11px] font-semibold">
+                  Gaat aan boord vanaf: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
+                </Badge>
+              </div>
+            )}
+
+            {/* Regime en Next Rotation (alleen voor niet-zieke bemanningsleden, geen aflossers en geen pure placeholder dummy's) */}
+            {!sickInfo && !isPurePlaceholderDummy && member.position !== "Aflosser" && (
               <>
                 <div className="text-xs text-gray-500 mb-1">
                   Regime: {member.regime || "Geen"}
@@ -838,7 +885,7 @@ export function ShipOverview() {
                   <div className="text-xs text-blue-600 mb-1">
                     {isWaitingForStart ? (
                       <>
-                        Aan boord op: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
+                        Gaat aan boord vanaf: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
                       </>
                     ) : (
                       <>
@@ -851,7 +898,7 @@ export function ShipOverview() {
                           if (statusCalculation.currentStatus === "aan-boord") {
                             return <>Naar huis op: {dateStr}</>
                           } else {
-                            return <>Aan boord op: {dateStr}</>
+                            return <>Gaat aan boord vanaf: {dateStr}</>
                           }
                         })()}
                       </>
@@ -932,13 +979,13 @@ export function ShipOverview() {
             })()}
 
             {/* Active Notes */}
-            {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).length > 0 && (
+            {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
               <div className="mt-2 space-y-1 border-t pt-2">
                 <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />
                   OPMERKINGEN:
                 </div>
-                {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:')).map((note: any) => (
+                {member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).map((note: any) => (
                   <div key={note.id} className="text-xs text-orange-950 bg-amber-200 p-2 rounded border-2 border-amber-500 shadow-sm font-medium flex items-start justify-between gap-2">
                     <span className="flex-1">{note.content}</span>
                     <button
@@ -955,6 +1002,7 @@ export function ShipOverview() {
                 ))}
               </div>
             )}
+
           </div>
         </div>
       </div>
@@ -1259,6 +1307,16 @@ export function ShipOverview() {
   }
 
   async function handleCreateDummy() {
+    const sourceCrew =
+      dummyForm.sourceMode === "copy"
+        ? crew.find((m: any) => m.id === dummyForm.sourceCrewId && !m.is_dummy)
+        : null
+
+    if (dummyForm.sourceMode === "copy" && !sourceCrew) {
+      alert("Selecteer eerst een bestaand bemanningslid om te kopieren")
+      return
+    }
+
     if (!dummyForm.position.trim()) {
       alert('Selecteer een functie')
       return
@@ -1286,24 +1344,47 @@ export function ShipOverview() {
           }]
         : []
 
+      if (sourceCrew) {
+        notesArray.unshift({
+          id: `${Date.now()}-source`,
+          content: `COPIED_FROM:${`${sourceCrew.first_name || ""} ${sourceCrew.last_name || ""}`.trim()}`,
+          created_at: new Date().toISOString(),
+          created_by: 'System'
+        })
+      }
+      if (dummyForm.abDesignation === "A" || dummyForm.abDesignation === "B") {
+        notesArray.push({
+          id: `${Date.now()}-ab`,
+          content: `CREW_AB_DESIGNATION:${dummyForm.abDesignation}`,
+          created_at: new Date().toISOString(),
+          created_by: 'System'
+        })
+      }
+
       // Generate UUID for the dummy
       const dummyId = crypto.randomUUID()
       
+      const isCopyMode = dummyForm.sourceMode === "copy" && !!sourceCrew
+
       const dummyData = {
         id: dummyId,
-        first_name: 'DUMMY',
-        last_name: '',
+        first_name: isCopyMode ? String(sourceCrew.first_name || "") : 'DUMMY',
+        last_name: isCopyMode ? String(sourceCrew.last_name || "") : '',
         position: dummyForm.position,
         nationality: dummyForm.nationality || null,
         ship_id: dummyDialog.shipId,
-        status: 'nog-in-te-delen',
+        status: isCopyMode ? 'thuis' : 'nog-in-te-delen',
+        expected_start_date: isCopyMode ? (dummyForm.expectedStartDate || null) : null,
+        // Kopieen tellen ook als dummy (nooit als echte bemanning meetellen)
         is_dummy: true,
         diplomas: diplomasArray,
-        regime: 'Altijd', // Dummy's hebben geen specifiek regime, gebruik 'Altijd' als default
-        birth_date: '1900-01-01', // Dummy's hebben geen echte geboortedatum, gebruik een neutrale oude datum
-        address: {},
+        regime: isCopyMode ? (sourceCrew.regime || 'Altijd') : 'Altijd',
+        birth_date: isCopyMode ? (sourceCrew.birth_date || null) : '1900-01-01',
+        address: isCopyMode ? (sourceCrew.address || {}) : {},
         assignment_history: [],
-        notes: notesArray,
+        phone: isCopyMode ? (sourceCrew.phone || null) : null,
+        email: isCopyMode ? (sourceCrew.email || null) : null,
+        notes: [],
         active_notes: notesArray
       }
       
@@ -1338,6 +1419,10 @@ export function ShipOverview() {
         shipName: ""
       })
       setDummyForm({
+        sourceMode: "empty",
+        sourceCrewId: "",
+        expectedStartDate: "",
+        abDesignation: "",
         position: "",
         nationality: "",
         diplomas: "",
@@ -1363,8 +1448,8 @@ export function ShipOverview() {
     }
   }
 
-  async function handleDeleteDummy(crewId: string) {
-    if (confirm('Weet je zeker dat je deze dummy wilt verwijderen?')) {
+  async function handleDeleteDummy(crewId: string, label: "dummy" | "kopie" = "dummy") {
+    if (confirm(`Weet je zeker dat je deze ${label} wilt verwijderen?`)) {
       // Save scroll position before action
       const currentScroll = window.scrollY;
       scrollPositionRef.current = currentScroll;
@@ -1378,8 +1463,16 @@ export function ShipOverview() {
 
         if (error) {
           console.error('Error deleting dummy:', error)
-          alert(`Fout bij het verwijderen van dummy: ${error.message}`)
-          return
+          // Fallback: verberg de kopie/dummy uit overzicht als harde delete niet kan
+          const { error: softError } = await supabase
+            .from('crew')
+            .update({ status: 'uit-dienst', ship_id: null })
+            .eq('id', crewId)
+          if (softError) {
+            alert(`Fout bij verwijderen van ${label}: ${error.message}`)
+            return
+          }
+          alert(`Kon ${label} niet hard verwijderen, maar is wel uit overzicht gehaald.`)
         }
         
         // Remove from dummyLocations state
@@ -1393,10 +1486,43 @@ export function ShipOverview() {
         reloadWithScrollPosition()
       } catch (err) {
         console.error('Error deleting dummy:', err)
-        alert('Er is een fout opgetreden bij het verwijderen van de dummy.')
+        alert(`Er is een fout opgetreden bij het verwijderen van de ${label}.`)
       }
     }
   }
+
+  async function handleSetCopiedLocation(crewId: string, targetStatus: "thuis" | "aan-boord") {
+    // Save scroll position before action
+    const currentScroll = window.scrollY
+    scrollPositionRef.current = currentScroll
+    sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString())
+
+    try {
+      const { error } = await supabase
+        .from('crew')
+        .update({ status: targetStatus })
+        .eq('id', crewId)
+
+      if (error) {
+        console.error('Error updating copied crew location:', error)
+        alert('Fout bij wijzigen van thuis/aan-boord')
+        return
+      }
+
+      reloadWithScrollPosition()
+    } catch (err) {
+      console.error('Error updating copied crew location:', err)
+      alert('Fout bij wijzigen van thuis/aan-boord')
+    }
+  }
+
+  const dummySourceCandidates = [...(crew || [])]
+    .filter((member: any) => member && !member.is_dummy && member.status !== "uit-dienst")
+    .sort((a: any, b: any) => {
+      const aName = `${a.first_name || ""} ${a.last_name || ""}`.trim().toLowerCase()
+      const bName = `${b.first_name || ""} ${b.last_name || ""}`.trim().toLowerCase()
+      return aName.localeCompare(bName)
+    })
 
   // Handle dummy drag start
   function handleDummyDragStart(e: React.DragEvent, dummyId: string) {
@@ -1430,11 +1556,14 @@ export function ShipOverview() {
     // Update database - we'll store this in a note or metadata
     // For now, we can store it in active_notes as a special marker
     try {
-      const dummy = crew.find((m: any) => m.id === draggedDummyId && m.is_dummy)
-      if (!dummy) return
+      const draggedMember = crew.find((m: any) => m.id === draggedDummyId)
+      if (!draggedMember) return
+      const isDraggedDummy = draggedMember.is_dummy === true
+      const isDraggedCopied = isCopiedCrewMember(draggedMember)
+      if (!isDraggedDummy && !isDraggedCopied) return
 
       // Store location in notes as metadata (or we could add a field later)
-      const existingNotes = dummy.active_notes || []
+      const existingNotes = draggedMember.active_notes || []
       const locationNote = existingNotes.find((n: any) => n.content?.startsWith('DUMMY_LOCATION:'))
       
       let updatedNotes = [...existingNotes]
@@ -1449,9 +1578,14 @@ export function ShipOverview() {
         created_by: 'System'
       })
 
+      const updatePayload: Record<string, unknown> = { active_notes: updatedNotes }
+      if (isDraggedCopied) {
+        updatePayload.status = targetColumn === 'aan-boord' ? 'aan-boord' : 'thuis'
+      }
+
       const { error } = await supabase
         .from('crew')
-        .update({ active_notes: updatedNotes })
+        .update(updatePayload)
         .eq('id', draggedDummyId)
 
       if (error) {
@@ -1653,6 +1787,10 @@ export function ShipOverview() {
                                       shipName: ship.name
                                     });
                                     setDummyForm({
+                                      sourceMode: "empty",
+                                      sourceCrewId: "",
+                                      expectedStartDate: "",
+                                      abDesignation: "",
                                       position: "",
                                       nationality: "",
                                       diplomas: "",
@@ -1689,8 +1827,8 @@ export function ShipOverview() {
                                       <h5 className="font-medium text-green-700">Aan Boord</h5>
                                       <Badge className="bg-green-100 text-green-800 text-xs">
                                         {shipCrew.filter((member: any) => {
-                                          // Dummy's met location 'aan-boord'
-                                          if (member.is_dummy === true) {
+                                          // Dummy's en kopieen met location 'aan-boord'
+                                          if (member.is_dummy === true || isCopiedCrewMember(member)) {
                                             return dummyLocations[member.id] === 'aan-boord'
                                           }
                                           if (member.status === "ziek") return false
@@ -1716,8 +1854,8 @@ export function ShipOverview() {
                                     >
                                       {/* Normale crew */}
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
-                                        // Geen dummy's hier (die worden apart getoond)
-                                        if (member.is_dummy === true) return false
+                                        // Geen dummy's/kopieen hier (die worden apart getoond)
+                                        if (member.is_dummy === true || isCopiedCrewMember(member)) return false
                                         if (member.status === "ziek") return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
                                         if (member.expected_start_date) {
@@ -1744,9 +1882,9 @@ export function ShipOverview() {
                                           tasks={tasks}
                                         />
                                       ))}
-                                      {/* Dummy's in "aan-boord" kolom */}
+                                      {/* Dummy's/kopieen in "aan-boord" kolom */}
                                       {shipCrew.filter((member: any) => 
-                                        member.is_dummy === true && 
+                                        (member.is_dummy === true || isCopiedCrewMember(member)) &&
                                         dummyLocations[member.id] === 'aan-boord'
                                       ).map((member: any) => (
                                         <CrewCard
@@ -1771,8 +1909,8 @@ export function ShipOverview() {
                                       <h5 className="font-medium text-blue-700">Thuis</h5>
                                       <Badge className="bg-blue-100 text-blue-800 text-xs">
                                         {shipCrew.filter((member: any) => {
-                                          // Dummy's met location 'thuis' (of niet ingesteld, default naar thuis)
-                                          if (member.is_dummy === true) {
+                                          // Dummy's en kopieen met location 'thuis' (of niet ingesteld, default naar thuis)
+                                          if (member.is_dummy === true || isCopiedCrewMember(member)) {
                                             return !dummyLocations[member.id] || dummyLocations[member.id] === 'thuis'
                                           }
                                           if (member.status === "ziek") return false
@@ -1798,8 +1936,8 @@ export function ShipOverview() {
                                     >
                                       {/* Normale crew (thuis) */}
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
-                                        // Geen dummy's hier (die worden apart getoond)
-                                        if (member.is_dummy === true) return false
+                                        // Geen dummy's/kopieen hier (die worden apart getoond)
+                                        if (member.is_dummy === true || isCopiedCrewMember(member)) return false
                                         if (member.status === "ziek") return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                         if (member.expected_start_date) {
@@ -1823,9 +1961,9 @@ export function ShipOverview() {
                                           tasks={tasks}
                                         />
                                       ))}
-                                      {/* Dummy's in "thuis" kolom */}
+                                      {/* Dummy's/kopieen in "thuis" kolom */}
                                       {shipCrew.filter((member: any) => 
-                                        member.is_dummy === true && 
+                                        (member.is_dummy === true || isCopiedCrewMember(member)) &&
                                         (!dummyLocations[member.id] || dummyLocations[member.id] === 'thuis')
                                       ).map((member: any) => (
                                         <CrewCard
@@ -2069,6 +2207,104 @@ export function ShipOverview() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label htmlFor="dummy-source-mode">Type dummy</Label>
+              <Select
+                value={dummyForm.sourceMode}
+                onValueChange={(value) =>
+                  setDummyForm(prev => ({
+                    ...prev,
+                    sourceMode: value as "empty" | "copy",
+                    sourceCrewId: value === "copy" ? prev.sourceCrewId : "",
+                  }))
+                }
+              >
+                <SelectTrigger id="dummy-source-mode" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="empty">Lege dummy</SelectItem>
+                  <SelectItem value="copy">Kopie van bestaand bemanningslid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {dummyForm.sourceMode === "copy" && (
+              <div>
+                <Label htmlFor="dummy-source-crew">Kopieer van bemanningslid</Label>
+                <Select
+                  value={dummyForm.sourceCrewId}
+                  onValueChange={(value) => {
+                    const source = dummySourceCandidates.find((m: any) => m.id === value)
+                    setDummyForm(prev => ({
+                      ...prev,
+                      sourceCrewId: value,
+                      expectedStartDate: source?.expected_start_date || prev.expectedStartDate,
+                      abDesignation: (() => {
+                        const abNote = (source?.active_notes || []).find((n: any) =>
+                          String(n?.content || "").startsWith("CREW_AB_DESIGNATION:")
+                        )
+                        const parsed = String(abNote?.content || "").replace("CREW_AB_DESIGNATION:", "").trim()
+                        return parsed === "A" || parsed === "B" ? (parsed as "A" | "B") : prev.abDesignation
+                      })(),
+                      position: source?.position || prev.position,
+                      nationality: source?.nationality || prev.nationality,
+                      diplomas: Array.isArray(source?.diplomas) ? source.diplomas.join(", ") : prev.diplomas,
+                    }))
+                  }}
+                >
+                  <SelectTrigger id="dummy-source-crew" className="mt-2">
+                    <SelectValue placeholder="Selecteer bemanningslid (incl. nog in te delen/te benaderen)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dummySourceCandidates.map((member: any) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.first_name} {member.last_name} - {member.position} ({member.status}
+                        {member.sub_status ? ` / ${member.sub_status}` : ""})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {dummyForm.sourceMode === "copy" && (
+              <div>
+                <Label htmlFor="dummy-expected-start">Gaat aan boord vanaf</Label>
+                <Input
+                  id="dummy-expected-start"
+                  type="date"
+                  value={dummyForm.expectedStartDate}
+                  onChange={(e) =>
+                    setDummyForm((prev) => ({ ...prev, expectedStartDate: e.target.value }))
+                  }
+                  className="mt-2"
+                />
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="dummy-ab">Ploeg (optioneel)</Label>
+              <Select
+                value={dummyForm.abDesignation || "none"}
+                onValueChange={(value) =>
+                  setDummyForm(prev => ({
+                    ...prev,
+                    abDesignation: value === "A" || value === "B" ? value : "",
+                  }))
+                }
+              >
+                <SelectTrigger id="dummy-ab" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Geen ploeg</SelectItem>
+                  <SelectItem value="A">Ploeg A</SelectItem>
+                  <SelectItem value="B">Ploeg B</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
               <Label htmlFor="dummy-position">Functie *</Label>
               <Select
                 value={dummyForm.position}
@@ -2128,7 +2364,14 @@ export function ShipOverview() {
             <Button variant="outline" onClick={() => setDummyDialog(prev => ({ ...prev, isOpen: false }))}>
               Annuleren
             </Button>
-            <Button onClick={handleCreateDummy} disabled={isCreatingDummy || !dummyForm.position}>
+            <Button
+              onClick={handleCreateDummy}
+              disabled={
+                isCreatingDummy ||
+                !dummyForm.position ||
+                (dummyForm.sourceMode === "copy" && !dummyForm.sourceCrewId)
+              }
+            >
               {isCreatingDummy ? 'Aanmaken...' : 'Dummy toevoegen'}
             </Button>
           </div>
