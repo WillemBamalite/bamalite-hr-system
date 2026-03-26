@@ -537,17 +537,6 @@ export default function LeningenPage() {
                             <Wallet className="w-4 h-4 mr-1" />
                             Betalen
                           </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => setCompleteLoanDialog({
-                              isOpen: true,
-                              loanId: loan.id,
-                              loanName: loan.name
-                            })}
-                          >
-                            <CheckCircle className="w-4 h-4 mr-1" />
-                            Afronden
-                          </Button>
                         </div>
                       )}
                     </div>
