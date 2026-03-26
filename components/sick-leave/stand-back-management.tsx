@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   ClockIcon as UserClock, 
-  Calendar, 
   CheckCircle, 
   Ship, 
   Plus, 
@@ -34,6 +33,9 @@ export function StandBackManagement() {
   const [isArchiveOpen, setIsArchiveOpen] = useState(false)
   const [daysToAdd, setDaysToAdd] = useState("")
   const [note, setNote] = useState("")
+  const [returnedStartDate, setReturnedStartDate] = useState("")
+  const [returnedEndDate, setReturnedEndDate] = useState("")
+  const [expandedDetailByMember, setExpandedDetailByMember] = useState<Record<string, "mindagen" | "returned" | null>>({})
   
   // New record form state
   const [newRecord, setNewRecord] = useState({
@@ -54,34 +56,14 @@ export function StandBackManagement() {
     const name = `${group.crewMember.firstName || ""} ${group.crewMember.lastName || ""}`.trim() || "Onbekend"
 
     const pdfDoc = await PDFDocument.create()
-    const page = pdfDoc.addPage()
+    let page = pdfDoc.addPage()
     const { width, height } = page.getSize()
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-    const fontSize = 11
+    const fontSize = 10
     const lineHeight = 14
     const margin = 40
     let y = height - margin
-
-    const drawText = (text: string, options?: { bold?: boolean }) => {
-      const usedFont = options?.bold ? fontBold : font
-      page.drawText(text, { x: margin, y, size: fontSize, font: usedFont })
-      y -= lineHeight
-      if (y < margin) {
-        const newPage = pdfDoc.addPage()
-        y = newPage.getSize().height - margin
-      }
-    }
-
-    // Koptekst
-    drawText("Overzicht terug te staan dagen", { bold: true })
-    drawText(`Naam: ${name}`)
-    drawText("")
-    drawText("Totaaloverzicht:", { bold: true })
-    drawText(`- Verplicht terug te staan: ${group.totalRequired} dagen`)
-    drawText(`- Al terug gestaan:        ${group.totalCompleted} dagen`)
-    drawText(`- Nog te staan:            ${group.totalRemaining} dagen`)
-    drawText("")
 
     const formatDateShort = (value: string | null | undefined) => {
       if (!value) return "-"
@@ -90,68 +72,168 @@ export function StandBackManagement() {
       const day = String(d.getDate()).padStart(2, "0")
       const month = String(d.getMonth() + 1).padStart(2, "0")
       const year = String(d.getFullYear()).slice(-2)
-      return `${day}/${month}/${year}`
+      return `${day}-${month}-${year}`
     }
 
-    // 1. Opgebouwde mindagen per registratie
-    drawText("1. Opgebouwde mindagen (schuld per registratie)", { bold: true })
-
-    ;(group.records || []).forEach((record: any, index: number) => {
-      const start = formatDateShort(record.startDate)
-      const end = formatDateShort(record.endDate)
-      const reason = record.reason || ""
-      const required = record.standBackDaysRequired ?? ""
-      const remaining = record.standBackDaysRemaining ?? ""
-      const status = record.standBackStatus || ""
-
-      if (index > 0) {
-        drawText("")
+    const ensureSpace = (needed = lineHeight) => {
+      if (y - needed < margin) {
+        page = pdfDoc.addPage()
+        y = page.getSize().height - margin
       }
+    }
 
-      drawText(`Periode: ${start} t/m ${end}`)
-      drawText(`Reden: ${reason || "-"}`)
-      drawText(`Schuld: ${required} dagen | Nog te staan: ${remaining} dagen | Status: ${status || "-"}`)
+    const drawText = (text: string, options?: { bold?: boolean; x?: number; size?: number }) => {
+      ensureSpace(options?.size ? options.size + 4 : lineHeight)
+      const usedFont = options?.bold ? fontBold : font
+      page.drawText(text, { x: options?.x ?? margin, y, size: options?.size ?? fontSize, font: usedFont })
+      y -= lineHeight
+    }
 
-      if (record.description) {
-        const desc = `Opmerking: ${record.description}`.replace(/[\r\n]+/g, " ")
-        drawText(desc)
+    const drawRule = () => {
+      ensureSpace(10)
+      page.drawLine({
+        start: { x: margin, y: y + 4 },
+        end: { x: width - margin, y: y + 4 },
+        thickness: 0.75,
+      })
+      y -= 6
+    }
+
+    const drawTableHeader = (cols: Array<{ x: number; label: string; align?: "left" | "right" }>) => {
+      ensureSpace(18)
+      cols.forEach((col) => {
+        page.drawText(col.label, {
+          x: col.x,
+          y,
+          size: fontSize,
+          font: fontBold,
+        })
+      })
+      y -= 12
+      drawRule()
+    }
+
+    const wrapText = (text: string, maxCharsPerLine: number) => {
+      const clean = String(text || "-").replace(/[\r\n]+/g, " ").trim()
+      if (!clean) return ["-"]
+      const words = clean.split(/\s+/)
+      const lines: string[] = []
+      let current = ""
+      for (const word of words) {
+        const candidate = current ? `${current} ${word}` : word
+        if (candidate.length <= maxCharsPerLine) {
+          current = candidate
+        } else {
+          if (current) lines.push(current)
+          current = word
+        }
       }
-    })
+      if (current) lines.push(current)
+      return lines.length ? lines : ["-"]
+    }
 
-    drawText("")
-    drawText("2. Ingehaalde dagen (wanneer is er teruggestaan)", { bold: true })
+    const drawWrappedCell = (text: string, x: number, lineOffset: number, maxCharsPerLine: number) => {
+      const lines = wrapText(text, maxCharsPerLine)
+      lines.forEach((line, idx) => {
+        page.drawText(line, { x, y: y - lineOffset - idx * 11, size: fontSize, font })
+      })
+      return lines.length
+    }
 
-    // 2. Ingehaalde dagen: alle historyregels onder elkaar
-    const allHistory: { date: string; days: number | string; note: string }[] = []
+    drawText("Overzicht terug te staan dagen", { bold: true, size: 14 })
+    drawText(`Naam: ${name}`)
+    drawText(`Geprint op: ${new Date().toLocaleString("nl-NL")}`)
+    drawRule()
+    drawText(`Totaal mindagen: ${group.totalRequired} dagen`, { bold: true })
+    drawText(`Totaal terug gestaan: ${group.totalReturned} dagen`, { bold: true })
+    drawText(`Saldo: ${group.totalOutstanding} dagen`, { bold: true })
 
-    ;(group.records || []).forEach((record: any) => {
+    y -= 4
+    drawText("Opgebouwde mindagen", { bold: true, size: 11 })
+    drawTableHeader([
+      { x: margin, label: "Periode" },
+      { x: margin + 170, label: "Dagen" },
+      { x: margin + 230, label: "Reden" },
+      { x: margin + 320, label: "Omschrijving" },
+    ])
+
+    const records = [...(group.records || [])].sort(
+      (a: any, b: any) =>
+        new Date(b.createdAt || b.startDate || 0).getTime() -
+        new Date(a.createdAt || a.startDate || 0).getTime()
+    )
+    if (records.length === 0) {
+      drawText("Geen registraties gevonden.")
+    } else {
+      for (const rec of records) {
+        const linesPeriod = wrapText(`${formatDateShort(rec.startDate)} t/m ${formatDateShort(rec.endDate)}`, 22).length
+        const linesDays = wrapText(String(rec.standBackDaysRequired ?? 0), 8).length
+        const linesReason = wrapText(rec.reason || "-", 14).length
+        const linesDesc = wrapText(rec.description || "-", 28).length
+        const maxLines = Math.max(linesPeriod, linesDays, linesReason, linesDesc)
+        const rowHeight = Math.max(14, maxLines * 11 + 4)
+        ensureSpace(rowHeight + 4)
+
+        drawWrappedCell(`${formatDateShort(rec.startDate)} t/m ${formatDateShort(rec.endDate)}`, margin, 0, 22)
+        drawWrappedCell(String(rec.standBackDaysRequired ?? 0), margin + 170, 0, 8)
+        drawWrappedCell(rec.reason || "-", margin + 230, 0, 14)
+        drawWrappedCell(rec.description || "-", margin + 320, 0, 28)
+        y -= rowHeight
+      }
+    }
+
+    y -= 8
+    drawText("Terug gestaan", { bold: true, size: 11 })
+    drawTableHeader([
+      { x: margin, label: "Datum" },
+      { x: margin + 70, label: "Periode terug gestaan" },
+      { x: margin + 245, label: "Dagen" },
+      { x: margin + 300, label: "Waar / notitie" },
+    ])
+
+    const allHistory: Array<{ date: string; period: string; days: string; note: string }> = []
+    records.forEach((record: any) => {
       const history = Array.isArray(record.standBackHistory) ? record.standBackHistory : []
       history.forEach((h: any) => {
-        const dateStr = formatDateShort(h.date)
-        const daysNum =
-          typeof h.daysCompleted === "number"
-            ? h.daysCompleted
-            : h.daysCompleted
-            ? Number(h.daysCompleted)
-            : NaN
-        const daysStr = Number.isNaN(daysNum) ? "-" : daysNum
-        const noteStr = (h.note || "").replace(/[\r\n]+/g, " ")
-        allHistory.push({ date: dateStr, days: daysStr, note: noteStr })
+        const daysNum = typeof h.daysCompleted === "number" ? h.daysCompleted : Number(h.daysCompleted || 0)
+        const period =
+          h?.periodStart && h?.periodEnd
+            ? `${formatDateShort(h.periodStart)} t/m ${formatDateShort(h.periodEnd)}`
+            : h?.periodStart
+              ? formatDateShort(h.periodStart)
+              : "-"
+        allHistory.push({
+          date: formatDateShort(h.date),
+          period,
+          days: Number.isFinite(daysNum) ? String(daysNum) : "-",
+          note: String(h.note || "-").replace(/[\r\n]+/g, " "),
+        })
       })
     })
 
     if (allHistory.length === 0) {
-      drawText("Nog geen dagen terug gestaan.")
+      drawText("Nog geen teruggestane dagen geregistreerd.")
     } else {
       allHistory
         .sort((a, b) => {
           const da = a.date.split("-").reverse().join("-")
           const db = b.date.split("-").reverse().join("-")
-          return da.localeCompare(db)
+          return db.localeCompare(da)
         })
         .forEach((h) => {
-          const base = `- ${h.date}: ${h.days} dag(en) terug gestaan`
-          drawText(h.note ? `${base} – ${h.note}` : base)
+          const linesDate = wrapText(h.date, 10).length
+          const linesPeriod = wrapText(h.period, 26).length
+          const linesDays = wrapText(h.days, 8).length
+          const linesNote = wrapText(h.note, 28).length
+          const maxLines = Math.max(linesDate, linesPeriod, linesDays, linesNote)
+          const rowHeight = Math.max(14, maxLines * 11 + 4)
+          ensureSpace(rowHeight + 4)
+
+          drawWrappedCell(h.date, margin, 0, 10)
+          drawWrappedCell(h.period, margin + 70, 0, 26)
+          drawWrappedCell(h.days, margin + 245, 0, 8)
+          drawWrappedCell(h.note, margin + 300, 0, 28)
+          y -= rowHeight
         })
     }
 
@@ -168,9 +250,23 @@ export function StandBackManagement() {
     URL.revokeObjectURL(url)
   }
 
-  // Filter and map records by status
+  const getRecordReturnedDays = (record: any) => {
+    const history = Array.isArray(record?.standBackHistory) ? record.standBackHistory : []
+    const historyTotal = history.reduce((sum: number, entry: any) => {
+      const raw = entry?.daysCompleted
+      const value = typeof raw === "number" ? raw : Number(raw || 0)
+      return sum + (Number.isFinite(value) ? value : 0)
+    }, 0)
+    const completed = Number(record?.standBackDaysCompleted || 0)
+    // Nieuw model: terugstaan telt vanuit history (niet per registratie afboeken).
+    // Fallback op completed alleen voor oude data zonder history.
+    if (history.length > 0) return historyTotal
+    return Number.isFinite(completed) ? completed : 0
+  }
+
+  // Alleen openstaande registraties in openstaand-tab; gearchiveerd hoort in archief-tab
   const openStandBackRecordsRaw = standBackRecords
-    .filter((record: any) => (record.stand_back_days_remaining || 0) > 0 && record.stand_back_status === 'openstaand')
+    .filter((record: any) => record.stand_back_status === "openstaand")
     .map((record: any) => {
       const crewMember = crew.find((c: any) => c.id === record.crew_member_id)
       const ship = crewMember?.ship_id ? ships.find((s: any) => s.id === crewMember.ship_id) : null
@@ -218,15 +314,15 @@ export function StandBackManagement() {
         crewMember: record.crewMember,
         ship: record.ship,
         records: [],
-        totalRemaining: 0,
         totalRequired: 0,
-        totalCompleted: 0,
+        totalReturned: 0,
+        totalOutstanding: 0,
       }
     }
     acc[memberId].records.push(record)
-    acc[memberId].totalRemaining += record.standBackDaysRemaining
     acc[memberId].totalRequired += record.standBackDaysRequired
-    acc[memberId].totalCompleted += record.standBackDaysCompleted
+    acc[memberId].totalReturned += getRecordReturnedDays(record)
+    acc[memberId].totalOutstanding = Math.max(0, acc[memberId].totalRequired - acc[memberId].totalReturned)
     return acc
   }, {})
 
@@ -238,11 +334,11 @@ export function StandBackManagement() {
       id: group.records[0].id,
       startDate: group.records[0].startDate,
       endDate: group.records[group.records.length - 1].endDate,
-      standBackDaysRemaining: group.totalRemaining,
+      standBackDaysRemaining: group.totalOutstanding,
       standBackDaysRequired: group.totalRequired,
-      standBackDaysCompleted: group.totalCompleted,
+      standBackDaysCompleted: group.totalReturned,
     }))
-    .sort((a: any, b: any) => b.totalRemaining - a.totalRemaining)
+    .sort((a: any, b: any) => b.totalOutstanding - a.totalOutstanding)
 
   // Archive records (completed and terminated)
   const archiveRecords = standBackRecords
@@ -366,55 +462,46 @@ export function StandBackManagement() {
     }
 
     try {
-      const totalDaysToComplete = Math.min(Number.parseInt(daysToAdd), selectedRecord.totalRemaining)
-      let remainingDays = totalDaysToComplete
-      
-      // Sort records by remaining days (most remaining first) to prioritize which records to complete first
-      const sortedRecords = [...(selectedRecord.records || [selectedRecord])]
-        .filter((r: any) => r.standBackDaysRemaining > 0)
-        .sort((a: any, b: any) => b.standBackDaysRemaining - a.standBackDaysRemaining)
-      
-      // Distribute days across records
-      for (const record of sortedRecords) {
-        if (remainingDays <= 0) break
-        
-        const daysForThisRecord = Math.min(remainingDays, record.standBackDaysRemaining)
-        const newCompleted = record.standBackDaysCompleted + daysForThisRecord
-        const newRemaining = record.standBackDaysRemaining - daysForThisRecord
-        const newStatus = newRemaining === 0 ? 'voltooid' : 'openstaand'
-        
-        // Maak history entry
-        const historyEntry = {
-          date: new Date().toISOString(),
-          daysCompleted: daysForThisRecord,
-          note: note || `Dagen afgeboekt (${totalDaysToComplete} totaal voor alle registraties)`,
-          completedBy: 'User'
-        }
-        
-        // Update in database
-        await updateStandBackRecord(record.id, {
-          stand_back_days_completed: newCompleted,
-          stand_back_days_remaining: newRemaining,
-          stand_back_status: newStatus,
-          stand_back_history: [...(record.standBackHistory || []), historyEntry]
-        })
-        
-        remainingDays -= daysForThisRecord
+      const daysReturned = Number.parseInt(daysToAdd, 10)
+      const targetRecord =
+        [...(selectedRecord.records || [selectedRecord])]
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.createdAt || b.startDate || 0).getTime() -
+              new Date(a.createdAt || a.startDate || 0).getTime()
+          )[0] || selectedRecord
+
+      const historyEntry = {
+        date: new Date().toISOString(),
+        daysCompleted: daysReturned,
+        note: note || "Teruggestaan dagen geregistreerd",
+        periodStart: returnedStartDate || null,
+        periodEnd: returnedEndDate || null,
+        completedBy: "User",
       }
-      
-      alert(`Succesvol ${totalDaysToComplete} dag(en) afgeboekt voor ${selectedRecord.crewMember?.firstName} ${selectedRecord.crewMember?.lastName}`)
+
+      await updateStandBackRecord(targetRecord.id, {
+        // Niet meer per registratie afboeken; alleen registreren in history
+        stand_back_history: [...(targetRecord.standBackHistory || []), historyEntry],
+      })
+
+      alert(
+        `Succesvol ${daysReturned} dag(en) teruggestaan geregistreerd voor ${selectedRecord.crewMember?.firstName} ${selectedRecord.crewMember?.lastName}`
+      )
       
       // Reset form
       setDaysToAdd("")
       setNote("")
+      setReturnedStartDate("")
+      setReturnedEndDate("")
       setIsAddDaysOpen(false)
       setSelectedRecord(null)
       
       // Reload data to refresh the list
       await loadData()
     } catch (error) {
-      console.error('Error booking off days:', error)
-      alert('Fout bij het afboeken van dagen: ' + (error instanceof Error ? error.message : String(error)))
+      console.error('Error logging stand back days:', error)
+      alert('Fout bij het registreren van teruggestane dagen: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 
@@ -533,6 +620,38 @@ export function StandBackManagement() {
     const diffTime = Math.abs(end.getTime() - start.getTime())
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
     return diffDays
+  }
+
+  const getGroupStandBackHistory = (group: any) => {
+    const allEntries = (group.records || []).flatMap((rec: any) => {
+      const history = Array.isArray(rec.standBackHistory) ? rec.standBackHistory : []
+      return history.map((entry: any) => ({
+        recordId: rec.id,
+        recordReason: rec.reason || "onbekend",
+        date: entry?.date,
+        daysCompleted: typeof entry?.daysCompleted === "number" ? entry.daysCompleted : Number(entry?.daysCompleted || 0),
+        note: entry?.note || "",
+        returnedPeriod:
+          entry?.periodStart && entry?.periodEnd
+            ? `${new Date(entry.periodStart).toLocaleDateString("nl-NL")} - ${new Date(entry.periodEnd).toLocaleDateString("nl-NL")}`
+            : entry?.periodStart
+              ? new Date(entry.periodStart).toLocaleDateString("nl-NL")
+              : entry?.date
+                ? new Date(entry.date).toLocaleDateString("nl-NL")
+                : "-",
+      }))
+    })
+
+    return allEntries
+      .filter((entry: any) => Number.isFinite(entry.daysCompleted) && entry.daysCompleted > 0)
+      .sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+  }
+
+  const toggleMemberDetail = (memberId: string, section: "mindagen" | "returned") => {
+    setExpandedDetailByMember((prev) => ({
+      ...prev,
+      [memberId]: prev[memberId] === section ? null : section,
+    }))
   }
 
   const handleExportArchive = () => {
@@ -736,7 +855,7 @@ export function StandBackManagement() {
       <Tabs defaultValue="openstaand" className="space-y-4">
         <TabsList>
           <TabsTrigger value="openstaand">
-            Openstaand ({openStandBackRecords.length})
+            Alle registraties ({openStandBackRecords.length})
           </TabsTrigger>
           <TabsTrigger value="archief">
             Archief ({archiveRecords.length})
@@ -748,7 +867,10 @@ export function StandBackManagement() {
             <CardContent className="pt-6">
               <div className="space-y-4">
                 {openStandBackRecords.map((group: any) => (
-                  <div key={group.crewMemberId} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div
+                    key={group.crewMemberId}
+                    className="bg-white border-2 border-gray-300 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                  >
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center space-x-4">
                         <Avatar className="w-12 h-12">
@@ -767,11 +889,6 @@ export function StandBackManagement() {
                             <Badge variant="outline" className="text-xs">
                               {group.crewMember?.nationality || 'NL'}
                             </Badge>
-                            {group.records.length > 1 && (
-                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                {group.records.length} registraties
-                              </Badge>
-                            )}
                           </div>
 
                           <div className="flex items-center space-x-4 text-sm text-gray-600">
@@ -786,10 +903,13 @@ export function StandBackManagement() {
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="destructive" className="text-sm">
-                          {group.totalRemaining} dagen totaal resterend
+                      <div className="flex items-center">
+                        <Badge variant="outline" className="text-sm bg-orange-50 text-orange-800 border-orange-200">
+                          Saldo: {group.totalOutstanding} dagen
                         </Badge>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -799,7 +919,6 @@ export function StandBackManagement() {
                           <Download className="w-4 h-4 mr-1" />
                           Overzicht
                         </Button>
-                        
                         <Dialog
                           open={isAddDaysOpen && selectedRecord?.crewMemberId === group.crewMemberId}
                           onOpenChange={(open) => {
@@ -811,65 +930,59 @@ export function StandBackManagement() {
                           <DialogTrigger asChild>
                             <Button variant="outline" size="sm">
                               <Plus className="w-4 h-4 mr-2" />
-                              Dagen Afboeken
+                              Teruggestaan registreren
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
                               <DialogTitle>
-                                Terug Staan Dagen Afboeken - {group.crewMember?.firstName || 'Onbekend'} {group.crewMember?.lastName || 'Medewerker'}
+                                Teruggestaan registreren - {group.crewMember?.firstName || 'Onbekend'} {group.crewMember?.lastName || 'Medewerker'}
                               </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-4">
                               <div className="bg-gray-50 p-3 rounded-lg">
                                 <p className="text-sm text-gray-600">
-                                  <strong>Totaal openstaand:</strong> {group.totalRemaining} dagen
+                                  <strong>Totaal mindagen:</strong> {group.totalRequired} dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
-                                  <strong>Al voltooid:</strong> {group.totalCompleted} van{" "}
-                                  {group.totalRequired} dagen totaal
+                                  <strong>Totaal terug gestaan:</strong> {group.totalReturned} dagen
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  <strong>Huidig saldo:</strong> {group.totalOutstanding} dagen
                                 </p>
                               </div>
 
-                              {/* Show all records for this person */}
-                              {group.records.length > 1 && (
-                                <div className="bg-blue-50 p-3 rounded-lg">
-                                  <p className="text-sm font-medium text-blue-900 mb-2">
-                                    Alle registraties ({group.records.length}):
-                                  </p>
-                                  <div className="space-y-2">
-                                    {group.records.map((rec: any, idx: number) => (
-                                      <div key={rec.id} className="bg-white p-2 rounded text-xs">
-                                        <div className="flex justify-between items-center">
-                                          <div>
-                                            <Badge className={`text-xs ${getReasonColor(rec.reason)}`}>
-                                              {rec.reason}
-                                            </Badge>
-                                            <span className="ml-2 text-gray-600">
-                                              {new Date(rec.startDate).toLocaleDateString("nl-NL")} - {new Date(rec.endDate).toLocaleDateString("nl-NL")}
-                                            </span>
-                                          </div>
-                                          <Badge variant={rec.standBackDaysRemaining > 0 ? "destructive" : "default"} className="text-xs">
-                                            {rec.standBackDaysRemaining} resterend
-                                          </Badge>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
                               <div>
-                                <Label htmlFor="days">Aantal dagen om af te boeken</Label>
+                                <Label htmlFor="days">Aantal dagen terug gestaan</Label>
                                 <Input
                                   id="days"
                                   type="number"
                                   min="1"
-                                  max={group.totalRemaining}
                                   value={daysToAdd}
                                   onChange={(e) => setDaysToAdd(e.target.value)}
                                   placeholder="Aantal dagen"
                                 />
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <Label htmlFor="returned-start">Periode terug gestaan - van</Label>
+                                  <Input
+                                    id="returned-start"
+                                    type="date"
+                                    value={returnedStartDate}
+                                    onChange={(e) => setReturnedStartDate(e.target.value)}
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="returned-end">Periode terug gestaan - tot</Label>
+                                  <Input
+                                    id="returned-end"
+                                    type="date"
+                                    value={returnedEndDate}
+                                    onChange={(e) => setReturnedEndDate(e.target.value)}
+                                  />
+                                </div>
                               </div>
 
                               <div>
@@ -887,7 +1000,7 @@ export function StandBackManagement() {
                                 <Button variant="outline" onClick={() => setIsAddDaysOpen(false)}>
                                   Annuleren
                                 </Button>
-                                <Button onClick={handleAddStandBackDays}>Dagen Afboeken</Button>
+                                <Button onClick={handleAddStandBackDays}>Registreren</Button>
                               </div>
                             </div>
                           </DialogContent>
@@ -916,7 +1029,7 @@ export function StandBackManagement() {
                             <div className="space-y-4">
                               <div className="bg-gray-50 p-3 rounded-lg">
                                 <p className="text-sm text-gray-600">
-                                  <strong>Totaal openstaand:</strong> {group.totalRemaining} dagen
+                                  <strong>Totaal mindagen:</strong> {group.totalRequired} dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   <strong>Aantal registraties:</strong> {group.records.length}
@@ -941,8 +1054,8 @@ export function StandBackManagement() {
                                               {new Date(rec.startDate).toLocaleDateString("nl-NL")} - {new Date(rec.endDate).toLocaleDateString("nl-NL")}
                                             </span>
                                           </div>
-                                          <Badge variant={rec.standBackDaysRemaining > 0 ? "destructive" : "default"} className="text-xs">
-                                            {rec.standBackDaysRemaining} resterend
+                                          <Badge variant="secondary" className="text-xs">
+                                            {rec.standBackDaysRequired} mindagen opgebouwd
                                           </Badge>
                                         </div>
                                       </div>
@@ -990,128 +1103,105 @@ export function StandBackManagement() {
                       </div>
                     </div>
 
-                    {/* Summary Details */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500">Totaal Periode</label>
-                        <div className="flex items-center space-x-1 mt-1">
-                          <Calendar className="w-3 h-3 text-gray-400" />
-                          <span className="text-sm font-medium">
-                            {new Date(group.records[0]?.startDate || group.startDate).toLocaleDateString("nl-NL")} -{" "}
-                            {new Date(group.records[group.records.length - 1]?.endDate || group.endDate).toLocaleDateString("nl-NL")}
-                          </span>
+                    <div className="border-t pt-4 mt-4">
+                      <label className="text-sm font-semibold text-gray-800 mb-3 block">
+                        Teruggestaan overzicht
+                      </label>
+                      <div className="mb-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => toggleMemberDetail(group.crewMemberId, "mindagen")}
+                          className={`text-left rounded px-3 py-2 border transition ${
+                            expandedDetailByMember[group.crewMemberId] === "mindagen"
+                              ? "bg-blue-100 border-blue-300"
+                              : "bg-blue-50 border-blue-100 hover:bg-blue-100"
+                          }`}
+                        >
+                          <span className="text-gray-600">Totaal mindagen</span>
+                          <div className="font-semibold text-blue-800">{group.totalRequired} dagen</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleMemberDetail(group.crewMemberId, "returned")}
+                          className={`text-left rounded px-3 py-2 border transition ${
+                            expandedDetailByMember[group.crewMemberId] === "returned"
+                              ? "bg-green-100 border-green-300"
+                              : "bg-green-50 border-green-100 hover:bg-green-100"
+                          }`}
+                        >
+                          <span className="text-gray-600">Totaal terug gestaan</span>
+                          <div className="font-semibold text-green-800">{group.totalReturned} dagen</div>
+                        </button>
+                        <div className="bg-orange-50 border border-orange-100 rounded px-3 py-2">
+                          <span className="text-gray-600">Saldo</span>
+                          <div className="font-semibold text-orange-800">{group.totalOutstanding} dagen</div>
                         </div>
                       </div>
 
-                      <div>
-                        <label className="text-xs font-medium text-gray-500">Totaal Dagen</label>
-                        <p className="text-sm font-medium mt-1">{group.totalRequired} dagen</p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-gray-500">Voortgang</label>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-orange-500 h-2 rounded-full"
-                              style={{ width: `${(group.totalCompleted / group.totalRequired) * 100}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-xs text-gray-600">
-                            {group.totalCompleted}/{group.totalRequired}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Show all individual records */}
-                    {group.records.length > 1 && (
-                      <div className="border-t pt-4 mb-4">
-                        <label className="text-xs font-medium text-gray-500 mb-3 block">Alle Registraties ({group.records.length}):</label>
-                        <div className="space-y-3">
-                          {group.records.map((rec: any) => (
-                            <div key={rec.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center space-x-2">
-                                  <Badge className={`text-xs ${getReasonColor(rec.reason)}`}>
-                                    {rec.reason}
-                                  </Badge>
-                                  <span className="text-xs text-gray-600">
+                      {expandedDetailByMember[group.crewMemberId] === "mindagen" && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border px-2 py-2 text-left">Periode</th>
+                                <th className="border px-2 py-2 text-right">Dagen</th>
+                                <th className="border px-2 py-2 text-left">Reden</th>
+                                <th className="border px-2 py-2 text-left">Omschrijving</th>
+                                <th className="border px-2 py-2 text-left">Notitie</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[...group.records]
+                                .sort(
+                                  (a: any, b: any) =>
+                                    new Date(b.createdAt || b.startDate || 0).getTime() -
+                                    new Date(a.createdAt || a.startDate || 0).getTime()
+                                )
+                                .map((rec: any, index: number) => (
+                                <tr key={rec.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                                  <td className="border px-2 py-1">
                                     {new Date(rec.startDate).toLocaleDateString("nl-NL")} - {new Date(rec.endDate).toLocaleDateString("nl-NL")}
-                                  </span>
-                                </div>
-                                <Badge variant={rec.standBackDaysRemaining > 0 ? "destructive" : "default"} className="text-xs">
-                                  {rec.standBackDaysRemaining} resterend
-                                </Badge>
-                              </div>
-                              
-                              {rec.description && (
-                                <p className="text-xs text-gray-700 mt-1">{rec.description}</p>
-                              )}
-                              
-                              {rec.notes && (
-                                <p className="text-xs text-gray-500 italic mt-1">{rec.notes}</p>
-                              )}
-
-                              {/* History for this specific record */}
-                              {rec.standBackHistory && rec.standBackHistory.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-gray-300">
-                                  <div className="space-y-1">
-                                    {rec.standBackHistory.map((entry: any, idx: number) => (
-                                      <div key={idx} className="flex items-center justify-between text-xs">
-                                        <span className="text-gray-600">
-                                          {entry.daysCompleted} dagen op {new Date(entry.date).toLocaleDateString("nl-NL")}
-                                        </span>
-                                        <span className="text-gray-500">{entry.note}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Single record details (if only one record) */}
-                    {group.records.length === 1 && (
-                      <>
-                        {group.records[0].description && (
-                          <div className="mb-4">
-                            <label className="text-xs font-medium text-gray-500">Beschrijving</label>
-                            <p className="text-sm text-gray-700 mt-1">{group.records[0].description}</p>
-                          </div>
-                        )}
-
-                        {group.records[0].notes && (
-                          <div className="mb-4">
-                            <label className="text-xs font-medium text-gray-500">Opmerkingen</label>
-                            <p className="text-sm text-gray-700 mt-1">{group.records[0].notes}</p>
-                          </div>
-                        )}
-
-                        {/* History */}
-                        {group.records[0].standBackHistory && group.records[0].standBackHistory.length > 0 && (
-                          <div className="border-t pt-3">
-                            <label className="text-xs font-medium text-gray-500 mb-2 block">Afboek History</label>
-                            <div className="space-y-2">
-                              {group.records[0].standBackHistory.map((entry: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded">
-                                  <div>
-                                    <span className="font-medium">{entry.daysCompleted} dagen</span>
-                                    <span className="text-gray-600 ml-2">
-                                      op {new Date(entry.date).toLocaleDateString("nl-NL")}
-                                    </span>
-                                  </div>
-                                  <div className="text-gray-500">{entry.note}</div>
-                                </div>
+                                  </td>
+                                  <td className="border px-2 py-1 text-right font-medium">{rec.standBackDaysRequired}</td>
+                                  <td className="border px-2 py-1">{rec.reason}</td>
+                                  <td className="border px-2 py-1">{rec.description || "-"}</td>
+                                  <td className="border px-2 py-1">{rec.notes || "-"}</td>
+                                </tr>
                               ))}
-                            </div>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {expandedDetailByMember[group.crewMemberId] === "returned" && (
+                        getGroupStandBackHistory(group).length === 0 ? (
+                          <p className="text-sm text-gray-500">Nog geen teruggestane dagen geregistreerd.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm border-collapse">
+                              <thead>
+                                <tr className="bg-gray-100">
+                                  <th className="border px-2 py-2 text-left">Datum</th>
+                                  <th className="border px-2 py-2 text-right">Dagen</th>
+                                  <th className="border px-2 py-2 text-left">Periode terug gestaan</th>
+                                  <th className="border px-2 py-2 text-left">Waar / notitie</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {getGroupStandBackHistory(group).map((entry: any, index: number) => (
+                                  <tr key={`${entry.recordId}-${index}`} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                                    <td className="border px-2 py-1">{new Date(entry.date).toLocaleDateString("nl-NL")}</td>
+                                    <td className="border px-2 py-1 text-right font-medium">{entry.daysCompleted}</td>
+                                    <td className="border px-2 py-1">{entry.returnedPeriod}</td>
+                                    <td className="border px-2 py-1">{entry.note || "-"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
-                        )}
-                      </>
-                    )}
+                        )
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1119,7 +1209,7 @@ export function StandBackManagement() {
               {openStandBackRecords.length === 0 && (
                 <div className="text-center py-8">
                   <CheckCircle className="w-12 h-12 text-green-300 mx-auto mb-4" />
-                  <p className="text-gray-500">Geen openstaande terug-te-staan dagen</p>
+                  <p className="text-gray-500">Geen registraties gevonden</p>
                 </div>
               )}
             </CardContent>
