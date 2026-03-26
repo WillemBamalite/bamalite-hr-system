@@ -63,7 +63,6 @@ export interface OutOfServiceData {
     country: string
   }
   outOfServiceDate: string // Datum uit dienst (yyyy-MM-dd of dd-MM-yyyy)
-  noticeMonths: number // Opzegtermijn in maanden (1,2,3)
 }
 
 export interface OfficialWarningData {
@@ -1690,8 +1689,7 @@ export async function generateOutOfServiceLetter(
     const streetAndNumber = data.address.street || ''
     const postalAndCity = `${data.address.postalCode || ''} ${data.address.city || ''}`.trim()
 
-    // Bereken datum uit dienst + opzegtermijn (1/2/3 maanden)
-    const finalDate = calculateDatePlusMonths(data.outOfServiceDate, data.noticeMonths)
+    const finalDate = formatDate(data.outOfServiceDate)
 
     try {
       form.getTextField('Text1').setText(normalizeTextForPDF(fullName))

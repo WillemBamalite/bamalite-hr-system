@@ -96,7 +96,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   const [showOutDialog, setShowOutDialog] = useState(false)
   const [outDate, setOutDate] = useState("")
   const [outReason, setOutReason] = useState("")
-  const [noticeMonths, setNoticeMonths] = useState<"1" | "2" | "3">("1")
   const [resetRotation, setResetRotation] = useState(false)
   const [newRotationDate, setNewRotationDate] = useState("")
 
@@ -128,7 +127,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           lastName: crewMember.last_name || "",
           address,
           outOfServiceDate: outDate,
-          noticeMonths: parseInt(noticeMonths, 10),
         })
 
         const fileName = `Beeindiging dienstverband (${crewMember.first_name || ""} ${crewMember.last_name || ""}).pdf`
@@ -141,7 +139,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
       setShowOutDialog(false)
       setOutDate("")
       setOutReason("")
-      setNoticeMonths("1")
       if (onProfileUpdate) onProfileUpdate()
     } catch (e) {
       console.error(e)
@@ -1147,25 +1144,12 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700">Datum uit dienst</label>
+            <label className="text-sm font-medium text-gray-700">Uit dienst vanaf</label>
             <Input type="date" value={outDate} onChange={(e) => setOutDate(e.target.value)} />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Reden</label>
             <Textarea value={outReason} onChange={(e) => setOutReason(e.target.value)} placeholder="Bijv. einde contract, eigen verzoek, etc." />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">Opzegtermijn</label>
-            <Select value={noticeMonths} onValueChange={(value) => setNoticeMonths(value as "1" | "2" | "3")}>
-              <SelectTrigger>
-                <SelectValue placeholder="Kies opzegtermijn" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1 maand</SelectItem>
-                <SelectItem value="2">2 maanden</SelectItem>
-                <SelectItem value="3">3 maanden</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
         <DialogFooter>
