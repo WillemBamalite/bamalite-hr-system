@@ -27,11 +27,12 @@ import {
   FileText,
   Search,
   Wallet,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react'
 
 export default function LeningenPage() {
-  const { crew, loans, addLoan, updateLoan, completeLoan, makePayment, applyPendingLoanInstallments, loading } =
+  const { crew, loans, addLoan, updateLoan, completeLoan, deleteLoan, makePayment, applyPendingLoanInstallments, loading } =
     useSupabaseData()
   const { t } = useLanguage()
   const [newLoanDialog, setNewLoanDialog] = useState(false)
@@ -46,6 +47,12 @@ export default function LeningenPage() {
     loanName: "",
     maxAmount: 0
   })
+  const [deleteLoanDialog, setDeleteLoanDialog] = useState<{ isOpen: boolean; loanId: string; loanName: string }>({
+    isOpen: false,
+    loanId: "",
+    loanName: ""
+  })
+  const [expandedPaymentHistory, setExpandedPaymentHistory] = useState<Record<string, boolean>>({})
   const [searchTerm, setSearchTerm] = useState("")
   const defaultNewLoanData = () => ({
     crew_id: "",
@@ -272,6 +279,23 @@ export default function LeningenPage() {
       console.error("Error completing loan:", error)
       alert("Fout bij het afronden van de lening")
     }
+  }
+
+  const handleDeleteCompletedLoan = async () => {
+    try {
+      await deleteLoan(deleteLoanDialog.loanId)
+      setDeleteLoanDialog({ isOpen: false, loanId: "", loanName: "" })
+    } catch (error) {
+      console.error("Error deleting completed loan:", error)
+      alert("Fout bij het verwijderen van de voltooide lening")
+    }
+  }
+
+  const togglePaymentHistory = (loanId: string) => {
+    setExpandedPaymentHistory((prev) => ({
+      ...prev,
+      [loanId]: !prev[loanId],
+    }))
   }
 
   const getCrewMemberName = (crewId: string) => {
@@ -542,15 +566,29 @@ export default function LeningenPage() {
                   {/* Payment History */}
                   {loan.payment_history && loan.payment_history.length > 0 && (
                     <div className="mt-3 pt-3 border-t">
-                      <p className="text-xs font-medium text-gray-600 mb-2">Betalingshistorie</p>
-                      <div className="space-y-1">
-                        {loan.payment_history.map((payment: any, idx: number) => (
-                          <div key={idx} className="flex justify-between text-xs text-gray-500">
-                            <span>{format(new Date(payment.date), 'dd-MM-yyyy')}: {payment.note}</span>
-                            <span className="font-medium text-green-600">€{payment.amount.toFixed(2)}</span>
-                          </div>
-                        ))}
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-medium text-gray-600">
+                          Betalingshistorie ({loan.payment_history.length})
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => togglePaymentHistory(loan.id)}
+                        >
+                          {expandedPaymentHistory[loan.id] ? "Verberg" : "Toon"}
+                        </Button>
                       </div>
+                      {expandedPaymentHistory[loan.id] && (
+                        <div className="space-y-1">
+                          {loan.payment_history.map((payment: any, idx: number) => (
+                            <div key={idx} className="flex justify-between text-xs text-gray-500">
+                              <span>{format(new Date(payment.date), 'dd-MM-yyyy')}: {payment.note}</span>
+                              <span className="font-medium text-green-600">€{payment.amount.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -624,6 +662,21 @@ export default function LeningenPage() {
                           <Badge className="bg-green-100 text-green-800">
                             Voltooid
                           </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-300 text-red-700 hover:bg-red-50"
+                            onClick={() =>
+                              setDeleteLoanDialog({
+                                isOpen: true,
+                                loanId: loan.id,
+                                loanName: loan.name,
+                              })
+                            }
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Verwijderen
+                          </Button>
                         </div>
                       </div>
                       
@@ -640,15 +693,29 @@ export default function LeningenPage() {
                       {/* Payment History */}
                       {loan.payment_history && loan.payment_history.length > 0 && (
                         <div className="mt-3 pt-3 border-t">
-                          <p className="text-xs font-medium text-gray-600 mb-2">Betalingshistorie</p>
-                          <div className="space-y-1">
-                            {loan.payment_history.map((payment: any, idx: number) => (
-                              <div key={idx} className="flex justify-between text-xs text-gray-500">
-                                <span>{format(new Date(payment.date), 'dd-MM-yyyy')}: {payment.note}</span>
-                                <span className="font-medium text-green-600">€{payment.amount.toFixed(2)}</span>
-                              </div>
-                            ))}
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-medium text-gray-600">
+                              Betalingshistorie ({loan.payment_history.length})
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => togglePaymentHistory(loan.id)}
+                            >
+                              {expandedPaymentHistory[loan.id] ? "Verberg" : "Toon"}
+                            </Button>
                           </div>
+                          {expandedPaymentHistory[loan.id] && (
+                            <div className="space-y-1">
+                              {loan.payment_history.map((payment: any, idx: number) => (
+                                <div key={idx} className="flex justify-between text-xs text-gray-500">
+                                  <span>{format(new Date(payment.date), 'dd-MM-yyyy')}: {payment.note}</span>
+                                  <span className="font-medium text-green-600">€{payment.amount.toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -901,6 +968,37 @@ export default function LeningenPage() {
               </Button>
               <Button onClick={handleCompleteLoan}>
                 Afronden
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Completed Loan Dialog */}
+      <Dialog
+        open={deleteLoanDialog.isOpen}
+        onOpenChange={(open) => setDeleteLoanDialog({ ...deleteLoanDialog, isOpen: open })}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Voltooide Lening Verwijderen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Weet je zeker dat je de voltooide lening "{deleteLoanDialog.loanName}" wilt verwijderen?
+            </p>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteLoanDialog({ isOpen: false, loanId: "", loanName: "" })}
+              >
+                Annuleren
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteCompletedLoan}
+              >
+                Verwijderen
               </Button>
             </div>
           </div>

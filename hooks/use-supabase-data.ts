@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 // Function to calculate work days for vaste dienst aflossers based on hours
@@ -911,6 +911,7 @@ export function useSupabaseData() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [crewColorTags, setCrewColorTags] = useState<Record<string, string>>({})  // Load all data from Supabase
+  const applyingLoanInstallmentsRef = useRef(false)
   const loadData = async () => {
     try {
       setLoading(true)
@@ -1726,11 +1727,26 @@ export function useSupabaseData() {
     }
   }
 
+  const deleteLoan = async (loanId: string) => {
+    try {
+      const { error } = await supabase
+        .from('loans')
+        .delete()
+        .eq('id', loanId)
+
+      if (error) throw error
+      await loadData()
+    } catch (err) {
+      console.error('Error deleting loan:', err)
+      throw err
+    }
+  }
+
   const makePayment = async (
     loanId: string,
     paymentAmount: number,
     note?: string,
-    opts?: { setInstallmentPeriodYm?: string }
+    opts?: { setInstallmentPeriodYm?: string; skipReload?: boolean }
   ) => {
     try {
       console.log('Making payment for loan:', loanId, paymentAmount)
@@ -1783,7 +1799,9 @@ export function useSupabaseData() {
       }
       
       console.log('Payment made successfully:', data)
-      await loadData() // Reload all data
+      if (!opts?.skipReload) {
+        await loadData() // Reload all data
+      }
       return data
     } catch (err) {
       console.error('Error making payment:', err)
@@ -1796,6 +1814,10 @@ export function useSupabaseData() {
    * Aanroepen bij laden van de leningen-pagina (geen aparte server-cron nodig).
    */
   const applyPendingLoanInstallments = async () => {
+    if (applyingLoanInstallmentsRef.current) return
+    applyingLoanInstallmentsRef.current = true
+    let changed = false
+    try {
     const { data: rows, error } = await supabase
       .from('loans')
       .select('*')
@@ -1840,8 +1862,15 @@ export function useSupabaseData() {
         const note = isYearly
           ? `Automatische jaartermijn (${ym})`
           : `Automatische maandtermijn (${ym})`
-        await makePayment(loan.id, pay, note, { setInstallmentPeriodYm: ym })
+        await makePayment(loan.id, pay, note, { setInstallmentPeriodYm: ym, skipReload: true })
+        changed = true
       }
+    }
+      if (changed) {
+        await loadData()
+      }
+    } finally {
+      applyingLoanInstallmentsRef.current = false
     }
   }
 
@@ -2523,6 +2552,7 @@ export function useSupabaseData() {
     addLoan,
     updateLoan,
     completeLoan,
+    deleteLoan,
     makePayment,
     applyPendingLoanInstallments,
     addTrip,
