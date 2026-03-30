@@ -183,7 +183,6 @@ export function buildDashboardNotifications(args: {
       .filter((record: any) => {
         if (!record?.certificate_valid_until) return false
         if (record.status !== "actief" && record.status !== "wacht-op-briefje") return false
-        if (record.expiry_email_sent_at) return false
         const validUntil = parseFlexibleDate(record.certificate_valid_until)
         if (!validUntil) return false
         if (isNaN(validUntil.getTime())) return false
@@ -196,7 +195,21 @@ export function buildDashboardNotifications(args: {
         const validUntil = parseFlexibleDate(record.certificate_valid_until) || new Date()
         validUntil.setHours(0, 0, 0, 0)
         const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-        return { record, crewMember, validUntil, daysUntilExpiry }
+        const sentAt = parseFlexibleDate(record.expiry_email_sent_at)
+        const reminderWindowStart = new Date(validUntil)
+        reminderWindowStart.setDate(reminderWindowStart.getDate() - 3)
+        reminderWindowStart.setHours(0, 0, 0, 0)
+        // Alleen "mail al verstuurd" als de verzending binnen de huidige reminder-window ligt.
+        // Zo kan bij een nieuwe/veranderde geldigheidsdatum opnieuw gemaild worden.
+        const mailSentForCurrentExpiry =
+          !!sentAt && sentAt.getTime() >= reminderWindowStart.getTime() && sentAt.getTime() <= validUntil.getTime()
+        return {
+          record,
+          crewMember,
+          validUntil,
+          daysUntilExpiry,
+          mailSent: mailSentForCurrentExpiry,
+        }
       })
       .filter((x: any) => x.crewMember) || []
 
@@ -211,7 +224,7 @@ export function buildDashboardNotifications(args: {
     notifications.push({
       id: `certificate:${item.record.id}:${toYmd(item.validUntil)}`,
       kind: "certificate_expiring",
-      severity: "warning",
+      severity: item.mailSent ? "info" : "warning",
       title,
       description: `${name} – verloopt op ${format(item.validUntil, "dd-MM-yyyy")}`,
       href: item.crewMember?.id ? `/bemanning/${item.crewMember.id}` : undefined,
@@ -222,6 +235,8 @@ export function buildDashboardNotifications(args: {
         expiryDate: format(item.validUntil, "dd-MM-yyyy"),
         expiryDateForPDF: format(item.validUntil, "dd-MM-yyyy"),
         daysUntilExpiry: item.daysUntilExpiry,
+        mailSent: item.mailSent,
+        mailSentAt: item.record.expiry_email_sent_at || null,
       },
     })
   }

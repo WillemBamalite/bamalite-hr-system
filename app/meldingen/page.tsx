@@ -11,6 +11,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { useState } from "react"
+import { format } from "date-fns"
 
 const kindLabel = (kind: string) => {
   switch (kind) {
@@ -114,6 +115,15 @@ export default function MeldingenPage() {
   const { crew, tasks, ships, sickLeave, loading, error } = useSupabaseData()
   const { visits, getShipsNotVisitedInDays } = useShipVisits()
   const [sendingCertificateEmailId, setSendingCertificateEmailId] = useState<string | null>(null)
+  const [sentCertificateNotificationIds, setSentCertificateNotificationIds] = useState<Record<string, boolean>>({})
+  const [sentCertificateNotificationDates, setSentCertificateNotificationDates] = useState<Record<string, string>>({})
+
+  const formatSentOn = (value: unknown) => {
+    if (!value || typeof value !== "string") return ""
+    const d = new Date(value)
+    if (isNaN(d.getTime())) return ""
+    return format(d, "dd/MM/yy")
+  }
 
   const notifications = buildDashboardNotifications({
     crew: crew || [],
@@ -166,6 +176,11 @@ export default function MeldingenPage() {
         throw new Error(result?.error || "E-mail versturen mislukt")
       }
 
+      setSentCertificateNotificationIds((prev) => ({ ...prev, [notification.id]: true }))
+      setSentCertificateNotificationDates((prev) => ({
+        ...prev,
+        [notification.id]: new Date().toISOString(),
+      }))
       alert("E-mail succesvol verstuurd.")
     } catch (e: any) {
       alert(`Fout bij versturen e-mail: ${e?.message || "Onbekende fout"}`)
@@ -242,6 +257,12 @@ export default function MeldingenPage() {
                           {group.map((n) => {
                             const Icon = kindIcon(n.kind)
                             const isCertificateNotification = n.kind === "certificate_expiring"
+                            const isMailSent =
+                              isCertificateNotification &&
+                              (Boolean((n.meta as any)?.mailSent) || Boolean(sentCertificateNotificationIds[n.id]))
+                            const sentOnText = formatSentOn(
+                              sentCertificateNotificationDates[n.id] || (n.meta as any)?.mailSentAt
+                            )
                             const hasRecipientEmail = !!String((n.meta as any)?.recipientEmail || "").trim()
                             const Row = (
                               <div
@@ -282,23 +303,34 @@ export default function MeldingenPage() {
                                 </div>
                                 {isCertificateNotification && (
                                   <div className="mt-3">
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      disabled={!hasRecipientEmail || sendingCertificateEmailId === n.id}
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        e.stopPropagation()
-                                        handleSendCertificateEmail(n)
-                                      }}
-                                    >
-                                      {sendingCertificateEmailId === n.id
-                                        ? "Mail versturen..."
-                                        : hasRecipientEmail
-                                          ? "Wil je diegene mail sturen?"
-                                          : "Geen e-mail bekend"}
-                                    </Button>
+                                    {isMailSent ? (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <Badge className="bg-green-100 text-green-800 border border-green-200">
+                                          Mail is verstuurd
+                                        </Badge>
+                                        {sentOnText && (
+                                          <span className="text-xs text-green-800">Verstuurd op: {sentOnText}</span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={!hasRecipientEmail || sendingCertificateEmailId === n.id}
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          handleSendCertificateEmail(n)
+                                        }}
+                                      >
+                                        {sendingCertificateEmailId === n.id
+                                          ? "Mail versturen..."
+                                          : hasRecipientEmail
+                                            ? "Wil je diegene mail sturen?"
+                                            : "Geen e-mail bekend"}
+                                      </Button>
+                                    )}
                                   </div>
                                 )}
                               </div>
