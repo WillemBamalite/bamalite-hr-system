@@ -4,11 +4,13 @@ import Link from "next/link"
 import { AlertTriangle, Bell, Calendar, Cake, ClipboardList, ShieldAlert, Ship } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
+import { useState } from "react"
 
 const kindLabel = (kind: string) => {
   switch (kind) {
@@ -111,6 +113,7 @@ const groupCountBadge = (groupName: string) => {
 export default function MeldingenPage() {
   const { crew, tasks, ships, sickLeave, loading, error } = useSupabaseData()
   const { visits, getShipsNotVisitedInDays } = useShipVisits()
+  const [sendingCertificateEmailId, setSendingCertificateEmailId] = useState<string | null>(null)
 
   const notifications = buildDashboardNotifications({
     crew: crew || [],
@@ -134,6 +137,42 @@ export default function MeldingenPage() {
 
   const gridGroups = [...gridGroupsRow1, ...gridGroupsRow2]
   const orderedOtherGroups = otherGroups.filter((k) => (grouped[k] || []).length > 0)
+
+  const handleSendCertificateEmail = async (notification: any) => {
+    const meta = (notification?.meta || {}) as Record<string, any>
+    const recipientEmail = String(meta.recipientEmail || "").trim()
+    if (!recipientEmail) {
+      alert("Geen e-mailadres gevonden voor dit bemanningslid.")
+      return
+    }
+
+    try {
+      setSendingCertificateEmailId(notification.id)
+      const response = await fetch("/api/send-certificate-expiry-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crewName: meta.crewName || notification.description || "Bemanningslid",
+          expiryDate: meta.expiryDate,
+          expiryDateForPDF: meta.expiryDateForPDF || meta.expiryDate,
+          daysUntilExpiry: Number(meta.daysUntilExpiry ?? 0),
+          recipientEmail,
+          sickLeaveId: meta.sickLeaveId,
+        }),
+      })
+
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || "E-mail versturen mislukt")
+      }
+
+      alert("E-mail succesvol verstuurd.")
+    } catch (e: any) {
+      alert(`Fout bij versturen e-mail: ${e?.message || "Onbekende fout"}`)
+    } finally {
+      setSendingCertificateEmailId(null)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -202,6 +241,8 @@ export default function MeldingenPage() {
                         <div className="divide-y">
                           {group.map((n) => {
                             const Icon = kindIcon(n.kind)
+                            const isCertificateNotification = n.kind === "certificate_expiring"
+                            const hasRecipientEmail = !!String((n.meta as any)?.recipientEmail || "").trim()
                             const Row = (
                               <div
                                 className={`p-4 hover:bg-gray-50 transition-colors border-l-4 ${severityLeftBorder(
@@ -239,6 +280,27 @@ export default function MeldingenPage() {
                                         : "Info"}
                                   </Badge>
                                 </div>
+                                {isCertificateNotification && (
+                                  <div className="mt-3">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={!hasRecipientEmail || sendingCertificateEmailId === n.id}
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        handleSendCertificateEmail(n)
+                                      }}
+                                    >
+                                      {sendingCertificateEmailId === n.id
+                                        ? "Mail versturen..."
+                                        : hasRecipientEmail
+                                          ? "Wil je diegene mail sturen?"
+                                          : "Geen e-mail bekend"}
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
                             )
 

@@ -21,6 +21,38 @@ export type DashboardNotification = {
 
 const toYmd = (d: Date) => format(d, "yyyy-MM-dd")
 
+const parseFlexibleDate = (value: unknown): Date | null => {
+  if (!value || typeof value !== "string") return null
+  const raw = value.trim()
+  if (!raw) return null
+
+  // yyyy-MM-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const d = new Date(raw)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  // dd-MM-yyyy
+  const m = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/)
+  if (m) {
+    const day = Number(m[1])
+    const month = Number(m[2]) - 1
+    const year = Number(m[3])
+    const d = new Date(year, month, day)
+    if (
+      d.getFullYear() === year &&
+      d.getMonth() === month &&
+      d.getDate() === day &&
+      !isNaN(d.getTime())
+    ) {
+      return d
+    }
+  }
+
+  const fallback = new Date(raw)
+  return isNaN(fallback.getTime()) ? null : fallback
+}
+
 export function buildDashboardNotifications(args: {
   crew: any[]
   tasks: any[]
@@ -48,7 +80,8 @@ export function buildDashboardNotifications(args: {
     crew?.filter((member: any) => {
       if (!isActiveCrewMember(member)) return false
       if (member?.is_aflosser || !member?.in_dienst_vanaf) return false
-      const startDate = new Date(member.in_dienst_vanaf)
+      const startDate = parseFlexibleDate(member.in_dienst_vanaf)
+      if (!startDate) return false
       if (isNaN(startDate.getTime())) return false
       startDate.setHours(0, 0, 0, 0)
       const diffTime = today.getTime() - startDate.getTime()
@@ -72,7 +105,8 @@ export function buildDashboardNotifications(args: {
     crew?.filter((member: any) => {
       if (!isActiveCrewMember(member)) return false
       if (!member?.birth_date) return false
-      const bd = new Date(member.birth_date)
+      const bd = parseFlexibleDate(member.birth_date)
+      if (!bd) return false
       if (isNaN(bd.getTime())) return false
       return bd.getMonth() + 1 === todayMonth && bd.getDate() === todayDay
     }) || []
@@ -99,7 +133,8 @@ export function buildDashboardNotifications(args: {
     crew.forEach((member: any) => {
       if (!isActiveCrewMember(member)) return
       if (!member?.in_dienst_vanaf) return
-      const start = new Date(member.in_dienst_vanaf)
+      const start = parseFlexibleDate(member.in_dienst_vanaf)
+      if (!start) return
       if (isNaN(start.getTime())) return
       start.setHours(0, 0, 0, 0)
 
@@ -149,29 +184,45 @@ export function buildDashboardNotifications(args: {
         if (!record?.certificate_valid_until) return false
         if (record.status !== "actief" && record.status !== "wacht-op-briefje") return false
         if (record.expiry_email_sent_at) return false
-        const validUntil = new Date(record.certificate_valid_until)
+        const validUntil = parseFlexibleDate(record.certificate_valid_until)
+        if (!validUntil) return false
         if (isNaN(validUntil.getTime())) return false
         validUntil.setHours(0, 0, 0, 0)
         const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-        return daysUntilExpiry === 3
+        return daysUntilExpiry >= 0 && daysUntilExpiry <= 3
       })
       .map((record: any) => {
         const crewMember = (crew || []).find((c: any) => c.id === record.crew_member_id)
-        const validUntil = new Date(record.certificate_valid_until)
+        const validUntil = parseFlexibleDate(record.certificate_valid_until) || new Date()
         validUntil.setHours(0, 0, 0, 0)
-        return { record, crewMember, validUntil }
+        const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        return { record, crewMember, validUntil, daysUntilExpiry }
       })
       .filter((x: any) => x.crewMember) || []
 
   for (const item of expiringCertificates) {
     const name = `${item.crewMember.first_name ?? ""} ${item.crewMember.last_name ?? ""}`.trim()
+    const title =
+      item.daysUntilExpiry === 0
+        ? "Ziektebriefje verloopt vandaag"
+        : `Ziektebriefje verloopt over ${item.daysUntilExpiry} ${
+            item.daysUntilExpiry === 1 ? "dag" : "dagen"
+          }`
     notifications.push({
       id: `certificate:${item.record.id}:${toYmd(item.validUntil)}`,
       kind: "certificate_expiring",
       severity: "warning",
-      title: "Ziektebriefje verloopt over 3 dagen",
+      title,
       description: `${name} – verloopt op ${format(item.validUntil, "dd-MM-yyyy")}`,
       href: item.crewMember?.id ? `/bemanning/${item.crewMember.id}` : undefined,
+      meta: {
+        sickLeaveId: item.record.id,
+        crewName: name,
+        recipientEmail: item.crewMember?.email || null,
+        expiryDate: format(item.validUntil, "dd-MM-yyyy"),
+        expiryDateForPDF: format(item.validUntil, "dd-MM-yyyy"),
+        daysUntilExpiry: item.daysUntilExpiry,
+      },
     })
   }
 
@@ -181,7 +232,9 @@ export function buildDashboardNotifications(args: {
       if (task?.status === "completed" || task?.completed === true) return false
       if (task?.priority === "urgent") return true
       if (task?.deadline) {
-        const deadlineDate = startOfDay(new Date(task.deadline))
+        const parsedDeadline = parseFlexibleDate(task.deadline)
+        if (!parsedDeadline) return false
+        const deadlineDate = startOfDay(parsedDeadline)
         if (isNaN(deadlineDate.getTime())) return false
         if (isPast(deadlineDate) || isToday(deadlineDate)) return true
       }
@@ -190,9 +243,9 @@ export function buildDashboardNotifications(args: {
 
   for (const task of urgentTasks) {
     const isUrgent = task?.priority === "urgent"
+    const parsedDeadline = task?.deadline ? parseFlexibleDate(task.deadline) : null
     const hasExpiredDeadline =
-      !!task?.deadline &&
-      (isPast(startOfDay(new Date(task.deadline))) || isToday(startOfDay(new Date(task.deadline))))
+      !!parsedDeadline && (isPast(startOfDay(parsedDeadline)) || isToday(startOfDay(parsedDeadline)))
     notifications.push({
       id: `task:${task.id}`,
       kind: "task",

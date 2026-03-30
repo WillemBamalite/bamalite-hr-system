@@ -20,6 +20,8 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { supabase } from "@/lib/supabase"
 import { useDashboardSearch } from "@/contexts/DashboardSearchContext"
 
+type SailingRegime = "A1" | "A2" | "B"
+
 // Helper functie om lokale datum + tijd te parsen (geen UTC conversie)
 function parseLocalDateTime(dateStr: string, timeStr: string): Date {
   const parts = dateStr.split(/[-/]/)
@@ -68,6 +70,7 @@ export function ShipOverview() {
   const { searchQuery, setSearchQuery, setSearchRunner } = useDashboardSearch()
   const [mounted, setMounted] = useState(false);
   const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null)
+  const [sailingRegimeByShipId, setSailingRegimeByShipId] = useState<Record<string, SailingRegime>>({})
   
   // Notes functionality state
   const [notesDialog, setNotesDialog] = useState(false);
@@ -142,6 +145,19 @@ export function ShipOverview() {
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true);
+
+    // Load saved sailing regimes (A1/A2/B) per ship
+    try {
+      const raw = localStorage.getItem("shipSailingRegimes")
+      if (raw) {
+        const parsed = JSON.parse(raw || "{}")
+        if (parsed && typeof parsed === "object") {
+          setSailingRegimeByShipId(parsed)
+        }
+      }
+    } catch {
+      // ignore
+    }
     
     // Restore scroll position after page reload or navigation back
     const savedScrollPosition = sessionStorage.getItem('shipOverviewScrollPosition')
@@ -187,6 +203,15 @@ export function ShipOverview() {
       })
     }
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return
+    try {
+      localStorage.setItem("shipSailingRegimes", JSON.stringify(sailingRegimeByShipId || {}))
+    } catch {
+      // ignore
+    }
+  }, [mounted, sailingRegimeByShipId])
 
   // Continuously track and preserve scroll position
   useEffect(() => {
@@ -1777,6 +1802,27 @@ export function ShipOverview() {
                                 </div>
                               </div>
                               <div className="flex items-center space-x-2">
+                                <div className="flex items-center gap-2 pr-2">
+                                  <span className="text-xs text-gray-500">Vaarregime</span>
+                                  <Select
+                                    value={sailingRegimeByShipId[ship.id] || "A1"}
+                                    onValueChange={(value) =>
+                                      setSailingRegimeByShipId((prev) => ({
+                                        ...(prev || {}),
+                                        [ship.id]: value as SailingRegime,
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger className="h-7 w-20 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="A1">A1</SelectItem>
+                                      <SelectItem value="A2">A2</SelectItem>
+                                      <SelectItem value="B">B</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                                 <Button
                                   variant="outline"
                                   size="sm"
