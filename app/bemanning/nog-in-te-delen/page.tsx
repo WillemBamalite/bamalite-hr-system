@@ -157,6 +157,15 @@ export default function NogInTeDelenPage() {
     await setPoolAvailabilityStatus(member.id, next);
   };
 
+  const formatGeplaatstDoor = (value: string | null | undefined): string => {
+    const v = (value || "").trim().toLowerCase();
+    if (!v) return "Onbekend";
+    if (v.includes("automatische") || v.includes("website") || v.includes("web")) return "Vanuit website";
+    if (v.includes("willem")) return "Willem";
+    if (v.includes("leo")) return "Leo";
+    return value || "Onbekend";
+  };
+
   const openNoteDialog = (member: any) => {
     setNoteMember(member);
     setNoteText(getRecruitmentQuickNoteText(member) || "");
@@ -950,9 +959,8 @@ export default function NogInTeDelenPage() {
                           <span className="font-medium">Functie:</span> {member.position}
                         </div>
 
-                        {/* Regime */}
                         <div className="text-sm text-gray-600">
-                          <span className="font-medium">Regime:</span> {member.regime}
+                          <span className="font-medium">Geplaatst door:</span> {formatGeplaatstDoor(member.geplaatst_door)}
                         </div>
 
                         {/* Contact Info */}
