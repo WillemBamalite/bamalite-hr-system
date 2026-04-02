@@ -24,7 +24,7 @@ import { supabase } from "@/lib/supabase"
 
 export default function ZiektePage() {
   const { crew, sickLeave, loading, error, updateCrew, updateSickLeave, addStandBackRecord } = useSupabaseData()
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
   const [activeTab, setActiveTab] = useState('ziekte')
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<any>(null)
@@ -38,6 +38,30 @@ export default function ZiektePage() {
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
   const [recoveryRecord, setRecoveryRecord] = useState<any>(null)
   const [recoveryDate, setRecoveryDate] = useState("")
+  const uiText = {
+    subtitle: locale === "de" ? "Aktive Krankmeldungen und Krankheitsverwaltung" : "Actieve ziekmeldingen en ziekte management",
+    newSickLeave: locale === "de" ? "Neue Krankmeldung" : "Nieuwe ziekmelding",
+    tabSick: locale === "de" ? "Krankheit" : "Ziekte",
+    tabStandBack: locale === "de" ? "Zuruckstehen" : "Terug te staan",
+    sectionNoOrExpired: locale === "de" ? "Kein Attest und abgelaufene Atteste" : "Geen ziektebriefje en verlopen ziektebriefjes",
+    sectionWaitingOrSoon: locale === "de" ? "Warten auf Attest und bald ablaufende Atteste" : "Wacht op briefje en bijna verlopen briefjes",
+    sectionValid: locale === "de" ? "Gultige Atteste" : "Geldige ziektebriefjes",
+    records: locale === "de" ? "Eintrage" : "records",
+    noRecords: locale === "de" ? "Keine Eintrage" : "Geen records",
+    startDate: locale === "de" ? "Startdatum:" : "Start datum:",
+    days: locale === "de" ? "Tage" : "dagen",
+    salary: locale === "de" ? "Gehalt:" : "Salaris:",
+    paidBy: locale === "de" ? "Bezahlt durch:" : "Betaald door:",
+    notes: locale === "de" ? "Notizen:" : "Notities:",
+    attachments: locale === "de" ? "Anlagen" : "Bijlagen",
+    open: locale === "de" ? "Offnen" : "Openen",
+    noAttachments: locale === "de" ? "Geen Anlagen" : "Geen bijlagen",
+    uploading: locale === "de" ? "Hochladen..." : "Uploaden...",
+    addAttachment: locale === "de" ? "Anlage hinzufugen" : "Bijlage toevoegen",
+    editSickLeave: locale === "de" ? "Krankmeldung bearbeiten" : "Ziekmelding bewerken",
+    cancel: locale === "de" ? "Abbrechen" : "Annuleren",
+    save: locale === "de" ? "Speichern" : "Opslaan",
+  }
   
   // Bijlagen bij ziekmeldingen
   const [sickLeaveAttachments, setSickLeaveAttachments] = useState<any[]>([])
@@ -245,13 +269,13 @@ export default function ZiektePage() {
   const getStatusText = (status: string) => {
     switch (status) {
       case "actief":
-        return "Actief ziek"
+        return locale === "de" ? "Aktiv krank" : "Actief ziek"
       case "hersteld":
-        return "Hersteld"
+        return locale === "de" ? "Genesen" : "Hersteld"
       case "wacht-op-briefje":
-        return "Wacht op briefje"
+        return locale === "de" ? "Warten auf Attest" : "Wacht op briefje"
       case "afgerond":
-        return "Afgerond"
+        return locale === "de" ? "Abgeschlossen" : "Afgerond"
       default:
         return status
     }
@@ -278,7 +302,7 @@ export default function ZiektePage() {
     if (!record.certificate_valid_until) {
       return {
         color: "bg-red-100 text-red-800",
-        text: "Geen ziektebriefje",
+        text: locale === "de" ? "Kein Attest" : "Geen ziektebriefje",
         icon: AlertTriangle,
       }
     }
@@ -291,19 +315,23 @@ export default function ZiektePage() {
       if (daysUntilExpiry < 0) {
         return {
           color: "bg-red-100 text-red-800",
-          text: "Briefje verlopen",
+          text: locale === "de" ? "Attest abgelaufen" : "Briefje verlopen",
           icon: AlertTriangle,
         }
       } else if (daysUntilExpiry <= 7) {
         return {
           color: "bg-orange-100 text-orange-800",
-          text: `Briefje verloopt over ${daysUntilExpiry} dagen (${format(validUntil, "dd-MM-yyyy")})`,
+          text: locale === "de"
+            ? `Attest lauft uber ${daysUntilExpiry} Tage ab (${format(validUntil, "dd-MM-yyyy")})`
+            : `Briefje verloopt over ${daysUntilExpiry} dagen (${format(validUntil, "dd-MM-yyyy")})`,
           icon: AlertTriangle,
         }
       } else {
         return {
           color: "bg-green-100 text-green-800",
-          text: `Briefje geldig t/m ${format(validUntil, "dd-MM-yyyy")}`,
+          text: locale === "de"
+            ? `Attest gultig bis ${format(validUntil, "dd-MM-yyyy")}`
+            : `Briefje geldig t/m ${format(validUntil, "dd-MM-yyyy")}`,
           icon: CheckCircle,
         }
       }
@@ -311,7 +339,7 @@ export default function ZiektePage() {
 
     return {
       color: "bg-green-100 text-green-800",
-      text: "Briefje aanwezig",
+      text: locale === "de" ? "Attest vorhanden" : "Briefje aanwezig",
       icon: CheckCircle,
     }
   }
@@ -607,7 +635,7 @@ export default function ZiektePage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-gray-500">Start datum:</span>
+              <span className="text-gray-500">{uiText.startDate}</span>
               <div className="flex items-center space-x-1 mt-1">
                 <Calendar className="w-3 h-3 text-gray-400" />
                 <span className="font-medium">{format(new Date(record.start_date), "dd-MM-yyyy")}</span>
@@ -615,17 +643,17 @@ export default function ZiektePage() {
             </div>
             <div>
               <span className='text-gray-500'>{t('daysSick')}:</span>
-              <p className="font-medium mt-1">{record.daysCount} dagen</p>
+              <p className="font-medium mt-1">{record.daysCount} {uiText.days}</p>
             </div>
             <div>
-              <span className="text-gray-500">Salaris:</span>
+              <span className="text-gray-500">{uiText.salary}</span>
               <div className="flex items-center space-x-1 mt-1">
                 <Euro className="w-3 h-3 text-gray-400" />
                 <span className="font-medium">{record.salary_percentage || 100}%</span>
               </div>
             </div>
             <div>
-              <span className="text-gray-500">Betaald door:</span>
+              <span className="text-gray-500">{uiText.paidBy}</span>
               <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
             </div>
           </div>
@@ -652,7 +680,7 @@ export default function ZiektePage() {
           {/* Notities */}
           {record.notes && (
             <div className="pt-3 border-t">
-              <span className="text-gray-500 text-sm">Notities:</span>
+              <span className="text-gray-500 text-sm">{uiText.notes}</span>
               <p className="text-sm text-gray-700 mt-1 italic">{record.notes}</p>
             </div>
           )}
@@ -661,7 +689,7 @@ export default function ZiektePage() {
           <div className="pt-3 border-t space-y-2">
             <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
               <Paperclip className="w-3 h-3" />
-              Bijlagen
+              {uiText.attachments}
             </div>
             {getAttachmentsForSickLeave(record.id).length > 0 ? (
               <div className="space-y-1">
@@ -679,7 +707,7 @@ export default function ZiektePage() {
                         size="sm"
                         onClick={() => window.open(att.file_url, "_blank")}
                       >
-                        Openen
+                        {uiText.open}
                       </Button>
                       <Button
                         variant="outline"
@@ -694,7 +722,7 @@ export default function ZiektePage() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-500">Geen bijlagen</p>
+              <p className="text-xs text-gray-500">{uiText.noAttachments}</p>
             )}
             <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
               <input
@@ -710,8 +738,8 @@ export default function ZiektePage() {
               <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
                 <Paperclip className="w-3 h-3" />
                 {uploadingAttachmentForSickLeave === record.id
-                  ? "Uploaden..."
-                  : "Bijlage toevoegen"}
+                  ? uiText.uploading
+                  : uiText.addAttachment}
               </span>
             </label>
           </div>
@@ -731,13 +759,13 @@ export default function ZiektePage() {
           <BackButton href="/" />
           <div>
             <h1 className="text-2xl font-bold">{t('sickLeaveOverview')}</h1>
-            <p className="text-sm text-gray-600">Actieve ziekmeldingen en ziekte management</p>
+            <p className="text-sm text-gray-600">{uiText.subtitle}</p>
           </div>
         </div>
         <div className="flex items-center space-x-3">
           <Link href="/ziekte/nieuw" className="bg-green-600 text-white text-sm py-2 px-4 rounded-lg hover:bg-green-700 shadow flex items-center gap-2">
             <UserX className="w-4 h-4" />
-            Nieuwe ziekmelding
+            {uiText.newSickLeave}
           </Link>
         </div>
       </div>
@@ -773,11 +801,11 @@ export default function ZiektePage() {
         <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
           <TabsTrigger value="ziekte" className="text-base">
             <UserX className="w-4 h-4 mr-2" />
-            Ziekte
+            {uiText.tabSick}
           </TabsTrigger>
           <TabsTrigger value="terug-te-staan" className="text-base">
             <Heart className="w-4 h-4 mr-2" />
-            Terug te staan
+            {uiText.tabStandBack}
           </TabsTrigger>
         </TabsList>
 
@@ -789,8 +817,8 @@ export default function ZiektePage() {
         {/* Sectie 1: Geen ziektebriefje en verlopen ziektebriefjes */}
         <div className="space-y-4">
           <div className="pb-4 border-b">
-            <h2 className="text-lg font-semibold text-gray-900">Geen ziektebriefje en verlopen ziektebriefjes</h2>
-            <p className="text-sm text-gray-500 mt-1">{noCertificateOrExpired.length} {noCertificateOrExpired.length === 1 ? 'record' : 'records'}</p>
+            <h2 className="text-lg font-semibold text-gray-900">{uiText.sectionNoOrExpired}</h2>
+            <p className="text-sm text-gray-500 mt-1">{noCertificateOrExpired.length} {uiText.records}</p>
           </div>
           {noCertificateOrExpired.length > 0 ? (
             <div className="grid grid-cols-3 gap-6">
@@ -799,7 +827,7 @@ export default function ZiektePage() {
           ) : (
             <div className="text-center py-8 text-gray-400 text-sm">
               <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              <p>Geen records</p>
+              <p>{uiText.noRecords}</p>
             </div>
           )}
         </div>
@@ -807,8 +835,8 @@ export default function ZiektePage() {
         {/* Sectie 2: Wacht op briefje en bijna verlopen briefjes */}
         <div className="space-y-4">
           <div className="pb-4 border-b">
-            <h2 className="text-lg font-semibold text-orange-800">Wacht op briefje en bijna verlopen briefjes</h2>
-            <p className="text-sm text-gray-500 mt-1">{waitingOrExpiringSoon.length} {waitingOrExpiringSoon.length === 1 ? 'record' : 'records'}</p>
+            <h2 className="text-lg font-semibold text-orange-800">{uiText.sectionWaitingOrSoon}</h2>
+            <p className="text-sm text-gray-500 mt-1">{waitingOrExpiringSoon.length} {uiText.records}</p>
           </div>
           {waitingOrExpiringSoon.length > 0 ? (
             <div className="grid grid-cols-3 gap-6">
@@ -817,7 +845,7 @@ export default function ZiektePage() {
           ) : (
             <div className="text-center py-8 text-gray-400 text-sm">
               <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              <p>Geen records</p>
+              <p>{uiText.noRecords}</p>
             </div>
           )}
         </div>
@@ -825,8 +853,8 @@ export default function ZiektePage() {
         {/* Sectie 3: Geldige ziektebriefjes */}
         <div className="space-y-4">
           <div className="pb-4 border-b">
-            <h2 className="text-lg font-semibold text-green-800">Geldige ziektebriefjes</h2>
-            <p className="text-sm text-gray-500 mt-1">{validCertificates.length} {validCertificates.length === 1 ? 'record' : 'records'}</p>
+            <h2 className="text-lg font-semibold text-green-800">{uiText.sectionValid}</h2>
+            <p className="text-sm text-gray-500 mt-1">{validCertificates.length} {uiText.records}</p>
           </div>
           {validCertificates.length > 0 ? (
             <div className="grid grid-cols-3 gap-6">
@@ -835,7 +863,7 @@ export default function ZiektePage() {
           ) : (
             <div className="text-center py-8 text-gray-400 text-sm">
               <CheckCircle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              <p>Geen records</p>
+              <p>{uiText.noRecords}</p>
             </div>
           )}
         </div>
@@ -884,20 +912,20 @@ export default function ZiektePage() {
                 {/* {t('sickLeaveDetails')} */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <span className="text-gray-500">Start datum:</span>
+                    <span className="text-gray-500">{uiText.startDate}</span>
                     <p className="font-medium mt-1">{format(new Date(record.start_date), "dd-MM-yyyy")}</p>
               </div>
                 <div>
                     <span className='text-gray-500'>{t('daysSick')}:</span>
-                    <p className="font-medium mt-1">{record.daysCount} dagen</p>
+                    <p className="font-medium mt-1">{record.daysCount} {uiText.days}</p>
                 </div>
                 <div>
-                    <span className="text-gray-500">Salaris:</span>
+                    <span className="text-gray-500">{uiText.salary}</span>
                     <p className="font-medium mt-1">{record.salary_percentage || 100}%</p>
                 </div>
 
                 <div>
-                    <span className="text-gray-500">Betaald door:</span>
+                    <span className="text-gray-500">{uiText.paidBy}</span>
                     <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
                   </div>
                 </div>
@@ -924,7 +952,7 @@ export default function ZiektePage() {
                 {/* Notities */}
                 {record.notes && (
                   <div className="pt-2 border-t">
-                    <span className="text-gray-500 text-xs">Notities:</span>
+                    <span className="text-gray-500 text-xs">{uiText.notes}</span>
                     <p className="text-xs text-gray-700 mt-1 italic">{record.notes}</p>
             </div>
                 )}
@@ -933,7 +961,7 @@ export default function ZiektePage() {
                 <div className="pt-2 border-t space-y-2">
                   <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
                     <Paperclip className="w-3 h-3" />
-                    Bijlagen
+                    {uiText.attachments}
                   </div>
                   {getAttachmentsForSickLeave(record.id).length > 0 ? (
                     <div className="space-y-1">
@@ -951,7 +979,7 @@ export default function ZiektePage() {
                               size="sm"
                               onClick={() => window.open(att.file_url, "_blank")}
                             >
-                              Openen
+                              {uiText.open}
                             </Button>
                             <Button
                               variant="outline"
@@ -966,7 +994,7 @@ export default function ZiektePage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-500">Geen bijlagen</p>
+                    <p className="text-xs text-gray-500">{uiText.noAttachments}</p>
                   )}
                   <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
                     <input
@@ -982,8 +1010,8 @@ export default function ZiektePage() {
                     <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
                       <Paperclip className="w-3 h-3" />
                       {uploadingAttachmentForSickLeave === record.id
-                        ? "Uploaden..."
-                        : "Bijlage toevoegen"}
+                        ? uiText.uploading
+                        : uiText.addAttachment}
                     </span>
                   </label>
                 </div>
@@ -1011,7 +1039,7 @@ export default function ZiektePage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Ziekmelding bewerken</DialogTitle>
+            <DialogTitle>{uiText.editSickLeave}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -1091,7 +1119,7 @@ export default function ZiektePage() {
             {/* Bijlagen bij deze ziekmelding */}
             {editingRecord && (
               <div className="space-y-2 border-t pt-4">
-                <Label>Bijlagen</Label>
+                <Label>{uiText.attachments}</Label>
                 {getAttachmentsForSickLeave(editingRecord.id).length > 0 ? (
                   <div className="space-y-1">
                     {getAttachmentsForSickLeave(editingRecord.id).map((att) => (
@@ -1108,7 +1136,7 @@ export default function ZiektePage() {
                             size="sm"
                             onClick={() => window.open(att.file_url, "_blank")}
                           >
-                            Openen
+                            {uiText.open}
                           </Button>
                           <Button
                             variant="outline"
@@ -1123,7 +1151,7 @@ export default function ZiektePage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">Geen bijlagen</p>
+                  <p className="text-xs text-gray-500">{uiText.noAttachments}</p>
                 )}
                 <label className="inline-flex items-center gap-1 cursor-pointer text-sm text-gray-600">
                   <input
@@ -1139,8 +1167,8 @@ export default function ZiektePage() {
                   <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
                     <Paperclip className="w-3 h-3" />
                     {uploadingAttachmentForSickLeave === editingRecord.id
-                      ? "Uploaden..."
-                      : "Bijlage toevoegen"}
+                      ? uiText.uploading
+                      : uiText.addAttachment}
                   </span>
                 </label>
               </div>
@@ -1148,10 +1176,10 @@ export default function ZiektePage() {
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                Annuleren
+                {uiText.cancel}
               </Button>
               <Button onClick={handleSave}>
-                Opslaan
+                {uiText.save}
               </Button>
             </div>
 

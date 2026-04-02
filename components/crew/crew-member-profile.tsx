@@ -11,6 +11,7 @@ import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -89,6 +90,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   const { crew, ships, loading, error, updateCrew } = useSupabaseData()
   const { visits } = useShipVisits()
   const { t } = useLanguage()
+  const { role } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -747,11 +749,13 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         )}
         
         {/* Uit dienst knop */}
-        <div className="flex justify-end">
-          <Button variant="destructive" onClick={() => setShowOutDialog(true)}>
-            <Trash2 className="w-4 h-4 mr-2" /> Bemanningslid uit dienst
-          </Button>
-        </div>
+        {role === "admin_full" && (
+          <div className="flex justify-end">
+            <Button variant="destructive" onClick={() => setShowOutDialog(true)}>
+              <Trash2 className="w-4 h-4 mr-2" /> Bemanningslid uit dienst
+            </Button>
+          </div>
+        )}
 
         {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

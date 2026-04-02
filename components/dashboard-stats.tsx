@@ -7,6 +7,7 @@ import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertC
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
@@ -14,8 +15,20 @@ import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 export function DashboardStats() {
   const { crew, ships, sickLeave, loans, tasks, trips, incidents, officialWarnings } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
+  const { canAccessPath } = useAuth()
   const [loonBemerkingenCount, setLoonBemerkingenCount] = useState(0)
+  const uiText = {
+    notifications: locale === "de" ? "Benachrichtigungen" : locale === "fr" ? "Notifications" : "Meldingen",
+    open: locale === "de" ? "offen" : locale === "fr" ? "ouvert" : "open",
+    expiredCert: locale === "de" ? "Attest abgelaufen:" : locale === "fr" ? "certificat expiré:" : "verlopen briefje:",
+    almostExpired: locale === "de" ? "fast abgelaufen:" : locale === "fr" ? "presque expiré:" : "bijna verlopen:",
+    validCert: locale === "de" ? "gültiges Attest:" : locale === "fr" ? "certificat valide:" : "geldig briefje:",
+    companySwitch: locale === "de" ? "Firmenwechsel" : locale === "fr" ? "Changement d'entreprise" : "Firma Wisseling",
+    withAlert: locale === "de" ? "mit Warnsymbol" : locale === "fr" ? "avec alerte" : "met uitroepteken",
+    noAction: locale === "de" ? "Keine Aktion nötig" : locale === "fr" ? "Aucune action requise" : "Geen actie nodig",
+    payrollNotes: locale === "de" ? "Lohnbemerkungen" : locale === "fr" ? "Remarques salariales" : "Loon bemerkingen",
+  }
 
   const notificationCount = useMemo(() => {
     try {
@@ -329,7 +342,7 @@ export function DashboardStats() {
     <div className="space-y-4 mb-6">
       <div className="grid grid-cols-4 md:grid-cols-6 gap-2 md:gap-4 dashboard-tiles">
         {/* 0. Meldingen */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/meldingen") && <div className="aspect-[3/1]">
           <Link
             href="/meldingen"
             className={`h-full flex flex-col items-center justify-center rounded-lg p-2 md:p-4 text-center transition cursor-pointer border dashboard-tile ${
@@ -344,7 +357,7 @@ export function DashboardStats() {
               }`}
             >
               <Bell className={`w-3 h-3 md:w-4 md:h-4 ${notificationCount > 0 ? "text-white" : "text-gray-600"}`} />
-              Meldingen
+              {uiText.notifications}
             </div>
             <div
               className={`text-lg md:text-2xl font-bold dashboard-tile-number ${
@@ -354,21 +367,21 @@ export function DashboardStats() {
               {notificationCount}
             </div>
             <div className={`text-[10px] md:text-xs dashboard-tile-sub ${notificationCount > 0 ? "text-red-100" : "text-gray-600"}`}>
-              open
+              {uiText.open}
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 1. Totaal bemanningsleden */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/overzicht") && <div className="aspect-[3/1]">
           <Link href="/bemanning/overzicht" className="h-full flex flex-col items-center justify-center bg-blue-50 border border-blue-200 rounded-lg p-2 md:p-4 text-center hover:bg-blue-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-blue-800">{stats.totalCrew}</div>
             <div className='text-[10px] md:text-xs text-blue-700 mt-1'>{t('totalCrewMembers')}</div>
           </Link>
-        </div>
+        </div>}
 
         {/* 2. Nog openstaande reizen */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/aflossers") && <div className="aspect-[3/1]">
           <Link href="/bemanning/aflossers" className="h-full flex flex-col bg-green-50 border border-green-200 rounded-lg p-2 md:p-4 text-center hover:bg-green-100 transition cursor-pointer">
             <div className="text-[10px] md:text-sm font-semibold text-green-900 mb-1 md:mb-2 text-center">Nog openstaande reizen</div>
             <div className="text-[9px] md:text-xs text-green-700 space-y-0.5 md:space-y-1">
@@ -386,31 +399,31 @@ export function DashboardStats() {
               </div>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 3. Zieken */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/ziekte") && <div className="aspect-[3/1]">
           <Link href="/ziekte" className="h-full flex flex-col bg-red-50 border border-red-200 rounded-lg p-2 md:p-4 text-center hover:bg-red-100 transition cursor-pointer">
             <div className="text-[10px] md:text-sm font-semibold text-red-900 mb-1 md:mb-2 text-center">{t('sickMembers')}</div>
             <div className="text-[9px] md:text-xs text-red-700 space-y-0.5 md:space-y-1">
               <div className="flex justify-between">
-                <span>verlopen briefje:</span>
+                <span>{uiText.expiredCert}</span>
                 <span className="font-semibold text-red-900">{stats.ziekenStats.verlopenBriefje}</span>
               </div>
               <div className="flex justify-between">
-                <span>bijna verlopen:</span>
+                <span>{uiText.almostExpired}</span>
                 <span className="font-semibold text-red-900">{stats.ziekenStats.bijnaVerlopen}</span>
               </div>
               <div className="flex justify-between">
-                <span>geldig briefje:</span>
+                <span>{uiText.validCert}</span>
                 <span className="font-semibold text-red-900">{stats.ziekenStats.geldigBriefje}</span>
               </div>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 4. Nieuw personeel */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/nog-in-te-delen") && <div className="aspect-[3/1]">
           <Link href="/bemanning/nog-in-te-delen" className="h-full flex flex-col bg-gray-50 border border-gray-200 rounded-lg p-2 md:p-4 text-center hover:bg-gray-100 transition cursor-pointer">
             <div className="text-[10px] md:text-sm font-semibold text-gray-900 mb-1 md:mb-2 text-center">{t('newPersonnelMembers')}</div>
             <div className="text-[9px] md:text-xs text-gray-700 space-y-0.5 md:space-y-1">
@@ -428,10 +441,10 @@ export function DashboardStats() {
               </div>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 5. Studenten */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/studenten") && <div className="aspect-[3/1]">
           <Link href="/bemanning/studenten" className="h-full flex flex-col bg-purple-50 border border-purple-200 rounded-lg p-2 md:p-4 text-center hover:bg-purple-100 transition cursor-pointer">
             <div className="text-[10px] md:text-sm font-semibold text-purple-900 mb-1 md:mb-2 text-center">{t('students')}</div>
             <div className="text-[9px] md:text-xs text-purple-700 space-y-0.5 md:space-y-1">
@@ -445,10 +458,10 @@ export function DashboardStats() {
               </div>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 6. Taken */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/taken") && <div className="aspect-[3/1]">
           <Link href="/taken" className="h-full flex flex-col items-center justify-center bg-amber-50 border border-amber-200 rounded-lg p-2 md:p-4 text-center hover:bg-amber-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-amber-800">{tasksCount}</div>
             <div className='text-[10px] md:text-xs text-amber-700 mt-1 flex items-center justify-center gap-1'>
@@ -456,10 +469,10 @@ export function DashboardStats() {
               <span>Taken</span>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 7. Scheepsbezoeken */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/schepen/bezoeken") && <div className="aspect-[3/1]">
           <Link href="/schepen/bezoeken" className="h-full flex flex-col items-center justify-center bg-indigo-50 border border-indigo-200 rounded-lg p-2 md:p-4 text-center hover:bg-indigo-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-indigo-800">{stats.scheepsbezoeken}</div>
             <div className='text-[10px] md:text-xs text-indigo-700 mt-1 flex items-center justify-center gap-1'>
@@ -467,10 +480,10 @@ export function DashboardStats() {
               <span>Scheepsbezoeken</span>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 8. Medische keuringen */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/medische-keuringen") && <div className="aspect-[3/1]">
           <Link href="/bemanning/medische-keuringen" className="h-full flex flex-col items-center justify-center bg-teal-50 border border-teal-200 rounded-lg p-2 md:p-4 text-center hover:bg-teal-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-teal-800">{stats.medischeKeuringen}</div>
             <div className='text-[10px] md:text-xs text-teal-700 mt-1 flex items-center justify-center gap-1'>
@@ -478,10 +491,10 @@ export function DashboardStats() {
               <span>Medische Keuringen</span>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 9. Lopende incidenten */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/incidenten") && <div className="aspect-[3/1]">
           <Link href="/incidenten" className="h-full flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-lg p-2 md:p-4 text-center hover:bg-rose-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-rose-800">{openIncidentsCount}</div>
             <div className='text-[10px] md:text-xs text-rose-700 mt-1 flex items-center justify-center gap-1'>
@@ -489,50 +502,50 @@ export function DashboardStats() {
               <span>Lopende Incidenten</span>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 10. Openstaande leningen */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/leningen") && <div className="aspect-[3/1]">
           <Link href="/bemanning/leningen" className="h-full flex flex-col items-center justify-center bg-yellow-50 border border-yellow-200 rounded-lg p-2 md:p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-yellow-800">{stats.openLeningen}</div>
             <div className='text-[10px] md:text-xs text-yellow-700 mt-1'>{t('outstandingLoans')}</div>
           </Link>
-        </div>
+        </div>}
 
         {/* 11. Oud medewerkers */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/oude-bemanningsleden") && <div className="aspect-[3/1]">
           <Link href="/bemanning/oude-bemanningsleden" className="h-full flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-lg p-2 md:p-4 text-center hover:bg-slate-100 transition cursor-pointer">
             <div className="text-lg md:text-2xl font-bold text-slate-800">{stats.oudMedewerkers}</div>
             <div className='text-[10px] md:text-xs text-slate-700 mt-1'>{t('oldEmployees')}</div>
           </Link>
-        </div>
+        </div>}
 
         {/* 12. Firma Wisseling */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/firma-wisseling") && <div className="aspect-[3/1]">
           <Link href="/firma-wisseling" className="h-full flex flex-col bg-orange-50 border border-orange-200 rounded-lg p-2 md:p-4 text-center hover:bg-orange-100 transition cursor-pointer">
             <div className="text-[10px] md:text-sm font-semibold text-orange-900 mb-1 md:mb-2 text-center flex items-center justify-center gap-1">
               <Building2 className="w-2.5 h-2.5 md:w-3 md:h-3" />
-              <span>Firma Wisseling</span>
+              <span>{uiText.companySwitch}</span>
             </div>
             {stats.firmaWisseling > 0 && (
               <div className="text-[9px] md:text-xs text-orange-700 space-y-0.5 md:space-y-1">
                 <div className="flex items-center justify-center gap-1">
                   <AlertCircle className="w-3 h-3 md:w-3.5 md:h-3.5 text-orange-600" />
                   <span className="font-semibold text-orange-900">{stats.firmaWisseling}</span>
-                  <span>met uitroepteken</span>
+                  <span>{uiText.withAlert}</span>
                 </div>
               </div>
             )}
             {stats.firmaWisseling === 0 && (
               <div className="text-[9px] md:text-xs text-orange-600 mt-1">
-                Geen actie nodig
+                {uiText.noAction}
               </div>
             )}
           </Link>
-        </div>
+        </div>}
 
         {/* 13. Officiële waarschuwingen */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/officiele-waarschuwingen") && <div className="aspect-[3/1]">
           <Link
             href="/bemanning/officiele-waarschuwingen"
             className="h-full flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-lg p-2 md:p-4 text-center hover:bg-rose-100 transition cursor-pointer"
@@ -543,20 +556,20 @@ export function DashboardStats() {
               <span>Waarschuwingen</span>
             </div>
           </Link>
-        </div>
+        </div>}
 
         {/* 14. Loon bemerkingen */}
-        <div className="aspect-[3/1]">
+        {canAccessPath("/bemanning/loon-bemerkingen") && <div className="aspect-[3/1]">
           <Link
             href="/bemanning/loon-bemerkingen"
             className="h-full flex flex-col items-center justify-center bg-cyan-50 border border-cyan-200 rounded-lg p-2 md:p-4 text-center hover:bg-cyan-100 transition cursor-pointer"
           >
             <div className="text-lg md:text-2xl font-bold text-cyan-800">{loonBemerkingenCount}</div>
             <div className="text-[10px] md:text-xs text-cyan-700 mt-1">
-              Loon bemerkingen
+              {uiText.payrollNotes}
             </div>
           </Link>
-        </div>
+        </div>}
       </div>
     </div>
   )

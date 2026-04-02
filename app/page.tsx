@@ -14,6 +14,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/AuthContext"
 import { useState, useEffect, useMemo } from "react"
 import { format, isToday, isPast, startOfDay } from "date-fns"
 import Link from "next/link"
@@ -177,6 +178,7 @@ export default function Dashboard() {
 function DashboardContent() {
   const [mounted, setMounted] = useState(false);
   const [expandedShortageShipId, setExpandedShortageShipId] = useState<string | null>(null)
+  const { role } = useAuth()
   const { t } = useLanguage();
   const { toast } = useToast();
   
@@ -566,11 +568,11 @@ function DashboardContent() {
           {/* Stats */}
           <DashboardStats />
 
-          {/* Snelle acties als knoppen direct onder de kaarten */}
-          <CrewQuickActions />
+          {/* Snelle acties alleen voor full admins */}
+          {role === "admin_full" && <CrewQuickActions />}
 
-          {/* Uitgelicht: schepen met toekomstig tekort */}
-          <div>
+          {/* Uitgelicht: schepen met toekomstig tekort (alleen full admins) */}
+          {role === "admin_full" && <div>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Tekorten in de toekomst</h3>
               <Badge className="bg-red-100 text-red-800 border border-red-200">
@@ -645,7 +647,7 @@ function DashboardContent() {
                 ))}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Schepen overzicht */}
           <ShipOverview />

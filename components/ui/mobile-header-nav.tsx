@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function MobileHeaderNav() {
   const pathname = usePathname();
   const { t } = useLanguage();
+  const { canAccessPath } = useAuth();
   
   const navItems = [
     { href: "/", label: t('dashboard'), icon: "🏠" },
@@ -19,10 +21,12 @@ export function MobileHeaderNav() {
     { href: "/documenten", label: t('documents'), icon: "📄" },
     { href: "/ziekte", label: t('sick'), icon: "🏥" },
   ];
+  const visibleItems = navItems.filter((item) => canAccessPath(item.href));
+
   return (
     <nav className="block md:hidden sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
       <div className="flex justify-between items-center px-2 py-2">
-        {navItems.map((item) => (
+        {visibleItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}

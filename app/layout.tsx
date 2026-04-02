@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Link from "next/link"
 import { DashboardHeader } from "@/components/dashboard-header"
+import { AppAccessGate } from "@/components/AppAccessGate"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
@@ -49,10 +50,12 @@ export default function RootLayout({
           <AuthProvider>
             <LanguageProvider>
               <DashboardSearchProvider>
-                <DashboardHeader />
-                <div className="app-container">
-                  {children}
-                </div>
+                <AppAccessGate>
+                  <DashboardHeader />
+                  <div className="app-container">
+                    {children}
+                  </div>
+                </AppAccessGate>
               </DashboardSearchProvider>
               <Toaster />
             </LanguageProvider>

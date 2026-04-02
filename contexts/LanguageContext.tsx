@@ -20,12 +20,20 @@ interface LanguageProviderProps {
 export function LanguageProvider({ children }: LanguageProviderProps) {
   const [locale, setLocaleState] = useState<Locale>('nl')
   const { user } = useAuth()
+  const userEmail = (user?.email || "").trim().toLowerCase()
+  const isTanja = userEmail === "tanja@bamalite.com"
 
   // Load preferred locale from Supabase user metadata
   useEffect(() => {
     const loadLocale = async () => {
       if (!user) return
       try {
+        if (isTanja) {
+          setLocaleState('de')
+          await supabase.auth.updateUser({ data: { locale: 'de' } })
+          return
+        }
+
         const { data } = await supabase.auth.getUser()
         const savedLocale = (data.user?.user_metadata as any)?.locale as Locale | undefined
         if (savedLocale && ['nl', 'de', 'fr'].includes(savedLocale)) {
@@ -36,9 +44,13 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
       }
     }
     loadLocale()
-  }, [user])
+  }, [user, isTanja])
 
   const setLocale = async (newLocale: Locale) => {
+    if (isTanja) {
+      setLocaleState('de')
+      return
+    }
     setLocaleState(newLocale)
     if (user) {
       try {

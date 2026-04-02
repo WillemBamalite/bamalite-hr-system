@@ -6,9 +6,11 @@ import { Plus, UserPlus, Ship, AlertTriangle, Calendar } from "lucide-react"
 import Link from "next/link"
 import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { useAuth } from "@/contexts/AuthContext"
 
 export function CrewQuickActions() {
   const { t } = useLanguage();
+  const { canAccessPath } = useAuth();
 
   const quickActions = [
     {
@@ -35,6 +37,8 @@ export function CrewQuickActions() {
 
   ]
 
+  const visibleQuickActions = quickActions.filter((action) => canAccessPath(action.href))
+
   return (
     <Card className="shadow-sm">
       <CardHeader className="py-3">
@@ -45,7 +49,7 @@ export function CrewQuickActions() {
       </CardHeader>
       <CardContent className="pt-0">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {quickActions.map((action) => (
+          {visibleQuickActions.map((action) => (
             <Link key={action.title} href={action.href} className="block group">
               <div className="border rounded-lg p-3 bg-white hover:bg-gray-50 transition-colors cursor-pointer flex items-center gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200">

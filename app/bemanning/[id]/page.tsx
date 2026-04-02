@@ -11,6 +11,7 @@ import { CrewMemberPrint } from "@/components/crew/crew-member-print"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { BackButton } from "@/components/ui/back-button"
+import { useAuth } from "@/contexts/AuthContext"
 
 interface Props {
   params: Promise<{
@@ -21,6 +22,7 @@ interface Props {
 function BemanningslidContent({ params }: Props) {
   const resolvedParams = use(params);
   const searchParams = useSearchParams();
+  const { role } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
   const [autoEdit, setAutoEdit] = useState(false);
 
@@ -70,8 +72,12 @@ function BemanningslidContent({ params }: Props) {
 
             {/* Sidebar */}
             <div className="space-y-6">
-              <CrewMemberStatusChanges crewMemberId={resolvedParams.id} />
-              <CrewMemberShipHistory crewMemberId={resolvedParams.id} />
+              {role === "admin_full" && (
+                <>
+                  <CrewMemberStatusChanges crewMemberId={resolvedParams.id} />
+                  <CrewMemberShipHistory crewMemberId={resolvedParams.id} />
+                </>
+              )}
             </div>
           </div>
 

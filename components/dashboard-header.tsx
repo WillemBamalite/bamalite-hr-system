@@ -22,8 +22,8 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({}: DashboardHeaderProps = {}) {
-  const { user, signOut } = useAuth()
-  const { locale, setLocale, t } = useLanguage()
+  const { user, role, signOut } = useAuth()
+  const { locale, t } = useLanguage()
   const pathname = usePathname()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
@@ -69,6 +69,19 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
       case 'fr': return fr
       default: return nl
     }
+  }
+
+  const uiText = {
+    subtitle: locale === "de" ? "Verwaltung von Besatzung und Schiffen" : locale === "fr" ? "Gestion équipage et navires" : "Beheer bemanning en schepen",
+    searchPlaceholder: locale === "de" ? "Auf Seite suchen..." : locale === "fr" ? "Rechercher sur la page..." : "Zoek in pagina...",
+    previousResult: locale === "de" ? "Vorheriges Ergebnis" : locale === "fr" ? "Résultat précédent" : "Vorige resultaat",
+    nextResult: locale === "de" ? "Nächstes Ergebnis" : locale === "fr" ? "Résultat suivant" : "Volgende resultaat",
+    hitSingle: locale === "de" ? "Treffer" : locale === "fr" ? "résultat" : "treffer",
+    hitPlural: locale === "de" ? "Treffer" : locale === "fr" ? "résultats" : "treffers",
+    loading: locale === "de" ? "Laden..." : locale === "fr" ? "Chargement..." : "Laden...",
+    notifications: locale === "de" ? "Benachrichtigungen" : locale === "fr" ? "Notifications" : "Meldingen",
+    newTask: locale === "de" ? "Neue Aufgabe" : locale === "fr" ? "Nouvelle tâche" : "Nieuwe taak",
+    print: locale === "de" ? "Drucken" : locale === "fr" ? "Imprimer" : "Print",
   }
   
   // Don't show header on login page
@@ -121,7 +134,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Bemanningslijst</h1>
-            <p className="text-gray-600">Beheer bemanning en schepen</p>
+            <p className="text-gray-600">{uiText.subtitle}</p>
           </div>
         </Link>
 
@@ -133,9 +146,9 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
               onKeyDown={(e) => {
                 if (e.key === "Enter") runFind("next")
               }}
-              placeholder="Zoek in pagina..."
+              placeholder={uiText.searchPlaceholder}
               className="pl-8 w-full bg-white"
-              aria-label="Zoek in pagina"
+              aria-label={uiText.searchPlaceholder}
             />
             <Search className="w-4 h-4 text-gray-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -145,7 +158,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
             variant="outline"
             className="shrink-0"
             onClick={() => runFind("prev")}
-            title="Vorige resultaat"
+            title={uiText.previousResult}
           >
             <ChevronUp className="w-4 h-4" />
           </Button>
@@ -154,13 +167,13 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
             size="sm"
             className="shrink-0 bg-gray-900 text-white hover:bg-gray-800"
             onClick={() => runFind("next")}
-            title="Volgende resultaat"
+            title={uiText.nextResult}
           >
             <ChevronDown className="w-4 h-4" />
           </Button>
           <div className="text-xs text-gray-600 whitespace-nowrap min-w-[74px] text-right">
             {headerFindQuery.trim()
-              ? `${headerFindMatches} ${headerFindMatches === 1 ? "treffer" : "treffers"}`
+              ? `${headerFindMatches} ${headerFindMatches === 1 ? uiText.hitSingle : uiText.hitPlural}`
               : ""}
           </div>
         </div>
@@ -173,7 +186,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
           <Calendar className="w-5 h-5 text-blue-600" />
           <div className="text-center">
             <div className="text-sm font-semibold text-gray-900">
-              {mounted ? format(currentTime, 'EEEE d MMMM yyyy', { locale: nl }) : 'Laden...'}
+              {mounted ? format(currentTime, 'EEEE d MMMM yyyy', { locale: getDateLocale() }) : uiText.loading}
             </div>
             <div className="text-xs text-gray-600">
               {mounted ? format(currentTime, 'HH:mm:ss') : '--:--:--'}
@@ -184,7 +197,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
             <div className="flex items-center gap-3 dashboard-header-actions-row">
-              <Link href="/meldingen" className="relative">
+              {role === "admin_full" && <Link href="/meldingen" className="relative">
                 <Button
                   variant="outline"
                   size="sm"
@@ -195,25 +208,25 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
                   }`}
                 >
                   <Bell className="w-4 h-4" />
-                  Meldingen
+                  {uiText.notifications}
                 </Button>
                 {notificationCount > 0 && (
                   <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
                     {notificationCount > 99 ? "99+" : notificationCount}
                   </span>
                 )}
-              </Link>
+              </Link>}
               {/* Snelknop: Nieuwe taak overal in de app */}
-              <Link href="/taken?newTask=1">
+              {role === "admin_full" && <Link href="/taken?newTask=1">
                 <Button
                   variant="default"
                   size="sm"
                   className="flex items-center gap-2"
                 >
                   <ListTodo className="w-4 h-4" />
-                  Nieuwe taak
+                  {uiText.newTask}
                 </Button>
-              </Link>
+              </Link>}
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
                 <User className="w-4 h-4 text-gray-600" />
                 <span className="text-sm text-gray-700">{user.email}</span>
@@ -225,7 +238,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
                 className="flex items-center gap-2 print-button"
               >
                 <Printer className="w-4 h-4" />
-                Print
+                {uiText.print}
               </Button>
               <Button
                 variant="outline"

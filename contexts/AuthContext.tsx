@@ -7,7 +7,9 @@ import { useRouter } from 'next/navigation'
 
 interface AuthContextType {
   user: User | null
+  role: "admin_full" | "limited_edit"
   loading: boolean
+  canAccessPath: (path: string) => boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signUp: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => Promise<void>
@@ -15,8 +17,75 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const ADMIN_EMAILS = new Set([
+  "leo@bamalite.com",
+  "bart@bamalite.com",
+  "jos@bamalite.com",
+  "willem@bamalite.com",
+])
+
+const LIMITED_EMAILS = new Set([
+  "tanja@bamalite.com",
+  "karina@bamalite.com",
+])
+
+const LIMITED_ALLOWED_EXACT = new Set([
+  "/",
+  "/schepen/overzicht",
+  "/bemanning/overzicht",
+  "/ziekte",
+  "/ziekte-history",
+  "/bemanning/leningen",
+  "/bemanning/loon-bemerkingen",
+  "/firma-wisseling",
+  "/bemanning/oude-bemanningsleden",
+])
+
+const LIMITED_ALLOWED_PREFIXES = [
+  "/schepen/overzicht",
+  "/ziekte",
+  "/bemanning/leningen",
+  "/firma-wisseling",
+]
+
+const LIMITED_BLOCKED_BEMANNING_SEGMENTS = new Set([
+  "aflossers",
+  "studenten",
+  "medische-keuringen",
+  "officiele-waarschuwingen",
+  "nog-in-te-delen",
+  "nieuw",
+  "print",
+  "rotatie-instellingen",
+  "rotatie-kalender",
+  "update",
+  "tekorten",
+])
+
+function resolveRole(email?: string | null): "admin_full" | "limited_edit" {
+  const e = (email || "").trim().toLowerCase()
+  if (ADMIN_EMAILS.has(e)) return "admin_full"
+  if (LIMITED_EMAILS.has(e)) return "limited_edit"
+  return "limited_edit"
+}
+
+function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string): boolean {
+  const normalized = path.split("?")[0]
+  if (normalized === "/login") return true
+  if (role === "admin_full") return true
+  if (LIMITED_ALLOWED_EXACT.has(normalized)) return true
+  // Allow crew profile pages like /bemanning/<id>, but keep blocked section pages closed.
+  const bemanningMatch = normalized.match(/^\/bemanning\/([^/]+)$/)
+  if (bemanningMatch) {
+    const segment = (bemanningMatch[1] || "").toLowerCase()
+    if (!LIMITED_BLOCKED_BEMANNING_SEGMENTS.has(segment)) return true
+  }
+  return LIMITED_ALLOWED_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [role, setRole] = useState<"admin_full" | "limited_edit">("limited_edit")
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -24,12 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check active sessions and sets the user
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
+      setRole(resolveRole(session?.user?.email))
       setLoading(false)
     })
 
     // Listen for changes on auth state (logged in, signed out, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      setRole(resolveRole(session?.user?.email))
       setLoading(false)
     })
 
@@ -61,11 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut()
+    setRole("limited_edit")
     router.push('/login')
   }
 
+  const canAccessPath = (path: string) => canAccessPathForRole(role, path)
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, role, loading, canAccessPath, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   )

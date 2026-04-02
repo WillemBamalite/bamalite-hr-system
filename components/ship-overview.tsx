@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
 import { useDashboardSearch } from "@/contexts/DashboardSearchContext"
 
@@ -66,11 +67,32 @@ const sortCrewByRank = (crew: any[]) => {
 
 export function ShipOverview() {
   const { ships, crew, sickLeave, trips, tasks, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag, loadData } = useSupabaseData()
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
+  const { role } = useAuth()
   const { searchQuery, setSearchQuery, setSearchRunner } = useDashboardSearch()
   const [mounted, setMounted] = useState(false);
   const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null)
   const [sailingRegimeByShipId, setSailingRegimeByShipId] = useState<Record<string, SailingRegime>>({})
+  const uiText = {
+    shipsOverview: locale === "de" ? "Schiffsübersicht" : locale === "fr" ? "Aperçu des navires" : "Schepen Overzicht",
+    noShips: locale === "de" ? "Noch keine Schiffe hinzugefügt" : locale === "fr" ? "Aucun navire ajouté" : "Nog geen schepen toegevoegd",
+    shipSingle: locale === "de" ? "Schiff" : locale === "fr" ? "navire" : "schip",
+    shipPlural: locale === "de" ? "Schiffe" : locale === "fr" ? "navires" : "schepen",
+    openTasks: locale === "de" ? "Offene Aufgaben" : locale === "fr" ? "Tâches ouvertes" : "Openstaande taken",
+    priority: locale === "de" ? "Priorität" : locale === "fr" ? "Priorité" : "Prioriteit",
+    assignedTo: locale === "de" ? "Zugewiesen an" : locale === "fr" ? "Assigné à" : "Toegewezen aan",
+    deadline: locale === "de" ? "Frist" : locale === "fr" ? "Échéance" : "Deadline",
+    sailingRegime: locale === "de" ? "Fahrregime" : locale === "fr" ? "Régime de navigation" : "Vaarregime",
+    addDummy: locale === "de" ? "Dummy hinzufügen" : locale === "fr" ? "Ajouter un dummy" : "Dummy toevoegen",
+    crew: locale === "de" ? "Besatzung:" : locale === "fr" ? "Équipage :" : "Bemanning:",
+    onBoard: locale === "de" ? "An Bord" : locale === "fr" ? "À bord" : "Aan Boord",
+    atHome: locale === "de" ? "Zuhause" : locale === "fr" ? "À la maison" : "Thuis",
+    sick: locale === "de" ? "Krank" : locale === "fr" ? "Malade" : "Ziek",
+    sickInfo: locale === "de" ? "Krankheitsinfo:" : locale === "fr" ? "Infos maladie :" : "Ziekinformatie:",
+    sickSince: locale === "de" ? "Krank seit" : locale === "fr" ? "Malade depuis" : "Ziek vanaf",
+    addDummyTitle: locale === "de" ? "Dummy hinzufügen" : locale === "fr" ? "Ajouter un dummy" : "Dummy toevoegen",
+    creating: locale === "de" ? "Erstellen..." : locale === "fr" ? "Création..." : "Aanmaken...",
+  }
   
   // Notes functionality state
   const [notesDialog, setNotesDialog] = useState(false);
@@ -813,7 +835,7 @@ export function ShipOverview() {
                     </PopoverTrigger>
                     <PopoverContent side="right" className="max-w-sm">
                       <div className="space-y-2">
-                        <div className="font-semibold text-sm mb-2">Openstaande taken ({crewTasks.length}):</div>
+                        <div className="font-semibold text-sm mb-2">{uiText.openTasks} ({crewTasks.length}):</div>
                         {crewTasks.map((task: any) => (
                           <Link 
                             key={task.id} 
@@ -822,13 +844,13 @@ export function ShipOverview() {
                           >
                             <div className="font-medium">{task.title}</div>
                             {task.priority && (
-                              <div className="text-gray-600">Prioriteit: {task.priority}</div>
+                              <div className="text-gray-600">{uiText.priority}: {task.priority}</div>
                             )}
                             {task.assigned_to && (
-                              <div className="text-gray-600">Toegewezen aan: {task.assigned_to}</div>
+                              <div className="text-gray-600">{uiText.assignedTo}: {task.assigned_to}</div>
                             )}
                             {task.deadline && (
-                              <div className="text-gray-600">Deadline: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
+                              <div className="text-gray-600">{uiText.deadline}: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
                             )}
                           </Link>
                         ))}
@@ -936,9 +958,9 @@ export function ShipOverview() {
             {/* Ziekinformatie voor zieke bemanningsleden */}
             {sickInfo && (
               <div className="mt-2 space-y-1 border-t pt-2">
-                <div className="text-xs text-red-600 font-medium">Ziekinformatie:</div>
+                <div className="text-xs text-red-600 font-medium">{uiText.sickInfo}</div>
                 <div className="text-xs text-gray-600">
-                  Ziek vanaf: {format(new Date(sickInfo.start_date), 'dd-MM-yyyy')}
+                  {uiText.sickSince}: {format(new Date(sickInfo.start_date), 'dd-MM-yyyy')}
                 </div>
                 <div className="text-xs text-gray-600">
                   {sickInfo.certificate_valid_until ? (
@@ -1657,14 +1679,14 @@ export function ShipOverview() {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Ship className="w-5 h-5" />
-            <span>Schepen Overzicht</span>
+            <span>{uiText.shipsOverview}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {ships.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Ship className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>Nog geen schepen toegevoegd</p>
+              <p>{uiText.noShips}</p>
             </div>
           ) : (
             <div className="space-y-8">
@@ -1687,7 +1709,7 @@ export function ShipOverview() {
                     {/* Company Header */}
                     <div className="border-b pb-3 text-center company-header">
                       <h3 className="text-2xl font-bold text-gray-900">{company}</h3>
-                      <p className="text-sm text-gray-600 mt-1">{companyShips.length} {companyShips.length === 1 ? 'schip' : 'schepen'}</p>
+                      <p className="text-sm text-gray-600 mt-1">{companyShips.length} {companyShips.length === 1 ? uiText.shipSingle : uiText.shipPlural}</p>
                     </div>
 
                     {/* Ships for this company */}
@@ -1775,7 +1797,7 @@ export function ShipOverview() {
                                         </PopoverTrigger>
                                         <PopoverContent side="right" className="max-w-sm">
                                           <div className="space-y-2">
-                                            <div className="font-semibold text-sm mb-2">Openstaande taken ({shipTasks.length}):</div>
+                                            <div className="font-semibold text-sm mb-2">{uiText.openTasks} ({shipTasks.length}):</div>
                                             {shipTasks.map((task: any) => (
                                               <Link 
                                                 key={task.id} 
@@ -1784,13 +1806,13 @@ export function ShipOverview() {
                                               >
                                                 <div className="font-medium">{task.title}</div>
                                                 {task.priority && (
-                                                  <div className="text-gray-600">Prioriteit: {task.priority}</div>
+                                                  <div className="text-gray-600">{uiText.priority}: {task.priority}</div>
                                                 )}
                                                 {task.assigned_to && (
-                                                  <div className="text-gray-600">Toegewezen aan: {task.assigned_to}</div>
+                                                  <div className="text-gray-600">{uiText.assignedTo}: {task.assigned_to}</div>
                                                 )}
                                                 {task.deadline && (
-                                                  <div className="text-gray-600">Deadline: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
+                                                  <div className="text-gray-600">{uiText.deadline}: {format(new Date(task.deadline), "dd-MM-yyyy")}</div>
                                                 )}
                                               </Link>
                                             ))}
@@ -1801,68 +1823,70 @@ export function ShipOverview() {
                                   })()}
                                 </div>
                               </div>
-                              <div className="flex items-center space-x-2">
-                                <div className="flex items-center gap-2 pr-2">
-                                  <span className="text-xs text-gray-500">Vaarregime</span>
-                                  <Select
-                                    value={sailingRegimeByShipId[ship.id] || "A1"}
-                                    onValueChange={(value) =>
-                                      setSailingRegimeByShipId((prev) => ({
-                                        ...(prev || {}),
-                                        [ship.id]: value as SailingRegime,
-                                      }))
-                                    }
+                              {role === "admin_full" && (
+                                <div className="flex items-center space-x-2">
+                                  <div className="flex items-center gap-2 pr-2">
+                                    <span className="text-xs text-gray-500">{uiText.sailingRegime}</span>
+                                    <Select
+                                      value={sailingRegimeByShipId[ship.id] || "A1"}
+                                      onValueChange={(value) =>
+                                        setSailingRegimeByShipId((prev) => ({
+                                          ...(prev || {}),
+                                          [ship.id]: value as SailingRegime,
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger className="h-7 w-20 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="A1">A1</SelectItem>
+                                        <SelectItem value="A2">A2</SelectItem>
+                                        <SelectItem value="B">B</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setDummyDialog({
+                                        isOpen: true,
+                                        shipId: ship.id,
+                                        shipName: ship.name
+                                      });
+                                      setDummyForm({
+                                        sourceMode: "empty",
+                                        sourceCrewId: "",
+                                        expectedStartDate: "",
+                                        abDesignation: "",
+                                        position: "",
+                                        nationality: "",
+                                        diplomas: "",
+                                        notes: ""
+                                      });
+                                    }}
+                                    className="text-blue-600 hover:text-blue-700"
                                   >
-                                    <SelectTrigger className="h-7 w-20 text-xs">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="A1">A1</SelectItem>
-                                      <SelectItem value="A2">A2</SelectItem>
-                                      <SelectItem value="B">B</SelectItem>
-                                    </SelectContent>
-                                  </Select>
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    {uiText.addDummy}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteShip(ship.id, ship.name)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
                                 </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setDummyDialog({
-                                      isOpen: true,
-                                      shipId: ship.id,
-                                      shipName: ship.name
-                                    });
-                                    setDummyForm({
-                                      sourceMode: "empty",
-                                      sourceCrewId: "",
-                                      expectedStartDate: "",
-                                      abDesignation: "",
-                                      position: "",
-                                      nationality: "",
-                                      diplomas: "",
-                                      notes: ""
-                                    });
-                                  }}
-                                  className="text-blue-600 hover:text-blue-700"
-                                >
-                                  <Plus className="w-4 h-4 mr-1" />
-                                  Dummy toevoegen
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteShip(ship.id, ship.name)}
-                                  className="text-red-600 hover:text-red-700"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
+                              )}
                             </div>
 
                             {/* Crew List - Organized by Status */}
                             {shipCrew.length > 0 ? (
                               <div className="space-y-4 mt-6">
-                                <h4 className="font-medium text-gray-700">Bemanning:</h4>
+                                <h4 className="font-medium text-gray-700">{uiText.crew}</h4>
                                 
                                 {/* Status Columns - desktop is 3 cols; on mobile override via CSS to also show 3 */}
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 ship-status-grid">
@@ -1870,7 +1894,7 @@ export function ShipOverview() {
                                   <div className="space-y-3">
                                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
                                       <CheckCircle className="w-4 h-4 text-green-600" />
-                                      <h5 className="font-medium text-green-700">Aan Boord</h5>
+                                      <h5 className="font-medium text-green-700">{uiText.onBoard}</h5>
                                       <Badge className="bg-green-100 text-green-800 text-xs">
                                         {shipCrew.filter((member: any) => {
                                           // Dummy's en kopieen met location 'aan-boord'
@@ -1952,7 +1976,7 @@ export function ShipOverview() {
                                   <div className="space-y-3">
                                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
                                       <Clock className="w-4 h-4 text-blue-600" />
-                                      <h5 className="font-medium text-blue-700">Thuis</h5>
+                                      <h5 className="font-medium text-blue-700">{uiText.atHome}</h5>
                                       <Badge className="bg-blue-100 text-blue-800 text-xs">
                                         {shipCrew.filter((member: any) => {
                                           // Dummy's en kopieen met location 'thuis' (of niet ingesteld, default naar thuis)
@@ -2031,7 +2055,7 @@ export function ShipOverview() {
                                   <div className="space-y-3">
                                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
                                       <UserX className="w-4 h-4 text-red-600" />
-                                      <h5 className="font-medium text-red-700">Ziek</h5>
+                                      <h5 className="font-medium text-red-700">{uiText.sick}</h5>
                                       <Badge className="bg-red-100 text-red-800 text-xs">
                                         {shipCrew.filter((member: any) => member.status === "ziek").length}
                                       </Badge>
@@ -2172,7 +2196,7 @@ export function ShipOverview() {
                   <div className="space-y-3">
                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
                       <UserX className="w-4 h-4 text-red-600" />
-                      <h5 className="font-medium text-red-700">Ziek</h5>
+                      <h5 className="font-medium text-red-700">{uiText.sick}</h5>
                       <Badge className="bg-red-100 text-red-800 text-xs">
                         {overigZiek.length}
                       </Badge>
@@ -2249,7 +2273,7 @@ export function ShipOverview() {
       <Dialog open={dummyDialog.isOpen} onOpenChange={(open) => setDummyDialog(prev => ({ ...prev, isOpen: open }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dummy toevoegen - {dummyDialog.shipName}</DialogTitle>
+            <DialogTitle>{uiText.addDummyTitle} - {dummyDialog.shipName}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -2418,7 +2442,7 @@ export function ShipOverview() {
                 (dummyForm.sourceMode === "copy" && !dummyForm.sourceCrewId)
               }
             >
-              {isCreatingDummy ? 'Aanmaken...' : 'Dummy toevoegen'}
+              {isCreatingDummy ? uiText.creating : uiText.addDummy}
             </Button>
           </div>
         </DialogContent>
