@@ -11,6 +11,10 @@
     {
       "path": "/api/agenda-sync",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/recruitment-sync",
+      "schedule": "* * * * *"
     }
   ]
 }

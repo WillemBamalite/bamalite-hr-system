@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { sendRecruitmentAckEmail } from "@/lib/recruitment-ack-email"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -432,6 +433,16 @@ async function processRecruitmentMails(
 
           if (!dryRun) {
             await insertCandidate(candidate)
+            if (candidate.email) {
+              const ackResult = await sendRecruitmentAckEmail({
+                firstName: candidate.firstName,
+                email: candidate.email,
+                nationality: candidate.nationality,
+              })
+              if (!ackResult.success) {
+                console.warn("Ontvangstmail kon niet worden verzonden:", ackResult.error)
+              }
+            }
           }
           stats.created += 1
           if (debug) {

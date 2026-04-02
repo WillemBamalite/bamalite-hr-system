@@ -723,6 +723,26 @@ export default function NogInTeDelenPage() {
       
       await addCrew(newCandidate);
 
+      // Verstuur automatisch ontvangstmail aan kandidaat (NL/BE=NL, anders DE).
+      // Deze call mag kandidaat-aanmaak niet blokkeren.
+      if (newCandidate.email) {
+        try {
+          await fetch("/api/send-recruitment-ack", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              firstName: newCandidate.first_name,
+              email: newCandidate.email,
+              nationality: newCandidate.nationality,
+            }),
+          });
+        } catch (mailErr) {
+          console.warn("Ontvangstmail versturen mislukt:", mailErr);
+        }
+      }
+
       // Candidate added - no alert needed
       
       setShowNewCandidateDialog(false);
