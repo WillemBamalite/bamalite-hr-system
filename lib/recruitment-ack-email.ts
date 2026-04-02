@@ -100,7 +100,7 @@ export async function sendRecruitmentAckEmail(params: {
     })
 
     await transporter.sendMail({
-      from: gmailUser,
+      from: `Bamalite S.A. <${gmailUser}>`,
       replyTo: gmailUser,
       to: params.email,
       subject: template.subject,
