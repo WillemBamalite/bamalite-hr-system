@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
-import { sendRecruitmentAckEmail } from "@/lib/recruitment-ack-email"
+import {
+  appendRecruitmentAckMarker,
+  hasRecruitmentAckMarker,
+  sendRecruitmentAckEmail,
+} from "@/lib/recruitment-ack-email"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -57,8 +61,78 @@ function normalizeText(input: string): string {
     .trim()
 }
 
+function htmlToReadableText(html: string): string {
+  return html
+    .replace(/\r/g, "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*\/p\s*>/gi, "\n")
+    .replace(/<\s*\/div\s*>/gi, "\n")
+    .replace(/<\s*\/li\s*>/gi, "\n")
+    .replace(/<\s*\/tr\s*>/gi, "\n")
+    .replace(/<\s*\/td\s*>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/gi, "\"")
+}
+
+function extractBestMailText(parsed: any): string {
+  const textRaw = typeof parsed?.text === "string" ? parsed.text : ""
+  const textNormalized = normalizeText(textRaw)
+  const hasUsefulText =
+    textNormalized.length > 20 &&
+    /(voornaam|achternaam|email|telefoon|solliciteren)/i.test(textNormalized)
+
+  if (hasUsefulText) {
+    return textNormalized
+  }
+
+  const htmlRaw =
+    typeof parsed?.html === "string"
+      ? parsed.html
+      : Buffer.isBuffer(parsed?.html)
+        ? parsed.html.toString("utf8")
+        : ""
+  if (!htmlRaw) return textNormalized
+
+  return normalizeText(htmlToReadableText(htmlRaw))
+}
+
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim()
+}
+
+const KNOWN_FIELD_LABELS = [
+  "Voornaam",
+  "Achternaam",
+  "Woonplaats",
+  "Geboorte datum",
+  "Geboortedatum",
+  "Email",
+  "E-mail",
+  "Telefoon nummer",
+  "Telefoonnummer",
+  "Rijbewijs",
+  "Nationaliteit",
+  "Ik wil graag solliciteren voor de functie",
+  "Ik ben in het bezit van de volgende papieren",
+  "Jullie kunnen op de volgende manier contact met mij opnemen",
+  "In onze organisatie werken we samen",
+  "Aanvullende opmerkingen",
+]
+
+function stripTrailingKnownLabels(value: string): string {
+  let result = value
+  for (const label of KNOWN_FIELD_LABELS) {
+    const idx = result.toLowerCase().indexOf(label.toLowerCase())
+    if (idx > 0) {
+      result = result.slice(0, idx).trim()
+    }
+  }
+  return collapseWhitespace(result)
 }
 
 function normalizeEmail(value: string | null): string | null {
@@ -82,7 +156,19 @@ function extractSingleField(text: string, labels: string[]): string | null {
     )
     const match = text.match(pattern)
     if (match?.[1]) {
-      return collapseWhitespace(match[1])
+      const cleaned = stripTrailingKnownLabels(match[1])
+      if (cleaned) return cleaned
+    }
+
+    // Fallback: sommige forward-opmaken zetten waarde en volgende label op dezelfde regel.
+    const inlinePattern = new RegExp(
+      `${label}\\s*:?\\s*([^\\n]+?)\\s*(?=(${KNOWN_FIELD_LABELS.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b|$)`,
+      "i"
+    )
+    const inlineMatch = text.match(inlinePattern)
+    if (inlineMatch?.[1]) {
+      const cleanedInline = stripTrailingKnownLabels(inlineMatch[1])
+      if (cleanedInline) return cleanedInline
     }
   }
   return null
@@ -310,37 +396,9 @@ async function insertCandidate(candidate: ParsedCandidate) {
     datum_geplaatst: today,
   }
 
-  const { error } = await supabase.from("crew").insert([payload])
+  const { data, error } = await supabase.from("crew").insert([payload]).select().single()
   if (error) throw error
-}
-
-async function refreshExistingCandidate(existingId: string, candidate: ParsedCandidate) {
-  const updatedNotes = candidate.notes
-  const updates: any = {
-    phone: candidate.phone || "",
-    email: candidate.email || "",
-    position: candidate.position || "Onbekend",
-    nationality: candidate.nationality || "NL",
-    status: "nog-in-te-delen",
-    sub_status: "nog-te-benaderen",
-    regime: "",
-    notes: updatedNotes,
-    diplomas: candidate.diplomas,
-    contact_via: candidate.contactVia,
-    geplaatst_door: "Automatische e-mail import",
-    driving_license: candidate.drivingLicense,
-    residence: candidate.residence,
-    birth_date: candidate.birthDate,
-    datum_geplaatst: new Date().toISOString().split("T")[0],
-  }
-
-  const { error } = await supabase
-    .from("crew")
-    .update(updates)
-    .eq("id", existingId)
-    .neq("recruitment_status", "aangenomen")
-
-  if (error) throw error
+  return data
 }
 
 async function processRecruitmentMails(
@@ -400,30 +458,37 @@ async function processRecruitmentMails(
 
           if (!subject.toLowerCase().includes(subjectKeyword)) {
             stats.skipped += 1
+            if (debug) {
+              debugItems.push({
+                subject,
+                reason: "skipped-subject-mismatch",
+              })
+            }
             continue
           }
 
-          const body = parsed.text || parsed.html || ""
-          const candidate = parseCandidateFromMail(String(body), subject, String(from))
+          const bodyText = extractBestMailText(parsed)
+          const candidate = parseCandidateFromMail(bodyText, subject, String(from))
           if (!candidate) {
             stats.skipped += 1
+            if (debug) {
+              debugItems.push({
+                subject,
+                reason: "skipped-parse-failed",
+                preview: bodyText.slice(0, 200),
+              })
+            }
             continue
           }
 
           const duplicate = await candidateExists(candidate)
           if (duplicate.exists) {
             stats.duplicates += 1
-            if (!dryRun) {
-              const existing = duplicate.matches[0]
-              if (existing?.id && existing?.recruitment_status !== "aangenomen") {
-                await refreshExistingCandidate(existing.id, candidate)
-              }
-            }
             if (debug) {
               debugItems.push({
                 subject,
                 candidate,
-                reason: "duplicate",
+                reason: "duplicate-no-update",
                 matches: duplicate.matches,
               })
             }
@@ -432,15 +497,27 @@ async function processRecruitmentMails(
           }
 
           if (!dryRun) {
-            await insertCandidate(candidate)
+            const inserted = await insertCandidate(candidate)
             if (candidate.email) {
-              const ackResult = await sendRecruitmentAckEmail({
-                firstName: candidate.firstName,
-                email: candidate.email,
-                nationality: candidate.nationality,
-              })
-              if (!ackResult.success) {
-                console.warn("Ontvangstmail kon niet worden verzonden:", ackResult.error)
+              const existingNotes = inserted?.notes
+              if (!hasRecruitmentAckMarker(existingNotes)) {
+                const ackResult = await sendRecruitmentAckEmail({
+                  firstName: candidate.firstName,
+                  email: candidate.email,
+                  nationality: candidate.nationality,
+                })
+                if (!ackResult.success) {
+                  console.warn("Ontvangstmail kon niet worden verzonden:", ackResult.error)
+                } else if (inserted?.id) {
+                  const nextNotes = appendRecruitmentAckMarker(existingNotes, ackResult.language)
+                  const { error: markError } = await supabase
+                    .from("crew")
+                    .update({ notes: nextNotes })
+                    .eq("id", inserted.id)
+                  if (markError) {
+                    console.warn("Ack-marker opslaan mislukt:", markError.message)
+                  }
+                }
               }
             }
           }

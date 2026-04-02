@@ -24,7 +24,7 @@ import { FileText, MessageSquare } from "lucide-react";
 const RECRUITMENT_QUICK_NOTE_ID = "recruitment-quick-note";
 
 export default function NogInTeDelenPage() {
-  const { crew, ships, loading, error, updateCrew, addCrew, deleteCrew } = useSupabaseData();
+  const { crew, ships, loading, error, updateCrew, addCrew } = useSupabaseData();
   const { t } = useLanguage();
   const [mounted, setMounted] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -301,6 +301,7 @@ export default function NogInTeDelenPage() {
     contactStages.includes(m.sub_status) &&
     m.status !== 'uit-dienst' &&
     m.recruitment_status !== "aangenomen" &&
+    m.recruitment_status !== "geen-interesse" &&
     m.sub_status !== "later-terugkomen"
   );
 
@@ -308,7 +309,8 @@ export default function NogInTeDelenPage() {
   const laterTerugkomen = unassignedCrew.filter((m: any) => 
     m.sub_status === "later-terugkomen" &&
     m.status !== 'uit-dienst' &&
-    m.recruitment_status !== "aangenomen"
+    m.recruitment_status !== "aangenomen" &&
+    m.recruitment_status !== "geen-interesse"
   );
   
   // Nog Af Te Ronden: alleen mensen MET schip EN incomplete checklist
@@ -544,16 +546,19 @@ export default function NogInTeDelenPage() {
   };
 
   const handleNoInterest = async (memberId: string, memberName: string) => {
-    if (!confirm(`Weet je zeker dat je ${memberName} wilt verwijderen? Deze persoon wordt volledig uit het systeem verwijderd.`)) {
+    if (!confirm(`Weet je zeker dat je ${memberName} op 'Geen interesse' wilt zetten?`)) {
       return;
     }
 
     try {
-      await deleteCrew(memberId);
-      alert(`${memberName} is verwijderd uit het systeem.`);
+      await updateCrew(memberId, {
+        recruitment_status: "geen-interesse",
+        sub_status: "geen-interesse",
+        status: "nog-in-te-delen",
+      });
     } catch (error) {
-      console.error("Fout bij verwijderen:", error);
-      alert("Er is een fout opgetreden bij het verwijderen.");
+      console.error("Fout bij opslaan geen interesse:", error);
+      alert("Er is een fout opgetreden.");
     }
   };
 
@@ -721,7 +726,7 @@ export default function NogInTeDelenPage() {
 
       console.log('Adding candidate via Supabase:', newCandidate);
       
-      await addCrew(newCandidate);
+      const addedCrew: any = await addCrew(newCandidate);
 
       // Verstuur automatisch ontvangstmail aan kandidaat (NL/BE=NL, anders DE).
       // Deze call mag kandidaat-aanmaak niet blokkeren.
@@ -733,6 +738,7 @@ export default function NogInTeDelenPage() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
+              candidateId: addedCrew?.id,
               firstName: newCandidate.first_name,
               email: newCandidate.email,
               nationality: newCandidate.nationality,

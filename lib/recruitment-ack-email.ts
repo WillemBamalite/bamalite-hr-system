@@ -1,11 +1,34 @@
 import nodemailer from "nodemailer"
 
 type AckLanguage = "nl" | "de"
+export const RECRUITMENT_ACK_MARKER_PREFIX = "[ACK_MAIL_SENT]"
 
 export function getRecruitmentAckLanguage(nationality: string | null | undefined): AckLanguage {
   const normalized = (nationality || "").trim().toUpperCase()
   if (normalized === "NL" || normalized === "BE") return "nl"
   return "de"
+}
+
+export function hasRecruitmentAckMarker(notes: any): boolean {
+  if (!Array.isArray(notes)) return false
+  return notes.some((entry) => {
+    if (typeof entry === "string") {
+      return entry.includes(RECRUITMENT_ACK_MARKER_PREFIX)
+    }
+    if (entry && typeof entry === "object") {
+      const content = String((entry as any).content || (entry as any).text || "")
+      return content.includes(RECRUITMENT_ACK_MARKER_PREFIX)
+    }
+    return false
+  })
+}
+
+export function appendRecruitmentAckMarker(notes: any, language: AckLanguage): any[] {
+  const list = Array.isArray(notes) ? [...notes] : []
+  if (hasRecruitmentAckMarker(list)) return list
+  const timestamp = new Date().toISOString()
+  list.push(`${RECRUITMENT_ACK_MARKER_PREFIX} ${timestamp} lang=${language}`)
+  return list
 }
 
 function buildAckTemplate(firstName: string, lang: AckLanguage) {
