@@ -27,6 +27,8 @@ const kindLabel = (kind: string) => {
       return "Ziektebriefjes"
     case "anniversary":
       return "Dienstjubilea"
+    case "luxembourg_pending_boarding":
+      return "Nieuw personeel"
     default:
       return "Overig"
   }
@@ -68,6 +70,8 @@ const kindIcon = (kind: string) => {
       return ClipboardList
     case "ship_visit":
       return Ship
+    case "luxembourg_pending_boarding":
+      return AlertTriangle
     default:
       return Bell
   }
@@ -87,6 +91,8 @@ const groupHeaderClasses = (groupName: string) => {
       return "bg-pink-50 border-pink-200"
     case "Dienstjubilea":
       return "bg-yellow-50 border-yellow-200"
+    case "Nieuw personeel":
+      return "bg-amber-50 border-amber-200"
     default:
       return "bg-blue-50 border-blue-200"
   }
@@ -106,6 +112,8 @@ const groupCountBadge = (groupName: string) => {
       return "bg-pink-100 text-pink-800 border border-pink-200"
     case "Dienstjubilea":
       return "bg-yellow-100 text-yellow-900 border border-yellow-200"
+    case "Nieuw personeel":
+      return "bg-amber-100 text-amber-900 border border-amber-200"
     default:
       return "bg-blue-100 text-blue-800 border border-blue-200"
   }
@@ -141,8 +149,8 @@ export default function MeldingenPage() {
     return acc
   }, {} as Record<string, typeof notifications>)
 
-  const gridGroupsRow1 = ["Taken", "Scheepsbezoeken", "Proeftijd"] as const
-  const gridGroupsRow2 = ["Ziektebriefjes", "Verjaardagen", "Dienstjubilea"] as const
+  const gridGroupsRow1 = ["Taken", "Scheepsbezoeken", "Nieuw personeel"] as const
+  const gridGroupsRow2 = ["Ziektebriefjes", "Verjaardagen", "Dienstjubilea", "Proeftijd"] as const
   const otherGroups = ["Overig"] as const
 
   const gridGroups = [...gridGroupsRow1, ...gridGroupsRow2]
