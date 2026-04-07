@@ -22,6 +22,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StandBackManagement } from "@/components/sick-leave/stand-back-management"
 import { supabase } from "@/lib/supabase"
 
+const ABSENT_MARKER = "[AFWEZIG]"
+
 export default function ZiektePage() {
   const { crew, sickLeave, loading, error, updateCrew, updateSickLeave, addStandBackRecord } = useSupabaseData()
   const { t, locale } = useLanguage()
@@ -42,10 +44,12 @@ export default function ZiektePage() {
     subtitle: locale === "de" ? "Aktive Krankmeldungen und Krankheitsverwaltung" : "Actieve ziekmeldingen en ziekte management",
     newSickLeave: locale === "de" ? "Neue Krankmeldung" : "Nieuwe ziekmelding",
     tabSick: locale === "de" ? "Krankheit" : "Ziekte",
+    tabAbsent: locale === "de" ? "Abwesend" : "Afwezig",
     tabStandBack: locale === "de" ? "Zuruckstehen" : "Terug te staan",
     sectionNoOrExpired: locale === "de" ? "Kein Attest und abgelaufene Atteste" : "Geen ziektebriefje en verlopen ziektebriefjes",
     sectionWaitingOrSoon: locale === "de" ? "Warten auf Attest und bald ablaufende Atteste" : "Wacht op briefje en bijna verlopen briefjes",
     sectionValid: locale === "de" ? "Gultige Atteste" : "Geldige ziektebriefjes",
+    sectionAbsent: locale === "de" ? "Abwesend" : "Afwezig",
     records: locale === "de" ? "Eintrage" : "records",
     noRecords: locale === "de" ? "Keine Eintrage" : "Geen records",
     startDate: locale === "de" ? "Startdatum:" : "Start datum:",
@@ -250,6 +254,17 @@ export default function ZiektePage() {
       }
     })
     .filter((record) => record.crewMember && record.crewMember.status !== 'uit-dienst') // Filter out records zonder crew member en uit-dienst crew
+
+  const isAbsentRecord = (record: any) => {
+    const crewIsAbsent = record?.crewMember?.status === "afwezig"
+    const notesText = String(record?.notes || "").toUpperCase()
+    const hasAbsentMarker = notesText.includes(ABSENT_MARKER)
+    return crewIsAbsent || hasAbsentMarker
+  }
+
+  // Afwezig: aparte groep binnen ziekteoverzicht, zonder ziektebriefjes-logica
+  const absentRecords = sickLeaveRecords.filter((record: any) => isAbsentRecord(record))
+  const sickRecordsOnly = sickLeaveRecords.filter((record: any) => !isAbsentRecord(record))
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -532,11 +547,11 @@ export default function ZiektePage() {
   }
 
   // Statistieken
-  const activeSick = activeSickLeaves.length
-  const waitingForCertificate = activeSickLeaves.filter((r: any) => r.status === "wacht-op-briefje").length
+  const activeSick = sickRecordsOnly.length
+  const waitingForCertificate = sickRecordsOnly.filter((r: any) => r.status === "wacht-op-briefje").length
 
   // Categoriseer records in drie groepen
-  const noCertificateOrExpired = sickLeaveRecords.filter((record: any) => {
+  const noCertificateOrExpired = sickRecordsOnly.filter((record: any) => {
     // Status "wacht-op-briefje" gaat NIET naar deze kolom
     if (record.status === "wacht-op-briefje") return false
     
@@ -555,7 +570,7 @@ export default function ZiektePage() {
     return daysUntilExpiry < 0
   })
 
-  const waitingOrExpiringSoon = sickLeaveRecords.filter((record: any) => {
+  const waitingOrExpiringSoon = sickRecordsOnly.filter((record: any) => {
     // Wacht op briefje status (altijd in deze kolom)
     if (record.status === "wacht-op-briefje") return true
     
@@ -575,7 +590,7 @@ export default function ZiektePage() {
     return daysUntilExpiry >= 0 && daysUntilExpiry <= 3
   })
 
-  const validCertificates = sickLeaveRecords.filter((record: any) => {
+  const validCertificates = sickRecordsOnly.filter((record: any) => {
     // Moet status "actief" zijn
     if (record.status !== "actief") return false
     
@@ -595,8 +610,10 @@ export default function ZiektePage() {
   })
 
   // Helper functie om een record card te renderen
-  const renderRecordCard = (record: any) => {
+  const renderRecordCard = (record: any, options?: { hideCertificateSection?: boolean }) => {
     const certificateStatus = getCertificateStatus(record)
+    const hideCertificateSection = options?.hideCertificateSection === true
+    const absentRecord = isAbsentRecord(record)
     return (
       <Card key={record.id} className="hover:shadow-lg transition-shadow">
         <CardHeader className="pb-3">
@@ -618,8 +635,8 @@ export default function ZiektePage() {
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Badge className={getStatusColor(record.status)}>
-                {getStatusText(record.status)}
+              <Badge className={absentRecord ? "bg-slate-100 text-slate-800" : getStatusColor(record.status)}>
+                {absentRecord ? (locale === "de" ? "Abwesend" : "Afwezig") : getStatusText(record.status)}
               </Badge>
               <Button
                 variant="ghost"
@@ -642,7 +659,7 @@ export default function ZiektePage() {
               </div>
             </div>
             <div>
-              <span className='text-gray-500'>{t('daysSick')}:</span>
+              <span className='text-gray-500'>{absentRecord ? "Dagen afwezig" : t('daysSick')}:</span>
               <p className="font-medium mt-1">{record.daysCount} {uiText.days}</p>
             </div>
             <div>
@@ -658,16 +675,17 @@ export default function ZiektePage() {
             </div>
           </div>
 
-          {/* Ziektebriefje status */}
-          <div className="flex items-center justify-between pt-3 border-t">
-            <div className="flex items-center space-x-2">
-              <FileText className="w-4 h-4 text-gray-400" />
-              <span className='text-sm text-gray-600'>{t('sickCertificate')}:</span>
+          {!hideCertificateSection && (
+            <div className="flex items-center justify-between pt-3 border-t">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-4 h-4 text-gray-400" />
+                <span className='text-sm text-gray-600'>{t('sickCertificate')}:</span>
+              </div>
+              <Badge className={certificateStatus.color}>
+                {certificateStatus.text}
+              </Badge>
             </div>
-            <Badge className={certificateStatus.color}>
-              {certificateStatus.text}
-            </Badge>
-          </div>
+          )}
 
           {/* Schip info */}
           {record.ship && (
@@ -798,10 +816,14 @@ export default function ZiektePage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-8">
           <TabsTrigger value="ziekte" className="text-base">
             <UserX className="w-4 h-4 mr-2" />
             {uiText.tabSick}
+          </TabsTrigger>
+          <TabsTrigger value="afwezig" className="text-base">
+            <Calendar className="w-4 h-4 mr-2" />
+            {uiText.tabAbsent}
           </TabsTrigger>
           <TabsTrigger value="terug-te-staan" className="text-base">
             <Heart className="w-4 h-4 mr-2" />
@@ -1027,6 +1049,26 @@ export default function ZiektePage() {
           <p className='text-gray-500'>{t('noSickLeaveFound')}</p>
         </div>
       )}
+        </TabsContent>
+
+        {/* Afwezig Tab */}
+        <TabsContent value="afwezig" className="space-y-6">
+          <div className="space-y-4">
+            <div className="pb-4 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">{uiText.sectionAbsent}</h2>
+              <p className="text-sm text-gray-500 mt-1">{absentRecords.length} {uiText.records}</p>
+            </div>
+            {absentRecords.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {absentRecords.map((record: any) => renderRecordCard(record, { hideCertificateSection: true }))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p>{uiText.noRecords}</p>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         {/* Terug te staan Tab */}

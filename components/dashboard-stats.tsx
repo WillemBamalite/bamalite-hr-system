@@ -18,6 +18,7 @@ export function DashboardStats() {
   const { t, locale } = useLanguage()
   const { canAccessPath } = useAuth()
   const [loonBemerkingenCount, setLoonBemerkingenCount] = useState(0)
+  const ABSENT_MARKER = "[AFWEZIG]"
   const uiText = {
     notifications: locale === "de" ? "Benachrichtigungen" : locale === "fr" ? "Notifications" : "Meldingen",
     open: locale === "de" ? "offen" : locale === "fr" ? "ouvert" : "open",
@@ -105,10 +106,20 @@ export function DashboardStats() {
       actief: trips.filter((trip: any) => trip.status === 'actief').length
     },
     ziekenStats: (() => {
+      const isAbsentSickRecord = (s: any, crewMember: any) => {
+        const notesText = String(s?.notes || "").toUpperCase()
+        return crewMember?.status === "afwezig" || notesText.includes(ABSENT_MARKER)
+      }
+
       // Filter actieve ziekmeldingen (inclusief wacht-op-briefje)
       const activeSickLeaves = sickLeave.filter((s: any) => {
         const crewMember = crew.find((c) => c.id === s.crew_member_id)
-        return (s.status === "actief" || s.status === "wacht-op-briefje") && crewMember && crewMember.status !== 'uit-dienst'
+        return (
+          (s.status === "actief" || s.status === "wacht-op-briefje") &&
+          crewMember &&
+          crewMember.status !== "uit-dienst" &&
+          !isAbsentSickRecord(s, crewMember)
+        )
       })
 
       const today = new Date()
@@ -177,11 +188,15 @@ export function DashboardStats() {
     ).length,
     actieveZiekmeldingen: sickLeave.filter((s) => {
       const crewMember = crew.find((c) => c.id === s.crew_member_id)
-      return s.status === "actief" && crewMember && crewMember.status !== 'uit-dienst'
+      const notesText = String((s as any)?.notes || "").toUpperCase()
+      const isAbsent = crewMember?.status === "afwezig" || notesText.includes(ABSENT_MARKER)
+      return s.status === "actief" && crewMember && crewMember.status !== 'uit-dienst' && !isAbsent
     }).length,
     ziekmeldingenMetBriefje: sickLeave.filter((s) => {
       const crewMember = crew.find((c) => c.id === s.crew_member_id)
-      return s.status === "wacht-op-briefje" && crewMember && crewMember.status !== 'uit-dienst'
+      const notesText = String((s as any)?.notes || "").toUpperCase()
+      const isAbsent = crewMember?.status === "afwezig" || notesText.includes(ABSENT_MARKER)
+      return s.status === "wacht-op-briefje" && crewMember && crewMember.status !== 'uit-dienst' && !isAbsent
     }).length,
     nieuwPersoneelStats: (() => {
       // Helper functie om checklist status te checken

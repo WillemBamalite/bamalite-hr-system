@@ -17,11 +17,14 @@ import { BackButton } from "@/components/ui/back-button"
 import { supabase } from "@/lib/supabase"
 import { isRealCrewMember } from "@/utils/crew-filters"
 
+const ABSENT_MARKER = "[AFWEZIG]"
+
 export default function NieuwZiektePage() {
   const { crew, sickLeave, updateCrew, addSickLeave } = useSupabaseData()
   const { t } = useLanguage()
   const router = useRouter()
   const [formData, setFormData] = useState({
+    registrationType: "ziek",
     crewMemberId: "",
     crewMemberName: "",
     startDate: "",
@@ -84,15 +87,24 @@ export default function NieuwZiektePage() {
 
     try {
       // Maak nieuwe ziekmelding
+      const isAbsentRegistration = formData.registrationType === "afwezig"
+      const normalizedNotes = (formData.notes || "").trim()
+      const notesWithTypeMarker = isAbsentRegistration
+        ? `${ABSENT_MARKER}${normalizedNotes ? ` ${normalizedNotes}` : ""}`
+        : normalizedNotes
       const newSickLeave = {
         id: `sick-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         crew_member_id: formData.crewMemberId,
         start_date: formData.startDate,
         salary_percentage: parseInt(formData.salaryPercentage),
-        certificate_valid_until: formData.certificateValidUntil || undefined,
+        certificate_valid_until: isAbsentRegistration ? null : (formData.certificateValidUntil || undefined),
         paid_by: formData.paidBy,
-        notes: formData.notes,
-        status: (formData.hasCertificate && formData.certificateValidUntil) ? "actief" as const : "wacht-op-briefje" as const
+        notes: notesWithTypeMarker,
+        status: isAbsentRegistration
+          ? ("actief" as const)
+          : (formData.hasCertificate && formData.certificateValidUntil)
+            ? ("actief" as const)
+            : ("wacht-op-briefje" as const)
       }
 
       // Voeg ziekmelding toe via Supabase
@@ -162,16 +174,27 @@ export default function NieuwZiektePage() {
         }
       }
 
-      // Update crew member status naar ziek
+      // Update crew member status naar ziek of afwezig
       const currentCrewMember = crew.find((c: any) => c.id === formData.crewMemberId)
       if (currentCrewMember) {
-        await updateCrew(formData.crewMemberId, {
-          ...currentCrewMember,
-          status: "ziek"
-        })
+        try {
+          if (isAbsentRegistration) {
+            // Niet elke database heeft 'afwezig' al in de status-constraint.
+            // Probeer eerst 'afwezig'; val terug op 'ziek' zodat registratie bruikbaar blijft.
+            try {
+              await updateCrew(formData.crewMemberId, { status: "afwezig" })
+            } catch {
+              await updateCrew(formData.crewMemberId, { status: "ziek" })
+            }
+          } else {
+            await updateCrew(formData.crewMemberId, { status: "ziek" })
+          }
+        } catch (crewUpdateError) {
+          console.warn("Crew status kon niet bijgewerkt worden, maar de registratie is wel opgeslagen:", crewUpdateError)
+        }
 
-        // Optioneel: verstuur ziekte instructie e-mail naar bemanningslid
-        if (formData.sendInstructionsEmail && currentCrewMember.email) {
+        // Optioneel: verstuur ziekte instructie e-mail naar bemanningslid (alleen bij ziek)
+        if (!isAbsentRegistration && formData.sendInstructionsEmail && currentCrewMember.email) {
           try {
             console.log("📧 Verstuur ziekte-instructie e-mail naar:", currentCrewMember.email)
             const emailResponse = await fetch("/api/send-sick-instructions", {
@@ -231,6 +254,23 @@ export default function NieuwZiektePage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Type registratie */}
+            <div className="space-y-2">
+              <Label htmlFor="registrationType">Type</Label>
+              <Select
+                value={formData.registrationType}
+                onValueChange={(value) => setFormData({ ...formData, registrationType: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ziek">Ziek</SelectItem>
+                  <SelectItem value="afwezig">Afwezig</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Crew Member Zoeken */}
             <div className="space-y-2">
               <Label htmlFor="crewMember">Bemanningslid *</Label>
@@ -283,22 +323,24 @@ export default function NieuwZiektePage() {
               />
             </div>
 
-            {/* Locatie */}
-            <div className="space-y-2">
-              <Label htmlFor="sickLocation">Locatie</Label>
-              <Select 
-                value={formData.sickLocation} 
-                onValueChange={(value) => setFormData({...formData, sickLocation: value})}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="thuis">Thuis</SelectItem>
-                  <SelectItem value="aan-boord">Aan boord</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Locatie alleen relevant bij ziek */}
+            {formData.registrationType === "ziek" && (
+              <div className="space-y-2">
+                <Label htmlFor="sickLocation">Locatie</Label>
+                <Select 
+                  value={formData.sickLocation} 
+                  onValueChange={(value) => setFormData({...formData, sickLocation: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="thuis">Thuis</SelectItem>
+                    <SelectItem value="aan-boord">Aan boord</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Salaris Percentage */}
             <div className="space-y-2">
@@ -339,25 +381,26 @@ export default function NieuwZiektePage() {
               </Select>
             </div>
 
-            {/* Ziektebriefje */}
-            <div className="space-y-2">
-              <Label htmlFor="hasCertificate">Ziektebriefje aangeleverd</Label>
-              <Select 
-                value={formData.hasCertificate ? "ja" : "nee"} 
-                onValueChange={(value) => setFormData({...formData, hasCertificate: value === "ja"})}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ja">Ja</SelectItem>
-                  <SelectItem value="nee">Nee</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {formData.registrationType === "ziek" && (
+              <div className="space-y-2">
+                <Label htmlFor="hasCertificate">Ziektebriefje aangeleverd</Label>
+                <Select 
+                  value={formData.hasCertificate ? "ja" : "nee"} 
+                  onValueChange={(value) => setFormData({...formData, hasCertificate: value === "ja"})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ja">Ja</SelectItem>
+                    <SelectItem value="nee">Nee</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Geldig tot datum */}
-            {formData.hasCertificate && (
+            {formData.registrationType === "ziek" && formData.hasCertificate && (
               <div className="space-y-2">
                 <Label htmlFor="certificateValidUntil">Geldig tot</Label>
                 <Input
@@ -414,22 +457,23 @@ export default function NieuwZiektePage() {
               )}
             </div>
 
-            {/* E-mail met ziekte instructies */}
-            <div className="flex items-center space-x-2 border-t border-gray-200 pt-4 mt-2">
-              <input
-                id="sendInstructionsEmail"
-                type="checkbox"
-                checked={formData.sendInstructionsEmail}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  sendInstructionsEmail: e.target.checked,
-                })}
-                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-              />
-              <Label htmlFor="sendInstructionsEmail" className="text-sm text-gray-700">
-                Persoon een e-mail sturen met ziekte-instructies (PDF bijlage)
-              </Label>
-            </div>
+            {formData.registrationType === "ziek" && (
+              <div className="flex items-center space-x-2 border-t border-gray-200 pt-4 mt-2">
+                <input
+                  id="sendInstructionsEmail"
+                  type="checkbox"
+                  checked={formData.sendInstructionsEmail}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    sendInstructionsEmail: e.target.checked,
+                  })}
+                  className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <Label htmlFor="sendInstructionsEmail" className="text-sm text-gray-700">
+                  Persoon een e-mail sturen met ziekte-instructies (PDF bijlage)
+                </Label>
+              </div>
+            )}
 
             {/* Submit knoppen */}
             <div className="flex justify-end space-x-3 pt-4">
@@ -440,7 +484,11 @@ export default function NieuwZiektePage() {
               </Link>
               <Button type="submit" className="bg-red-600 hover:bg-red-700" disabled={uploadingAttachment}>
                 <UserX className="w-4 h-4 mr-2" />
-                {uploadingAttachment ? "Uploaden..." : "Ziekmelding registreren"}
+                {uploadingAttachment
+                  ? "Uploaden..."
+                  : formData.registrationType === "afwezig"
+                    ? "Afwezigheid registreren"
+                    : "Ziekmelding registreren"}
               </Button>
             </div>
           </form>

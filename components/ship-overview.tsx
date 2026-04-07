@@ -88,10 +88,30 @@ export function ShipOverview() {
     onBoard: locale === "de" ? "An Bord" : locale === "fr" ? "À bord" : "Aan Boord",
     atHome: locale === "de" ? "Zuhause" : locale === "fr" ? "À la maison" : "Thuis",
     sick: locale === "de" ? "Krank" : locale === "fr" ? "Malade" : "Ziek",
+    absent: locale === "de" ? "Abwesend" : locale === "fr" ? "Absent" : "Afwezig",
     sickInfo: locale === "de" ? "Krankheitsinfo:" : locale === "fr" ? "Infos maladie :" : "Ziekinformatie:",
+    absentInfo: locale === "de" ? "Abwesenheitsinfo:" : locale === "fr" ? "Infos d'absence :" : "Afwezigheidsinformatie:",
     sickSince: locale === "de" ? "Krank seit" : locale === "fr" ? "Malade depuis" : "Ziek vanaf",
     addDummyTitle: locale === "de" ? "Dummy hinzufügen" : locale === "fr" ? "Ajouter un dummy" : "Dummy toevoegen",
     creating: locale === "de" ? "Erstellen..." : locale === "fr" ? "Création..." : "Aanmaken...",
+  }
+  const ABSENT_MARKER = "[AFWEZIG]"
+
+  const isAbsentLeaveRecord = (record: any) =>
+    String(record?.notes || "").toUpperCase().includes(ABSENT_MARKER)
+
+  const getActiveLeaveForMember = (memberId: string) =>
+    sickLeave.find(
+      (record: any) =>
+        record.crew_member_id === memberId &&
+        (record.status === "actief" || record.status === "wacht-op-briefje")
+    ) || null
+
+  const isUnavailableCrewMember = (member: any) => {
+    if (!member) return false
+    if (member.status === "afwezig" || member.status === "ziek") return true
+    const activeLeave = getActiveLeaveForMember(member.id)
+    return !!activeLeave
   }
   
   // Notes functionality state
@@ -564,20 +584,9 @@ export function ShipOverview() {
       return startDate > today
     })() : false
 
-    // Haal ziekinformatie op
-    const getSickInfo = () => {
-      if (member.status !== "ziek") return null
-      
-      // Zoek naar actieve ziekmelding voor deze bemanningslid
-      const sickLeaveRecord = sickLeave.find((sick: any) => 
-        sick.crew_member_id === member.id && 
-        (sick.status === "actief" || sick.status === "wacht-op-briefje")
-      )
-      
-      return sickLeaveRecord
-    }
-
-    const sickInfo = getSickInfo()
+    // Haal afwezig/ziek-informatie op
+    const sickInfo = getActiveLeaveForMember(member.id)
+    const isAbsent = member.status === "afwezig" || (sickInfo ? isAbsentLeaveRecord(sickInfo) : false)
 
     const isDummy = member.is_dummy === true
     const notePool = [
@@ -958,20 +967,39 @@ export function ShipOverview() {
             {/* Ziekinformatie voor zieke bemanningsleden */}
             {sickInfo && (
               <div className="mt-2 space-y-1 border-t pt-2">
-                <div className="text-xs text-red-600 font-medium">{uiText.sickInfo}</div>
-                <div className="text-xs text-gray-600">
-                  {uiText.sickSince}: {format(new Date(sickInfo.start_date), 'dd-MM-yyyy')}
+                <div className="text-xs text-red-600 font-medium">
+                  {isAbsent ? uiText.absentInfo : uiText.sickInfo}
                 </div>
                 <div className="text-xs text-gray-600">
-                  {sickInfo.certificate_valid_until ? (
-                    <>Briefje tot: {format(new Date(sickInfo.certificate_valid_until), 'dd-MM-yyyy')}</>
-                  ) : (
-                    <>Geen briefje</>
-                  )}
+                  Status: {isAbsent ? uiText.absent : uiText.sick}
                 </div>
+                <div className="text-xs text-gray-600">
+                  {isAbsent ? "Afwezig vanaf" : uiText.sickSince}: {format(new Date(sickInfo.start_date), 'dd-MM-yyyy')}
+                </div>
+                {!isAbsent && (
+                  <div className="text-xs text-gray-600">
+                    {sickInfo.certificate_valid_until ? (() => {
+                      const certDate = new Date(sickInfo.certificate_valid_until)
+                      const today = new Date()
+                      certDate.setHours(0, 0, 0, 0)
+                      today.setHours(0, 0, 0, 0)
+                      const isExpired = certDate < today
+                      return (
+                        <>
+                          Briefje tot:{" "}
+                          <span className={isExpired ? "text-red-600 font-semibold" : ""}>
+                            {format(certDate, 'dd-MM-yyyy')}
+                          </span>
+                        </>
+                      )
+                    })() : (
+                      <>Geen briefje</>
+                    )}
+                  </div>
+                )}
                 {sickInfo.notes && (
                   <div className="text-xs text-gray-600">
-                    Reden: {sickInfo.notes}
+                    Reden: {String(sickInfo.notes).replace("[AFWEZIG]", "").trim()}
                   </div>
                 )}
                 <div className="text-xs text-gray-600">
@@ -1901,7 +1929,7 @@ export function ShipOverview() {
                                           if (member.is_dummy === true || isCopiedCrewMember(member)) {
                                             return dummyLocations[member.id] === 'aan-boord'
                                           }
-                                          if (member.status === "ziek") return false
+                                          if (isUnavailableCrewMember(member)) return false
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
                                             const startDate = new Date(member.expected_start_date)
@@ -1926,7 +1954,7 @@ export function ShipOverview() {
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
                                         // Geen dummy's/kopieen hier (die worden apart getoond)
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
-                                        if (member.status === "ziek") return false
+                                        if (isUnavailableCrewMember(member)) return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
                                         if (member.expected_start_date) {
                                           const startDate = new Date(member.expected_start_date)
@@ -1983,7 +2011,7 @@ export function ShipOverview() {
                                           if (member.is_dummy === true || isCopiedCrewMember(member)) {
                                             return !dummyLocations[member.id] || dummyLocations[member.id] === 'thuis'
                                           }
-                                          if (member.status === "ziek") return false
+                                          if (isUnavailableCrewMember(member)) return false
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
                                             const startDate = new Date(member.expected_start_date)
@@ -2008,7 +2036,7 @@ export function ShipOverview() {
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
                                         // Geen dummy's/kopieen hier (die worden apart getoond)
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
-                                        if (member.status === "ziek") return false
+                                        if (isUnavailableCrewMember(member)) return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                         if (member.expected_start_date) {
                                           const startDate = new Date(member.expected_start_date)
@@ -2051,17 +2079,17 @@ export function ShipOverview() {
                                     </div>
                                   </div>
 
-                                  {/* Ziek Column */}
+                                  {/* Afwezig/Ziek Column */}
                                   <div className="space-y-3">
                                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
                                       <UserX className="w-4 h-4 text-red-600" />
-                                      <h5 className="font-medium text-red-700">{uiText.sick}</h5>
+                                      <h5 className="font-medium text-red-700">{uiText.absent}</h5>
                                       <Badge className="bg-red-100 text-red-800 text-xs">
-                                        {shipCrew.filter((member: any) => member.status === "ziek").length}
+                                        {shipCrew.filter((member: any) => isUnavailableCrewMember(member)).length}
                                       </Badge>
                                     </div>
                                     <div className="space-y-3 min-h-[100px]">
-                                      {sortCrewByRank(shipCrew.filter((member: any) => member.status === "ziek")).map((member: any) => (
+                                      {sortCrewByRank(shipCrew.filter((member: any) => isUnavailableCrewMember(member))).map((member: any) => (
                                         <CrewCard
                                           key={member.id}
                                           member={member}
@@ -2144,9 +2172,9 @@ export function ShipOverview() {
           }))
         })
 
-        // Split in ziek en niet-ziek
-        const overigZiek = overigPersoneel.filter((member: any) => member.status === "ziek")
-        const overigNietZiek = overigPersoneel.filter((member: any) => member.status !== "ziek")
+        // Split in afwezig/ziek en overig
+        const overigAfwezig = overigPersoneel.filter((member: any) => isUnavailableCrewMember(member))
+        const overigNietAfwezig = overigPersoneel.filter((member: any) => !isUnavailableCrewMember(member))
 
         return (
           <Card className="mt-6">
@@ -2163,22 +2191,22 @@ export function ShipOverview() {
               <div className="space-y-6">
                 {/* Grid layout: Algemene lijst + Ziek kolom */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {/* Algemene lijst (niet-ziek personeel) */}
+                  {/* Algemene lijst (niet-afwezig personeel) */}
                   <div className="md:col-span-2 space-y-3">
                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
                       <Users className="w-4 h-4 text-gray-600" />
                       <h5 className="font-medium text-gray-700">Personeel</h5>
                       <Badge className="bg-gray-100 text-gray-800 text-xs">
-                        {overigNietZiek.length}
+                        {overigNietAfwezig.length}
                       </Badge>
                     </div>
                     <div className="space-y-3 min-h-[100px]">
-                      {overigNietZiek.length === 0 ? (
+                      {overigNietAfwezig.length === 0 ? (
                         <div className="text-center py-8 text-gray-400 text-sm">
                           Geen personeel
                         </div>
                       ) : (
-                        sortCrewByRank(overigNietZiek).map((member: any) => (
+                        sortCrewByRank(overigNietAfwezig).map((member: any) => (
                           <CrewCard
                             key={member.id}
                             member={member}
@@ -2192,22 +2220,22 @@ export function ShipOverview() {
                     </div>
                   </div>
 
-                  {/* Ziek Column */}
+                  {/* Afwezig/Ziek Column */}
                   <div className="space-y-3">
                     <div className="flex items-center space-x-2 pb-2 border-b border-gray-200">
                       <UserX className="w-4 h-4 text-red-600" />
-                      <h5 className="font-medium text-red-700">{uiText.sick}</h5>
+                      <h5 className="font-medium text-red-700">{uiText.absent}</h5>
                       <Badge className="bg-red-100 text-red-800 text-xs">
-                        {overigZiek.length}
+                        {overigAfwezig.length}
                       </Badge>
                     </div>
                     <div className="space-y-3 min-h-[100px]">
-                      {overigZiek.length === 0 ? (
+                      {overigAfwezig.length === 0 ? (
                         <div className="text-center py-8 text-gray-400 text-sm">
-                          Geen zieke personeel
+                          Geen afwezig personeel
                         </div>
                       ) : (
-                        sortCrewByRank(overigZiek).map((member: any) => (
+                        sortCrewByRank(overigAfwezig).map((member: any) => (
                           <CrewCard
                             key={member.id}
                             member={member}
