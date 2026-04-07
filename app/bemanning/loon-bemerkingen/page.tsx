@@ -13,7 +13,6 @@ import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
 import { isCopiedCrewMember, isRealCrewMember } from "@/utils/crew-filters"
-import { authenticatedFetch } from "@/lib/authenticated-fetch"
 
 const getCurrentMonthKey = () => {
   const d = new Date()
@@ -451,11 +450,17 @@ export default function LoonBemerkingenPage() {
     try {
       setSendingReadyMail(true)
       setReadyMailInfo("")
-      const res = await authenticatedFetch("/api/salary-ready", {
+      const { data } = await supabase.auth.getSession()
+      const accessToken = data.session?.access_token
+      const headers = new Headers({
+        "Content-Type": "application/json",
+      })
+      if (accessToken) {
+        headers.set("Authorization", `Bearer ${accessToken}`)
+      }
+      const res = await fetch("/api/salary-ready", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           monthKey,
           company: activeCompanyTab || "",
