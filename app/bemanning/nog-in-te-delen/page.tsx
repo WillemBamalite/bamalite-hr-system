@@ -41,6 +41,15 @@ export default function NogInTeDelenPage() {
   const [showContractDialog, setShowContractDialog] = useState(false);
   const [selectedMemberForContract, setSelectedMemberForContract] = useState<any>(null);
   const [contractData, setContractData] = useState<ContractData | null>(null);
+  const [showAckMailDialog, setShowAckMailDialog] = useState(false);
+  const [sendingAckMail, setSendingAckMail] = useState(false);
+  const [pendingAckMail, setPendingAckMail] = useState<{
+    candidateId?: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    nationality?: string;
+  } | null>(null);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteMember, setNoteMember] = useState<any | null>(null);
   const [noteText, setNoteText] = useState("");
@@ -691,6 +700,39 @@ export default function NogInTeDelenPage() {
     }
   };
 
+  const handleAckMailChoice = async (shouldSend: boolean) => {
+    const payload = pendingAckMail;
+    setShowAckMailDialog(false);
+
+    if (!payload) return;
+    if (!shouldSend) {
+      setPendingAckMail(null);
+      return;
+    }
+
+    try {
+      setSendingAckMail(true);
+      await fetch("/api/send-recruitment-ack", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          candidateId: payload.candidateId,
+          firstName: payload.firstName,
+          email: payload.email,
+          nationality: payload.nationality,
+        }),
+      });
+    } catch (mailErr) {
+      console.warn("Ontvangstmail versturen mislukt:", mailErr);
+      alert("Kandidaat is toegevoegd, maar het versturen van de ontvangstmail is mislukt.");
+    } finally {
+      setSendingAckMail(false);
+      setPendingAckMail(null);
+    }
+  };
+
   const addCandidate = async () => {
     if (!candidateForm.firstName || !candidateForm.lastName) {
       alert("Vul minimaal voor- en achternaam in");
@@ -728,25 +770,16 @@ export default function NogInTeDelenPage() {
       
       const addedCrew: any = await addCrew(newCandidate);
 
-      // Verstuur automatisch ontvangstmail aan kandidaat (NL/BE=NL, anders DE).
-      // Deze call mag kandidaat-aanmaak niet blokkeren.
+      // Bij handmatig kandidaat aanmaken tonen we een Ja/Nee dialoog voor de ontvangstmail.
       if (newCandidate.email) {
-        try {
-          await fetch("/api/send-recruitment-ack", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              candidateId: addedCrew?.id,
-              firstName: newCandidate.first_name,
-              email: newCandidate.email,
-              nationality: newCandidate.nationality,
-            }),
-          });
-        } catch (mailErr) {
-          console.warn("Ontvangstmail versturen mislukt:", mailErr);
-        }
+        setPendingAckMail({
+          candidateId: addedCrew?.id,
+          firstName: newCandidate.first_name,
+          lastName: newCandidate.last_name,
+          email: newCandidate.email,
+          nationality: newCandidate.nationality,
+        });
+        setShowAckMailDialog(true);
       }
 
       // Candidate added - no alert needed
@@ -2142,6 +2175,45 @@ export default function NogInTeDelenPage() {
           onComplete={handleContractDialogComplete}
         />
       )}
+
+      {/* Ja/Nee dialoog voor ontvangstmail bij handmatig kandidaat aanmaken */}
+      <Dialog
+        open={showAckMailDialog}
+        onOpenChange={(open) => {
+          if (!sendingAckMail) {
+            setShowAckMailDialog(open);
+            if (!open) setPendingAckMail(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ontvangstmail versturen?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-700">
+            Wil je de ontvangstmail nu versturen naar{" "}
+            <span className="font-medium">
+              {pendingAckMail?.firstName} {pendingAckMail?.lastName}
+            </span>
+            ?
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => handleAckMailChoice(false)}
+              disabled={sendingAckMail}
+            >
+              Nee
+            </Button>
+            <Button
+              onClick={() => handleAckMailChoice(true)}
+              disabled={sendingAckMail}
+            >
+              {sendingAckMail ? "Bezig..." : "Ja"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
