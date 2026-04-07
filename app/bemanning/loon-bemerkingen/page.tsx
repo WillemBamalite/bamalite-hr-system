@@ -466,9 +466,9 @@ export default function LoonBemerkingenPage() {
           company: activeCompanyTab || "",
         }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || data?.message || "Mail versturen mislukt")
+      const responseBody = await res.json().catch(() => ({}))
+      if (!res.ok || !responseBody?.success) {
+        throw new Error(responseBody?.error || responseBody?.message || "Mail versturen mislukt")
       }
       setReadyMailInfo(
         isTanja
