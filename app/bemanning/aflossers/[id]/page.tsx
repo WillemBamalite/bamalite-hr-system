@@ -328,6 +328,36 @@ export default function AflosserDetailPage() {
       }
     })
 
+    // Vul ontbrekende kalendermaanden op tussen eerste relevante maand en huidige maand.
+    // Zo loopt de vaste-dienst norm (-15) elke maand door, ook zonder reizen/correcties.
+    if (monthMap.size > 0) {
+      const entries = Array.from(monthMap.values())
+      const first = entries.reduce((min, cur) => {
+        const minStamp = min.year * 12 + min.month
+        const curStamp = cur.year * 12 + cur.month
+        return curStamp < minStamp ? cur : min
+      })
+
+      const now = new Date()
+      const endYear = now.getFullYear()
+      const endMonth = now.getMonth() + 1
+
+      let y = first.year
+      let m = first.month
+
+      while (y < endYear || (y === endYear && m <= endMonth)) {
+        const key = `${y}-${m}`
+        if (!monthMap.has(key)) {
+          monthMap.set(key, { year: y, month: m, workedDays: 0 })
+        }
+        m += 1
+        if (m > 12) {
+          m = 1
+          y += 1
+        }
+      }
+    }
+
     // Voeg per maand de mindagen toe
     return Array.from(monthMap.entries()).map(([key, value]) => ({
       ...value,
