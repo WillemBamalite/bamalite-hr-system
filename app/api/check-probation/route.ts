@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import nodemailer from 'nodemailer'
+import { requireApiAccess } from '@/lib/api-security'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -10,8 +11,11 @@ const transporter = nodemailer.createTransport({
   },
 })
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const accessError = await requireApiAccess(request, 'cron_or_admin')
+    if (accessError) return accessError
+
     // Fetch all crew members with in_dienst_vanaf
     const { data: crewMembers, error } = await supabase
       .from('crew')

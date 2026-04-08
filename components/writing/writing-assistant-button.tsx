@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sparkles } from "lucide-react"
+import { authenticatedFetch } from "@/lib/authenticated-fetch"
 
 interface WritingAssistantButtonProps {
   value: string
@@ -21,7 +22,7 @@ export function WritingAssistantButton({
     if (!value.trim()) return
     try {
       setLoading(true)
-      const response = await fetch("/api/writing-assistant", {
+      const response = await authenticatedFetch("/api/writing-assistant", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

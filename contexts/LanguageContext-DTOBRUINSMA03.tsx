@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { Locale, getTranslation, Translations } from '@/lib/i18n'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthContext'
 
 interface LanguageContextType {
@@ -22,22 +23,42 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
   const userEmail = (user?.email || "").trim().toLowerCase()
   const isTanja = userEmail === "tanja@bamalite.com"
 
-  // Hard rule: Tanja always German, everyone else always Dutch.
+  // Load preferred locale from Supabase user metadata
   useEffect(() => {
-    if (!user) {
-      setLocaleState('nl')
-      return
+    const loadLocale = async () => {
+      if (!user) return
+      try {
+        if (isTanja) {
+          setLocaleState('de')
+          await supabase.auth.updateUser({ data: { locale: 'de' } })
+          return
+        }
+
+        const { data } = await supabase.auth.getUser()
+        const savedLocale = (data.user?.user_metadata as any)?.locale as Locale | undefined
+        if (savedLocale && ['nl', 'de', 'fr'].includes(savedLocale)) {
+          setLocaleState(savedLocale)
+        }
+      } catch (error) {
+        console.error('Error loading locale:', error)
+      }
     }
-    setLocaleState(isTanja ? 'de' : 'nl')
+    loadLocale()
   }, [user, isTanja])
 
   const setLocale = async (newLocale: Locale) => {
-    // Keep language fixed by user rule.
-    if (!user) {
-      setLocaleState('nl')
+    if (isTanja) {
+      setLocaleState('de')
       return
     }
-    setLocaleState(isTanja ? 'de' : 'nl')
+    setLocaleState(newLocale)
+    if (user) {
+      try {
+        await supabase.auth.updateUser({ data: { locale: newLocale } })
+      } catch (error) {
+        console.error('Error saving locale:', error)
+      }
+    }
   }
 
   const t = (key: keyof Translations): string => {

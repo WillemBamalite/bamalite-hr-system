@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { authenticatedFetch } from "@/lib/authenticated-fetch"
 
 export default function TestCertificatesPage() {
   const [loading, setLoading] = useState(false)
@@ -15,7 +16,7 @@ export default function TestCertificatesPage() {
     setResult(null)
 
     try {
-      const response = await fetch('/api/check-expiring-certificates', {
+      const response = await authenticatedFetch('/api/check-expiring-certificates', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

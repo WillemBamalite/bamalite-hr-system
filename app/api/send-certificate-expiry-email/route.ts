@@ -4,6 +4,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import fs from 'fs'
 import path from 'path'
 import { supabase } from '@/lib/supabase'
+import { requireApiAccess } from '@/lib/api-security'
 
 // Zorg dat deze route altijd op de Node.js runtime draait
 export const runtime = 'nodejs'
@@ -143,6 +144,9 @@ async function generateFilledCertificatePDF(crewName: string, expiryDate: string
 
 export async function POST(request: NextRequest) {
   try {
+    const accessError = await requireApiAccess(request, 'authenticated')
+    if (accessError) return accessError
+
     const body = await request.json()
     const { crewName, expiryDate, expiryDateForPDF, daysUntilExpiry, recipientEmail, sickLeaveId } = body
 

@@ -18,7 +18,6 @@ export function DashboardStats() {
   const { t, locale } = useLanguage()
   const { canAccessPath } = useAuth()
   const [loonBemerkingenCount, setLoonBemerkingenCount] = useState(0)
-  const ABSENT_MARKER = "[AFWEZIG]"
   const uiText = {
     notifications: locale === "de" ? "Benachrichtigungen" : locale === "fr" ? "Notifications" : "Meldingen",
     open: locale === "de" ? "offen" : locale === "fr" ? "ouvert" : "open",
@@ -28,7 +27,7 @@ export function DashboardStats() {
     companySwitch: locale === "de" ? "Firmenwechsel" : locale === "fr" ? "Changement d'entreprise" : "Firma Wisseling",
     withAlert: locale === "de" ? "mit Warnsymbol" : locale === "fr" ? "avec alerte" : "met uitroepteken",
     noAction: locale === "de" ? "Keine Aktion nötig" : locale === "fr" ? "Aucune action requise" : "Geen actie nodig",
-    payrollNotes: locale === "de" ? "Gehälter" : locale === "fr" ? "Salaires" : "Salarissen",
+    payrollNotes: locale === "de" ? "Lohnbemerkungen" : locale === "fr" ? "Remarques salariales" : "Loon bemerkingen",
   }
 
   const notificationCount = useMemo(() => {
@@ -106,20 +105,10 @@ export function DashboardStats() {
       actief: trips.filter((trip: any) => trip.status === 'actief').length
     },
     ziekenStats: (() => {
-      const isAbsentSickRecord = (s: any, crewMember: any) => {
-        const notesText = String(s?.notes || "").toUpperCase()
-        return crewMember?.status === "afwezig" || notesText.includes(ABSENT_MARKER)
-      }
-
       // Filter actieve ziekmeldingen (inclusief wacht-op-briefje)
       const activeSickLeaves = sickLeave.filter((s: any) => {
         const crewMember = crew.find((c) => c.id === s.crew_member_id)
-        return (
-          (s.status === "actief" || s.status === "wacht-op-briefje") &&
-          crewMember &&
-          crewMember.status !== "uit-dienst" &&
-          !isAbsentSickRecord(s, crewMember)
-        )
+        return (s.status === "actief" || s.status === "wacht-op-briefje") && crewMember && crewMember.status !== 'uit-dienst'
       })
 
       const today = new Date()
@@ -188,15 +177,11 @@ export function DashboardStats() {
     ).length,
     actieveZiekmeldingen: sickLeave.filter((s) => {
       const crewMember = crew.find((c) => c.id === s.crew_member_id)
-      const notesText = String((s as any)?.notes || "").toUpperCase()
-      const isAbsent = crewMember?.status === "afwezig" || notesText.includes(ABSENT_MARKER)
-      return s.status === "actief" && crewMember && crewMember.status !== 'uit-dienst' && !isAbsent
+      return s.status === "actief" && crewMember && crewMember.status !== 'uit-dienst'
     }).length,
     ziekmeldingenMetBriefje: sickLeave.filter((s) => {
       const crewMember = crew.find((c) => c.id === s.crew_member_id)
-      const notesText = String((s as any)?.notes || "").toUpperCase()
-      const isAbsent = crewMember?.status === "afwezig" || notesText.includes(ABSENT_MARKER)
-      return s.status === "wacht-op-briefje" && crewMember && crewMember.status !== 'uit-dienst' && !isAbsent
+      return s.status === "wacht-op-briefje" && crewMember && crewMember.status !== 'uit-dienst'
     }).length,
     nieuwPersoneelStats: (() => {
       // Helper functie om checklist status te checken
@@ -573,7 +558,7 @@ export function DashboardStats() {
           </Link>
         </div>}
 
-        {/* 14. Salarissen */}
+        {/* 14. Loon bemerkingen */}
         {canAccessPath("/bemanning/loon-bemerkingen") && <div className="aspect-[3/1]">
           <Link
             href="/bemanning/loon-bemerkingen"

@@ -1,0 +1,1261 @@
+"use client"
+
+import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { UserX, FileText, Calendar, AlertTriangle, CheckCircle, Euro, Ship, Phone, Edit, Heart, Paperclip, Trash2 } from "lucide-react"
+import { BackButton } from "@/components/ui/back-button"
+import { DashboardButton } from "@/components/ui/dashboard-button"
+import { format } from "date-fns"
+import { useState, useEffect } from "react"
+import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useLanguage } from "@/contexts/LanguageContext"
+import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { StandBackManagement } from "@/components/sick-leave/stand-back-management"
+import { supabase } from "@/lib/supabase"
+
+export default function ZiektePage() {
+  const { crew, sickLeave, loading, error, updateCrew, updateSickLeave, addStandBackRecord } = useSupabaseData()
+  const { t, locale } = useLanguage()
+  const [activeTab, setActiveTab] = useState('ziekte')
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editingRecord, setEditingRecord] = useState<any>(null)
+  const [editForm, setEditForm] = useState({
+    hasCertificate: false,
+    certificateValidUntil: "",
+    salaryPercentage: "100",
+    paidBy: "Bamalite S.A.",
+    notes: ""
+  })
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
+  const [recoveryRecord, setRecoveryRecord] = useState<any>(null)
+  const [recoveryDate, setRecoveryDate] = useState("")
+  const uiText = {
+    subtitle: locale === "de" ? "Aktive Krankmeldungen und Krankheitsverwaltung" : "Actieve ziekmeldingen en ziekte management",
+    newSickLeave: locale === "de" ? "Neue Krankmeldung" : "Nieuwe ziekmelding",
+    tabSick: locale === "de" ? "Krankheit" : "Ziekte",
+    tabStandBack: locale === "de" ? "Zuruckstehen" : "Terug te staan",
+    sectionNoOrExpired: locale === "de" ? "Kein Attest und abgelaufene Atteste" : "Geen ziektebriefje en verlopen ziektebriefjes",
+    sectionWaitingOrSoon: locale === "de" ? "Warten auf Attest und bald ablaufende Atteste" : "Wacht op briefje en bijna verlopen briefjes",
+    sectionValid: locale === "de" ? "Gultige Atteste" : "Geldige ziektebriefjes",
+    records: locale === "de" ? "Eintrage" : "records",
+    noRecords: locale === "de" ? "Keine Eintrage" : "Geen records",
+    startDate: locale === "de" ? "Startdatum:" : "Start datum:",
+    days: locale === "de" ? "Tage" : "dagen",
+    salary: locale === "de" ? "Gehalt:" : "Salaris:",
+    paidBy: locale === "de" ? "Bezahlt durch:" : "Betaald door:",
+    notes: locale === "de" ? "Notizen:" : "Notities:",
+    attachments: locale === "de" ? "Anlagen" : "Bijlagen",
+    open: locale === "de" ? "Offnen" : "Openen",
+    noAttachments: locale === "de" ? "Geen Anlagen" : "Geen bijlagen",
+    uploading: locale === "de" ? "Hochladen..." : "Uploaden...",
+    addAttachment: locale === "de" ? "Anlage hinzufugen" : "Bijlage toevoegen",
+    editSickLeave: locale === "de" ? "Krankmeldung bearbeiten" : "Ziekmelding bewerken",
+    cancel: locale === "de" ? "Abbrechen" : "Annuleren",
+    save: locale === "de" ? "Speichern" : "Opslaan",
+  }
+  
+  // Bijlagen bij ziekmeldingen
+  const [sickLeaveAttachments, setSickLeaveAttachments] = useState<any[]>([])
+  const [loadingAttachments, setLoadingAttachments] = useState(false)
+  const [uploadingAttachmentForSickLeave, setUploadingAttachmentForSickLeave] = useState<string | null>(null)
+
+  // Bijlagen laden
+  const loadSickLeaveAttachments = async () => {
+    try {
+      setLoadingAttachments(true)
+      const { data, error } = await supabase
+        .from("sick_leave_attachments")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("Error loading sick leave attachments:", error)
+        setSickLeaveAttachments([])
+      } else {
+        setSickLeaveAttachments(data || [])
+      }
+    } catch (err) {
+      console.error("Unexpected error loading sick leave attachments:", err)
+      setSickLeaveAttachments([])
+    } finally {
+      setLoadingAttachments(false)
+    }
+  }
+
+  useEffect(() => {
+    loadSickLeaveAttachments()
+  }, [])
+
+  const getAttachmentsForSickLeave = (sickLeaveId: string) =>
+    sickLeaveAttachments.filter((att) => String(att.sick_leave_id || "") === String(sickLeaveId || ""))
+
+  const handleUploadSickLeaveAttachment = async (sickLeaveId: string, file: File | null) => {
+    if (!file) return
+    try {
+      setUploadingAttachmentForSickLeave(sickLeaveId)
+
+      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+      const filePath = `${sickLeaveId}/${Date.now()}-${safeFileName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("sick-leave-attachments")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error("Storage upload fout (sick-leave-attachments):", uploadError)
+        alert(
+          `Fout bij uploaden bijlage: ${
+            uploadError.message || (uploadError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      if (!uploadData?.path) {
+        alert("Fout bij uploaden bijlage: geen pad teruggekregen van Storage")
+        return
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("sick-leave-attachments")
+        .getPublicUrl(uploadData.path)
+
+      const publicUrl = publicUrlData?.publicUrl
+      if (!publicUrl) {
+        alert("Fout bij uploaden bijlage: geen publieke URL gegenereerd")
+        return
+      }
+
+      const payload: any = {
+        sick_leave_id: sickLeaveId,
+        file_name: file.name,
+        storage_path: uploadData.path,
+        file_url: publicUrl,
+        file_size: file.size,
+        mime_type: file.type,
+      }
+
+      const { error: insertError } = await supabase
+        .from("sick_leave_attachments")
+        .insert([payload])
+
+      if (insertError) {
+        console.error("Database insert fout (sick_leave_attachments):", insertError)
+        alert(
+          `Fout bij opslaan bijlage: ${
+            insertError.message || (insertError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      await loadSickLeaveAttachments()
+    } catch (error: any) {
+      console.error("Onbekende fout bij uploaden bijlage:", error)
+      alert(
+        `Fout bij uploaden bijlage: ${
+          error?.message || error?.error?.message || "Onbekende fout"
+        }`
+      )
+    } finally {
+      setUploadingAttachmentForSickLeave(null)
+    }
+  }
+
+  const handleDeleteSickLeaveAttachment = async (attachment: any) => {
+    if (
+      !confirm(
+        `Weet je zeker dat je deze bijlage wilt verwijderen?\n\n${attachment.file_name}`
+      )
+    ) {
+      return
+    }
+    try {
+      if (attachment.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from("sick-leave-attachments")
+          .remove([attachment.storage_path])
+
+        if (storageError) {
+          console.error("Fout bij verwijderen bestand uit Storage:", storageError)
+          alert(
+            `Fout bij verwijderen bestand uit Storage: ${
+              storageError.message ||
+              (storageError as any)?.error?.message ||
+              "Onbekende fout"
+            }`
+          )
+        }
+      }
+
+      const { error: dbError } = await supabase
+        .from("sick_leave_attachments")
+        .delete()
+        .eq("id", attachment.id)
+
+      if (dbError) {
+        console.error("Fout bij verwijderen bijlage uit database:", dbError)
+        alert(
+          `Fout bij verwijderen bijlage: ${
+            dbError.message || (dbError as any)?.error?.message || "Onbekende fout"
+          }`
+        )
+        return
+      }
+
+      await loadSickLeaveAttachments()
+    } catch (error: any) {
+      console.error("Onbekende fout bij verwijderen bijlage:", error)
+      alert(
+        `Fout bij verwijderen bijlage: ${
+          error?.message || error?.error?.message || "Onbekende fout"
+        }`
+      )
+    }
+  }
+
+  // Filter actieve ziekmeldingen (inclusief wacht-op-briefje, EXCLUSIEF afgerond)
+  const activeSickLeaves = sickLeave.filter((s: any) => 
+    s.status === "actief" || s.status === "wacht-op-briefje"
+  )
+
+  // Combineer ziekmeldingen met crew data
+  const sickLeaveRecords = activeSickLeaves
+    .map((sick: any) => {
+      const crewMember = crew.find((c) => c.id === sick.crew_member_id)
+      const ship = crewMember?.ship_id ? crew.find((s) => s.id === crewMember.ship_id) : null
+
+      // Bereken dagen ziek
+      const startDate = new Date(sick.start_date)
+      const today = new Date()
+      const daysCount = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      return {
+        ...sick,
+        crewMember,
+        ship,
+        daysCount,
+      }
+    })
+    .filter((record) => record.crewMember && record.crewMember.status !== 'uit-dienst') // Filter out records zonder crew member en uit-dienst crew
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "actief":
+        return "bg-red-100 text-red-800"
+      case "hersteld":
+        return "bg-green-100 text-green-800"
+      case "wacht-op-briefje":
+        return "bg-orange-100 text-orange-800"
+      case "afgerond":
+        return "bg-gray-100 text-gray-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "actief":
+        return locale === "de" ? "Aktiv krank" : "Actief ziek"
+      case "hersteld":
+        return locale === "de" ? "Genesen" : "Hersteld"
+      case "wacht-op-briefje":
+        return locale === "de" ? "Warten auf Attest" : "Wacht op briefje"
+      case "afgerond":
+        return locale === "de" ? "Abgeschlossen" : "Afgerond"
+      default:
+        return status
+    }
+  }
+
+  const getNationalityFlag = (nationality: string) => {
+    const flags: { [key: string]: string } = {
+      NL: "🇳🇱",
+      CZ: "🇨🇿",
+      SLK: "🇸🇰",
+      EG: "🇪🇬",
+      PO: "🇵🇱",
+      SERV: "🇷🇸",
+      HUN: "🇭🇺",
+      BE: "🇧🇪",
+      FR: "🇫🇷",
+      DE: "🇩🇪",
+      LUX: "🇱🇺",
+    }
+    return flags[nationality] || "🌍"
+  }
+
+  const getCertificateStatus = (record: any) => {
+    if (!record.certificate_valid_until) {
+      return {
+        color: "bg-red-100 text-red-800",
+        text: locale === "de" ? "Kein Attest" : "Geen ziektebriefje",
+        icon: AlertTriangle,
+      }
+    }
+
+    if (record.certificate_valid_until) {
+      const validUntil = new Date(record.certificate_valid_until)
+      const today = new Date()
+      const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+      if (daysUntilExpiry < 0) {
+        return {
+          color: "bg-red-100 text-red-800",
+          text: locale === "de" ? "Attest abgelaufen" : "Briefje verlopen",
+          icon: AlertTriangle,
+        }
+      } else if (daysUntilExpiry <= 7) {
+        return {
+          color: "bg-orange-100 text-orange-800",
+          text: locale === "de"
+            ? `Attest lauft uber ${daysUntilExpiry} Tage ab (${format(validUntil, "dd-MM-yyyy")})`
+            : `Briefje verloopt over ${daysUntilExpiry} dagen (${format(validUntil, "dd-MM-yyyy")})`,
+          icon: AlertTriangle,
+        }
+      } else {
+        return {
+          color: "bg-green-100 text-green-800",
+          text: locale === "de"
+            ? `Attest gultig bis ${format(validUntil, "dd-MM-yyyy")}`
+            : `Briefje geldig t/m ${format(validUntil, "dd-MM-yyyy")}`,
+          icon: CheckCircle,
+        }
+      }
+    }
+
+    return {
+      color: "bg-green-100 text-green-800",
+      text: locale === "de" ? "Attest vorhanden" : "Briefje aanwezig",
+      icon: CheckCircle,
+    }
+  }
+
+  const handleEdit = (record: any) => {
+    setEditingRecord(record)
+    setEditForm({
+      hasCertificate: !!record.certificate_valid_until, // Heeft briefje als deze datum gevuld is
+      certificateValidUntil: record.certificate_valid_until ? format(new Date(record.certificate_valid_until), "yyyy-MM-dd") : "",
+      salaryPercentage: record.salary_percentage?.toString() || "100",
+      paidBy: record.paid_by || "Bamalite S.A.",
+      notes: record.notes || ""
+    })
+    setEditDialogOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!editingRecord) return
+
+    try {
+      console.log('=== STARTING SICK LEAVE UPDATE ===')
+      console.log('Editing record ID:', editingRecord.id)
+      console.log('Edit form data:', editForm)
+      
+      // Update de record in Supabase
+      // Note: dokters_verklaring is GEEN database kolom, wordt afgeleid van certificate_valid_until
+      const updatedRecord: any = {
+        certificate_valid_until: editForm.hasCertificate && editForm.certificateValidUntil ? editForm.certificateValidUntil : null,
+        salary_percentage: parseInt(editForm.salaryPercentage),
+        paid_by: editForm.paidBy,
+        notes: editForm.notes || "" // Use empty string instead of null
+      }
+
+      // Update status naar "actief" als er een briefje is
+      if (editForm.hasCertificate && editingRecord.status === "wacht-op-briefje") {
+        updatedRecord.status = "actief"
+      }
+
+      console.log('Updated record data:', updatedRecord)
+
+      // Update in Supabase
+      console.log('Calling updateSickLeave...')
+      const result = await updateSickLeave(editingRecord.id, updatedRecord)
+      console.log('✅ Update result:', result)
+
+      setEditDialogOpen(false)
+      setEditingRecord(null)
+      setEditForm({
+        hasCertificate: false,
+        certificateValidUntil: "",
+        salaryPercentage: "100",
+        paidBy: "Bamalite S.A.",
+        notes: ""
+      })
+      
+      alert("Ziekmelding bijgewerkt!")
+      console.log('=== SICK LEAVE UPDATE COMPLETED ===')
+    } catch (error) {
+      console.error("❌ Error updating sick leave record:", error)
+      console.error("❌ Error details:", JSON.stringify(error, null, 2))
+      alert("Fout bij het bijwerken van de ziekmelding: " + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  const handleMarkAsRecovered = (record: any) => {
+    if (!record) return
+    
+    // Open recovery dialog
+    setRecoveryRecord(record)
+    setRecoveryDate("")
+    setRecoveryDialogOpen(true)
+  }
+
+  const handleRecoveryConfirm = async () => {
+    if (!recoveryRecord || !recoveryDate) {
+      alert("Vul een datum in voor terugkeer aan boord")
+      return
+    }
+
+    try {
+      console.log('=== STARTING RECOVERY PROCESS ===')
+      console.log('Recovery record:', recoveryRecord)
+      console.log('Recovery date:', recoveryDate)
+      
+      // Update sick leave record status naar "afgerond"
+      console.log('Updating sick leave record...')
+      await updateSickLeave(recoveryRecord.id, {
+        status: "afgerond",
+        end_date: recoveryDate
+      })
+      console.log('✅ Sick leave updated successfully')
+
+      // Update crew member status naar "thuis"
+      console.log('Updating crew member...')
+      
+      // Check of terugkeerdatum in de toekomst ligt
+      const recoveryDateObj = new Date(recoveryDate)
+      recoveryDateObj.setHours(0, 0, 0, 0)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const isFutureDate = recoveryDateObj > today
+      
+      if (isFutureDate) {
+        // Terugkeerdatum in de toekomst: persoon blijft "thuis" tot die datum
+        console.log('Recovery date is in the future, setting expected_start_date')
+        await updateCrew(recoveryRecord.crewMember.id, {
+          status: "thuis",
+          expected_start_date: recoveryDate, // Wacht tot deze datum om aan boord te gaan
+          on_board_since: null, // Nog niet aan boord
+          thuis_sinds: today.toISOString().split('T')[0] // Thuis vanaf vandaag
+        })
+      } else {
+        // Terugkeerdatum vandaag of in het verleden: persoon gaat direct aan boord
+        console.log('Recovery date is today or in the past, starting rotation immediately')
+        await updateCrew(recoveryRecord.crewMember.id, {
+          status: "thuis",
+          on_board_since: recoveryDate, // Vanaf deze datum start de rotatie
+          expected_start_date: null, // Geen wachtdatum
+          thuis_sinds: null // Rotatie is gestart
+        })
+      }
+      
+      console.log('✅ Crew member updated successfully')
+
+      // Bereken ziekte duur
+      const sickStartDate = new Date(recoveryRecord.start_date)
+      const sickEndDate = new Date(recoveryDate)
+      const daysCount = Math.floor((sickEndDate.getTime() - sickStartDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      // Bepaal hoeveel "terug te staan" dagen nodig zijn:
+      // - Is iemand korter dan 7 dagen ziek? Dan hetzelfde aantal dagen terug te staan.
+      // - Is iemand 7 dagen of langer ziek? Dan maximaal 7 terug te staan dagen.
+      const standBackDaysRequired = Math.min(daysCount, 7)
+
+      // Voeg stand-back record toe aan Supabase
+      const standBackRecord = {
+        id: crypto.randomUUID(), // Generate UUID for the record
+        crew_member_id: recoveryRecord.crewMember.id,
+        sick_leave_id: recoveryRecord.id,
+        start_date: recoveryRecord.start_date,
+        end_date: recoveryDate,
+        days_count: daysCount,
+        reason: 'ziekte', // Stand-back reason is always 'ziekte' for sick leave
+        description: recoveryRecord.reason || 'Geen klacht opgegeven',
+        notes: recoveryRecord.notes || '', // Pass through the notes from sick leave
+        stand_back_days_required: standBackDaysRequired,
+        stand_back_days_completed: 0,
+        stand_back_days_remaining: standBackDaysRequired,
+        stand_back_status: "openstaand",
+        stand_back_history: []
+      }
+
+      console.log('Creating stand back record in Supabase:', standBackRecord)
+      console.log('Stand back record data structure:', JSON.stringify(standBackRecord, null, 2))
+      
+      const result = await addStandBackRecord(standBackRecord)
+      console.log('✅ Stand back record created in Supabase:', result)
+
+      // Recovery registered - no alert needed
+      
+      setRecoveryDialogOpen(false)
+      setRecoveryRecord(null)
+      setRecoveryDate("")
+      
+      console.log('=== RECOVERY PROCESS COMPLETED ===')
+    } catch (error) {
+      console.error("❌ Error marking as recovered:", error)
+      console.error("❌ Error details:", JSON.stringify(error, null, 2))
+      alert("Fout bij het registreren van herstel: " + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-2">
+        <div className="text-center py-8 text-gray-500">Data laden...</div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-2">
+        <div className="text-center py-8 text-red-500">Fout: {error}</div>
+      </div>
+    )
+  }
+
+  // Statistieken
+  const activeSick = activeSickLeaves.length
+  const waitingForCertificate = activeSickLeaves.filter((r: any) => r.status === "wacht-op-briefje").length
+
+  // Categoriseer records in drie groepen
+  const noCertificateOrExpired = sickLeaveRecords.filter((record: any) => {
+    // Status "wacht-op-briefje" gaat NIET naar deze kolom
+    if (record.status === "wacht-op-briefje") return false
+    
+    // Geen briefje
+    if (!record.certificate_valid_until) return true
+    
+    // Verlopen briefje (meer dan 0 dagen geleden verlopen)
+    const validUntil = new Date(record.certificate_valid_until)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    validUntil.setHours(0, 0, 0, 0)
+    
+    const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    // Al verlopen (meer dan 0 dagen geleden)
+    return daysUntilExpiry < 0
+  })
+
+  const waitingOrExpiringSoon = sickLeaveRecords.filter((record: any) => {
+    // Wacht op briefje status (altijd in deze kolom)
+    if (record.status === "wacht-op-briefje") return true
+    
+    // Bijna verlopen briefjes (verloopt over 3 dagen of minder, maar nog niet verlopen)
+    // Moet een briefje hebben
+    if (!record.certificate_valid_until) return false
+    
+    const validUntil = new Date(record.certificate_valid_until)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    validUntil.setHours(0, 0, 0, 0)
+    
+    const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    // Verloopt over 3 dagen of minder, maar nog niet verlopen (0-3 dagen)
+    // Kan zowel "actief" als andere statussen zijn, zolang het briefje bijna verloopt
+    return daysUntilExpiry >= 0 && daysUntilExpiry <= 3
+  })
+
+  const validCertificates = sickLeaveRecords.filter((record: any) => {
+    // Moet status "actief" zijn
+    if (record.status !== "actief") return false
+    
+    // Moet een geldig briefje hebben
+    if (!record.certificate_valid_until) return false
+    
+    const validUntil = new Date(record.certificate_valid_until)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    validUntil.setHours(0, 0, 0, 0)
+    
+    const daysUntilExpiry = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    // Briefje geldig voor meer dan 3 dagen EN niet al in waitingOrExpiringSoon
+    // (om dubbelingen te voorkomen)
+    return daysUntilExpiry > 3
+  })
+
+  // Helper functie om een record card te renderen
+  const renderRecordCard = (record: any) => {
+    const certificateStatus = getCertificateStatus(record)
+    return (
+      <Card key={record.id} className="hover:shadow-lg transition-shadow">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Avatar className="w-10 h-10">
+                <AvatarFallback className="bg-blue-100 text-blue-700">
+                  {record.crewMember.first_name[0]}{record.crewMember.last_name[0]}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <Link href={`/bemanning/${record.crewMember.id}`} className="font-medium text-gray-900 hover:text-blue-700">
+                    {record.crewMember.first_name} {record.crewMember.last_name}
+                  </Link>
+                  <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
+                </div>
+                <p className="text-sm text-gray-500">{record.crewMember.position}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge className={getStatusColor(record.status)}>
+                {getStatusText(record.status)}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleEdit(record)}
+                className="h-8 w-8 p-0"
+              >
+                <Edit className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-500">{uiText.startDate}</span>
+              <div className="flex items-center space-x-1 mt-1">
+                <Calendar className="w-3 h-3 text-gray-400" />
+                <span className="font-medium">{format(new Date(record.start_date), "dd-MM-yyyy")}</span>
+              </div>
+            </div>
+            <div>
+              <span className='text-gray-500'>{t('daysSick')}:</span>
+              <p className="font-medium mt-1">{record.daysCount} {uiText.days}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">{uiText.salary}</span>
+              <div className="flex items-center space-x-1 mt-1">
+                <Euro className="w-3 h-3 text-gray-400" />
+                <span className="font-medium">{record.salary_percentage || 100}%</span>
+              </div>
+            </div>
+            <div>
+              <span className="text-gray-500">{uiText.paidBy}</span>
+              <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
+            </div>
+          </div>
+
+          {/* Ziektebriefje status */}
+          <div className="flex items-center justify-between pt-3 border-t">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-4 h-4 text-gray-400" />
+              <span className='text-sm text-gray-600'>{t('sickCertificate')}:</span>
+            </div>
+            <Badge className={certificateStatus.color}>
+              {certificateStatus.text}
+            </Badge>
+          </div>
+
+          {/* Schip info */}
+          {record.ship && (
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <Ship className="w-4 h-4" />
+              <span>{record.ship.name}</span>
+            </div>
+          )}
+
+          {/* Notities */}
+          {record.notes && (
+            <div className="pt-3 border-t">
+              <span className="text-gray-500 text-sm">{uiText.notes}</span>
+              <p className="text-sm text-gray-700 mt-1 italic">{record.notes}</p>
+            </div>
+          )}
+
+          {/* Bijlagen bij deze ziekmelding - altijd zichtbaar */}
+          <div className="pt-3 border-t space-y-2">
+            <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+              <Paperclip className="w-3 h-3" />
+              {uiText.attachments}
+            </div>
+            {getAttachmentsForSickLeave(record.id).length > 0 ? (
+              <div className="space-y-1">
+                {getAttachmentsForSickLeave(record.id).map((att) => (
+                  <div
+                    key={att.id}
+                    className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                  >
+                    <div className="truncate">
+                      {att.file_name}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(att.file_url, "_blank")}
+                      >
+                        {uiText.open}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 border-red-200"
+                        onClick={() => handleDeleteSickLeaveAttachment(att)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">{uiText.noAttachments}</p>
+            )}
+            <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) =>
+                  handleUploadSickLeaveAttachment(
+                    record.id,
+                    e.target.files?.[0] || null
+                  )
+                }
+              />
+              <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                <Paperclip className="w-3 h-3" />
+                {uploadingAttachmentForSickLeave === record.id
+                  ? uiText.uploading
+                  : uiText.addAttachment}
+              </span>
+            </label>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto py-8 px-2">
+      <MobileHeaderNav />
+      <DashboardButton />
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <BackButton href="/" />
+          <div>
+            <h1 className="text-2xl font-bold">{t('sickLeaveOverview')}</h1>
+            <p className="text-sm text-gray-600">{uiText.subtitle}</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <Link href="/ziekte/nieuw" className="bg-green-600 text-white text-sm py-2 px-4 rounded-lg hover:bg-green-700 shadow flex items-center gap-2">
+            <UserX className="w-4 h-4" />
+            {uiText.newSickLeave}
+          </Link>
+        </div>
+      </div>
+
+      {/* Statistieken */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <UserX className="w-5 h-5 text-red-600" />
+              <div>
+                <p className='text-sm text-gray-600'>{t('activeSick')}</p>
+                <p className="text-2xl font-bold text-red-600">{activeSick}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 text-orange-600" />
+              <div>
+                <p className='text-sm text-gray-600'>{t('noValidCertificate')}</p>
+                <p className="text-2xl font-bold text-orange-600">{waitingForCertificate}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
+          <TabsTrigger value="ziekte" className="text-base">
+            <UserX className="w-4 h-4 mr-2" />
+            {uiText.tabSick}
+          </TabsTrigger>
+          <TabsTrigger value="terug-te-staan" className="text-base">
+            <Heart className="w-4 h-4 mr-2" />
+            {uiText.tabStandBack}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Ziekte Tab */}
+        <TabsContent value="ziekte" className="space-y-6">
+
+      {/* Desktop weergave - 3 secties onder elkaar, elk met 3 kaarten naast elkaar */}
+      <div className="hidden md:block space-y-8">
+        {/* Sectie 1: Geen ziektebriefje en verlopen ziektebriefjes */}
+        <div className="space-y-4">
+          <div className="pb-4 border-b">
+            <h2 className="text-lg font-semibold text-gray-900">{uiText.sectionNoOrExpired}</h2>
+            <p className="text-sm text-gray-500 mt-1">{noCertificateOrExpired.length} {uiText.records}</p>
+          </div>
+          {noCertificateOrExpired.length > 0 ? (
+            <div className="grid grid-cols-3 gap-6">
+              {noCertificateOrExpired.map((record: any) => renderRecordCard(record))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p>{uiText.noRecords}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Sectie 2: Wacht op briefje en bijna verlopen briefjes */}
+        <div className="space-y-4">
+          <div className="pb-4 border-b">
+            <h2 className="text-lg font-semibold text-orange-800">{uiText.sectionWaitingOrSoon}</h2>
+            <p className="text-sm text-gray-500 mt-1">{waitingOrExpiringSoon.length} {uiText.records}</p>
+          </div>
+          {waitingOrExpiringSoon.length > 0 ? (
+            <div className="grid grid-cols-3 gap-6">
+              {waitingOrExpiringSoon.map((record: any) => renderRecordCard(record))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p>{uiText.noRecords}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Sectie 3: Geldige ziektebriefjes */}
+        <div className="space-y-4">
+          <div className="pb-4 border-b">
+            <h2 className="text-lg font-semibold text-green-800">{uiText.sectionValid}</h2>
+            <p className="text-sm text-gray-500 mt-1">{validCertificates.length} {uiText.records}</p>
+          </div>
+          {validCertificates.length > 0 ? (
+            <div className="grid grid-cols-3 gap-6">
+              {validCertificates.map((record: any) => renderRecordCard(record))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <CheckCircle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p>{uiText.noRecords}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobiele weergave */}
+      <div className="block md:hidden space-y-4">
+        {sickLeaveRecords.map((record: any) => {
+          const certificateStatus = getCertificateStatus(record)
+          return (
+            <Card key={record.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                  <Avatar className="w-8 h-8">
+                      <AvatarFallback className="bg-blue-100 text-blue-700 text-xs">
+                      {record.crewMember.first_name[0]}{record.crewMember.last_name[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                      <div className="flex items-center space-x-2">
+                        <Link href={`/bemanning/${record.crewMember.id}`} className="font-medium text-sm hover:text-blue-700">
+                      {record.crewMember.first_name} {record.crewMember.last_name}
+                        </Link>
+                        <span className="text-lg">{getNationalityFlag(record.crewMember.nationality)}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">{record.crewMember.position}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Badge className={`${getStatusColor(record.status)} text-xs`}>
+                      {getStatusText(record.status)}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(record)}
+                      className="h-6 w-6 p-0"
+                    >
+                      <Edit className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* {t('sickLeaveDetails')} */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-gray-500">{uiText.startDate}</span>
+                    <p className="font-medium mt-1">{format(new Date(record.start_date), "dd-MM-yyyy")}</p>
+              </div>
+                <div>
+                    <span className='text-gray-500'>{t('daysSick')}:</span>
+                    <p className="font-medium mt-1">{record.daysCount} {uiText.days}</p>
+                </div>
+                <div>
+                    <span className="text-gray-500">{uiText.salary}</span>
+                    <p className="font-medium mt-1">{record.salary_percentage || 100}%</p>
+                </div>
+
+                <div>
+                    <span className="text-gray-500">{uiText.paidBy}</span>
+                    <p className="font-medium mt-1">{record.paid_by || "Bamalite S.A."}</p>
+                  </div>
+                </div>
+
+                {/* Ziektebriefje status */}
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <div className="flex items-center space-x-2">
+                    <FileText className="w-3 h-3 text-gray-400" />
+                    <span className='text-xs text-gray-600'>{t('sickCertificate')}:</span>
+              </div>
+                  <Badge className={`${certificateStatus.color} text-xs`}>
+                  {certificateStatus.text}
+                </Badge>
+              </div>
+
+                {/* Schip info */}
+                {record.ship && (
+                  <div className="flex items-center space-x-2 text-xs text-gray-600">
+                    <Ship className="w-3 h-3" />
+                    <span>{record.ship.name}</span>
+                </div>
+              )}
+
+                {/* Notities */}
+                {record.notes && (
+                  <div className="pt-2 border-t">
+                    <span className="text-gray-500 text-xs">{uiText.notes}</span>
+                    <p className="text-xs text-gray-700 mt-1 italic">{record.notes}</p>
+            </div>
+                )}
+
+                {/* Bijlagen bij deze ziekmelding - altijd zichtbaar */}
+                <div className="pt-2 border-t space-y-2">
+                  <div className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                    <Paperclip className="w-3 h-3" />
+                    {uiText.attachments}
+                  </div>
+                  {getAttachmentsForSickLeave(record.id).length > 0 ? (
+                    <div className="space-y-1">
+                      {getAttachmentsForSickLeave(record.id).map((att) => (
+                        <div
+                          key={att.id}
+                          className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                        >
+                          <div className="truncate">
+                            {att.file_name}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(att.file_url, "_blank")}
+                            >
+                              {uiText.open}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 border-red-200"
+                              onClick={() => handleDeleteSickLeaveAttachment(att)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">{uiText.noAttachments}</p>
+                  )}
+                  <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleUploadSickLeaveAttachment(
+                          record.id,
+                          e.target.files?.[0] || null
+                        )
+                      }
+                    />
+                    <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                      <Paperclip className="w-3 h-3" />
+                      {uploadingAttachmentForSickLeave === record.id
+                        ? uiText.uploading
+                        : uiText.addAttachment}
+                    </span>
+                  </label>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+
+      {sickLeaveRecords.length === 0 && (
+        <div className="text-center py-8">
+          <UserX className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <p className='text-gray-500'>{t('noSickLeaveFound')}</p>
+        </div>
+      )}
+        </TabsContent>
+
+        {/* Terug te staan Tab */}
+        <TabsContent value="terug-te-staan" className="space-y-6">
+          <StandBackManagement />
+        </TabsContent>
+      </Tabs>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{uiText.editSickLeave}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="hasCertificate">{t('sickCertificateProvided')}</Label>
+              <Select 
+                value={editForm.hasCertificate ? "ja" : "nee"} 
+                onValueChange={(value) => setEditForm({...editForm, hasCertificate: value === "ja"})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer optie" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ja">Ja</SelectItem>
+                  <SelectItem value="nee">Nee</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editForm.hasCertificate && (
+              <div className="space-y-2">
+                <Label htmlFor="certificateValidUntil">Geldig tot</Label>
+                <Input
+                  type="date"
+                  value={editForm.certificateValidUntil}
+                  onChange={(e) => setEditForm({...editForm, certificateValidUntil: e.target.value})}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="salaryPercentage">Salaris percentage</Label>
+              <Select 
+                value={editForm.salaryPercentage} 
+                onValueChange={(value) => setEditForm({...editForm, salaryPercentage: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer percentage" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="100">100% (aan boord)</SelectItem>
+                  <SelectItem value="80">80% (thuis)</SelectItem>
+                  <SelectItem value="0">0% (onbetaald)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="paidBy">Betaald door</Label>
+              <Select 
+                value={editForm.paidBy} 
+                onValueChange={(value) => setEditForm({...editForm, paidBy: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecteer betaler" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Bamalite S.A.">Bamalite S.A.</SelectItem>
+                  <SelectItem value="Alcina S.A.">Alcina S.A.</SelectItem>
+                  <SelectItem value="Brugo Shipping SARL">Brugo Shipping SARL</SelectItem>
+                  <SelectItem value="Develshipping S.A.">Develshipping S.A.</SelectItem>
+                  <SelectItem value="Europe Shipping AG">Europe Shipping AG</SelectItem>
+                  <SelectItem value="CNS">CNS</SelectItem>
+                  <SelectItem value="CCCS">CCCS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notities</Label>
+              <Input
+                value={editForm.notes}
+                onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
+                placeholder="Optionele notities..."
+              />
+            </div>
+
+            {/* Bijlagen bij deze ziekmelding */}
+            {editingRecord && (
+              <div className="space-y-2 border-t pt-4">
+                <Label>{uiText.attachments}</Label>
+                {getAttachmentsForSickLeave(editingRecord.id).length > 0 ? (
+                  <div className="space-y-1">
+                    {getAttachmentsForSickLeave(editingRecord.id).map((att) => (
+                      <div
+                        key={att.id}
+                        className="flex items-center justify-between gap-2 text-sm bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                      >
+                        <div className="truncate">
+                          {att.file_name}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(att.file_url, "_blank")}
+                          >
+                            {uiText.open}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 border-red-200"
+                            onClick={() => handleDeleteSickLeaveAttachment(att)}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">{uiText.noAttachments}</p>
+                )}
+                <label className="inline-flex items-center gap-1 cursor-pointer text-sm text-gray-600">
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleUploadSickLeaveAttachment(
+                        editingRecord.id,
+                        e.target.files?.[0] || null
+                      )
+                    }
+                  />
+                  <span className="inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-gray-50">
+                    <Paperclip className="w-3 h-3" />
+                    {uploadingAttachmentForSickLeave === editingRecord.id
+                      ? uiText.uploading
+                      : uiText.addAttachment}
+                  </span>
+                </label>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                {uiText.cancel}
+              </Button>
+              <Button onClick={handleSave}>
+                {uiText.save}
+              </Button>
+            </div>
+
+            {/* Beter melden knop */}
+            <div className="pt-4 border-t">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="w-full text-green-600 border-green-200 hover:bg-green-50">
+                    <Heart className="w-4 h-4 mr-2" />
+                    Beter melden
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Beter melden</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Weet je zeker dat je {editingRecord?.crewMember?.first_name} {editingRecord?.crewMember?.last_name} beter wilt melden? 
+                      Deze persoon wordt dan verplaatst naar de "nog in te delen" lijst met verschuldigde terug te staan dagen (maximaal 7).
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={() => handleMarkAsRecovered(editingRecord)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      Ja, beter melden
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recovery Dialog */}
+      <Dialog open={recoveryDialogOpen} onOpenChange={setRecoveryDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Beter melden - Terugkeer datum</DialogTitle>
+            <DialogDescription>
+              Wanneer gaat {recoveryRecord?.crewMember?.first_name} {recoveryRecord?.crewMember?.last_name} weer aan boord? 
+              Vanaf deze datum start het regime weer automatisch.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="recoveryDate">Datum terugkeer aan boord *</Label>
+              <Input
+                type="date"
+                value={recoveryDate}
+                onChange={(e) => setRecoveryDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                required
+              />
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Info:</strong> De persoon blijft "thuis" tot de gekozen datum. 
+                Vanaf die datum wordt de status automatisch "aan-boord" en start het regime weer.
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setRecoveryDialogOpen(false)}>
+                Annuleren
+              </Button>
+              <Button onClick={handleRecoveryConfirm} disabled={!recoveryDate}>
+                Beter melden
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

@@ -16,7 +16,7 @@ export function MobileHeaderNav() {
     { href: "/bemanning/aflossers", label: t('reliefCrew'), icon: "🔄" },
     { href: "/bemanning/studenten", label: t('students'), icon: "🎓" },
     { href: "/bemanning/officiele-waarschuwingen", label: "Waarschuwingen", icon: "⚠️" },
-    { href: "/bemanning/loon-bemerkingen", label: "Salarissen", icon: "📝" },
+    { href: "/bemanning/loon-bemerkingen", label: "Loon bem.", icon: "📝" },
     { href: "/bemanning/leningen", label: t('loans'), icon: "💰" },
     { href: "/documenten", label: t('documents'), icon: "📄" },
     { href: "/ziekte", label: t('sick'), icon: "🏥" },

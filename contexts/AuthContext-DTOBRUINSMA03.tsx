@@ -8,7 +8,6 @@ import { useRouter } from 'next/navigation'
 interface AuthContextType {
   user: User | null
   role: "admin_full" | "limited_edit"
-  mfaRequired: boolean
   loading: boolean
   canAccessPath: (path: string) => boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
@@ -72,7 +71,7 @@ function resolveRole(email?: string | null): "admin_full" | "limited_edit" {
 
 function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string): boolean {
   const normalized = path.split("?")[0]
-  if (normalized === "/login" || normalized === "/login/email-verify") return true
+  if (normalized === "/login") return true
   if (role === "admin_full") return true
   if (LIMITED_ALLOWED_EXACT.has(normalized)) return true
   // Allow crew profile pages like /bemanning/<id>, but keep blocked section pages closed.
@@ -87,31 +86,21 @@ function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [role, setRole] = useState<"admin_full" | "limited_edit">("limited_edit")
-  const [mfaRequired, setMfaRequired] = useState(false)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  const refreshMfaState = async (nextUser: User | null) => {
-    // TOTP-flow tijdelijk uitgeschakeld; we gebruiken e-mail verificatiestap.
-    setMfaRequired(false)
-  }
-
   useEffect(() => {
     // Check active sessions and sets the user
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const nextUser = session?.user ?? null
-      setUser(nextUser)
-      setRole(resolveRole(nextUser?.email))
-      await refreshMfaState(nextUser)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setRole(resolveRole(session?.user?.email))
       setLoading(false)
     })
 
     // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const nextUser = session?.user ?? null
-      setUser(nextUser)
-      setRole(resolveRole(nextUser?.email))
-      await refreshMfaState(nextUser)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+      setRole(resolveRole(session?.user?.email))
       setLoading(false)
     })
 
@@ -123,7 +112,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       password,
     })
-
+    
+    if (!error) {
+      // Force redirect met window.location voor betere compatibiliteit
+      window.location.href = '/'
+    }
+    
     return { error }
   }
 
@@ -139,14 +133,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut()
     setRole("limited_edit")
-    setMfaRequired(false)
     router.push('/login')
   }
 
   const canAccessPath = (path: string) => canAccessPathForRole(role, path)
 
   return (
-    <AuthContext.Provider value={{ user, role, mfaRequired, loading, canAccessPath, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, role, loading, canAccessPath, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   )

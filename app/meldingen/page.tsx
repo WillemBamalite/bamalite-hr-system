@@ -12,6 +12,7 @@ import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { useState } from "react"
 import { format } from "date-fns"
+import { authenticatedFetch } from "@/lib/authenticated-fetch"
 
 const kindLabel = (kind: string) => {
   switch (kind) {
@@ -166,7 +167,7 @@ export default function MeldingenPage() {
 
     try {
       setSendingCertificateEmailId(notification.id)
-      const response = await fetch("/api/send-certificate-expiry-email", {
+      const response = await authenticatedFetch("/api/send-certificate-expiry-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

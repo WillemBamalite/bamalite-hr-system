@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { authenticatedFetch } from '@/lib/authenticated-fetch'
 
 export default function TestEmailPage() {
   const [loading, setLoading] = useState(false)
@@ -16,7 +17,7 @@ export default function TestEmailPage() {
 
     try {
       console.log('🧪 Test Gmail SMTP...')
-      const response = await fetch('/api/test-gmail')
+      const response = await authenticatedFetch('/api/test-gmail')
       const data = await response.json()
       
       console.log('🧪 Test result:', data)

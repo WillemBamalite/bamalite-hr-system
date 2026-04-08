@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireApiAccess } from '@/lib/api-security'
 
 // Zorg dat deze route altijd op de server runt
 export const dynamic = 'force-dynamic'
@@ -343,6 +344,9 @@ async function processUnseenCalendarEmails(): Promise<{
 
 export async function GET(_req: NextRequest) {
   try {
+    const accessError = await requireApiAccess(_req, 'cron_or_admin')
+    if (accessError) return accessError
+
     const result = await processUnseenCalendarEmails()
 
     return NextResponse.json(

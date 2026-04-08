@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { requireApiAccess } from "@/lib/api-security"
 
 interface WritingAssistantRequest {
   text: string
@@ -11,8 +12,11 @@ interface LanguageToolMatch {
   replacements: { value: string }[]
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const accessError = await requireApiAccess(request, "authenticated")
+    if (accessError) return accessError
+
     const body = (await request.json()) as WritingAssistantRequest
     const text = body.text?.toString() || ""
     const language = body.language || "nl"

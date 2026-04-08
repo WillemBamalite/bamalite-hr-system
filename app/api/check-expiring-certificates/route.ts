@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import fs from 'fs'
 import path from 'path'
+import { requireApiAccess } from '@/lib/api-security'
 
 // Zorg dat deze route altijd op de Node.js runtime draait (nodemailer en fs werken niet in Edge)
 export const runtime = 'nodejs'
@@ -14,6 +15,9 @@ const TEST_MODE = false
 
 export async function GET(request: NextRequest) {
   try {
+    const accessError = await requireApiAccess(request, 'cron_or_admin')
+    if (accessError) return accessError
+
     console.log('🏥 ===== Check expiring certificates =====')
     console.log('🏥 API Route aangeroepen - GET request ontvangen')
     

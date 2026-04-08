@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { signIn } = useAuth()
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,7 +26,19 @@ export default function LoginPage() {
     const { error } = await signIn(email, password)
     
     if (error) {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem("pending_email_verify")
+        window.sessionStorage.removeItem("pending_email_verify_email")
+      }
       setError(error.message || 'Er is een fout opgetreden bij het inloggen')
+    } else {
+      // E-mail 2-stapsverificatie: eerst naar verificatiepagina.
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("pending_email_verify", "1")
+        window.sessionStorage.setItem("pending_email_verify_email", email)
+        window.sessionStorage.removeItem("email_verify_otp_requested")
+      }
+      router.push(`/login/email-verify?email=${encodeURIComponent(email)}`)
     }
     
     setLoading(false)
@@ -35,8 +49,15 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-14 h-14 rounded-full bg-[#1e3a8a] flex items-center justify-center shadow">
-              <span className="text-3xl font-bold text-yellow-400">B</span>
+            <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center shadow">
+              <Image
+                src="/bemanningslijst-icon.png.png"
+                alt="Bemanningslijst logo"
+                width={112}
+                height={112}
+                priority
+                className="object-cover w-full h-full"
+              />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Bemanningslijst Systeem</CardTitle>

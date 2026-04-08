@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendViaGmail } from '@/lib/email-service'
+import { requireApiAccess } from '@/lib/api-security'
 
 // Test route om Gmail SMTP direct te testen
 export async function GET(request: NextRequest) {
   try {
+    const accessError = await requireApiAccess(request, 'admin')
+    if (accessError) return accessError
+
     console.log('🧪 ===== TEST GMAIL ROUTE =====')
     console.log('🧪 USE_GMAIL_EMAIL:', process.env.USE_GMAIL_EMAIL)
     console.log('🧪 GMAIL_USER:', process.env.GMAIL_USER ? `${process.env.GMAIL_USER.substring(0, 3)}***` : 'NIET INGESTELD')

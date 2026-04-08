@@ -169,6 +169,28 @@ export default function LoonBemerkingenPage() {
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
 
   useEffect(() => {
+    if (!currentUserEmail) return
+    if (typeof window === "undefined") return
+    const alreadyNotified = window.sessionStorage.getItem("salary_access_notified") === "1"
+    if (alreadyNotified) return
+
+    const notify = async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        const accessToken = data.session?.access_token
+        const headers = new Headers({ "Content-Type": "application/json" })
+        if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`)
+        await fetch("/api/salary-access-log", { method: "POST", headers })
+        window.sessionStorage.setItem("salary_access_notified", "1")
+      } catch {
+        // Stil falen: toegang tot pagina mag niet blokkeren op notificatiemail.
+      }
+    }
+
+    notify()
+  }, [currentUserEmail])
+
+  useEffect(() => {
     setMounted(true)
     let active = true
     supabase.auth.getUser().then(({ data }) => {
