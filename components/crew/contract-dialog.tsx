@@ -10,6 +10,7 @@ import { FileText, Loader2, Euro } from "lucide-react"
 import { generateContract, downloadContract, ContractData, ContractOptions } from "@/utils/contract-generator"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
+import { supabase } from "@/lib/supabase"
 
 interface ContractDialogProps {
   open: boolean
@@ -35,6 +36,128 @@ export function ContractDialog({ open, onOpenChange, crewData, onComplete }: Con
   const [reiskosten, setReiskosten] = useState<string>('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const getReadableError = (err: any) => {
+    if (!err) return "Onbekende fout"
+    if (err instanceof Error && err.message) return err.message
+    if (typeof err?.message === "string" && err.message) return err.message
+    if (typeof err?.error === "string" && err.error) return err.error
+    if (typeof err?.details === "string" && err.details) return err.details
+    try {
+      return JSON.stringify(err)
+    } catch {
+      return "Onbekende fout"
+    }
+  }
+
+  const saveSalaryDefaultsToCrew = async () => {
+    const crewId = String(crewData.crewId || "").trim()
+    if (!crewId) return
+
+    const basis = basisSalaris.trim()
+    const kleding = kledinggeld.trim()
+    const reis = reiskosten.trim()
+    const kledingNum = Number(kleding.replace(",", "."))
+    const reisNum = Number(reis.replace(",", "."))
+    const updatesPrimary: any = {
+      basis_salaris: basis || null,
+      kleding_geld: kleding || null,
+      reiskosten: reis || null,
+      travel_allowance: Number.isFinite(reisNum) ? reisNum > 0 : false,
+      updated_at: new Date().toISOString(),
+    }
+
+    let { error: updateError } = await supabase.from("crew").update(updatesPrimary).eq("id", crewId)
+    if (!updateError) return
+
+    // Fallback voor varianten in kolomnamen in oudere schemas
+    const updatesFallback: any = {
+      basissalaris: basis || null,
+      kledinggeld: kleding || null,
+      reiskosten: reis || null,
+      travel_allowance: Number.isFinite(reisNum) ? reisNum > 0 : false,
+      updated_at: new Date().toISOString(),
+    }
+    const retry = await supabase.from("crew").update(updatesFallback).eq("id", crewId)
+    updateError = retry.error
+    if (!updateError) return
+
+    // Laatste fallback: alleen reiskosten-boolean en een salary note
+    const baseNum = Number(basis.replace(",", "."))
+    const totalExclKleding = Number.isFinite(baseNum) ? baseNum : null
+    const noteParts = [
+      totalExclKleding !== null ? `contract_basis_salaris_excl_kleding:${totalExclKleding}` : "",
+      Number.isFinite(kledingNum) ? `contract_kledinggeld:${kledingNum}` : "",
+      Number.isFinite(reisNum) ? `contract_reiskosten:${reisNum}` : "",
+    ].filter(Boolean)
+    const finalRetry = await supabase
+      .from("crew")
+      .update({
+        travel_allowance: Number.isFinite(reisNum) ? reisNum > 0 : false,
+        notes: noteParts.length > 0 ? [`${noteParts.join(" | ")}`] : undefined,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", crewId)
+    if (finalRetry.error) {
+      throw new Error(getReadableError(finalRetry.error))
+    }
+  }
+
+  const getMonthKeyFromContract = () => {
+    const source = crewData.in_dienst_vanaf || new Date().toISOString().slice(0, 10)
+    const d = new Date(source)
+    if (isNaN(d.getTime())) {
+      const now = new Date()
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+    }
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  }
+
+  const upsertSalaryRowFromContract = async () => {
+    const crewId = String(crewData.crewId || "").trim()
+    if (!crewId) return
+
+    const parseNum = (v: string) => {
+      const n = Number(String(v || "").replace(/\./g, "").replace(",", "."))
+      return Number.isFinite(n) ? n : 0
+    }
+
+    const baseSalary = parseNum(basisSalaris)
+    const clothing = parseNum(kledinggeld)
+    const travel = parseNum(reiskosten)
+    const monthKey = getMonthKeyFromContract()
+    const payload: any = {
+      crew_id: crewId,
+      company: company || crewData.company || null,
+      month_key: monthKey,
+      base_salary: baseSalary > 0 ? baseSalary : null,
+      travel_allowance: travel > 0,
+      notes:
+        clothing > 0
+          ? `Kledinggeld contract: € ${clothing.toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "",
+      reason:
+        clothing > 0
+          ? `Salaris uit contract overgenomen | kledinggeld:${clothing}`
+          : "Salaris uit contract overgenomen",
+      updated_at: new Date().toISOString(),
+    }
+
+    let { error } = await supabase
+      .from("loon_bemerkingen")
+      .upsert([payload], { onConflict: "crew_id,month_key" })
+    if (!error) return
+
+    // Fallback: kolommen zoals notes/reason kunnen ontbreken in sommige schema's
+    const { notes: _omitNotes, ...payloadWithoutNotes } = payload
+    const retry = await supabase
+      .from("loon_bemerkingen")
+      .upsert([payloadWithoutNotes], { onConflict: "crew_id,month_key" })
+    error = retry.error
+    if (error) {
+      throw new Error(getReadableError(error))
+    }
+  }
 
   const handleGenerate = async () => {
     if (!company) {
@@ -91,12 +214,24 @@ export function ContractDialog({ open, onOpenChange, crewData, onComplete }: Con
       const deFileName = `Arbeidsovereenkomst (${crewName}) firma (${companyName})${contractTypeText} - DE.pdf`
       downloadContract(deBlob, deFileName)
 
+      // Sla salaris defaults op, maar blokkeer contractgeneratie niet als dit faalt
+      try {
+        await saveSalaryDefaultsToCrew()
+      } catch (persistError) {
+        console.warn("Kon salaris-startwaarden niet opslaan op crew record:", persistError)
+      }
+      try {
+        await upsertSalaryRowFromContract()
+      } catch (salaryRowError) {
+        console.warn("Kon salarislijst regel niet automatisch updaten vanuit contract:", salaryRowError)
+      }
+
       // Sluit de dialog en roep onComplete aan
       onComplete()
       onOpenChange(false)
     } catch (err) {
       console.error('Error generating contract:', err)
-      setError(err instanceof Error ? err.message : 'Er is een fout opgetreden bij het genereren van het contract')
+      setError(`Er is een fout opgetreden bij het genereren van het contract: ${getReadableError(err)}`)
     } finally {
       setIsGenerating(false)
     }
@@ -198,7 +333,7 @@ export function ContractDialog({ open, onOpenChange, crewData, onComplete }: Con
                 onChange={(e) => setBasisSalaris(e.target.value)}
               />
               <p className="text-xs text-gray-500">
-                Alleen voor het contract, wordt niet opgeslagen in het systeem
+                Wordt gebruikt in contract en opgeslagen als salaris-startwaarde in het systeem
               </p>
             </div>
 

@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
 
 export interface ContractData {
+  crewId?: string
   firstName: string
   lastName: string
   birthDate: string
@@ -22,7 +23,7 @@ export interface ContractData {
   matricule?: string
   shipName?: string // Scheepsnaam
   in_dienst_tot?: string // Einddatum voor contract bepaalde tijd
-  // Salaris velden (alleen voor contract, niet in systeem)
+  // Salaris velden (voor contract + optioneel opslag in systeem)
   basisSalaris?: string
   kledinggeld?: string
   reiskosten?: string

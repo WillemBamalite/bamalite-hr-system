@@ -362,6 +362,7 @@ export function NewCrewForm() {
 
       // Bereid contract data voor
       const contractData: ContractData = {
+        crewId: id,
         firstName: formData.firstName,
         lastName: formData.lastName,
         birthDate: formData.birthDate,

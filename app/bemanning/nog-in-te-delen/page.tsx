@@ -455,6 +455,7 @@ export default function NogInTeDelenPage() {
     const shipName = selectedShip ? selectedShip.name : '';
 
     return {
+      crewId: member.id,
       firstName: member.first_name || '',
       lastName: member.last_name || '',
       birthDate: member.birth_date || '',
