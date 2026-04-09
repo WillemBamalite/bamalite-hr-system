@@ -14,6 +14,20 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
 import { isCopiedCrewMember, isRealCrewMember } from "@/utils/crew-filters"
 
+type SalaryHistoryItem = {
+  id: string
+  month_key: string
+  base_salary: number
+  travel_allowance: boolean
+  raise_amount: number
+  advance_amount: number
+  overtime_days: number
+  overtime_note: string
+  inflation_adjustment: number
+  notes: string
+  total_salary_month: number
+}
+
 const getCurrentMonthKey = () => {
   const d = new Date()
   const year = d.getFullYear()
@@ -85,6 +99,12 @@ type SalaryDraft = {
   raise_amount: number | null
   overtime_enabled: boolean
   overtime_days: number | null
+  overtime_note: string
+  inflation_adjustment: number | null
+  inflation_batch_id: string
+  month_closed: boolean
+  month_closed_by: string
+  month_closed_at: string
   approval_leo: boolean
   approval_karina: boolean
   notes: string
@@ -133,7 +153,13 @@ const parseMoney = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-const getContractBaseSalaryExclClothing = (crewMember: any): number | null => {
+const parseDecimalInput = (value: string): number => {
+  const normalized = String(value || "").trim().replace(",", ".")
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const getContractBaseSalaryInclClothing = (crewMember: any): number | null => {
   const notesText = Array.isArray(crewMember?.notes)
     ? crewMember.notes.join(" | ")
     : String(crewMember?.notes || "")
@@ -147,8 +173,16 @@ const getContractBaseSalaryExclClothing = (crewMember: any): number | null => {
     crewMember?.salaris ??
     crewMember?.salary ??
     null
+  const clothingRaw =
+    crewMember?.kleding_geld ??
+    crewMember?.kledinggeld ??
+    crewMember?.kledingGeld ??
+    crewMember?.clothing_allowance ??
+    null
   const base = parseMoney(baseRaw)
-  if (base > 0) return base
+  const clothing = parseMoney(clothingRaw)
+  const total = base + clothing
+  if (total > 0) return total
   return noteBase > 0 ? noteBase : null
 }
 
@@ -224,6 +258,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
   if (!jsonPart) return null
   try {
     const parsed = JSON.parse(jsonPart) as {
+      iban?: string
       review_comment?: string
       review_by?: string
       review_type?: "opmerking" | "correctie"
@@ -233,10 +268,17 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       raise_amount?: number
       overtime_enabled?: boolean
       overtime_days?: number
+      overtime_note?: string
+      inflation_adjustment?: number
+      inflation_batch_id?: string
+      month_closed?: boolean
+      month_closed_by?: string
+      month_closed_at?: string
       approval_leo?: boolean
       approval_karina?: boolean
     }
     return {
+      iban: String(parsed.iban || ""),
       review_comment: String(parsed.review_comment || ""),
       review_by: String(parsed.review_by || ""),
       review_type: parsed.review_type === "correctie" ? "correctie" : "opmerking",
@@ -246,6 +288,12 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       raise_amount: typeof parsed.raise_amount === "number" ? parsed.raise_amount : 0,
       overtime_enabled: parsed.overtime_enabled === true,
       overtime_days: typeof parsed.overtime_days === "number" ? parsed.overtime_days : 0,
+      overtime_note: String(parsed.overtime_note || ""),
+      inflation_adjustment: typeof parsed.inflation_adjustment === "number" ? parsed.inflation_adjustment : 0,
+      inflation_batch_id: String(parsed.inflation_batch_id || ""),
+      month_closed: parsed.month_closed === true,
+      month_closed_by: String(parsed.month_closed_by || ""),
+      month_closed_at: String(parsed.month_closed_at || ""),
       approval_leo: parsed.approval_leo === true,
       approval_karina: parsed.approval_karina === true,
     }
@@ -261,12 +309,18 @@ export default function LoonBemerkingenPage() {
   const [loading, setLoading] = useState(false)
   const [monthKey, setMonthKey] = useState(getCurrentMonthKey())
   const [rowsByCrewId, setRowsByCrewId] = useState<Record<string, SalaryDraft>>({})
+  const [companySwitchByCrewId, setCompanySwitchByCrewId] = useState<Record<string, boolean>>({})
   const [savingCrewId, setSavingCrewId] = useState<string | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string>("")
   const [activeCompanyTab, setActiveCompanyTab] = useState<string>("")
   const [editingCrewId, setEditingCrewId] = useState<string | null>(null)
+  const [overtimeDaysInput, setOvertimeDaysInput] = useState<string>("")
   const [inflationPercent, setInflationPercent] = useState<string>("")
   const [applyingInflation, setApplyingInflation] = useState(false)
+  const [closingMonth, setClosingMonth] = useState(false)
+  const [showSalaryHistory, setShowSalaryHistory] = useState(false)
+  const [salaryHistoryLoading, setSalaryHistoryLoading] = useState(false)
+  const [salaryHistoryItems, setSalaryHistoryItems] = useState<SalaryHistoryItem[]>([])
   const isTanja = currentUserEmail === "tanja@bamalite.com"
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
   const isLeoUser = currentUserEmail === LEO_EMAIL
@@ -339,6 +393,7 @@ export default function LoonBemerkingenPage() {
       })
 
       const nextRowsByCrew: Record<string, SalaryDraft> = {}
+      const nextCompanySwitchByCrew: Record<string, boolean> = {}
       ;(crew || [])
         .filter((c: any) => isEligibleForSalaryPage(c))
         .forEach((c: any) => {
@@ -360,20 +415,36 @@ export default function LoonBemerkingenPage() {
             previousBaseSalary !== null
               ? previousBaseSalary + (previousRaiseEnabled ? previousRaiseAmount : 0)
               : null
-          const contractBaseSalaryExclClothing = getContractBaseSalaryExclClothing(c)
+          const contractBaseSalaryInclClothing = getContractBaseSalaryInclClothing(c)
           const contractTravelEnabled = getContractTravelEnabled(c)
           const base = current || previous || null
+          const currentCompany = String(current?.company || "").trim()
+          const previousCompany = String(previous?.company || "").trim()
+          const switchedCompanyThisMonth =
+            !!current &&
+            !!currentCompany &&
+            !!previousCompany &&
+            currentCompany !== previousCompany
+          nextCompanySwitchByCrew[crewId] = switchedCompanyThisMonth
           nextRowsByCrew[crewId] = {
             id: current?.id,
             crew_id: crewId,
-            company: (current?.company ?? c.company ?? previous?.company ?? null) || null,
+            company: (current?.company ?? previous?.company ?? c.company ?? null) || null,
             month_key: monthKey,
             in_service_from: c?.in_dienst_vanaf || null,
-            iban: String(current?.iban ?? previous?.iban ?? c?.iban ?? rowsByCrewId[crewId]?.iban ?? ""),
+            iban: String(
+              current?.iban ??
+              currentMeta?.iban ??
+              previous?.iban ??
+              previousMeta?.iban ??
+              c?.iban ??
+              rowsByCrewId[crewId]?.iban ??
+              ""
+            ),
             base_salary:
               typeof current?.base_salary === "number"
                 ? current.base_salary
-                : (inheritedBaseSalary ?? contractBaseSalaryExclClothing),
+                : (inheritedBaseSalary ?? contractBaseSalaryInclClothing),
             travel_allowance:
               typeof current?.travel_allowance === "boolean"
                 ? current.travel_allowance
@@ -398,6 +469,32 @@ export default function LoonBemerkingenPage() {
               typeof current?.overtime_days === "number"
                 ? current.overtime_days
                 : (currentMeta?.overtime_days || 0),
+            overtime_note: String(
+              current?.overtime_note ??
+              currentMeta?.overtime_note ??
+              ""
+            ),
+            inflation_adjustment:
+              typeof current?.inflation_adjustment === "number"
+                ? current.inflation_adjustment
+                : (currentMeta?.inflation_adjustment || 0),
+            inflation_batch_id: String(
+              current?.inflation_batch_id ??
+              currentMeta?.inflation_batch_id ??
+              ""
+            ),
+            month_closed:
+              (current?.month_closed ?? currentMeta?.month_closed ?? false) === true,
+            month_closed_by: String(
+              current?.month_closed_by ??
+              currentMeta?.month_closed_by ??
+              ""
+            ),
+            month_closed_at: String(
+              current?.month_closed_at ??
+              currentMeta?.month_closed_at ??
+              ""
+            ),
             approval_leo:
               (current?.approval_leo ?? currentMeta?.approval_leo ?? false) === true,
             approval_karina:
@@ -421,9 +518,11 @@ export default function LoonBemerkingenPage() {
         })
 
       setRowsByCrewId(nextRowsByCrew)
+      setCompanySwitchByCrewId(nextCompanySwitchByCrew)
     } catch (e) {
       console.warn("Fout bij laden salarissen:", getErrMsg(e))
       setRowsByCrewId({})
+      setCompanySwitchByCrewId({})
     } finally {
       setLoading(false)
     }
@@ -450,15 +549,34 @@ export default function LoonBemerkingenPage() {
       groups[company].sort((a, b) => {
         const ac = crewById.get(a.crew_id)
         const bc = crewById.get(b.crew_id)
-        const an = `${ac?.first_name || ""} ${ac?.last_name || ""}`.trim().toLowerCase()
-        const bn = `${bc?.first_name || ""} ${bc?.last_name || ""}`.trim().toLowerCase()
-        return an.localeCompare(bn)
+        const aLast = String(ac?.last_name || "").trim().toLowerCase()
+        const bLast = String(bc?.last_name || "").trim().toLowerCase()
+        const lastCompare = aLast.localeCompare(bLast)
+        if (lastCompare !== 0) return lastCompare
+        const aFirst = String(ac?.first_name || "").trim().toLowerCase()
+        const bFirst = String(bc?.first_name || "").trim().toLowerCase()
+        return aFirst.localeCompare(bFirst)
       })
     })
     return groups
   }, [rowsByCrewId, crewById])
 
   const companyNames = useMemo(() => Object.keys(groupedByCompany).sort((a, b) => a.localeCompare(b)), [groupedByCompany])
+  const monthIsClosed = useMemo(
+    () => Object.values(rowsByCrewId).some((r) => r.month_closed === true),
+    [rowsByCrewId]
+  )
+
+  useEffect(() => {
+    if (!editingCrewId || !rowsByCrewId[editingCrewId]) {
+      setOvertimeDaysInput("")
+      return
+    }
+    const current = rowsByCrewId[editingCrewId]
+    setOvertimeDaysInput(
+      typeof current.overtime_days === "number" ? String(current.overtime_days).replace(".", ",") : ""
+    )
+  }, [editingCrewId])
 
   useEffect(() => {
     if (companyNames.length === 0) {
@@ -568,8 +686,30 @@ export default function LoonBemerkingenPage() {
   const getOverworkAmount = (row: SalaryDraft) => {
     const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
-    if (baseSalary <= 0 || overtimeDays <= 0) return 0
-    const perDayOverwork = baseSalary / 15
+    if (overtimeDays <= 0) return 0
+    const crewMember = crewById.get(String(row.crew_id))
+    const position = String(crewMember?.position || "").toLowerCase()
+    const isCaptainOrSkipper =
+      position.includes("kapitein") ||
+      position.includes("captain") ||
+      position.includes("schipper") ||
+      position.includes("skipper")
+    if (!isCaptainOrSkipper && baseSalary <= 0) return 0
+    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalary / 15)
+    return perDayOverwork * overtimeDays
+  }
+
+  const getOverworkAmountForCrew = (crewId: string, baseSalary: number, overtimeDays: number) => {
+    if (overtimeDays <= 0) return 0
+    const crewMember = crewById.get(String(crewId))
+    const position = String(crewMember?.position || "").toLowerCase()
+    const isCaptainOrSkipper =
+      position.includes("kapitein") ||
+      position.includes("captain") ||
+      position.includes("schipper") ||
+      position.includes("skipper")
+    if (!isCaptainOrSkipper && baseSalary <= 0) return 0
+    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalary / 15)
     return perDayOverwork * overtimeDays
   }
 
@@ -585,6 +725,7 @@ export default function LoonBemerkingenPage() {
     const status = String(crewMember?.status || "").toLowerCase()
     const isSickOrAbsent = status === "ziek" || status === "afwezig"
     const isNewThisMonth = isInServiceThisMonth(row.in_service_from, monthKey)
+    const isCompanySwitchMonth = companySwitchByCrewId[String(row.crew_id)] === true
     const hasSpecial =
       !!String(row.notes || "").trim() ||
       (row.advance_enabled && Number(row.advance_amount || 0) !== 0) ||
@@ -593,12 +734,14 @@ export default function LoonBemerkingenPage() {
       teGoedDays > 0
 
     if (isSickOrAbsent) return "bg-red-100"
+    if (isCompanySwitchMonth) return "bg-orange-100"
     if (isNewThisMonth) return "bg-blue-100"
     if (hasSpecial) return "bg-emerald-100"
     return ""
   }
 
   const handleRowClickOpenEdit = (event: any, crewId: string) => {
+    if (monthIsClosed) return
     const target = event.target as HTMLElement | null
     if (!target) return
     const interactiveEl = target.closest("button, input, select, textarea, a, label")
@@ -612,7 +755,8 @@ export default function LoonBemerkingenPage() {
   ) => {
     const shouldResetApprovals =
       Object.prototype.hasOwnProperty.call(patch, "overtime_enabled") ||
-      Object.prototype.hasOwnProperty.call(patch, "overtime_days")
+      Object.prototype.hasOwnProperty.call(patch, "overtime_days") ||
+      Object.prototype.hasOwnProperty.call(patch, "overtime_note")
 
     setRowsByCrewId((prev) => ({
       ...prev,
@@ -661,12 +805,19 @@ export default function LoonBemerkingenPage() {
       raise_amount: row.raise_amount ?? 0,
       overtime_enabled: !!row.overtime_enabled,
       overtime_days: row.overtime_days ?? 0,
+      overtime_note: String(row.overtime_note || "").trim(),
+      inflation_adjustment: row.inflation_adjustment ?? 0,
+      inflation_batch_id: String(row.inflation_batch_id || "").trim(),
+      month_closed: !!row.month_closed,
+      month_closed_by: String(row.month_closed_by || "").trim(),
+      month_closed_at: String(row.month_closed_at || "").trim(),
       approval_leo: !!row.approval_leo,
       approval_karina: !!row.approval_karina,
       iban: row.iban?.trim() || "",
       reason:
         ((row.notes || "").trim() || "Salarisadministratie") +
         `\n${SALARY_META_PREFIX}${JSON.stringify({
+          iban: row.iban?.trim() || "",
           review_comment: String(row.review_comment || "").trim(),
           review_by: String(row.review_by || "").trim(),
           review_type: row.review_type || "opmerking",
@@ -676,6 +827,12 @@ export default function LoonBemerkingenPage() {
           raise_amount: row.raise_amount ?? 0,
           overtime_enabled: !!row.overtime_enabled,
           overtime_days: row.overtime_days ?? 0,
+          overtime_note: String(row.overtime_note || "").trim(),
+          inflation_adjustment: row.inflation_adjustment ?? 0,
+          inflation_batch_id: String(row.inflation_batch_id || "").trim(),
+          month_closed: !!row.month_closed,
+          month_closed_by: String(row.month_closed_by || "").trim(),
+          month_closed_at: String(row.month_closed_at || "").trim(),
           approval_leo: !!row.approval_leo,
           approval_karina: !!row.approval_karina,
         })}` +
@@ -711,6 +868,12 @@ export default function LoonBemerkingenPage() {
         msg.includes("raise_amount") ||
         msg.includes("overtime_enabled") ||
         msg.includes("overtime_days") ||
+        msg.includes("overtime_note") ||
+        msg.includes("inflation_adjustment") ||
+        msg.includes("inflation_batch_id") ||
+        msg.includes("month_closed") ||
+        msg.includes("month_closed_by") ||
+        msg.includes("month_closed_at") ||
         msg.includes("approval_leo") ||
         msg.includes("approval_karina")
       if (missingIbanOnLoonBemerkingen || missingReviewColumns || missingSalaryColumns) {
@@ -725,6 +888,12 @@ export default function LoonBemerkingenPage() {
           raise_amount: _omitRaiseAmount,
           overtime_enabled: _omitOvertimeEnabled,
           overtime_days: _omitOvertimeDays,
+          overtime_note: _omitOvertimeNote,
+          inflation_adjustment: _omitInflationAdjustment,
+          inflation_batch_id: _omitInflationBatchId,
+          month_closed: _omitMonthClosed,
+          month_closed_by: _omitMonthClosedBy,
+          month_closed_at: _omitMonthClosedAt,
           approval_leo: _omitApprovalLeo,
           approval_karina: _omitApprovalKarina,
           ...payloadWithoutOptionalColumns
@@ -738,11 +907,29 @@ export default function LoonBemerkingenPage() {
     if (error) throw error
   }
 
-  const saveCrewRow = async (crewId: string) => {
-    const row = rowsByCrewId[crewId]
+  const saveCrewRow = async (crewId: string, rowOverride?: SalaryDraft) => {
+    const row = rowOverride || rowsByCrewId[crewId]
     if (!row) return false
+    if (monthIsClosed) {
+      alert(isTanja ? "Dieser Monat ist abgeschlossen und nicht mehr bearbeitbar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
+      return false
+    }
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
     const hasNotes = !!String(row.notes || "").trim()
+    const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
+    const overtimeNotes = String(row.overtime_note || "").toLowerCase()
+    const hasFromToRangeInNotes = overtimeNotes.includes("van") && overtimeNotes.includes("tot")
+
+    // Altijd verplicht: overwerk vereist notitie met periode (van/tot).
+    if (row.overtime_enabled && overtimeDays > 0 && (!String(row.overtime_note || "").trim() || !hasFromToRangeInNotes)) {
+      alert(
+        isTanja
+          ? "Bei Überstunden ist ein Hinweis mit Zeitraum Pflicht (von ... bis ...)."
+          : "Bij overwerk is een opmerking verplicht met periode (van ... tot ...)."
+      )
+      return false
+    }
+
     if (ENFORCE_SALARY_VALIDATIONS && raiseAmount !== 0 && !hasNotes) {
       alert(isTanja ? "Bei einer Gehaltsverhoging ist ein Hinweis erforderlich." : "Bij een verhoging ben je verplicht om een opmerking toe te voegen.")
       return false
@@ -770,6 +957,10 @@ export default function LoonBemerkingenPage() {
     field: "approval_leo" | "approval_karina",
     value: boolean
   ) => {
+    if (monthIsClosed) {
+      alert(isTanja ? "Dieser Monat ist abgeschlossen en niet meer bewerkbaar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
+      return
+    }
     const row = rowsByCrewId[crewId]
     if (!row) return
     const updatedRow: SalaryDraft = {
@@ -796,6 +987,10 @@ export default function LoonBemerkingenPage() {
   }
 
   const applyInflationCorrectionForAll = async () => {
+    if (monthIsClosed) {
+      alert(isTanja ? "Dieser Monat ist abgeschlossen en niet meer bewerkbaar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
+      return
+    }
     const percent = Number(String(inflationPercent || "").replace(",", "."))
     if (!Number.isFinite(percent) || percent <= 0) {
       alert(isTanja ? "Geef een geldig percentage groter dan 0 op." : "Vul een geldig percentage groter dan 0 in.")
@@ -819,14 +1014,18 @@ export default function LoonBemerkingenPage() {
 
     try {
       setApplyingInflation(true)
+      const batchId = `infl-${monthKey}-${Date.now()}`
       const updatedRows: SalaryDraft[] = targetRows.map((row) => {
         const base = Number(row.base_salary || 0)
         const inflationAmount = Number(((base * percent) / 100).toFixed(2))
         const existingRaise = Number(row.raise_amount || 0)
+        const existingInflation = Number(row.inflation_adjustment || 0)
         return {
           ...row,
           raise_enabled: true,
-          raise_amount: Number((existingRaise + inflationAmount).toFixed(2)),
+          raise_amount: Number((existingRaise - existingInflation + inflationAmount).toFixed(2)),
+          inflation_adjustment: inflationAmount,
+          inflation_batch_id: batchId,
           approval_leo: false,
           approval_karina: false,
           notes: String(row.notes || "").trim()
@@ -851,6 +1050,179 @@ export default function LoonBemerkingenPage() {
       alert(`${isTanja ? "Fehler bij toepassen" : "Fout bij toepassen"}: ${getErrMsg(e)}`)
     } finally {
       setApplyingInflation(false)
+    }
+  }
+
+  const undoInflationCorrectionForAll = async () => {
+    if (monthIsClosed) {
+      alert(isTanja ? "Deze maand is afgesloten en niet meer aanpasbaar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
+      return
+    }
+    const targetRows = Object.values(rowsByCrewId).filter((r) => Number(r.inflation_adjustment || 0) > 0)
+    if (targetRows.length === 0) {
+      alert(isTanja ? "Geen inflatiecorrectie gevonden om ongedaan te maken." : "Geen inflatiecorrectie gevonden om ongedaan te maken.")
+      return
+    }
+    const ok = window.confirm(
+      isTanja
+        ? `Inflatiecorrectie ongedaan maken voor ${targetRows.length} medewerkers?`
+        : `Inflatiecorrectie ongedaan maken voor ${targetRows.length} medewerkers?`
+    )
+    if (!ok) return
+    try {
+      setApplyingInflation(true)
+      const updatedRows: SalaryDraft[] = targetRows.map((row) => {
+        const existingRaise = Number(row.raise_amount || 0)
+        const existingInflation = Number(row.inflation_adjustment || 0)
+        return {
+          ...row,
+          raise_amount: Number((existingRaise - existingInflation).toFixed(2)),
+          raise_enabled: Number((existingRaise - existingInflation).toFixed(2)) !== 0,
+          inflation_adjustment: 0,
+          inflation_batch_id: "",
+          approval_leo: false,
+          approval_karina: false,
+        }
+      })
+      setRowsByCrewId((prev) => {
+        const next = { ...prev }
+        for (const row of updatedRows) next[row.crew_id] = row
+        return next
+      })
+      await Promise.all(updatedRows.map((row) => persistRow(row.crew_id, row)))
+      setLastSavedAt(new Date().toISOString())
+      await loadRows()
+      alert(isTanja ? "Inflatiecorrectie ongedaan gemaakt." : "Inflatiecorrectie ongedaan gemaakt.")
+    } catch (e) {
+      alert(`${isTanja ? "Fout bij ongedaan maken" : "Fout bij ongedaan maken"}: ${getErrMsg(e)}`)
+    } finally {
+      setApplyingInflation(false)
+    }
+  }
+
+  const closeMonth = async () => {
+    if (!isLeoUser) return
+    if (monthIsClosed) return
+    const allRows = Object.values(rowsByCrewId)
+    if (allRows.length === 0) {
+      alert(isTanja ? "Geen salarissen om af te sluiten." : "Geen salarissen om af te sluiten.")
+      return
+    }
+    const notApproved = allRows.filter((r) => !(r.approval_leo && r.approval_karina))
+    if (notApproved.length > 0) {
+      alert(
+        isTanja
+          ? "Monat afsluiten kan pas als alle vinkjes van Leo en Karina aan staan."
+          : "Maand afsluiten kan pas als alle vinkjes van Leo en Karina aan staan."
+      )
+      return
+    }
+    const ok = window.confirm(isTanja ? "Deze maand definitief afsluiten?" : "Deze maand definitief afsluiten?")
+    if (!ok) return
+
+    try {
+      setClosingMonth(true)
+      const nowIso = new Date().toISOString()
+      const updatedRows = allRows.map((r) => ({
+        ...r,
+        month_closed: true,
+        month_closed_by: currentUserEmail,
+        month_closed_at: nowIso,
+      }))
+      setRowsByCrewId((prev) => {
+        const next = { ...prev }
+        for (const row of updatedRows) next[row.crew_id] = row
+        return next
+      })
+      await Promise.all(updatedRows.map((r) => persistRow(r.crew_id, r)))
+      setLastSavedAt(nowIso)
+      await loadRows()
+    } catch (e) {
+      alert(`${isTanja ? "Fehler bij afsluiten" : "Fout bij afsluiten"}: ${getErrMsg(e)}`)
+    } finally {
+      setClosingMonth(false)
+    }
+  }
+
+  const syncOvertimeInputToRow = (crewId: string): SalaryDraft | null => {
+    if (!crewId) return
+    const parsed = overtimeDaysInput.trim() === "" ? 0 : parseDecimalInput(overtimeDaysInput)
+    const base = rowsByCrewId[crewId]
+    if (!base) return null
+    const nextRow: SalaryDraft = {
+      ...base,
+      overtime_enabled: parsed > 0 || base.overtime_enabled,
+      overtime_days: parsed,
+    }
+    setRowsByCrewId((prev) => ({
+      ...prev,
+      [crewId]: nextRow,
+    }))
+    return nextRow
+  }
+
+  const loadSalaryHistory = async (crewId: string) => {
+    if (!crewId) return
+    try {
+      setSalaryHistoryLoading(true)
+      const { data, error } = await supabase
+        .from("loon_bemerkingen")
+        .select("*")
+        .eq("crew_id", crewId)
+        .order("month_key", { ascending: false })
+      if (error) throw error
+
+      const history = (data || []).map((item: any) => {
+        const meta = parseSalaryMetaFromReason(item?.reason)
+        const row: SalaryDraft = {
+          id: String(item?.id || ""),
+          crew_id: String(item?.crew_id || crewId),
+          company: item?.company || null,
+          month_key: String(item?.month_key || ""),
+          in_service_from: null,
+          iban: String(item?.iban ?? meta?.iban ?? ""),
+          base_salary: typeof item?.base_salary === "number" ? item.base_salary : 0,
+          travel_allowance: !!item?.travel_allowance,
+          advance_enabled: (item?.advance_enabled ?? meta?.advance_enabled ?? false) === true,
+          advance_amount: typeof item?.advance_amount === "number" ? item.advance_amount : (meta?.advance_amount || 0),
+          raise_enabled: (item?.raise_enabled ?? meta?.raise_enabled ?? false) === true,
+          raise_amount: typeof item?.raise_amount === "number" ? item.raise_amount : (meta?.raise_amount || 0),
+          overtime_enabled: (item?.overtime_enabled ?? meta?.overtime_enabled ?? false) === true,
+          overtime_days: typeof item?.overtime_days === "number" ? item.overtime_days : (meta?.overtime_days || 0),
+          overtime_note: String(item?.overtime_note ?? meta?.overtime_note ?? ""),
+          inflation_adjustment: typeof item?.inflation_adjustment === "number" ? item.inflation_adjustment : (meta?.inflation_adjustment || 0),
+          inflation_batch_id: String(item?.inflation_batch_id ?? meta?.inflation_batch_id ?? ""),
+          month_closed: (item?.month_closed ?? meta?.month_closed ?? false) === true,
+          month_closed_by: String(item?.month_closed_by ?? meta?.month_closed_by ?? ""),
+          month_closed_at: String(item?.month_closed_at ?? meta?.month_closed_at ?? ""),
+          approval_leo: !!(item?.approval_leo ?? meta?.approval_leo),
+          approval_karina: !!(item?.approval_karina ?? meta?.approval_karina),
+          notes: String(item?.notes || ""),
+          review_comment: String(item?.review_comment || ""),
+          review_by: String(item?.review_by || ""),
+          review_type: item?.review_type === "correctie" ? "correctie" : "opmerking",
+        }
+        const totals = getSalaryTotals(row)
+        return {
+          id: row.id || `${row.crew_id}-${row.month_key}`,
+          month_key: row.month_key,
+          base_salary: Number(row.base_salary || 0),
+          travel_allowance: row.travel_allowance,
+          raise_amount: Number(row.raise_amount || 0),
+          advance_amount: Number(row.advance_amount || 0),
+          overtime_days: Number(row.overtime_days || 0),
+          overtime_note: String(row.overtime_note || ""),
+          inflation_adjustment: Number(row.inflation_adjustment || 0),
+          notes: String(item?.notes || ""),
+          total_salary_month: Number(totals.totalSalaryMonth || 0),
+        } satisfies SalaryHistoryItem
+      })
+      setSalaryHistoryItems(history)
+    } catch (e) {
+      alert(`${isTanja ? "Fehler bij laden historie" : "Fout bij laden historie"}: ${getErrMsg(e)}`)
+      setSalaryHistoryItems([])
+    } finally {
+      setSalaryHistoryLoading(false)
     }
   }
 
@@ -884,7 +1256,7 @@ export default function LoonBemerkingenPage() {
       "Naam",
       "Datum in dienst",
       "IBAN",
-      "Basissalaris excl kledinggeld",
+      "Basissalaris incl kledinggeld",
       "Reiskosten",
       "Voorschot",
       "Verhoging",
@@ -964,7 +1336,7 @@ export default function LoonBemerkingenPage() {
                   <th>Naam</th>
                   <th>Datum in dienst</th>
                   <th>IBAN</th>
-                  <th>Basissalaris excl. kledinggeld</th>
+                  <th>Basissalaris incl. kledinggeld</th>
                   <th>Reiskosten</th>
                   <th>Voorschot</th>
                   <th>Verhoging</th>
@@ -1153,6 +1525,27 @@ export default function LoonBemerkingenPage() {
               {isTanja ? "Nächster Monat" : "Volgende maand"}
             </Button>
           </div>
+          <div className="mt-2 flex justify-center">
+            {monthIsClosed ? (
+              <span className="inline-flex items-center rounded-md bg-slate-800 text-white text-xs px-2 py-1">
+                {isTanja ? "Monat abgeschlossen" : "Maand afgesloten"}
+              </span>
+            ) : (
+              isLeoUser && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="bg-slate-900 hover:bg-slate-800 text-white"
+                  onClick={closeMonth}
+                  disabled={closingMonth}
+                >
+                  {closingMonth
+                    ? (isTanja ? "Afsluiten..." : "Afsluiten...")
+                    : (isTanja ? "Monat afsluiten" : "Maand afsluiten")}
+                </Button>
+              )
+            )}
+          </div>
           <div className="text-xs text-gray-500 text-center">
             {isTanja ? "Zuletzt gespeichert" : "Laatst opgeslagen"}: {lastSavedAt ? formatDateTime(lastSavedAt) : "-"}
           </div>
@@ -1178,27 +1571,37 @@ export default function LoonBemerkingenPage() {
         </CardContent>
       </Card>
 
-      <Card className="w-full mt-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">{isTanja ? "Inflationskorrektur" : "Inflatiecorrectie"}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="w-full max-w-[220px]">
-            <Label>{isTanja ? "Korrektur %" : "Correctie %"}</Label>
-            <Input
-              inputMode="decimal"
-              value={inflationPercent}
-              onChange={(e) => setInflationPercent(e.target.value)}
-              placeholder="Bijv. 3"
-            />
-          </div>
-          <Button onClick={applyInflationCorrectionForAll} disabled={applyingInflation}>
-            {applyingInflation
-              ? (isTanja ? "Anwenden..." : "Toepassen...")
-              : (isTanja ? "Voor iedereen toepassen" : "Voor iedereen toepassen")}
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="mt-3 text-xs text-slate-500 flex flex-wrap items-end gap-2">
+        <span>{isTanja ? "Optioneel: Inflationskorrektur" : "Optioneel: inflatiecorrectie"}</span>
+        <Input
+          disabled={monthIsClosed}
+          inputMode="decimal"
+          value={inflationPercent}
+          onChange={(e) => setInflationPercent(e.target.value)}
+          placeholder="%"
+          className="h-8 w-20 text-xs"
+        />
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 px-2 text-xs text-slate-600 hover:text-slate-900"
+          onClick={applyInflationCorrectionForAll}
+          disabled={monthIsClosed || applyingInflation}
+        >
+          {applyingInflation
+            ? (isTanja ? "Anwenden..." : "Toepassen...")
+            : (isTanja ? "Toepassen" : "Toepassen")}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 px-2 text-xs text-slate-500 hover:text-slate-900"
+          onClick={undoInflationCorrectionForAll}
+          disabled={monthIsClosed || applyingInflation}
+        >
+          {isTanja ? "Ongedaan" : "Ongedaan"}
+        </Button>
+      </div>
 
       <div className="mt-4">
         <Card>
@@ -1234,7 +1637,7 @@ export default function LoonBemerkingenPage() {
                         <th className="px-3 py-2 text-base font-bold" rowSpan={2}>{isTanja ? "Name" : "Naam"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Eintrittsdatum" : "Datum in dienst"}</th>
                         <th className="px-3 py-2" rowSpan={2}>IBAN</th>
-                        <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl kledinggeld"}</th>
+                        <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Grundgehalt inkl. Kleidungsgeld" : "Basissalaris incl kledinggeld"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Reisekosten" : "Reiskosten"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Vorschuss" : "Voorschot"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Erhöhung" : "Verhoging"}</th>
@@ -1258,7 +1661,7 @@ export default function LoonBemerkingenPage() {
                         return (
                           <tr
                             key={`${r.crew_id}-${r.month_key}`}
-                            className={`border-t border-slate-200 cursor-pointer hover:bg-slate-50/80 ${getRowHighlightClass(crewMember, r, teGoedDays)}`}
+                            className={`border-t border-slate-200 ${monthIsClosed ? "cursor-default" : "cursor-pointer hover:bg-slate-50/80"} ${getRowHighlightClass(crewMember, r, teGoedDays)}`}
                             onClick={(e) => handleRowClickOpenEdit(e, String(r.crew_id))}
                           >
                             <td className="px-3 py-2">
@@ -1284,7 +1687,7 @@ export default function LoonBemerkingenPage() {
                                 type="checkbox"
                                 checked={!!r.approval_leo}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked)}
-                                disabled={!isLeoUser || savingCrewId === String(r.crew_id)}
+                                disabled={monthIsClosed || !isLeoUser || savingCrewId === String(r.crew_id)}
                                 title={!isLeoUser ? (isTanja ? "Nur Leo kann dieses Häkchen setzen." : "Alleen Leo kan dit vinkje zetten.") : ""}
                               />
                             </td>
@@ -1293,7 +1696,7 @@ export default function LoonBemerkingenPage() {
                                 type="checkbox"
                                 checked={!!r.approval_karina}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_karina", e.target.checked)}
-                                disabled={!isKarinaUser || savingCrewId === String(r.crew_id)}
+                                disabled={monthIsClosed || !isKarinaUser || savingCrewId === String(r.crew_id)}
                                 title={!isKarinaUser ? (isTanja ? "Nur Karina kann dieses Häkchen setzen." : "Alleen Karina kan dit vinkje zetten.") : ""}
                               />
                             </td>
@@ -1330,6 +1733,7 @@ export default function LoonBemerkingenPage() {
                         <th className="px-3 py-2">{isTanja ? "Name" : "Naam"}</th>
                         <th className="px-3 py-2">IBAN</th>
                         <th className="px-3 py-2">{isTanja ? "Extra Arbeitstage" : "Dagen extra gewerkt"}</th>
+                        <th className="px-3 py-2">{isTanja ? "Hinweis (von/bis)" : "Opmerking (van/tot)"}</th>
                         <th className="px-3 py-2">{isTanja ? "Betrag" : "Bedrag"}</th>
                         <th className="px-3 py-2">Leo</th>
                         <th className="px-3 py-2">Karina</th>
@@ -1345,6 +1749,7 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">{name}</td>
                             <td className="px-3 py-2">{r.iban || "-"}</td>
                             <td className="px-3 py-2">{Number(r.overtime_days || 0)}</td>
+                            <td className="px-3 py-2">{String(r.overtime_note || "").trim() || "-"}</td>
                             <td className="px-3 py-2 font-semibold text-emerald-700">{formatCurrency(overtimeAmount)}</td>
                             <td className="px-3 py-2">
                               <input
@@ -1381,7 +1786,17 @@ export default function LoonBemerkingenPage() {
               <h3 className="text-lg font-semibold">
                 {isTanja ? "Gehalt bearbeiten" : "Salaris bewerken"} - {formatCrewName(crewById.get(editingCrewId))}
               </h3>
-              <Button variant="ghost" size="sm" onClick={() => setEditingCrewId(null)}>X</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditingCrewId(null)
+                  setShowSalaryHistory(false)
+                  setSalaryHistoryItems([])
+                }}
+              >
+                X
+              </Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
@@ -1389,34 +1804,42 @@ export default function LoonBemerkingenPage() {
                 <Input value={rowsByCrewId[editingCrewId].iban || ""} onChange={(e) => setCrewField(editingCrewId, { iban: e.target.value })} />
               </div>
               <div>
-                <Label>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl kledinggeld"}</Label>
-                <Input inputMode="decimal" value={rowsByCrewId[editingCrewId].base_salary ?? ""} onChange={(e) => setCrewField(editingCrewId, { base_salary: e.target.value.trim() === "" ? null : Number(e.target.value) })} />
+                <Label>{isTanja ? "Grundgehalt inkl. Kleidungsgeld" : "Basissalaris incl kledinggeld"}</Label>
+                <Input disabled={monthIsClosed} inputMode="decimal" value={rowsByCrewId[editingCrewId].base_salary ?? ""} onChange={(e) => setCrewField(editingCrewId, { base_salary: e.target.value.trim() === "" ? null : Number(e.target.value) })} />
               </div>
               <div>
                 <Label>{isTanja ? "Reisekosten" : "Reiskosten"}</Label>
-                <Select value={rowsByCrewId[editingCrewId].travel_allowance ? "ja" : "nee"} onValueChange={(v) => setCrewField(editingCrewId, { travel_allowance: v === "ja" })}>
+                <Select disabled={monthIsClosed} value={rowsByCrewId[editingCrewId].travel_allowance ? "ja" : "nee"} onValueChange={(v) => setCrewField(editingCrewId, { travel_allowance: v === "ja" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="ja">Ja</SelectItem><SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem></SelectContent>
                 </Select>
               </div>
               <div>
                 <Label>{isTanja ? "Vorschussbetrag" : "Voorschot bedrag"}</Label>
-                <Input inputMode="decimal" value={rowsByCrewId[editingCrewId].advance_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { advance_enabled: e.target.value.trim() !== "", advance_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
+                <Input disabled={monthIsClosed} inputMode="decimal" value={rowsByCrewId[editingCrewId].advance_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { advance_enabled: e.target.value.trim() !== "", advance_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
               </div>
               <div>
                 <Label>{isTanja ? "Erhöhungsbetrag" : "Verhoging bedrag"}</Label>
-                <Input inputMode="decimal" value={rowsByCrewId[editingCrewId].raise_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { raise_enabled: e.target.value.trim() !== "", raise_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
+                <Input disabled={monthIsClosed} inputMode="decimal" value={rowsByCrewId[editingCrewId].raise_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { raise_enabled: e.target.value.trim() !== "", raise_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
               </div>
               <div>
                 <Label>{isTanja ? "Uberstunden" : "Overwerk"}</Label>
                 <Select
+                  disabled={monthIsClosed}
                   value={rowsByCrewId[editingCrewId].overtime_enabled ? "ja" : "nee"}
-                  onValueChange={(v) =>
+                  onValueChange={(v) => {
+                    const enabled = v === "ja"
+                    if (!enabled) {
+                      setOvertimeDaysInput("")
+                    } else {
+                      const existing = Number(rowsByCrewId[editingCrewId].overtime_days || 0)
+                      setOvertimeDaysInput(existing > 0 ? String(existing).replace(".", ",") : "")
+                    }
                     setCrewField(editingCrewId, {
-                      overtime_enabled: v === "ja",
-                      overtime_days: v === "ja" ? Number(rowsByCrewId[editingCrewId].overtime_days || 0) : 0,
+                      overtime_enabled: enabled,
+                      overtime_days: enabled ? Number(rowsByCrewId[editingCrewId].overtime_days || 0) : 0,
                     })
-                  }
+                  }}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="ja">Ja</SelectItem><SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem></SelectContent>
@@ -1426,33 +1849,120 @@ export default function LoonBemerkingenPage() {
                 <div>
                   <Label>{isTanja ? "Anzahl Extra-Tage" : "Aantal dagen extra gewerkt"}</Label>
                   <Input
-                    inputMode="numeric"
-                    value={rowsByCrewId[editingCrewId].overtime_days ?? ""}
-                    onChange={(e) =>
-                      setCrewField(editingCrewId, {
-                        overtime_enabled: true,
-                        overtime_days: e.target.value.trim() === "" ? 0 : Number(e.target.value),
-                      })
-                    }
+                    disabled={monthIsClosed}
+                    inputMode="decimal"
+                    value={overtimeDaysInput}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      if (/^\d*([.,]\d*)?$/.test(raw)) {
+                        setOvertimeDaysInput(raw)
+                      }
+                    }}
+                    placeholder={isTanja ? "z. B. 3,5" : "Bijv. 3,5"}
+                  />
+                </div>
+              )}
+              {rowsByCrewId[editingCrewId].overtime_enabled && (
+                <div className="md:col-span-2">
+                  <Label>{isTanja ? "Hinweis Überstunden (von ... bis ...)" : "Opmerking overwerk (van ... tot ...)"}</Label>
+                  <Input
+                    disabled={monthIsClosed}
+                    value={rowsByCrewId[editingCrewId].overtime_note || ""}
+                    onChange={(e) => setCrewField(editingCrewId, { overtime_note: e.target.value })}
+                    placeholder={isTanja ? "von 26-04-2026 bis 28-04-2026" : "van 26-04-2026 tot 28-04-2026"}
                   />
                 </div>
               )}
               <div>
                 <Label>{isTanja ? "Bemerkungen" : "Opmerkingen"}</Label>
-                <Input value={rowsByCrewId[editingCrewId].notes || ""} onChange={(e) => setCrewField(editingCrewId, { notes: e.target.value })} />
+                <Input disabled={monthIsClosed} value={rowsByCrewId[editingCrewId].notes || ""} onChange={(e) => setCrewField(editingCrewId, { notes: e.target.value })} />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditingCrewId(null)}>{isTanja ? "Abbrechen" : "Annuleren"}</Button>
               <Button
+                variant="outline"
                 onClick={async () => {
-                  const ok = await saveCrewRow(editingCrewId)
-                  if (ok) setEditingCrewId(null)
+                  const nextShow = !showSalaryHistory
+                  setShowSalaryHistory(nextShow)
+                  if (nextShow) {
+                    await loadSalaryHistory(editingCrewId)
+                  }
+                }}
+              >
+                {isTanja ? "Gehaltshistorie" : "Salarisgeschiedenis"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingCrewId(null)
+                  setShowSalaryHistory(false)
+                  setSalaryHistoryItems([])
+                }}
+              >
+                {isTanja ? "Abbrechen" : "Annuleren"}
+              </Button>
+              <Button
+                disabled={monthIsClosed}
+                onClick={async () => {
+                  const preparedRow = syncOvertimeInputToRow(editingCrewId)
+                  const ok = await saveCrewRow(editingCrewId, preparedRow || undefined)
+                  if (ok) {
+                    setEditingCrewId(null)
+                    setShowSalaryHistory(false)
+                    setSalaryHistoryItems([])
+                  }
                 }}
               >
                 {isTanja ? "Speichern" : "Opslaan"}
               </Button>
             </div>
+            {showSalaryHistory && (
+              <div className="mt-4 border-t pt-4">
+                <div className="text-sm font-semibold mb-2">
+                  {isTanja ? "Gehaltshistorie" : "Salarisgeschiedenis"}
+                </div>
+                {salaryHistoryLoading ? (
+                  <div className="text-sm text-gray-500">{isTanja ? "Laden..." : "Laden..."}</div>
+                ) : salaryHistoryItems.length === 0 ? (
+                  <div className="text-sm text-gray-500">{isTanja ? "Geen historie gevonden." : "Geen historie gevonden."}</div>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto rounded-md border">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-100">
+                        <tr className="text-left">
+                          <th className="px-2 py-1">Maand</th>
+                          <th className="px-2 py-1">{isTanja ? "Basissalaris" : "Basissalaris"}</th>
+                          <th className="px-2 py-1">{isTanja ? "Reiskosten" : "Reiskosten"}</th>
+                          <th className="px-2 py-1">{isTanja ? "Verhoging" : "Verhoging"}</th>
+                          <th className="px-2 py-1">{isTanja ? "Voorschot" : "Voorschot"}</th>
+                          <th className="px-2 py-1">{isTanja ? "Overwerk" : "Overwerk"}</th>
+                          <th className="px-2 py-1">{isTanja ? "Totaal" : "Totaal"}</th>
+                          <th className="px-2 py-1">{isTanja ? "Reden/opmerking" : "Reden/opmerking"}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {salaryHistoryItems.map((item) => (
+                          <tr key={item.id} className="border-t">
+                            <td className="px-2 py-1">{item.month_key}</td>
+                            <td className="px-2 py-1">{formatCurrency(item.base_salary)}</td>
+                            <td className="px-2 py-1">{item.travel_allowance ? `Ja (+${formatCurrency(300)})` : "Nee"}</td>
+                            <td className="px-2 py-1">{formatCurrency(item.raise_amount)}</td>
+                            <td className="px-2 py-1">{formatCurrency(item.advance_amount)}</td>
+                            <td className="px-2 py-1">
+                              {item.overtime_days > 0
+                                ? `${item.overtime_days}d (${formatCurrency(getOverworkAmountForCrew(editingCrewId, item.base_salary, item.overtime_days))})`
+                                : "-"}
+                            </td>
+                            <td className="px-2 py-1 font-semibold">{formatCurrency(item.total_salary_month)}</td>
+                            <td className="px-2 py-1">{String(item.overtime_note || item.notes || "").trim()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
