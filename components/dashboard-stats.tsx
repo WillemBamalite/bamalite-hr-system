@@ -367,7 +367,7 @@ export function DashboardStats() {
             }`}
           >
             <div
-              className={`flex items-center gap-1 md:gap-2 text-sm md:text-base font-semibold dashboard-tile-title ${
+              className={`flex items-center gap-1 md:gap-2 text-xl md:text-2xl font-semibold dashboard-tile-title ${
                 notificationCount > 0 ? "text-white" : "text-gray-800"
               }`}
             >
@@ -375,13 +375,13 @@ export function DashboardStats() {
               {uiText.notifications}
             </div>
             <div
-              className={`text-3xl md:text-4xl font-extrabold dashboard-tile-number ${
+              className={`text-xl md:text-2xl font-extrabold dashboard-tile-number ${
                 notificationCount > 0 ? "text-white" : "text-gray-900"
               }`}
             >
               {notificationCount}
             </div>
-            <div className={`text-base md:text-lg font-semibold dashboard-tile-sub ${notificationCount > 0 ? "text-red-100" : "text-gray-700"}`}>
+            <div className={`text-xl md:text-2xl font-semibold dashboard-tile-sub ${notificationCount > 0 ? "text-red-100" : "text-gray-700"}`}>
               {uiText.open}
             </div>
           </Link>
@@ -390,8 +390,8 @@ export function DashboardStats() {
         {/* 1. Totaal bemanningsleden */}
         {canAccessPath("/bemanning/overzicht") && <div className="aspect-[3/1]">
           <Link href="/bemanning/overzicht" className="h-full flex flex-col items-center justify-center bg-blue-50 border border-blue-200 rounded-lg p-2 md:p-4 text-center hover:bg-blue-100 transition cursor-pointer">
-            <div className="text-3xl md:text-4xl font-extrabold text-blue-800">{stats.totalCrew}</div>
-            <div className='text-base md:text-lg font-semibold text-blue-800 mt-1'>{t('totalCrewMembers')}</div>
+            <div className="text-xl md:text-2xl font-extrabold text-blue-800">{stats.totalCrew}</div>
+            <div className='text-xl md:text-2xl font-semibold text-blue-800 mt-1'>{t('totalCrewMembers')}</div>
           </Link>
         </div>}
 
@@ -478,8 +478,8 @@ export function DashboardStats() {
         {/* 6. Taken */}
         {canAccessPath("/taken") && <div className="aspect-[3/1]">
           <Link href="/taken" className="h-full flex flex-col items-center justify-center bg-amber-50 border border-amber-200 rounded-lg p-2 md:p-4 text-center hover:bg-amber-100 transition cursor-pointer">
-            <div className="text-3xl md:text-4xl font-extrabold text-amber-800">{tasksCount}</div>
-            <div className='text-base md:text-lg font-semibold text-amber-800 mt-1 flex items-center justify-center gap-1'>
+            <div className="text-xl md:text-2xl font-extrabold text-amber-800">{tasksCount}</div>
+            <div className='text-xl md:text-2xl font-semibold text-amber-800 mt-1 flex items-center justify-center gap-1'>
               <ListTodo className="w-3.5 h-3.5 md:w-4 md:h-4" />
               <span>Taken</span>
             </div>
@@ -489,8 +489,8 @@ export function DashboardStats() {
         {/* 7. Scheepsbezoeken */}
         {canAccessPath("/schepen/bezoeken") && <div className="aspect-[3/1]">
           <Link href="/schepen/bezoeken" className="h-full flex flex-col items-center justify-center bg-indigo-50 border border-indigo-200 rounded-lg p-2 md:p-4 text-center hover:bg-indigo-100 transition cursor-pointer">
-            <div className="text-3xl md:text-4xl font-extrabold text-indigo-800">{stats.scheepsbezoeken}</div>
-            <div className='text-base md:text-lg font-semibold text-indigo-800 mt-1 flex items-center justify-center gap-1'>
+            <div className="text-xl md:text-2xl font-extrabold text-indigo-800">{stats.scheepsbezoeken}</div>
+            <div className='text-xl md:text-2xl font-semibold text-indigo-800 mt-1 flex items-center justify-center gap-1'>
               <Calendar className="w-3.5 h-3.5 md:w-4 md:h-4" />
               <span>Scheepsbezoeken</span>
             </div>
@@ -500,8 +500,8 @@ export function DashboardStats() {
         {/* 8. Medische keuringen */}
         {canAccessPath("/bemanning/medische-keuringen") && <div className="aspect-[3/1]">
           <Link href="/bemanning/medische-keuringen" className="h-full flex flex-col items-center justify-center bg-teal-50 border border-teal-200 rounded-lg p-2 md:p-4 text-center hover:bg-teal-100 transition cursor-pointer">
-            <div className="text-3xl md:text-4xl font-extrabold text-teal-800">{stats.medischeKeuringen}</div>
-            <div className='text-base md:text-lg font-semibold text-teal-800 mt-1 flex items-center justify-center gap-1'>
+            <div className="text-xl md:text-2xl font-extrabold text-teal-800">{stats.medischeKeuringen}</div>
+            <div className='text-xl md:text-2xl font-semibold text-teal-800 mt-1 flex items-center justify-center gap-1'>
               <Cloud className="w-3.5 h-3.5 md:w-4 md:h-4" />
               <span>Medische Keuringen</span>
             </div>
@@ -511,8 +511,8 @@ export function DashboardStats() {
         {/* 9. Lopende incidenten */}
         {canAccessPath("/incidenten") && <div className="aspect-[3/1]">
           <Link href="/incidenten" className="h-full flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-lg p-2 md:p-4 text-center hover:bg-rose-100 transition cursor-pointer">
-            <div className="text-3xl md:text-4xl font-extrabold text-rose-800">{openIncidentsCount}</div>
-            <div className='text-base md:text-lg font-semibold text-rose-800 mt-1 flex items-center justify-center gap-1'>
+            <div className="text-xl md:text-2xl font-extrabold text-rose-800">{openIncidentsCount}</div>
+            <div className='text-xl md:text-2xl font-semibold text-rose-800 mt-1 flex items-center justify-center gap-1'>
               <AlertCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />
               <span>Lopende Incidenten</span>
             </div>
@@ -522,16 +522,16 @@ export function DashboardStats() {
         {/* 10. Openstaande leningen */}
         {canAccessPath("/bemanning/leningen") && <div className="aspect-[3/1]">
           <Link href="/bemanning/leningen" className="h-full flex flex-col items-center justify-center bg-yellow-50 border border-yellow-200 rounded-lg p-2 md:p-4 text-center hover:bg-yellow-100 transition cursor-pointer">
-            <div className="text-3xl md:text-4xl font-extrabold text-yellow-800">{stats.openLeningen}</div>
-            <div className='text-base md:text-lg font-semibold text-yellow-800 mt-1'>{t('outstandingLoans')}</div>
+            <div className="text-xl md:text-2xl font-extrabold text-yellow-800">{stats.openLeningen}</div>
+            <div className='text-xl md:text-2xl font-semibold text-yellow-800 mt-1'>{t('outstandingLoans')}</div>
           </Link>
         </div>}
 
         {/* 11. Oud medewerkers */}
         {canAccessPath("/bemanning/oude-bemanningsleden") && <div className="aspect-[3/1]">
           <Link href="/bemanning/oude-bemanningsleden" className="h-full flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-lg p-2 md:p-4 text-center hover:bg-slate-100 transition cursor-pointer">
-            <div className="text-3xl md:text-4xl font-extrabold text-slate-800">{stats.oudMedewerkers}</div>
-            <div className='text-base md:text-lg font-semibold text-slate-800 mt-1'>{t('oldEmployees')}</div>
+            <div className="text-xl md:text-2xl font-extrabold text-slate-800">{stats.oudMedewerkers}</div>
+            <div className='text-xl md:text-2xl font-semibold text-slate-800 mt-1'>{t('oldEmployees')}</div>
           </Link>
         </div>}
 
@@ -565,8 +565,8 @@ export function DashboardStats() {
             href="/bemanning/officiele-waarschuwingen"
             className="h-full flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-lg p-2 md:p-4 text-center hover:bg-rose-100 transition cursor-pointer"
           >
-            <div className="text-3xl md:text-4xl font-extrabold text-rose-800">{activeOfficialWarningsCount}</div>
-            <div className="text-base md:text-lg font-semibold text-rose-800 mt-1 flex items-center justify-center gap-1">
+            <div className="text-xl md:text-2xl font-extrabold text-rose-800">{activeOfficialWarningsCount}</div>
+            <div className="text-xl md:text-2xl font-semibold text-rose-800 mt-1 flex items-center justify-center gap-1">
               <FileWarning className="w-3.5 h-3.5 md:w-4 md:h-4" />
               <span>Waarschuwingen</span>
             </div>
@@ -579,8 +579,8 @@ export function DashboardStats() {
             href="/bemanning/loon-bemerkingen"
             className="h-full flex flex-col items-center justify-center bg-cyan-50 border border-cyan-200 rounded-lg p-2 md:p-4 text-center hover:bg-cyan-100 transition cursor-pointer"
           >
-            <div className="text-3xl md:text-4xl font-extrabold text-cyan-800">{loonBemerkingenCount}</div>
-            <div className="text-base md:text-lg font-semibold text-cyan-800 mt-1">
+            <div className="text-xl md:text-2xl font-extrabold text-cyan-800">{loonBemerkingenCount}</div>
+            <div className="text-xl md:text-2xl font-semibold text-cyan-800 mt-1">
               {uiText.payrollNotes}
             </div>
           </Link>
