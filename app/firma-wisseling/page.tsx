@@ -19,17 +19,6 @@ const COMPANIES = [
   { id: 'devel', name: 'Devel Shipping S.A.', number: 'B 139046' },
 ]
 
-// Rang-volgorde voor sortering
-const RANK_ORDER: Record<string, number> = {
-  'kapitein': 1,
-  '2e kapitein': 2,
-  'stuurman': 3,
-  'vol matroos': 4,
-  'matroos': 5,
-  'licht matroos': 6,
-  'deksman': 7,
-}
-
 const PRINT_TRANSLATIONS = {
   nl: {
     titlePrefix: 'Firma overzicht -',
@@ -47,17 +36,14 @@ const PRINT_TRANSLATIONS = {
   },
 } as const
 
-function sortByRankAndName(a: any, b: any) {
-  const posA = (a.position || '').toString().toLowerCase()
-  const posB = (b.position || '').toString().toLowerCase()
-  const rankA = RANK_ORDER[posA] ?? 999
-  const rankB = RANK_ORDER[posB] ?? 999
-
-  if (rankA !== rankB) return rankA - rankB
-
+function sortByLastNameAndFirstName(a: any, b: any) {
   const lastA = (a.last_name || '').toString()
   const lastB = (b.last_name || '').toString()
-  return lastA.localeCompare(lastB, 'nl')
+  const lastCompare = lastA.localeCompare(lastB, 'nl')
+  if (lastCompare !== 0) return lastCompare
+  const firstA = (a.first_name || '').toString()
+  const firstB = (b.first_name || '').toString()
+  return firstA.localeCompare(firstB, 'nl')
 }
 
 export default function FirmaWisselingPage() {
@@ -73,7 +59,7 @@ export default function FirmaWisselingPage() {
         !member.is_dummy && 
         member.status !== 'uit-dienst'
       )
-      .sort(sortByRankAndName)
+      .sort(sortByLastNameAndFirstName)
   }
 
   // Check of iemand op een schip van een andere firma staat
@@ -274,7 +260,7 @@ export default function FirmaWisselingPage() {
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <h3 className="font-semibold text-gray-900 truncate">
-                                      {member.first_name} {member.last_name}
+                                      {member.last_name} {member.first_name}
                                     </h3>
                                     {needsCompanySwitch && (
                                       <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0" title="Staat op schip van andere firma" />
@@ -322,7 +308,7 @@ export default function FirmaWisselingPage() {
             {activeCompanyCrew.map((member: any, index: number) => (
               <li key={member.id} className="flex justify-between border-b border-gray-200 py-1">
                 <span className="font-medium">
-                  {index + 1}. {member.first_name} {member.last_name}
+                  {index + 1}. {member.last_name} {member.first_name}
                 </span>
                 <span className="text-gray-500">{member.position}</span>
               </li>

@@ -235,11 +235,21 @@ const isAflosser = (member: any) =>
 const isEligibleForSalaryPage = (member: any) => {
   if (!isRealCrewMember(member)) return false
   if (isCopiedCrewMember(member)) return false
-  if (member?.recruitment_status && member.recruitment_status !== "aangenomen") return false
   if (isAflosser(member)) {
+    // Vaste aflossers tellen mee voor salarissen, ook als recruitment_status nog niet exact "aangenomen" is.
     return member?.vaste_dienst === true
   }
+  if (member?.recruitment_status && member.recruitment_status !== "aangenomen") return false
   return true
+}
+
+const isEligibleForSalaryMonth = (member: any, selectedMonthKey: string) => {
+  const inDienstVanaf = String(member?.in_dienst_vanaf || "").trim()
+  if (!inDienstVanaf) return true
+  const d = new Date(inDienstVanaf)
+  if (isNaN(d.getTime())) return true
+  const startMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  return startMonthKey <= selectedMonthKey
 }
 
 const KARINA_EMAIL = "karina@bamalite.com"
@@ -396,6 +406,7 @@ export default function LoonBemerkingenPage() {
       const nextCompanySwitchByCrew: Record<string, boolean> = {}
       ;(crew || [])
         .filter((c: any) => isEligibleForSalaryPage(c))
+        .filter((c: any) => isEligibleForSalaryMonth(c, monthKey))
         .forEach((c: any) => {
           const crewId = String(c.id)
           const current = currentByCrew.get(crewId)
@@ -429,7 +440,8 @@ export default function LoonBemerkingenPage() {
           nextRowsByCrew[crewId] = {
             id: current?.id,
             crew_id: crewId,
-            company: (current?.company ?? previous?.company ?? c.company ?? null) || null,
+            // Firma-indeling volgt primair de firma-wisseling bron (crew.company).
+            company: (c.company ?? current?.company ?? previous?.company ?? null) || null,
             month_key: monthKey,
             in_service_from: c?.in_dienst_vanaf || null,
             iban: String(

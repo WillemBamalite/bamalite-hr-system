@@ -21,6 +21,29 @@ const COMPANIES = [
   'Devel Shipping S.A.',
 ]
 
+const sortByLastNameFirst = (a: any, b: any) => {
+  const aLast = String(a?.last_name || '').trim().toLowerCase()
+  const bLast = String(b?.last_name || '').trim().toLowerCase()
+  const lastCompare = aLast.localeCompare(bLast, 'nl')
+  if (lastCompare !== 0) return lastCompare
+  const aFirst = String(a?.first_name || '').trim().toLowerCase()
+  const bFirst = String(b?.first_name || '').trim().toLowerCase()
+  return aFirst.localeCompare(bFirst, 'nl')
+}
+
+const isVasteAflosser = (member: any) => {
+  const position = String(member?.position || '').toLowerCase()
+  return (position === 'aflosser' || position.includes('aflosser')) && member?.vaste_dienst === true
+}
+
+const canAssignCompany = (member: any) => {
+  if (!isRealCrewMember(member)) return false
+  // Vaste aflossers horen ook bij bemanning voor firma-indeling.
+  if (isVasteAflosser(member)) return true
+  if (member?.recruitment_status && member.recruitment_status !== 'aangenomen') return false
+  return true
+}
+
 export default function FirmaWisselingFormPage() {
   const router = useRouter()
   const { crew, loading, updateCrew } = useSupabaseData()
@@ -93,10 +116,12 @@ export default function FirmaWisselingFormPage() {
               </SelectTrigger>
               <SelectContent>
                 {crew
-                  .filter((m: any) => isRealCrewMember(m))
+                  .filter((m: any) => canAssignCompany(m))
+                  .sort(sortByLastNameFirst)
                   .map((member: any) => (
                     <SelectItem key={member.id} value={member.id}>
-                      {member.first_name} {member.last_name} - {member.position}
+                      {member.last_name} {member.first_name} - {member.position}
+                      {isVasteAflosser(member) ? ' (vaste aflosser)' : ''}
                       {member.company && ` (${member.company})`}
                     </SelectItem>
                   ))}
