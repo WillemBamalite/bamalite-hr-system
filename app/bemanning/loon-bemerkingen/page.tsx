@@ -174,28 +174,23 @@ const parseDecimalInput = (value: string): number => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-const getDaysInMonthByKey = (selectedMonthKey: string) => {
-  const [yearStr, monthStr] = selectedMonthKey.split("-")
-  const year = Number(yearStr)
-  const month = Number(monthStr)
-  if (!year || !month) return 30
-  return new Date(year, month, 0).getDate()
+const formatInputDateToDutch = (isoDate: string) => {
+  const [y, m, d] = String(isoDate || "").split("-")
+  if (!y || !m || !d) return ""
+  return `${d}-${m}-${y}`
 }
 
-const formatDayToDate = (day: number, selectedMonthKey: string) => {
-  const [yearStr, monthStr] = selectedMonthKey.split("-")
-  const year = Number(yearStr)
-  const month = Number(monthStr)
-  if (!year || !month || !day) return ""
-  return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${year}`
+const formatDutchDateToInput = (dutchDate: string) => {
+  const [d, m, y] = String(dutchDate || "").split("-")
+  if (!d || !m || !y) return ""
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`
 }
 
-const buildOvertimeNoteFromDays = (days: number[], selectedMonthKey: string) => {
-  const clean = Array.from(new Set(days.filter((d) => Number.isFinite(d) && d > 0))).sort((a, b) => a - b)
-  if (clean.length === 0) return ""
-  const first = clean[0]
-  const last = clean[clean.length - 1]
-  return `van ${formatDayToDate(first, selectedMonthKey)} tot ${formatDayToDate(last, selectedMonthKey)}`
+const buildOvertimeNoteFromDateRange = (fromIso: string, toIso: string) => {
+  const from = formatInputDateToDutch(fromIso)
+  const to = formatInputDateToDutch(toIso)
+  if (!from || !to) return ""
+  return `van ${from} tot ${to}`
 }
 
 const getContractBaseSalaryInclClothing = (crewMember: any): number | null => {
@@ -390,7 +385,8 @@ export default function LoonBemerkingenPage() {
   const [activeCompanyTab, setActiveCompanyTab] = useState<string>("")
   const [editingCrewId, setEditingCrewId] = useState<string | null>(null)
   const [overtimeDaysInput, setOvertimeDaysInput] = useState<string>("")
-  const [overtimeSelectedDays, setOvertimeSelectedDays] = useState<number[]>([])
+  const [overtimeFromDate, setOvertimeFromDate] = useState<string>("")
+  const [overtimeToDate, setOvertimeToDate] = useState<string>("")
   const [inflationPercent, setInflationPercent] = useState<string>("")
   const [applyingInflation, setApplyingInflation] = useState(false)
   const [closingMonth, setClosingMonth] = useState(false)
@@ -735,7 +731,8 @@ export default function LoonBemerkingenPage() {
   useEffect(() => {
     if (!editingCrewId || !rowsByCrewId[editingCrewId]) {
       setOvertimeDaysInput("")
-      setOvertimeSelectedDays([])
+      setOvertimeFromDate("")
+      setOvertimeToDate("")
       return
     }
     const current = rowsByCrewId[editingCrewId]
@@ -746,32 +743,13 @@ export default function LoonBemerkingenPage() {
     const regex = /van\s+(\d{2})-(\d{2})-(\d{4})\s+tot\s+(\d{2})-(\d{2})-(\d{4})/i
     const match = note.match(regex)
     if (match) {
-      const fromDay = Number(match[1])
-      const fromMonth = Number(match[2])
-      const fromYear = Number(match[3])
-      const toDay = Number(match[4])
-      const toMonth = Number(match[5])
-      const toYear = Number(match[6])
-      const [yearStr, monthStr] = monthKey.split("-")
-      const currentYear = Number(yearStr)
-      const currentMonth = Number(monthStr)
-      if (
-        fromYear === currentYear &&
-        toYear === currentYear &&
-        fromMonth === currentMonth &&
-        toMonth === currentMonth &&
-        fromDay > 0 &&
-        toDay >= fromDay
-      ) {
-        const maxDay = getDaysInMonthByKey(monthKey)
-        const arr: number[] = []
-        for (let d = fromDay; d <= Math.min(toDay, maxDay); d++) arr.push(d)
-        setOvertimeSelectedDays(arr)
-      } else {
-        setOvertimeSelectedDays([])
-      }
+      const from = formatDutchDateToInput(`${match[1]}-${match[2]}-${match[3]}`)
+      const to = formatDutchDateToInput(`${match[4]}-${match[5]}-${match[6]}`)
+      setOvertimeFromDate(from)
+      setOvertimeToDate(to)
     } else {
-      setOvertimeSelectedDays([])
+      setOvertimeFromDate("")
+      setOvertimeToDate("")
     }
   }, [editingCrewId, monthKey])
 
@@ -2451,7 +2429,8 @@ export default function LoonBemerkingenPage() {
                     const enabled = v === "ja"
                     if (!enabled) {
                       setOvertimeDaysInput("")
-                      setOvertimeSelectedDays([])
+                      setOvertimeFromDate("")
+                      setOvertimeToDate("")
                     } else {
                       const existing = Number(rowsByCrewId[editingCrewId].overtime_days || 0)
                       setOvertimeDaysInput(existing > 0 ? String(existing).replace(".", ",") : "")
@@ -2488,36 +2467,41 @@ export default function LoonBemerkingenPage() {
               )}
               {rowsByCrewId[editingCrewId].overtime_enabled && (
                 <div className="md:col-span-2">
-                  <Label>{isTanja ? "Extra gewerkte dagen (kalender)" : "Extra gewerkte dagen (kalender)"}</Label>
-                  <div className="mt-2 grid grid-cols-7 gap-1 rounded-md border p-2">
-                    {Array.from({ length: getDaysInMonthByKey(monthKey) }, (_, idx) => idx + 1).map((day) => {
-                      const selected = overtimeSelectedDays.includes(day)
-                      return (
-                        <button
-                          key={`ot-day-${day}`}
-                          type="button"
-                          disabled={monthIsClosed}
-                          className={`h-8 rounded text-xs border ${selected ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300"}`}
-                          onClick={() => {
-                            const next = selected
-                              ? overtimeSelectedDays.filter((d) => d !== day)
-                              : [...overtimeSelectedDays, day]
-                            const sorted = Array.from(new Set(next)).sort((a, b) => a - b)
-                            setOvertimeSelectedDays(sorted)
-                            setCrewField(editingCrewId, {
-                              overtime_note: buildOvertimeNoteFromDays(sorted, monthKey),
-                            })
-                          }}
-                        >
-                          {day}
-                        </button>
-                      )
-                    })}
+                  <Label>{isTanja ? "Periode extra werk" : "Periode extra werk"}</Label>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 rounded-md border p-2">
+                    <div>
+                      <Label className="text-xs">{isTanja ? "Van" : "Van"}</Label>
+                      <Input
+                        type="date"
+                        disabled={monthIsClosed}
+                        value={overtimeFromDate}
+                        onChange={(e) => {
+                          const from = e.target.value
+                          setOvertimeFromDate(from)
+                          const note = buildOvertimeNoteFromDateRange(from, overtimeToDate)
+                          setCrewField(editingCrewId, { overtime_note: note })
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">{isTanja ? "Tot" : "Tot"}</Label>
+                      <Input
+                        type="date"
+                        disabled={monthIsClosed}
+                        value={overtimeToDate}
+                        onChange={(e) => {
+                          const to = e.target.value
+                          setOvertimeToDate(to)
+                          const note = buildOvertimeNoteFromDateRange(overtimeFromDate, to)
+                          setCrewField(editingCrewId, { overtime_note: note })
+                        }}
+                      />
+                    </div>
                   </div>
                   <div className="mt-2 text-xs text-slate-600">
                     {rowsByCrewId[editingCrewId].overtime_note
                       ? `${isTanja ? "Automatische opmerking" : "Automatische opmerking"}: ${rowsByCrewId[editingCrewId].overtime_note}`
-                      : (isTanja ? "Selecteer dagen om automatisch 'van ... tot ...' te vullen." : "Selecteer dagen om automatisch 'van ... tot ...' te vullen.")}
+                      : (isTanja ? "Kies begin- en einddatum om automatisch 'van ... tot ...' te vullen." : "Kies begin- en einddatum om automatisch 'van ... tot ...' te vullen.")}
                   </div>
                 </div>
               )}
