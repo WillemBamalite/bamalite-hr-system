@@ -17,6 +17,9 @@ function formatOtpError(message: string) {
   if (lower.includes("rate limit")) {
     return "Te veel code-aanvragen kort achter elkaar. Wacht even en probeer opnieuw."
   }
+  if (lower.includes("application not found")) {
+    return "E-mailprovider fout (SMTP). Neem contact op met beheer: verificatiemail kon niet worden verstuurd."
+  }
   return message
 }
 
@@ -87,10 +90,6 @@ export default function EmailVerifyPage() {
     setResendLoading(true)
     setError("")
     setInfo("")
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("email_verify_last_request_at", String(Date.now()))
-      window.sessionStorage.setItem("email_verify_otp_requested", "1")
-    }
 
     const { error: resendError } = await supabase.auth.signInWithOtp({
       email,
@@ -109,6 +108,8 @@ export default function EmailVerifyPage() {
       return
     }
     if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("email_verify_last_request_at", String(Date.now()))
+      window.sessionStorage.setItem("email_verify_otp_requested", "1")
       window.sessionStorage.removeItem("email_verify_retry_after_until")
     }
     setInfo(
