@@ -1852,6 +1852,16 @@ export function useSupabaseData() {
       for (const ym of periods) {
         const { data: fresh, error: ferr } = await supabase.from("loans").select("*").eq("id", loan.id).single()
         if (ferr || !fresh || fresh.status !== "open") break
+        const note = isYearly
+          ? `Automatische jaartermijn (${ym})`
+          : `Automatische maandtermijn (${ym})`
+        const alreadyBookedForYm = Array.isArray(fresh.payment_history)
+          ? fresh.payment_history.some((entry: any) => String(entry?.note || "").trim() === note)
+          : false
+        // Extra beveiliging: boek nooit twee keer dezelfde automatische periode.
+        if (alreadyBookedForYm) {
+          continue
+        }
         const paid = Number(fresh.amount_paid || 0)
         const total = Number(fresh.amount)
         const remaining = Number(
@@ -1859,9 +1869,6 @@ export function useSupabaseData() {
         )
         if (remaining <= 0) break
         const pay = Math.min(perPeriod, remaining)
-        const note = isYearly
-          ? `Automatische jaartermijn (${ym})`
-          : `Automatische maandtermijn (${ym})`
         await makePayment(loan.id, pay, note, { setInstallmentPeriodYm: ym, skipReload: true })
         changed = true
       }

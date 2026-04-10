@@ -64,6 +64,7 @@ export default function LeningenPage() {
     amount: "",
     reason: "",
     installment_enabled: false,
+    installment_deduct_from_salary: false,
     installment_amount: "",
     installment_start_month: new Date().toISOString().slice(0, 7),
     installment_period_type: "month" as "month" | "year",
@@ -78,6 +79,7 @@ export default function LeningenPage() {
     open: boolean
     loan: any | null
     enabled: boolean
+    deductFromSalary: boolean
     monthly: string
     startMonth: string
     periodType: "month" | "year"
@@ -85,6 +87,7 @@ export default function LeningenPage() {
     open: false,
     loan: null,
     enabled: false,
+    deductFromSalary: false,
     monthly: "",
     startMonth: "",
     periodType: "month",
@@ -98,6 +101,7 @@ export default function LeningenPage() {
       open: true,
       loan,
       enabled: !!loan.auto_installment_enabled,
+      deductFromSalary: !!loan.auto_deduct_salary,
       monthly:
         loan.monthly_installment_amount != null && loan.monthly_installment_amount !== ""
           ? String(loan.monthly_installment_amount)
@@ -108,7 +112,7 @@ export default function LeningenPage() {
 
   const handleSaveInstallment = async () => {
     if (!installmentDialog.loan) return
-    const { loan, enabled, monthly, startMonth, periodType } = installmentDialog
+    const { loan, enabled, deductFromSalary, monthly, startMonth, periodType } = installmentDialog
     setSavingInstallment(true)
     try {
       const parsed = parseFloat(monthly.replace(",", "."))
@@ -129,6 +133,7 @@ export default function LeningenPage() {
         String(loan.installment_period_type || "month").toLowerCase() === "year" ? "year" : "month"
       const updates: Record<string, unknown> = {
         auto_installment_enabled: enabled,
+        auto_deduct_salary: enabled ? deductFromSalary : false,
         monthly_installment_amount: enabled ? parsed : null,
         installment_start_period: enabled ? startMonth : null,
         installment_period_type: enabled ? periodType : "month",
@@ -144,6 +149,7 @@ export default function LeningenPage() {
         open: false,
         loan: null,
         enabled: false,
+        deductFromSalary: false,
         monthly: "",
         startMonth: "",
         periodType: "month",
@@ -224,12 +230,14 @@ export default function LeningenPage() {
       if (newLoanData.installment_enabled) {
         const parsedInst = parseFloat(newLoanData.installment_amount.replace(",", "."))
         payload.auto_installment_enabled = true
+        payload.auto_deduct_salary = !!newLoanData.installment_deduct_from_salary
         payload.monthly_installment_amount = parsedInst
         payload.installment_start_period = newLoanData.installment_start_month
         payload.installment_period_type = newLoanData.installment_period_type
         payload.last_installment_period = null
       } else {
         payload.auto_installment_enabled = false
+        payload.auto_deduct_salary = false
         payload.monthly_installment_amount = null
         payload.installment_start_period = null
         payload.installment_period_type = "month"
@@ -510,6 +518,11 @@ export default function LeningenPage() {
                             {String(loan.installment_period_type || "month").toLowerCase() === "year"
                               ? `Jaarregeling €${Number(loan.monthly_installment_amount || 0).toFixed(2)}/jaar`
                               : `Maandregeling €${Number(loan.monthly_installment_amount || 0).toFixed(2)}/mnd`}
+                          </Badge>
+                        )}
+                        {loan.status === 'open' && loan.auto_installment_enabled && loan.auto_deduct_salary && (
+                          <Badge className="bg-amber-100 text-amber-900 border border-amber-300">
+                            Inhouden via salaris
                           </Badge>
                         )}
                       </div>
@@ -823,6 +836,19 @@ export default function LeningenPage() {
                   Automatische aflossing instellen
                 </Label>
               </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="new-loan-installment-deduct"
+                  checked={newLoanData.installment_deduct_from_salary}
+                  disabled={!newLoanData.installment_enabled}
+                  onCheckedChange={(v) =>
+                    setNewLoanData((s) => ({ ...s, installment_deduct_from_salary: v === true }))
+                  }
+                />
+                <Label htmlFor="new-loan-installment-deduct" className="cursor-pointer">
+                  Inhouden via salaris
+                </Label>
+              </div>
               <div>
                 <Label htmlFor="new-installment-period-type">Periode</Label>
                 <Select
@@ -1049,6 +1075,19 @@ export default function LeningenPage() {
                 Automatische aflossing actief
               </Label>
             </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="installment-deduct-salary"
+                checked={installmentDialog.deductFromSalary}
+                disabled={!installmentDialog.enabled}
+                onCheckedChange={(v) =>
+                  setInstallmentDialog((s) => ({ ...s, deductFromSalary: v === true }))
+                }
+              />
+              <Label htmlFor="installment-deduct-salary" className="cursor-pointer">
+                Inhouden via salaris
+              </Label>
+            </div>
             <div>
               <Label htmlFor="installment-period-type">Periode</Label>
               <Select
@@ -1111,6 +1150,7 @@ export default function LeningenPage() {
                     open: false,
                     loan: null,
                     enabled: false,
+                    deductFromSalary: false,
                     monthly: "",
                     startMonth: "",
                     periodType: "month",

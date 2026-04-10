@@ -95,6 +95,7 @@ type SalaryDraft = {
   travel_allowance: boolean
   advance_enabled: boolean
   advance_amount: number | null
+  deduction_category: "lening" | "voorschot" | "kleding" | "opleidingskosten" | "boetes" | "overig"
   raise_enabled: boolean
   raise_amount: number | null
   overtime_enabled: boolean
@@ -111,6 +112,19 @@ type SalaryDraft = {
   review_comment: string
   review_by: string
   review_type: "opmerking" | "correctie"
+}
+
+const DEDUCTION_CATEGORY_OPTIONS = [
+  { value: "lening", label: "Lening" },
+  { value: "voorschot", label: "Voorschot" },
+  { value: "kleding", label: "Kleding" },
+  { value: "opleidingskosten", label: "Opleidingskosten" },
+  { value: "boetes", label: "Boetes" },
+  { value: "overig", label: "Overig" },
+] as const
+
+const getDeductionCategoryLabel = (value: string) => {
+  return DEDUCTION_CATEGORY_OPTIONS.find((o) => o.value === value)?.label || "Overig"
 }
 
 const formatDateTime = (value: string | null | undefined) => {
@@ -274,6 +288,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       review_type?: "opmerking" | "correctie"
       advance_enabled?: boolean
       advance_amount?: number
+      deduction_category?: "lening" | "voorschot" | "kleding" | "opleidingskosten" | "boetes" | "overig"
       raise_enabled?: boolean
       raise_amount?: number
       overtime_enabled?: boolean
@@ -294,6 +309,15 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       review_type: parsed.review_type === "correctie" ? "correctie" : "opmerking",
       advance_enabled: parsed.advance_enabled === true,
       advance_amount: typeof parsed.advance_amount === "number" ? parsed.advance_amount : 0,
+      deduction_category:
+        parsed.deduction_category === "lening" ||
+        parsed.deduction_category === "voorschot" ||
+        parsed.deduction_category === "kleding" ||
+        parsed.deduction_category === "opleidingskosten" ||
+        parsed.deduction_category === "boetes" ||
+        parsed.deduction_category === "overig"
+          ? parsed.deduction_category
+          : "voorschot",
       raise_enabled: parsed.raise_enabled === true,
       raise_amount: typeof parsed.raise_amount === "number" ? parsed.raise_amount : 0,
       overtime_enabled: parsed.overtime_enabled === true,
@@ -313,7 +337,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
 }
 
 export default function LoonBemerkingenPage() {
-  const { crew } = useSupabaseData()
+  const { crew, loans } = useSupabaseData()
   const [currentUserEmail, setCurrentUserEmail] = useState("")
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -413,6 +437,15 @@ export default function LoonBemerkingenPage() {
           const previous = latestPreviousByCrew.get(crewId)
           const currentMeta = parseSalaryMetaFromReason(current?.reason)
           const previousMeta = parseSalaryMetaFromReason(previous?.reason)
+          const autoLoanDeduction = getAutoLoanDeductionForCrew(crewId, monthKey)
+          const hasManualCurrentDeduction =
+            !!current &&
+            (
+              current?.advance_enabled === true ||
+              (typeof current?.advance_amount === "number" && current.advance_amount > 0) ||
+              currentMeta?.advance_enabled === true ||
+              Number(currentMeta?.advance_amount || 0) > 0
+            )
           const previousRaiseEnabled =
             currentMeta?.raise_enabled === true
               ? false
@@ -464,11 +497,24 @@ export default function LoonBemerkingenPage() {
                     ? previous.travel_allowance
                     : contractTravelEnabled),
             advance_enabled:
-              (current?.advance_enabled ?? currentMeta?.advance_enabled ?? false) === true,
+              hasManualCurrentDeduction
+                ? (current?.advance_enabled ?? currentMeta?.advance_enabled ?? false) === true
+                : autoLoanDeduction > 0,
             advance_amount:
-              typeof current?.advance_amount === "number"
-                ? current.advance_amount
-                : (currentMeta?.advance_amount || 0),
+              hasManualCurrentDeduction
+                ? (
+                    typeof current?.advance_amount === "number"
+                      ? current.advance_amount
+                      : (currentMeta?.advance_amount || 0)
+                  )
+                : autoLoanDeduction,
+            deduction_category:
+              hasManualCurrentDeduction
+                ? (
+                    currentMeta?.deduction_category ||
+                    (autoLoanDeduction > 0 ? "lening" : "voorschot")
+                  )
+                : (autoLoanDeduction > 0 ? "lening" : "voorschot"),
             raise_enabled:
               (current?.raise_enabled ?? currentMeta?.raise_enabled ?? false) === true,
             raise_amount:
@@ -682,8 +728,104 @@ export default function LoonBemerkingenPage() {
     return new Date(year, month, 0).getDate()
   }
 
+  const getProratedBaseSalaryForMonth = (row: SalaryDraft, selectedMonthKey: string) => {
+    const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
+    if (baseSalary <= 0) return 0
+    if (!row.in_service_from) return baseSalary
+    const start = new Date(row.in_service_from)
+    if (isNaN(start.getTime())) return baseSalary
+
+    const [yearStr, monthStr] = selectedMonthKey.split("-")
+    const year = Number(yearStr)
+    const month = Number(monthStr)
+    if (!year || !month) return baseSalary
+
+    const isStartMonth = start.getFullYear() === year && (start.getMonth() + 1) === month
+    if (!isStartMonth) return baseSalary
+
+    const startDay = start.getDate()
+    const daysInMonth = getDaysInMonth(selectedMonthKey)
+    if (daysInMonth <= 0) return baseSalary
+
+    // Betaaldag is de 25e: start op/na 25 gaat naar te-goed in volgende maand.
+    if (startDay >= 25) return 0
+
+    const workedDays = daysInMonth - startDay + 1
+    const dayRate = baseSalary / daysInMonth
+    return dayRate * workedDays
+  }
+
+  const isLoanInstallmentDueForMonth = (loan: any, selectedMonthKey: string) => {
+    if (!loan) return false
+    if (loan.status !== "open") return false
+    if (loan.auto_installment_enabled !== true) return false
+    if (loan.auto_deduct_salary !== true) return false
+    const start = String(loan.installment_start_period || "")
+    if (!/^\d{4}-\d{2}$/.test(start)) return false
+    if (selectedMonthKey < start) return false
+    const periodType = String(loan.installment_period_type || "month").toLowerCase()
+    if (periodType === "year") {
+      const [, startMonth] = start.split("-")
+      const [, selectedMonth] = selectedMonthKey.split("-")
+      return startMonth === selectedMonth
+    }
+    return true
+  }
+
+  const getAutoLoanDeductionForCrew = (crewId: string, selectedMonthKey: string) => {
+    const relevant = (loans || []).filter((loan: any) => String(loan.crew_id) === String(crewId))
+    if (relevant.length === 0) return 0
+    let total = 0
+    for (const loan of relevant) {
+      if (!isLoanInstallmentDueForMonth(loan, selectedMonthKey)) continue
+      const installment = Number(loan.monthly_installment_amount || 0)
+      const remaining = Number(loan.amount_remaining ?? loan.amount ?? 0)
+      if (!Number.isFinite(installment) || installment <= 0) continue
+      if (!Number.isFinite(remaining) || remaining <= 0) continue
+      total += Math.min(installment, remaining)
+    }
+    return Number(total.toFixed(2))
+  }
+
+  const getAutoProrationNote = (row: SalaryDraft, selectedMonthKey: string) => {
+    const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
+    if (baseSalary <= 0 || !row.in_service_from) return ""
+    const start = new Date(row.in_service_from)
+    if (isNaN(start.getTime())) return ""
+
+    const [yearStr, monthStr] = selectedMonthKey.split("-")
+    const year = Number(yearStr)
+    const month = Number(monthStr)
+    if (!year || !month) return ""
+
+    const isStartMonth = start.getFullYear() === year && (start.getMonth() + 1) === month
+    if (!isStartMonth) return ""
+
+    const startDay = start.getDate()
+    const daysInMonth = getDaysInMonth(selectedMonthKey)
+    const dayRate = daysInMonth > 0 ? baseSalary / daysInMonth : 0
+
+    if (startDay >= 25) {
+      return `Start op ${startDay}e (na betaaldag 25e): basissalaris gaat via te-goed naar volgende maand.`
+    }
+
+    const workedDays = daysInMonth - startDay + 1
+    const prorated = dayRate * workedDays
+    if (prorated >= baseSalary) return ""
+    return `Pro-rata salaris vanaf ${startDay}/${String(month).padStart(2, "0")}: ${workedDays}/${daysInMonth} dagen gewerkt.`
+  }
+
+  const getEffectiveMonthlyNote = (row: SalaryDraft, selectedMonthKey: string) => {
+    const auto = getAutoProrationNote(row, selectedMonthKey).trim()
+    const manual = String(row.notes || "").trim()
+    if (auto && manual) return `${auto} | ${manual}`
+    if (auto) return auto
+    return manual
+  }
+
   const getSalaryTotals = (row: SalaryDraft) => {
     const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
+    const payableBaseSalary = getProratedBaseSalaryForMonth(row, monthKey)
     const travelAmount = row.travel_allowance ? 300 : 0
     const advanceAmount = row.advance_enabled ? (typeof row.advance_amount === "number" ? row.advance_amount : 0) : 0
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
@@ -691,8 +833,8 @@ export default function LoonBemerkingenPage() {
     const sourceDaysInMonth = getTeGoedSourceDaysInMonth(row.in_service_from, monthKey)
     const amountPerDay = sourceDaysInMonth > 0 ? baseSalary / sourceDaysInMonth : 0
     const teGoedAmount = teGoedDays > 0 ? amountPerDay * teGoedDays : 0
-    const totalSalaryMonth = baseSalary + travelAmount + raiseAmount - advanceAmount + teGoedAmount
-    return { baseSalary, travelAmount, advanceAmount, raiseAmount, teGoedDays, amountPerDay, teGoedAmount, totalSalaryMonth }
+    const totalSalaryMonth = payableBaseSalary + travelAmount + raiseAmount - advanceAmount + teGoedAmount
+    return { baseSalary, payableBaseSalary, travelAmount, advanceAmount, raiseAmount, teGoedDays, amountPerDay, teGoedAmount, totalSalaryMonth }
   }
 
   const getOverworkAmount = (row: SalaryDraft) => {
@@ -766,6 +908,9 @@ export default function LoonBemerkingenPage() {
     patch: Partial<SalaryDraft>
   ) => {
     const shouldResetApprovals =
+      Object.prototype.hasOwnProperty.call(patch, "advance_enabled") ||
+      Object.prototype.hasOwnProperty.call(patch, "advance_amount") ||
+      Object.prototype.hasOwnProperty.call(patch, "deduction_category") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_enabled") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_days") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_note")
@@ -827,7 +972,7 @@ export default function LoonBemerkingenPage() {
       approval_karina: !!row.approval_karina,
       iban: row.iban?.trim() || "",
       reason:
-        ((row.notes || "").trim() || "Salarisadministratie") +
+        (getEffectiveMonthlyNote(row, row.month_key) || "Salarisadministratie") +
         `\n${SALARY_META_PREFIX}${JSON.stringify({
           iban: row.iban?.trim() || "",
           review_comment: String(row.review_comment || "").trim(),
@@ -835,6 +980,7 @@ export default function LoonBemerkingenPage() {
           review_type: row.review_type || "opmerking",
           advance_enabled: !!row.advance_enabled,
           advance_amount: row.advance_amount ?? 0,
+          deduction_category: row.deduction_category || "voorschot",
           raise_enabled: !!row.raise_enabled,
           raise_amount: row.raise_amount ?? 0,
           overtime_enabled: !!row.overtime_enabled,
@@ -855,7 +1001,7 @@ export default function LoonBemerkingenPage() {
               review_type: row.review_type || "opmerking",
             })}`
           : ""),
-      notes: row.notes || "",
+      notes: getEffectiveMonthlyNote(row, row.month_key),
       review_comment: String(row.review_comment || "").trim(),
       review_by: String(row.review_by || "").trim(),
       review_type: row.review_type || "opmerking",
@@ -927,6 +1073,8 @@ export default function LoonBemerkingenPage() {
       return false
     }
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
+    const advanceAmount = row.advance_enabled ? (typeof row.advance_amount === "number" ? row.advance_amount : 0) : 0
+    const teGoedDaysForValidation = getTeGoedDays(row.in_service_from, row.month_key)
     const hasNotes = !!String(row.notes || "").trim()
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
     const overtimeNotes = String(row.overtime_note || "").toLowerCase()
@@ -938,6 +1086,28 @@ export default function LoonBemerkingenPage() {
         isTanja
           ? "Bei Überstunden ist ein Hinweis mit Zeitraum Pflicht (von ... bis ...)."
           : "Bij overwerk is een opmerking verplicht met periode (van ... tot ...)."
+      )
+      return false
+    }
+
+    if (row.advance_enabled) {
+      const category = String(row.deduction_category || "").trim()
+      if (!category) {
+        alert(isTanja ? "Kategorie für Einbehalt ist verpflichtend." : "Categorie voor in te houden is verplicht.")
+        return false
+      }
+      if (!Number.isFinite(advanceAmount) || advanceAmount <= 0) {
+        alert(isTanja ? "Betrag voor Einbehalt moet groter dan 0 zijn." : "Bedrag voor in te houden moet groter dan 0 zijn.")
+        return false
+      }
+    }
+
+    // Harde validatie: bij verhoging, in te houden of te-goed is opmerking verplicht.
+    if ((raiseAmount !== 0 || advanceAmount !== 0 || teGoedDaysForValidation > 0) && !hasNotes) {
+      alert(
+        isTanja
+          ? "Bei Erhöhung, Einbehalt oder Te-goed ist ein Hinweis verpflichtend."
+          : "Bij verhoging, in te houden of te-goed is een opmerking verplicht."
       )
       return false
     }
@@ -1255,7 +1425,7 @@ export default function LoonBemerkingenPage() {
           advance: r.advance_enabled ? `Ja (-${advanceAmount.toFixed(2)})` : "Nee",
           raise: r.raise_enabled ? `Ja (+${raiseAmount.toFixed(2)})` : "Nee",
           teGoed: teGoedDays > 0 ? `${teGoedDays} (${teGoedAmount.toFixed(2)})` : "",
-          notes: r.notes || "",
+          notes: getEffectiveMonthlyNote(r, monthKey),
           approvalLeo: r.approval_leo ? "Ja" : "Nee",
           approvalKarina: r.approval_karina ? "Ja" : "Nee",
           total: totalSalaryMonth,
@@ -1331,7 +1501,7 @@ export default function LoonBemerkingenPage() {
                 <td>${r.advance_enabled ? `Ja (-${formatEuro(advanceAmount)})` : "Nee"}</td>
                 <td>${r.raise_enabled ? `Ja (+${formatEuro(raiseAmount)})` : "Nee"}</td>
                 <td>${teGoedDays > 0 ? `${teGoedDays} dagen (+${formatEuro(teGoedAmount)})` : "-"}</td>
-                <td>${escapeHtml(r.notes || "")}</td>
+                <td>${escapeHtml(getEffectiveMonthlyNote(r, monthKey) || "")}</td>
                 <td>${r.approval_leo ? "Ja" : "Nee"}</td>
                 <td>${r.approval_karina ? "Ja" : "Nee"}</td>
                 <td class="num total">${formatEuro(totalSalaryMonth)}</td>
@@ -1651,7 +1821,7 @@ export default function LoonBemerkingenPage() {
                         <th className="px-3 py-2" rowSpan={2}>IBAN</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Grundgehalt inkl. Kleidungsgeld" : "Basissalaris incl kledinggeld"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Reisekosten" : "Reiskosten"}</th>
-                        <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Vorschuss" : "Voorschot"}</th>
+                        <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Einbehalt" : "In te houden"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Erhöhung" : "Verhoging"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Guthaben" : "Te goed"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Monatsgehalt gesamt" : "Totaal salaris maand"}</th>
@@ -1685,7 +1855,11 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">{r.iban || "-"}</td>
                             <td className="px-3 py-2">{formatCurrency(r.base_salary || 0)}</td>
                             <td className="px-3 py-2">{r.travel_allowance ? `Ja (+${formatCurrency(travelAmount)})` : (isTanja ? "Nein" : "Nee")}</td>
-                            <td className="px-3 py-2">{r.advance_enabled ? `Ja (-${formatCurrency(advanceAmount)})` : (isTanja ? "Nein" : "Nee")}</td>
+                            <td className="px-3 py-2">
+                              {r.advance_enabled
+                                ? `${getDeductionCategoryLabel(r.deduction_category)} (-${formatCurrency(advanceAmount)})`
+                                : (isTanja ? "Nein" : "Nee")}
+                            </td>
                             <td className="px-3 py-2">{r.raise_enabled ? `Ja (+${formatCurrency(raiseAmount)})` : (isTanja ? "Nein" : "Nee")}</td>
                             <td className="px-3 py-2">
                               {teGoedDays > 0
@@ -1693,7 +1867,7 @@ export default function LoonBemerkingenPage() {
                                 : "-"}
                             </td>
                             <td className="px-3 py-2 font-bold text-emerald-700">{formatCurrency(totalSalaryMonth)}</td>
-                            <td className="px-3 py-2">{r.notes || "-"}</td>
+                            <td className="px-3 py-2">{getEffectiveMonthlyNote(r, monthKey) || "-"}</td>
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
@@ -1827,9 +2001,60 @@ export default function LoonBemerkingenPage() {
                 </Select>
               </div>
               <div>
-                <Label>{isTanja ? "Vorschussbetrag" : "Voorschot bedrag"}</Label>
-                <Input disabled={monthIsClosed} inputMode="decimal" value={rowsByCrewId[editingCrewId].advance_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { advance_enabled: e.target.value.trim() !== "", advance_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
+                <Label>{isTanja ? "Einbehalt" : "In te houden"}</Label>
+                <Select
+                  disabled={monthIsClosed}
+                  value={rowsByCrewId[editingCrewId].advance_enabled ? "ja" : "nee"}
+                  onValueChange={(v) => {
+                    const enabled = v === "ja"
+                    setCrewField(editingCrewId, {
+                      advance_enabled: enabled,
+                      advance_amount: enabled ? Number(rowsByCrewId[editingCrewId].advance_amount || 0) : 0,
+                      deduction_category: enabled ? rowsByCrewId[editingCrewId].deduction_category : "voorschot",
+                    })
+                  }}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="ja">Ja</SelectItem><SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem></SelectContent>
+                </Select>
               </div>
+              {rowsByCrewId[editingCrewId].advance_enabled && (
+                <>
+                  <div>
+                    <Label>{isTanja ? "Kategorie" : "Categorie"}</Label>
+                    <Select
+                      disabled={monthIsClosed}
+                      value={rowsByCrewId[editingCrewId].deduction_category || "voorschot"}
+                      onValueChange={(v) =>
+                        setCrewField(editingCrewId, {
+                          deduction_category: (v as SalaryDraft["deduction_category"]) || "voorschot",
+                        })
+                      }
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {DEDUCTION_CATEGORY_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{isTanja ? "Betrag" : "Bedrag"}</Label>
+                    <Input
+                      disabled={monthIsClosed}
+                      inputMode="decimal"
+                      value={rowsByCrewId[editingCrewId].advance_amount ?? ""}
+                      onChange={(e) =>
+                        setCrewField(editingCrewId, {
+                          advance_enabled: true,
+                          advance_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                </>
+              )}
               <div>
                 <Label>{isTanja ? "Erhöhungsbetrag" : "Verhoging bedrag"}</Label>
                 <Input disabled={monthIsClosed} inputMode="decimal" value={rowsByCrewId[editingCrewId].raise_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { raise_enabled: e.target.value.trim() !== "", raise_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
