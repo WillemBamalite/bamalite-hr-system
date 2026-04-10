@@ -158,6 +158,7 @@ const formatEuro = (value: number) =>
 const formatCurrency = (value: number) => formatEuro(Number(value || 0))
 const SEPA_CCY = "EUR"
 const DEFAULT_SEPA_MESSAGE_PREFIX = "Salaris"
+const CLOTHING_ALLOWANCE_FIXED = 25
 
 const parseMoney = (value: any): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
@@ -171,6 +172,30 @@ const parseDecimalInput = (value: string): number => {
   const normalized = String(value || "").trim().replace(",", ".")
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+const getDaysInMonthByKey = (selectedMonthKey: string) => {
+  const [yearStr, monthStr] = selectedMonthKey.split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  if (!year || !month) return 30
+  return new Date(year, month, 0).getDate()
+}
+
+const formatDayToDate = (day: number, selectedMonthKey: string) => {
+  const [yearStr, monthStr] = selectedMonthKey.split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  if (!year || !month || !day) return ""
+  return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${year}`
+}
+
+const buildOvertimeNoteFromDays = (days: number[], selectedMonthKey: string) => {
+  const clean = Array.from(new Set(days.filter((d) => Number.isFinite(d) && d > 0))).sort((a, b) => a - b)
+  if (clean.length === 0) return ""
+  const first = clean[0]
+  const last = clean[clean.length - 1]
+  return `van ${formatDayToDate(first, selectedMonthKey)} tot ${formatDayToDate(last, selectedMonthKey)}`
 }
 
 const getContractBaseSalaryInclClothing = (crewMember: any): number | null => {
@@ -352,6 +377,7 @@ export default function LoonBemerkingenPage() {
   const [salaryPagePasswordInput, setSalaryPagePasswordInput] = useState("")
   const [salaryPagePasswordConfirm, setSalaryPagePasswordConfirm] = useState("")
   const [salaryPageGateBusy, setSalaryPageGateBusy] = useState(false)
+  const [salaryPasswordMonthKey] = useState(getCurrentMonthKey())
   const [adminResetEmail, setAdminResetEmail] = useState("")
   const [adminResetBusy, setAdminResetBusy] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -364,6 +390,7 @@ export default function LoonBemerkingenPage() {
   const [activeCompanyTab, setActiveCompanyTab] = useState<string>("")
   const [editingCrewId, setEditingCrewId] = useState<string | null>(null)
   const [overtimeDaysInput, setOvertimeDaysInput] = useState<string>("")
+  const [overtimeSelectedDays, setOvertimeSelectedDays] = useState<number[]>([])
   const [inflationPercent, setInflationPercent] = useState<string>("")
   const [applyingInflation, setApplyingInflation] = useState(false)
   const [closingMonth, setClosingMonth] = useState(false)
@@ -534,8 +561,9 @@ export default function LoonBemerkingenPage() {
             !!currentCompany &&
             !!previousCompany &&
             currentCompany !== previousCompany
+          const rawCurrentNotes = String(current?.notes ?? "")
           nextCompanySwitchByCrew[crewId] = switchedCompanyThisMonth
-          nextRowsByCrew[crewId] = {
+          const draftRow: SalaryDraft = {
             id: current?.id,
             crew_id: crewId,
             // Firma-indeling volgt primair de firma-wisseling bron (crew.company).
@@ -622,7 +650,7 @@ export default function LoonBemerkingenPage() {
               (current?.approval_leo ?? currentMeta?.approval_leo ?? false) === true,
             approval_karina:
               (current?.approval_karina ?? currentMeta?.approval_karina ?? false) === true,
-            notes: String(current?.notes ?? ""),
+            notes: rawCurrentNotes,
             review_comment: String(
               current?.review_comment ??
               currentMeta?.review_comment ??
@@ -638,6 +666,11 @@ export default function LoonBemerkingenPage() {
                 ? "correctie"
                 : (currentMeta?.review_type || "opmerking"),
           }
+          draftRow.notes = getNormalizedManualNote(
+            draftRow.notes,
+            getAutoProrationNote(draftRow, monthKey)
+          )
+          nextRowsByCrew[crewId] = draftRow
         })
 
       setRowsByCrewId(nextRowsByCrew)
@@ -656,8 +689,8 @@ export default function LoonBemerkingenPage() {
     setSalaryPageUnlocked(false)
     setSalaryPagePasswordInput("")
     setSalaryPagePasswordConfirm("")
-    loadSalaryPagePasswordGate(monthKey)
-  }, [mounted, currentUserId, currentUserEmail, monthKey])
+    loadSalaryPagePasswordGate(salaryPasswordMonthKey)
+  }, [mounted, currentUserId, currentUserEmail, salaryPasswordMonthKey])
 
   useEffect(() => {
     if (!salaryPageUnlocked) return
@@ -702,13 +735,45 @@ export default function LoonBemerkingenPage() {
   useEffect(() => {
     if (!editingCrewId || !rowsByCrewId[editingCrewId]) {
       setOvertimeDaysInput("")
+      setOvertimeSelectedDays([])
       return
     }
     const current = rowsByCrewId[editingCrewId]
     setOvertimeDaysInput(
       typeof current.overtime_days === "number" ? String(current.overtime_days).replace(".", ",") : ""
     )
-  }, [editingCrewId])
+    const note = String(current.overtime_note || "")
+    const regex = /van\s+(\d{2})-(\d{2})-(\d{4})\s+tot\s+(\d{2})-(\d{2})-(\d{4})/i
+    const match = note.match(regex)
+    if (match) {
+      const fromDay = Number(match[1])
+      const fromMonth = Number(match[2])
+      const fromYear = Number(match[3])
+      const toDay = Number(match[4])
+      const toMonth = Number(match[5])
+      const toYear = Number(match[6])
+      const [yearStr, monthStr] = monthKey.split("-")
+      const currentYear = Number(yearStr)
+      const currentMonth = Number(monthStr)
+      if (
+        fromYear === currentYear &&
+        toYear === currentYear &&
+        fromMonth === currentMonth &&
+        toMonth === currentMonth &&
+        fromDay > 0 &&
+        toDay >= fromDay
+      ) {
+        const maxDay = getDaysInMonthByKey(monthKey)
+        const arr: number[] = []
+        for (let d = fromDay; d <= Math.min(toDay, maxDay); d++) arr.push(d)
+        setOvertimeSelectedDays(arr)
+      } else {
+        setOvertimeSelectedDays([])
+      }
+    } else {
+      setOvertimeSelectedDays([])
+    }
+  }, [editingCrewId, monthKey])
 
   useEffect(() => {
     if (companyNames.length === 0) {
@@ -729,6 +794,16 @@ export default function LoonBemerkingenPage() {
     const [year] = (monthKey || "").split("-")
     return year || String(new Date().getFullYear())
   }, [monthKey])
+
+  const salaryPasswordMonthPart = useMemo(() => {
+    const [, month] = (salaryPasswordMonthKey || "").split("-")
+    return month || String(new Date().getMonth() + 1).padStart(2, "0")
+  }, [salaryPasswordMonthKey])
+
+  const salaryPasswordYearPart = useMemo(() => {
+    const [year] = (salaryPasswordMonthKey || "").split("-")
+    return year || String(new Date().getFullYear())
+  }, [salaryPasswordMonthKey])
 
   const formatCrewName = (crewMember: any) => {
     const first = String(crewMember?.first_name || "").trim()
@@ -889,9 +964,32 @@ export default function LoonBemerkingenPage() {
     return `Pro-rata salaris vanaf ${startDay}/${String(month).padStart(2, "0")}: ${workedDays}/${daysInMonth} dagen gewerkt.`
   }
 
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+  const getNormalizedManualNote = (manualValue: string, autoValue: string) => {
+    let manual = String(manualValue || "").trim()
+    const auto = String(autoValue || "").trim()
+    if (!manual) return ""
+    if (auto) {
+      const autoRegex = new RegExp(`\\s*\\|?\\s*${escapeRegExp(auto)}\\s*\\|?\\s*`, "gi")
+      manual = manual.replace(autoRegex, " | ").replace(/\s*\|\s*\|\s*/g, " | ").trim()
+      manual = manual.replace(/^\|\s*/, "").replace(/\s*\|$/, "").trim()
+    }
+    // voorkom dubbele segmenten bij herhaald opslaan
+    const uniqueParts = Array.from(
+      new Set(
+        manual
+          .split("|")
+          .map((p) => p.trim())
+          .filter(Boolean)
+      )
+    )
+    return uniqueParts.join(" | ")
+  }
+
   const getEffectiveMonthlyNote = (row: SalaryDraft, selectedMonthKey: string) => {
     const auto = getAutoProrationNote(row, selectedMonthKey).trim()
-    const manual = String(row.notes || "").trim()
+    const manual = getNormalizedManualNote(String(row.notes || ""), auto)
     if (auto && manual) return `${auto} | ${manual}`
     if (auto) return auto
     return manual
@@ -912,7 +1010,7 @@ export default function LoonBemerkingenPage() {
   }
 
   const getOverworkAmount = (row: SalaryDraft) => {
-    const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
+    const baseSalaryIncl = typeof row.base_salary === "number" ? row.base_salary : 0
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
     if (overtimeDays <= 0) return 0
     const crewMember = crewById.get(String(row.crew_id))
@@ -922,8 +1020,9 @@ export default function LoonBemerkingenPage() {
       position.includes("captain") ||
       position.includes("schipper") ||
       position.includes("skipper")
-    if (!isCaptainOrSkipper && baseSalary <= 0) return 0
-    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalary / 15)
+    const baseSalaryExcl = Math.max(0, baseSalaryIncl - CLOTHING_ALLOWANCE_FIXED)
+    if (!isCaptainOrSkipper && baseSalaryExcl <= 0) return 0
+    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalaryExcl / 15)
     return perDayOverwork * overtimeDays
   }
 
@@ -936,8 +1035,9 @@ export default function LoonBemerkingenPage() {
       position.includes("captain") ||
       position.includes("schipper") ||
       position.includes("skipper")
-    if (!isCaptainOrSkipper && baseSalary <= 0) return 0
-    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalary / 15)
+    const baseSalaryExcl = Math.max(0, baseSalary - CLOTHING_ALLOWANCE_FIXED)
+    if (!isCaptainOrSkipper && baseSalaryExcl <= 0) return 0
+    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalaryExcl / 15)
     return perDayOverwork * overtimeDays
   }
 
@@ -1075,7 +1175,7 @@ export default function LoonBemerkingenPage() {
               review_type: row.review_type || "opmerking",
             })}`
           : ""),
-      notes: getEffectiveMonthlyNote(row, row.month_key),
+      notes: getNormalizedManualNote(String(row.notes || ""), getAutoProrationNote(row, row.month_key)),
       review_comment: String(row.review_comment || "").trim(),
       review_by: String(row.review_by || "").trim(),
       review_type: row.review_type || "opmerking",
@@ -1771,13 +1871,13 @@ export default function LoonBemerkingenPage() {
       const response = await fetch("/api/salary-password/set", {
         method: "POST",
         headers,
-        body: JSON.stringify({ monthKey, password }),
+        body: JSON.stringify({ monthKey: salaryPasswordMonthKey, password }),
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok || !json?.success) {
         throw new Error(String(json?.error || "Instellen mislukt"))
       }
-      const sessionKey = getSalaryPasswordSessionKey(monthKey)
+      const sessionKey = getSalaryPasswordSessionKey(salaryPasswordMonthKey)
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem(sessionKey, "1")
       }
@@ -1805,13 +1905,13 @@ export default function LoonBemerkingenPage() {
       const response = await fetch("/api/salary-password/verify", {
         method: "POST",
         headers,
-        body: JSON.stringify({ monthKey, password }),
+        body: JSON.stringify({ monthKey: salaryPasswordMonthKey, password }),
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok || !json?.success) {
         throw new Error(String(json?.error || "Verificatie mislukt"))
       }
-      const sessionKey = getSalaryPasswordSessionKey(monthKey)
+      const sessionKey = getSalaryPasswordSessionKey(salaryPasswordMonthKey)
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem(sessionKey, "1")
       }
@@ -1838,7 +1938,7 @@ export default function LoonBemerkingenPage() {
       const response = await fetch("/api/salary-password/admin-reset", {
         method: "POST",
         headers,
-        body: JSON.stringify({ monthKey, targetEmail }),
+        body: JSON.stringify({ monthKey: salaryPasswordMonthKey, targetEmail }),
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok || !json?.success) {
@@ -1879,8 +1979,8 @@ export default function LoonBemerkingenPage() {
           <p className="text-sm text-slate-600">
             {salaryPageGateMode === "setup"
               ? (isTanja
-                  ? `Für ${monthNumberToName(currentMonthPart, true)} ${currentYearPart} zuerst ein persönliches Passwort setzen.`
-                  : `Voor ${monthNumberToName(currentMonthPart)} ${currentYearPart} eerst een persoonlijk wachtwoord instellen.`)
+                  ? `Für ${monthNumberToName(salaryPasswordMonthPart, true)} ${salaryPasswordYearPart} zuerst ein persönliches Passwort setzen.`
+                  : `Voor ${monthNumberToName(salaryPasswordMonthPart)} ${salaryPasswordYearPart} eerst een persoonlijk wachtwoord instellen.`)
               : (isTanja
                   ? "Voer je persoonlijke maandwachtwoord in om toegang te krijgen."
                   : "Voer je persoonlijke maandwachtwoord in om toegang te krijgen.")}
@@ -2351,6 +2451,7 @@ export default function LoonBemerkingenPage() {
                     const enabled = v === "ja"
                     if (!enabled) {
                       setOvertimeDaysInput("")
+                      setOvertimeSelectedDays([])
                     } else {
                       const existing = Number(rowsByCrewId[editingCrewId].overtime_days || 0)
                       setOvertimeDaysInput(existing > 0 ? String(existing).replace(".", ",") : "")
@@ -2358,6 +2459,9 @@ export default function LoonBemerkingenPage() {
                     setCrewField(editingCrewId, {
                       overtime_enabled: enabled,
                       overtime_days: enabled ? Number(rowsByCrewId[editingCrewId].overtime_days || 0) : 0,
+                      overtime_note: enabled
+                        ? String(rowsByCrewId[editingCrewId].overtime_note || "")
+                        : "",
                     })
                   }}
                 >
@@ -2384,13 +2488,37 @@ export default function LoonBemerkingenPage() {
               )}
               {rowsByCrewId[editingCrewId].overtime_enabled && (
                 <div className="md:col-span-2">
-                  <Label>{isTanja ? "Hinweis Überstunden (von ... bis ...)" : "Opmerking overwerk (van ... tot ...)"}</Label>
-                  <Input
-                    disabled={monthIsClosed}
-                    value={rowsByCrewId[editingCrewId].overtime_note || ""}
-                    onChange={(e) => setCrewField(editingCrewId, { overtime_note: e.target.value })}
-                    placeholder={isTanja ? "von 26-04-2026 bis 28-04-2026" : "van 26-04-2026 tot 28-04-2026"}
-                  />
+                  <Label>{isTanja ? "Extra gewerkte dagen (kalender)" : "Extra gewerkte dagen (kalender)"}</Label>
+                  <div className="mt-2 grid grid-cols-7 gap-1 rounded-md border p-2">
+                    {Array.from({ length: getDaysInMonthByKey(monthKey) }, (_, idx) => idx + 1).map((day) => {
+                      const selected = overtimeSelectedDays.includes(day)
+                      return (
+                        <button
+                          key={`ot-day-${day}`}
+                          type="button"
+                          disabled={monthIsClosed}
+                          className={`h-8 rounded text-xs border ${selected ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300"}`}
+                          onClick={() => {
+                            const next = selected
+                              ? overtimeSelectedDays.filter((d) => d !== day)
+                              : [...overtimeSelectedDays, day]
+                            const sorted = Array.from(new Set(next)).sort((a, b) => a - b)
+                            setOvertimeSelectedDays(sorted)
+                            setCrewField(editingCrewId, {
+                              overtime_note: buildOvertimeNoteFromDays(sorted, monthKey),
+                            })
+                          }}
+                        >
+                          {day}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-2 text-xs text-slate-600">
+                    {rowsByCrewId[editingCrewId].overtime_note
+                      ? `${isTanja ? "Automatische opmerking" : "Automatische opmerking"}: ${rowsByCrewId[editingCrewId].overtime_note}`
+                      : (isTanja ? "Selecteer dagen om automatisch 'van ... tot ...' te vullen." : "Selecteer dagen om automatisch 'van ... tot ...' te vullen.")}
+                  </div>
                 </div>
               )}
               <div>
