@@ -5,6 +5,9 @@ import { format } from "date-fns"
 import { nl, de } from "date-fns/locale"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useSearchParams } from "next/navigation"
+import { useAuth } from "@/contexts/AuthContext"
+import { supabase } from "@/lib/supabase"
+import { useEffect, useMemo, useState } from "react"
 
 interface Props {
   crewMemberId: string
@@ -16,18 +19,158 @@ interface Props {
   variant?: 'single' | 'firma'
 }
 
+const SALARY_META_PREFIX = "__SALARY_META__:"
+const REVIEW_META_PREFIX = "__REVIEW_META__:"
+
+const parseMoney = (value: any): number => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0
+  if (typeof value === "string") {
+    const normalized = value.replace(/\./g, "").replace(",", ".").replace(/[^0-9.-]/g, "")
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  return 0
+}
+
+const parseSalaryMetaFromReason = (reasonValue: any) => {
+  const reason = String(reasonValue || "")
+  const salaryMarkerIndex = reason.lastIndexOf(SALARY_META_PREFIX)
+  const markerIndex = salaryMarkerIndex >= 0 ? salaryMarkerIndex : reason.lastIndexOf(REVIEW_META_PREFIX)
+  if (markerIndex < 0) return null
+  const prefixLength = salaryMarkerIndex >= 0 ? SALARY_META_PREFIX.length : REVIEW_META_PREFIX.length
+  const jsonPart = reason.slice(markerIndex + prefixLength).trim()
+  if (!jsonPart) return null
+  try {
+    const parsed = JSON.parse(jsonPart) as { iban?: string }
+    return { iban: String(parsed.iban || "") }
+  } catch {
+    return null
+  }
+}
+
+const buildSalaryInfoFromRows = (rows: any[], crewMember: any) => {
+  const firstWithIban = rows.find((row: any) => {
+    const rowIban =
+      row?.iban ??
+      row?.bank_account ??
+      row?.bankrekeningnummer ??
+      row?.iban_number ??
+      ""
+    return String(rowIban).trim() !== ""
+  })
+  const firstWithIbanMeta = rows.find((row: any) => {
+    const meta = parseSalaryMetaFromReason(row?.reason)
+    return !!String(meta?.iban || "").trim()
+  })
+  const firstWithBaseSalary = rows.find((row: any) => {
+    const rawBase =
+      row?.base_salary ??
+      row?.basissalaris ??
+      row?.basis_salaris ??
+      row?.salary ??
+      row?.salaris ??
+      null
+    return parseMoney(rawBase) > 0
+  })
+  const firstWithTravelAllowance = rows.find((row: any) => {
+    const travel =
+      row?.travel_allowance ??
+      row?.reiskosten ??
+      row?.travel ??
+      row?.reis_kosten ??
+      null
+    return typeof travel === "boolean" || String(travel).toLowerCase() === "true" || parseMoney(travel) > 0
+  })
+
+  const crewIban = String((crewMember as any)?.iban || "").trim()
+  const notesText = Array.isArray((crewMember as any)?.notes)
+    ? (crewMember as any).notes.join(" | ")
+    : String((crewMember as any)?.notes || "")
+  const contractBaseFromNotes = (() => {
+    const noteMatch = notesText.match(/contract_basis_salaris_excl_kleding:([0-9.,-]+)/i)
+    return noteMatch ? parseMoney(noteMatch[1]) : 0
+  })()
+  const crewBaseRaw =
+    (crewMember as any)?.basis_salaris ??
+    (crewMember as any)?.basissalaris ??
+    (crewMember as any)?.basisSalaris ??
+    (crewMember as any)?.salaris ??
+    (crewMember as any)?.salary ??
+    null
+  const crewClothingRaw =
+    (crewMember as any)?.kleding_geld ??
+    (crewMember as any)?.kledinggeld ??
+    (crewMember as any)?.kledingGeld ??
+    (crewMember as any)?.clothing_allowance ??
+    null
+  const crewBaseIncl = parseMoney(crewBaseRaw) + parseMoney(crewClothingRaw)
+  const crewTravelAllowanceRaw = (crewMember as any)?.travel_allowance ?? (crewMember as any)?.reiskosten
+  const crewTravelAllowance =
+    typeof crewTravelAllowanceRaw === "boolean"
+      ? crewTravelAllowanceRaw
+      : Number.isFinite(Number(crewTravelAllowanceRaw))
+        ? Number(crewTravelAllowanceRaw) > 0
+        : false
+  const contractTravelFromNotes = (() => {
+    const noteMatch = notesText.match(/contract_reiskosten:([0-9.,-]+)/i)
+    return noteMatch ? parseMoney(noteMatch[1]) > 0 : false
+  })()
+  const ibanFromMeta = String(parseSalaryMetaFromReason(firstWithIbanMeta?.reason)?.iban || "").trim()
+  const rowIbanValue =
+    firstWithIban?.iban ??
+    firstWithIban?.bank_account ??
+    firstWithIban?.bankrekeningnummer ??
+    firstWithIban?.iban_number ??
+    ""
+  const rowBaseValue =
+    firstWithBaseSalary?.base_salary ??
+    firstWithBaseSalary?.basissalaris ??
+    firstWithBaseSalary?.basis_salaris ??
+    firstWithBaseSalary?.salary ??
+    firstWithBaseSalary?.salaris ??
+    null
+  const baseSalaryFromRows = parseMoney(rowBaseValue)
+  const travelFromRowsRaw =
+    firstWithTravelAllowance?.travel_allowance ??
+    firstWithTravelAllowance?.reiskosten ??
+    firstWithTravelAllowance?.travel ??
+    firstWithTravelAllowance?.reis_kosten ??
+    null
+  const travelFromRows =
+    typeof travelFromRowsRaw === "boolean"
+      ? travelFromRowsRaw
+      : String(travelFromRowsRaw).toLowerCase() === "true" || parseMoney(travelFromRowsRaw) > 0
+
+  return {
+    iban: String(rowIbanValue || ibanFromMeta || crewIban || ""),
+    baseSalary:
+      baseSalaryFromRows > 0
+        ? baseSalaryFromRows
+        : crewBaseIncl > 0
+          ? crewBaseIncl
+          : contractBaseFromNotes > 0
+            ? contractBaseFromNotes
+            : null,
+    travelAllowance: travelFromRows || crewTravelAllowance || contractTravelFromNotes,
+  }
+}
+
 export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: Props) {
   const searchParams = useSearchParams()
+  const { user } = useAuth()
   const { crew, ships } = useSupabaseData()
+  const [salaryInfo, setSalaryInfo] = useState<{
+    iban: string
+    baseSalary: number | null
+    travelAllowance: boolean
+  } | null>(null)
   
   // Haal taal uit URL parameter of gebruik prop, default naar 'nl'
   const printLanguage = language || (searchParams.get('lang') as 'nl' | 'de') || 'nl'
   
   const crewMember = crew.find((c: any) => c.id === crewMemberId)
-  
-  if (!crewMember) {
-    return null
-  }
+  const currentUserEmail = String(user?.email || "").toLowerCase()
+  const showSalarySection = currentUserEmail === "willem@bamalite.com"
 
   // Translation object
   const t = {
@@ -50,6 +193,12 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
       regime: "Regime:",
       currentShip: "Huidig Schip:",
       company: "Firma:",
+      salary: "Salaris",
+      bankAccount: "Bankrekeningnummer:",
+      baseSalaryInclClothing: "Basissalaris incl. kledinggeld:",
+      travelAllowance: "Reiskosten:",
+      yesWithAmount: "Ja (+€300,00)",
+      no: "Nee",
       matriculeNumber: "Matricule nummer:",
       crewProfile: "Bemanningsprofiel",
       sick: "Ziek",
@@ -76,6 +225,12 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
       regime: "Regime:",
       currentShip: "Aktuelles Schiff:",
       company: "Firma:",
+      salary: "Gehalt",
+      bankAccount: "Bankkontonummer:",
+      baseSalaryInclClothing: "Grundgehalt inkl. Kleidungsgeld:",
+      travelAllowance: "Reisekosten:",
+      yesWithAmount: "Ja (+300,00 €)",
+      no: "Nein",
       matriculeNumber: "Matrikelnummer:",
       crewProfile: "Besatzungsprofil",
       sick: "Krank",
@@ -87,6 +242,14 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
 
   const translations = t[printLanguage]
   const dateLocale = printLanguage === 'de' ? de : nl
+  const euroFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(printLanguage === "de" ? "de-DE" : "nl-NL", {
+        style: "currency",
+        currency: "EUR",
+      }),
+    [printLanguage]
+  )
 
   const getShipName = (shipId: string) => {
     if (!shipId || shipId === "none") return translations.noShip
@@ -131,6 +294,37 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
     } catch {
       return dateString
     }
+  }
+
+  useEffect(() => {
+    if (!showSalarySection || !crewMemberId || !crewMember) {
+      setSalaryInfo(null)
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      let resolved: { iban: string; baseSalary: number | null; travelAllowance: boolean } | null = null
+      const { data, error } = await supabase
+        .from("loon_bemerkingen")
+        .select("*")
+        .eq("crew_id", crewMemberId)
+        .order("month_key", { ascending: false })
+        .limit(48)
+
+      resolved = buildSalaryInfoFromRows(!error && Array.isArray(data) ? data : [], crewMember)
+
+      if (cancelled) return
+      setSalaryInfo(resolved)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [crewMemberId, crewMember, showSalarySection])
+
+  if (!crewMember) {
+    return null
   }
 
   const address = crewMember.address || {}
@@ -321,6 +515,34 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
               )}
             </div>
           </div>
+
+          {showSalarySection && (
+            <div>
+              <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
+                {translations.salary}
+              </h2>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 font-medium">{translations.bankAccount}</span>
+                  <span>{salaryInfo?.iban || translations.notFilled}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 font-medium">{translations.baseSalaryInclClothing}</span>
+                  <span>
+                    {typeof salaryInfo?.baseSalary === "number"
+                      ? euroFormatter.format(salaryInfo.baseSalary)
+                      : translations.notFilled}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 font-medium">{translations.travelAllowance}</span>
+                  <span>
+                    {salaryInfo?.travelAllowance ? translations.yesWithAmount : translations.no}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

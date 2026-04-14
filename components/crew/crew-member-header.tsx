@@ -186,7 +186,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                   <button
                     onClick={() => {
                       router.push(`/bemanning/${crewMemberId}?print=true&lang=nl`)
-                      setTimeout(() => window.print(), 100)
+                      setTimeout(() => window.print(), 900)
                     }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
                   >
@@ -195,7 +195,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                   <button
                     onClick={() => {
                       router.push(`/bemanning/${crewMemberId}?print=true&lang=de`)
-                      setTimeout(() => window.print(), 100)
+                      setTimeout(() => window.print(), 900)
                     }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
                   >
