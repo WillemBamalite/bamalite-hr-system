@@ -81,6 +81,12 @@ function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string,
   const normalized = path.split("?")[0]
   const emailLower = (email || "").trim().toLowerCase()
   if (normalized === "/login" || normalized === "/login/email-verify") return true
+  if (
+    emailLower === "jos@bamalite.com" &&
+    (normalized === "/bemanning/loon-bemerkingen" || normalized.startsWith("/bemanning/loon-bemerkingen/"))
+  ) {
+    return false
+  }
   if (role === "admin_full") return true
   if (emailLower === "lucie@bamalite.com") {
     if (
@@ -167,10 +173,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    // Clear local auth state immediately to avoid login-route redirect races.
+    setUser(null)
+    setLoading(false)
+    await supabase.auth.signOut({ scope: "local" })
     setRole("limited_edit")
     setMfaRequired(false)
-    router.push('/login')
+    router.replace('/login')
   }
 
   const canAccessPath = (path: string) => canAccessPathForRole(role, path, user?.email)
