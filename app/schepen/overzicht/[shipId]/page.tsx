@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, FileText, Ship } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
-import { useEffect, useState } from "react"
+import { useEffect, useState, type DragEvent, type MouseEvent } from "react"
+import { supabase } from "@/lib/supabase"
 import {
   GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY,
   SHIP_CERTIFICATE_WARNING_OPTIONS,
@@ -33,6 +34,22 @@ type ClassificationEditableValues = {
   nextClassInspection: string
   lastDryDock: string
   lastBoxCoolerInspection: string
+}
+
+type CertificateDocumentLink = {
+  fileName: string
+  fileUrl: string
+  storagePath: string
+  uploadedAt: string
+}
+
+type CertificateDocumentMap = Record<string, CertificateDocumentLink[]>
+
+type CertificateContextMenuState = {
+  visible: boolean
+  x: number
+  y: number
+  certificateIndex: number | null
 }
 
 const APOLLO_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
@@ -2801,6 +2818,7 @@ const LINDE_SECTIONS: ParticularsSection[] = [
 ]
 
 export default function ShipParticularsPage() {
+  const CERTIFICATE_DOCUMENT_BUCKET = "official-warnings"
   const params = useParams<{ shipId: string }>()
   const searchParams = useSearchParams()
   const shipId = String(params?.shipId || "")
@@ -2810,6 +2828,15 @@ export default function ShipParticularsPage() {
   )
   const [activeTab, setActiveTab] = useState("scheepsgegevens")
   const [certificatenEditable, setCertificatenEditable] = useState<EditableShipCertificate[]>([])
+  const [certificateDocuments, setCertificateDocuments] = useState<CertificateDocumentMap>({})
+  const [dragOverCertificateIndex, setDragOverCertificateIndex] = useState<number | null>(null)
+  const [uploadingCertificateIndex, setUploadingCertificateIndex] = useState<number | null>(null)
+  const [certificateContextMenu, setCertificateContextMenu] = useState<CertificateContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    certificateIndex: null,
+  })
   const [toonNieuwCertificaatFormulier, setToonNieuwCertificaatFormulier] = useState(false)
   const [nieuwCertificaatNaam, setNieuwCertificaatNaam] = useState("")
   const [nieuwCertificaatDatum, setNieuwCertificaatDatum] = useState("")
@@ -2947,6 +2974,79 @@ export default function ShipParticularsPage() {
   const certificateStorageKey = getShipCertificateStorageKeyByName(ship?.name || "") || ""
 
   const normalizeCertificateName = (value: string) => String(value || "").trim().toLowerCase()
+  const normalizeShipStorageName = (value: string) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+
+  const getCertificateDocumentStorageKey = (shipName: string) =>
+    `${normalizeShipStorageName(shipName)}_particulars_certificaten_documenten`
+
+  const getRemovedCertificatesStorageKey = (shipName: string) =>
+    `${normalizeShipStorageName(shipName)}_particulars_certificaten_removed`
+
+  const getCertificateDocumentMapKey = (certificateName: string) =>
+    normalizeCertificateName(certificateName).replace(/\s+/g, " ").trim()
+
+  const sanitizeFileName = (value: string) => String(value || "").replace(/[^a-zA-Z0-9._-]/g, "_")
+
+  const loadCertificateDocuments = (shipName: string): CertificateDocumentMap => {
+    if (typeof window === "undefined") return {}
+    const storageKey = getCertificateDocumentStorageKey(shipName)
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) return {}
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (!parsed || typeof parsed !== "object") return {}
+
+      const normalized: CertificateDocumentMap = {}
+      Object.entries(parsed).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          const docs = value.filter((item) => item && typeof item === "object") as CertificateDocumentLink[]
+          if (docs.length > 0) normalized[key] = docs
+          return
+        }
+        if (value && typeof value === "object") {
+          normalized[key] = [value as CertificateDocumentLink]
+        }
+      })
+      return normalized
+    } catch {
+      return {}
+    }
+  }
+
+  const persistCertificateDocuments = (shipName: string, next: CertificateDocumentMap) => {
+    if (typeof window === "undefined") return
+    const storageKey = getCertificateDocumentStorageKey(shipName)
+    window.localStorage.setItem(storageKey, JSON.stringify(next))
+  }
+
+  const loadRemovedCertificateKeys = (shipName: string): string[] => {
+    if (typeof window === "undefined") return []
+    const storageKey = getRemovedCertificatesStorageKey(shipName)
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) return []
+    try {
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return []
+      return parsed
+        .map((item) => normalizeCertificateName(String(item || "")))
+        .filter((item) => Boolean(item))
+    } catch {
+      return []
+    }
+  }
+
+  const persistRemovedCertificateKeys = (shipName: string, removedKeys: string[]) => {
+    if (typeof window === "undefined") return
+    const storageKey = getRemovedCertificatesStorageKey(shipName)
+    window.localStorage.setItem(storageKey, JSON.stringify(removedKeys))
+  }
 
   const upsertCertificateByName = (
     source: EditableShipCertificate[],
@@ -2985,17 +3085,31 @@ export default function ShipParticularsPage() {
 
   useEffect(() => {
     const defaults = getShipCertificateDefaultsForClient(ship?.name || "")
-    setCertificatenEditable(defaults)
+    const removed = new Set(loadRemovedCertificateKeys(ship?.name || ""))
+    const filteredDefaults = defaults.filter(
+      (item) => !removed.has(normalizeCertificateName(item.naam))
+    )
+    setCertificatenEditable(filteredDefaults)
     if (typeof window === "undefined" || !certificateStorageKey) return
     const stored = window.localStorage.getItem(certificateStorageKey)
     if (!stored) return
     try {
       const parsed = JSON.parse(stored)
-      setCertificatenEditable(mergeShipCertificatesWithStored(ship?.name || "", parsed, defaults))
+      setCertificatenEditable(
+        mergeShipCertificatesWithStored(ship?.name || "", parsed, filteredDefaults)
+      )
     } catch {
       // Ignore invalid local state.
     }
   }, [certificateStorageKey, ship?.name])
+
+  useEffect(() => {
+    if (!ship?.name) {
+      setCertificateDocuments({})
+      return
+    }
+    setCertificateDocuments(loadCertificateDocuments(ship.name))
+  }, [ship?.name])
 
   useEffect(() => {
     const requestedTab = String(searchParams?.get("tab") || "").toLowerCase()
@@ -3003,6 +3117,21 @@ export default function ShipParticularsPage() {
       setActiveTab("certificaten")
     }
   }, [searchParams])
+
+  useEffect(() => {
+    const closeContextMenu = () =>
+      setCertificateContextMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev))
+    if (typeof window !== "undefined") {
+      window.addEventListener("click", closeContextMenu)
+      window.addEventListener("scroll", closeContextMenu, true)
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("click", closeContextMenu)
+        window.removeEventListener("scroll", closeContextMenu, true)
+      }
+    }
+  }, [])
 
   const setClassificationField = (key: keyof ClassificationEditableValues, value: string) => {
     const next = { ...classificationEditable, [key]: value }
@@ -3022,6 +3151,152 @@ export default function ShipParticularsPage() {
       idx === index ? { ...item, waarschuwingMaanden: maanden } : item
     )
     saveShipCertificates(next)
+  }
+
+  const uploadCertificateDocument = async (index: number, file: File | null) => {
+    if (!file || !ship?.name) return
+    const certificate = certificatenEditable[index]
+    if (!certificate) return
+
+    try {
+      setUploadingCertificateIndex(index)
+      const safeShipName = normalizeShipStorageName(ship.name) || "onbekend-schip"
+      const safeCertificateName = normalizeShipStorageName(certificate.naam) || "onbekend-certificaat"
+      const safeFileName = sanitizeFileName(file.name)
+      const storagePath = `ship-certificates/${safeShipName}/${safeCertificateName}/${Date.now()}-${safeFileName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(CERTIFICATE_DOCUMENT_BUCKET)
+        .upload(storagePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || undefined,
+        })
+
+      if (uploadError) {
+        alert(`Fout bij uploaden document: ${uploadError.message || "Onbekende fout"}`)
+        return
+      }
+      if (!uploadData?.path) {
+        alert("Fout bij uploaden document: geen opslagpad ontvangen.")
+        return
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(CERTIFICATE_DOCUMENT_BUCKET)
+        .getPublicUrl(uploadData.path)
+      const publicUrl = publicUrlData?.publicUrl
+      if (!publicUrl) {
+        alert("Fout bij uploaden document: geen publieke URL beschikbaar.")
+        return
+      }
+
+      const key = getCertificateDocumentMapKey(certificate.naam)
+      const existingDocs = certificateDocuments[key] || []
+      let nextDocs = [...existingDocs]
+      if (existingDocs.length > 0 && typeof window !== "undefined") {
+        const shouldDeleteOld = window.confirm("Wil je het oude certificaat verwijderen?")
+        if (shouldDeleteOld) {
+          const oldPaths = existingDocs.map((doc) => doc.storagePath).filter(Boolean)
+          if (oldPaths.length > 0) {
+            const { error: removeError } = await supabase.storage
+              .from(CERTIFICATE_DOCUMENT_BUCKET)
+              .remove(oldPaths)
+            if (removeError) {
+              alert(`Waarschuwing: oud certificaat kon niet uit opslag verwijderd worden (${removeError.message || "onbekende fout"}).`)
+            }
+          }
+          nextDocs = []
+        }
+      }
+
+      nextDocs.push({
+        fileName: file.name,
+        fileUrl: publicUrl,
+        storagePath: uploadData.path,
+        uploadedAt: new Date().toISOString(),
+      })
+
+      const next: CertificateDocumentMap = {
+        ...certificateDocuments,
+        [key]: nextDocs,
+      }
+      setCertificateDocuments(next)
+      persistCertificateDocuments(ship.name, next)
+    } catch (error: any) {
+      alert(`Fout bij uploaden document: ${error?.message || "Onbekende fout"}`)
+    } finally {
+      setUploadingCertificateIndex(null)
+      setDragOverCertificateIndex(null)
+    }
+  }
+
+  const openCertificateDocument = (certificateName: string) => {
+    const key = getCertificateDocumentMapKey(certificateName)
+    const docs = certificateDocuments[key] || []
+    const doc = docs[docs.length - 1]
+    if (!doc?.fileUrl || typeof window === "undefined") return
+    window.open(doc.fileUrl, "_blank", "noopener,noreferrer")
+  }
+
+  const handleCertificateDrop = async (index: number, event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const file = event.dataTransfer?.files?.[0] || null
+    await uploadCertificateDocument(index, file)
+  }
+
+  const handleCertificateContextMenu = (index: number, event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setCertificateContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      certificateIndex: index,
+    })
+  }
+
+  const verwijderCertificaatUitLijst = async (index: number) => {
+    if (!ship?.name) return
+    const certificaat = certificatenEditable[index]
+    if (!certificaat) return
+
+    const confirmed = window.confirm(
+      `Wil je "${certificaat.naam}" verwijderen uit de certificatenlijst van ${ship.name}?`
+    )
+    if (!confirmed) return
+
+    const certificateKey = getCertificateDocumentMapKey(certificaat.naam)
+    const docsToRemove = certificateDocuments[certificateKey] || []
+    if (docsToRemove.length > 0) {
+      const paths = docsToRemove.map((doc) => doc.storagePath).filter(Boolean)
+      if (paths.length > 0) {
+        const { error: removeError } = await supabase.storage
+          .from(CERTIFICATE_DOCUMENT_BUCKET)
+          .remove(paths)
+        if (removeError) {
+          alert(
+            `Waarschuwing: gekoppelde documenten konden niet allemaal verwijderd worden (${removeError.message || "onbekende fout"}).`
+          )
+        }
+      }
+    }
+
+    const removedKeys = loadRemovedCertificateKeys(ship.name)
+    const normalizedName = normalizeCertificateName(certificaat.naam)
+    if (normalizedName && !removedKeys.includes(normalizedName)) {
+      persistRemovedCertificateKeys(ship.name, [...removedKeys, normalizedName])
+    }
+
+    const nextCertificates = certificatenEditable.filter((_, idx) => idx !== index)
+    saveShipCertificates(nextCertificates)
+
+    const { [certificateKey]: _, ...restDocs } = certificateDocuments
+    setCertificateDocuments(restDocs)
+    persistCertificateDocuments(ship.name, restDocs)
+
+    setCertificateContextMenu({ visible: false, x: 0, y: 0, certificateIndex: null })
   }
 
   const voegNieuwCertificaatToe = () => {
@@ -3302,6 +3577,11 @@ export default function ShipParticularsPage() {
                     {certificatenEditable.map((certificaat, index) => {
                       const verloopIso = calculateCertificateExpiryDateIso(certificaat.huidig, certificaat.intervalJaar)
                       const statusInfo = getCertificateStatus(certificaat)
+                      const documentKey = getCertificateDocumentMapKey(certificaat.naam)
+                      const documentLinks = certificateDocuments[documentKey] || []
+                      const hasDocument = documentLinks.length > 0
+                      const isDragging = dragOverCertificateIndex === index
+                      const isUploading = uploadingCertificateIndex === index
                       const cardClassName =
                         statusInfo.status === "expired"
                           ? "rounded-lg border border-red-300 bg-red-50 px-3 py-3"
@@ -3311,10 +3591,34 @@ export default function ShipParticularsPage() {
                       return (
                         <div
                           key={`${certificaat.naam}-${index}`}
-                          className={cardClassName}
+                          className={`${cardClassName} ${hasDocument ? "cursor-pointer" : ""} ${isDragging ? "ring-2 ring-blue-400" : ""}`}
+                          onClick={() => {
+                            if (!hasDocument) return
+                            openCertificateDocument(certificaat.naam)
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setDragOverCertificateIndex(index)
+                          }}
+                          onDragLeave={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setDragOverCertificateIndex((prev) => (prev === index ? null : prev))
+                          }}
+                          onDrop={(e) => handleCertificateDrop(index, e)}
+                          onContextMenu={(e) => handleCertificateContextMenu(index, e)}
                         >
-                          <div className="text-sm font-semibold text-gray-900 mb-2">{certificaat.naam}</div>
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+                          <div className="mb-2">
+                            <div className="text-sm font-semibold text-gray-900">{certificaat.naam}</div>
+                            {hasDocument && <div className="text-xs text-gray-500">(klik op kaart om te openen)</div>}
+                          </div>
+                          {!hasDocument && (
+                            <div className="mb-2 text-xs text-gray-600">
+                              Sleep hier een document naartoe.
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm" onClick={(e) => e.stopPropagation()}>
                             <div className="space-y-1">
                               <div className="text-gray-600">Huidig</div>
                               <Input
@@ -3367,6 +3671,27 @@ export default function ShipParticularsPage() {
                         </div>
                       )
                     })}
+                    {certificateContextMenu.visible && certificateContextMenu.certificateIndex !== null && (
+                      <div
+                        className="fixed z-50 min-w-[220px] rounded-md border border-gray-200 bg-white shadow-lg"
+                        style={{
+                          top: certificateContextMenu.y,
+                          left: certificateContextMenu.x,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            if (certificateContextMenu.certificateIndex === null) return
+                            void verwijderCertificaatUitLijst(certificateContextMenu.certificateIndex)
+                          }}
+                        >
+                          Verwijder certificaat uit lijst
+                        </button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
