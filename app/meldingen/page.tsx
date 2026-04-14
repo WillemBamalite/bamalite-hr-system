@@ -9,10 +9,12 @@ import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
+import { useAuth } from "@/contexts/AuthContext"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { format } from "date-fns"
 import { authenticatedFetch } from "@/lib/authenticated-fetch"
+import { getAllShipCertificateNotificationsForClient } from "@/utils/ship-certificates"
 
 const kindLabel = (kind: string) => {
   switch (kind) {
@@ -30,6 +32,8 @@ const kindLabel = (kind: string) => {
       return "Dienstjubilea"
     case "luxembourg_pending_boarding":
       return "Nieuw personeel"
+    case "ship_certificate_paper":
+      return "Certificaten & scheepspapieren"
     default:
       return "Overig"
   }
@@ -73,6 +77,8 @@ const kindIcon = (kind: string) => {
       return Ship
     case "luxembourg_pending_boarding":
       return AlertTriangle
+    case "ship_certificate_paper":
+      return AlertTriangle
     default:
       return Bell
   }
@@ -94,6 +100,8 @@ const groupHeaderClasses = (groupName: string) => {
       return "bg-yellow-50 border-yellow-200"
     case "Nieuw personeel":
       return "bg-amber-50 border-amber-200"
+    case "Certificaten & scheepspapieren":
+      return "bg-orange-50 border-orange-200"
     default:
       return "bg-blue-50 border-blue-200"
   }
@@ -115,17 +123,56 @@ const groupCountBadge = (groupName: string) => {
       return "bg-yellow-100 text-yellow-900 border border-yellow-200"
     case "Nieuw personeel":
       return "bg-amber-100 text-amber-900 border border-amber-200"
+    case "Certificaten & scheepspapieren":
+      return "bg-orange-100 text-orange-800 border border-orange-200"
     default:
       return "bg-blue-100 text-blue-800 border border-blue-200"
   }
 }
 
 export default function MeldingenPage() {
+  const { user } = useAuth()
   const { crew, tasks, ships, sickLeave, loading, error } = useSupabaseData()
   const { visits, getShipsNotVisitedInDays } = useShipVisits()
   const [sendingCertificateEmailId, setSendingCertificateEmailId] = useState<string | null>(null)
   const [sentCertificateNotificationIds, setSentCertificateNotificationIds] = useState<Record<string, boolean>>({})
   const [sentCertificateNotificationDates, setSentCertificateNotificationDates] = useState<Record<string, string>>({})
+  const [shipCertificateAlerts, setShipCertificateAlerts] = useState<any[]>([])
+
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const canSeeShipCertificateAlerts =
+    userEmailLower === "jos@bamalite.com" || userEmailLower === "willem@bamalite.com"
+
+  useEffect(() => {
+    if (!canSeeShipCertificateAlerts) {
+      setShipCertificateAlerts([])
+      return
+    }
+    const shipIdByName: Record<string, string> = {}
+    ;(ships || []).forEach((s: any) => {
+      const key = String(s?.name || "").trim().toLowerCase()
+      if (!key) return
+      shipIdByName[key] = String(s.id)
+    })
+
+    const alerts = getAllShipCertificateNotificationsForClient().map((n) => {
+      const shipNameLower = String((n.meta as any)?.ship || "").trim().toLowerCase()
+      const targetShipId = shipIdByName[shipNameLower]
+      const href = targetShipId
+        ? `/schepen/overzicht/${encodeURIComponent(targetShipId)}?tab=certificaten`
+        : "/schepen/overzicht"
+      return {
+        id: n.id,
+        kind: "ship_certificate_paper" as const,
+        severity: n.severity,
+        title: n.title,
+        description: n.description,
+        href,
+        meta: n.meta,
+      }
+    })
+    setShipCertificateAlerts(alerts)
+  }, [canSeeShipCertificateAlerts, ships])
 
   const formatSentOn = (value: unknown) => {
     if (!value || typeof value !== "string") return ""
@@ -141,6 +188,7 @@ export default function MeldingenPage() {
     sickLeave: sickLeave || [],
     visits: visits || [],
     getShipsNotVisitedInDays,
+    shipCertificateAlerts,
   })
 
   const grouped = notifications.reduce((acc, n) => {
@@ -150,7 +198,9 @@ export default function MeldingenPage() {
     return acc
   }, {} as Record<string, typeof notifications>)
 
-  const gridGroupsRow1 = ["Taken", "Scheepsbezoeken", "Nieuw personeel"] as const
+  const gridGroupsRow1 = canSeeShipCertificateAlerts
+    ? (["Taken", "Scheepsbezoeken", "Nieuw personeel", "Certificaten & scheepspapieren"] as const)
+    : (["Taken", "Scheepsbezoeken", "Nieuw personeel"] as const)
   const gridGroupsRow2 = ["Ziektebriefjes", "Verjaardagen", "Dienstjubilea", "Proeftijd"] as const
   const otherGroups = ["Overig"] as const
 
@@ -247,7 +297,9 @@ export default function MeldingenPage() {
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+            <div
+              className={`grid grid-cols-1 ${canSeeShipCertificateAlerts ? "md:grid-cols-4" : "md:grid-cols-3"} gap-6 items-start`}
+            >
               {gridGroups.map((groupName) => {
                 const group = grouped[groupName] || []
                 return (

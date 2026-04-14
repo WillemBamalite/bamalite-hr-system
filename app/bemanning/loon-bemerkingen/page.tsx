@@ -397,6 +397,7 @@ export default function LoonBemerkingenPage() {
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
   const isLeoUser = currentUserEmail === LEO_EMAIL
   const isSalaryPasswordAdmin = SALARY_PASSWORD_ADMIN_EMAILS.has(currentUserEmail)
+  const overtimeCalendarReadOnlyUser = isTanja || isKarinaUser
 
   useEffect(() => {
     if (!currentUserEmail) return
@@ -727,6 +728,8 @@ export default function LoonBemerkingenPage() {
     () => Object.values(rowsByCrewId).some((r) => r.month_closed === true),
     [rowsByCrewId]
   )
+  const salaryReadOnlyUser = isTanja
+  const salaryEditingDisabled = monthIsClosed || salaryReadOnlyUser
 
   useEffect(() => {
     if (!editingCrewId || !rowsByCrewId[editingCrewId]) {
@@ -1059,6 +1062,7 @@ export default function LoonBemerkingenPage() {
     crewId: string,
     patch: Partial<SalaryDraft>
   ) => {
+    if (salaryReadOnlyUser) return
     const shouldResetApprovals =
       Object.prototype.hasOwnProperty.call(patch, "advance_enabled") ||
       Object.prototype.hasOwnProperty.call(patch, "advance_amount") ||
@@ -1220,6 +1224,10 @@ export default function LoonBemerkingenPage() {
   const saveCrewRow = async (crewId: string, rowOverride?: SalaryDraft) => {
     const row = rowOverride || rowsByCrewId[crewId]
     if (!row) return false
+    if (salaryReadOnlyUser) {
+      alert(isTanja ? "Alleen-lezen modus: wijzigingen opslaan is uitgeschakeld." : "Alleen-lezen modus: wijzigingen opslaan is uitgeschakeld.")
+      return false
+    }
     if (monthIsClosed) {
       alert(isTanja ? "Dieser Monat ist abgeschlossen und nicht mehr bearbeitbar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
       return false
@@ -1321,6 +1329,10 @@ export default function LoonBemerkingenPage() {
   }
 
   const applyInflationCorrectionForAll = async () => {
+    if (salaryReadOnlyUser) {
+      alert(isTanja ? "Alleen-lezen modus: inflatiecorrectie is uitgeschakeld." : "Alleen-lezen modus: inflatiecorrectie is uitgeschakeld.")
+      return
+    }
     if (monthIsClosed) {
       alert(isTanja ? "Dieser Monat ist abgeschlossen en niet meer bewerkbaar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
       return
@@ -1388,6 +1400,10 @@ export default function LoonBemerkingenPage() {
   }
 
   const undoInflationCorrectionForAll = async () => {
+    if (salaryReadOnlyUser) {
+      alert(isTanja ? "Alleen-lezen modus: ongedaan maken is uitgeschakeld." : "Alleen-lezen modus: ongedaan maken is uitgeschakeld.")
+      return
+    }
     if (monthIsClosed) {
       alert(isTanja ? "Deze maand is afgesloten en niet meer aanpasbaar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
       return
@@ -2117,7 +2133,7 @@ export default function LoonBemerkingenPage() {
       <div className="mt-3 text-xs text-slate-500 flex flex-wrap items-end gap-2">
         <span>{isTanja ? "Optioneel: Inflationskorrektur" : "Optioneel: inflatiecorrectie"}</span>
         <Input
-          disabled={monthIsClosed}
+          disabled={salaryEditingDisabled}
           inputMode="decimal"
           value={inflationPercent}
           onChange={(e) => setInflationPercent(e.target.value)}
@@ -2129,7 +2145,7 @@ export default function LoonBemerkingenPage() {
           variant="ghost"
           className="h-8 px-2 text-xs text-slate-600 hover:text-slate-900"
           onClick={applyInflationCorrectionForAll}
-          disabled={monthIsClosed || applyingInflation}
+          disabled={salaryEditingDisabled || applyingInflation}
         >
           {applyingInflation
             ? (isTanja ? "Anwenden..." : "Toepassen...")
@@ -2140,7 +2156,7 @@ export default function LoonBemerkingenPage() {
           variant="ghost"
           className="h-8 px-2 text-xs text-slate-500 hover:text-slate-900"
           onClick={undoInflationCorrectionForAll}
-          disabled={monthIsClosed || applyingInflation}
+          disabled={salaryEditingDisabled || applyingInflation}
         >
           {isTanja ? "Ongedaan" : "Ongedaan"}
         </Button>
@@ -2253,6 +2269,17 @@ export default function LoonBemerkingenPage() {
                     </tbody>
                   </table>
                 </div>
+                <div className="mt-2 flex justify-end">
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                    {isTanja ? "Totaal salaris firma" : "Totaal salaris firma"}:{" "}
+                    {formatCurrency(
+                      (groupedByCompany[activeCompanyTab] || []).reduce(
+                        (sum, row) => sum + getSalaryTotals(row).totalSalaryMonth,
+                        0
+                      )
+                    )}
+                  </div>
+                </div>
               </>
             )}
           </CardContent>
@@ -2333,6 +2360,11 @@ export default function LoonBemerkingenPage() {
               <h3 className="text-lg font-semibold">
                 {isTanja ? "Gehalt bearbeiten" : "Salaris bewerken"} - {formatCrewName(crewById.get(editingCrewId))}
               </h3>
+              {salaryReadOnlyUser && (
+                <span className="mr-2 rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                  {isTanja ? "Alleen-lezen" : "Alleen-lezen"}
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -2352,11 +2384,11 @@ export default function LoonBemerkingenPage() {
               </div>
               <div>
                 <Label>{isTanja ? "Grundgehalt inkl. Kleidungsgeld" : "Basissalaris incl kledinggeld"}</Label>
-                <Input disabled={monthIsClosed} inputMode="decimal" value={rowsByCrewId[editingCrewId].base_salary ?? ""} onChange={(e) => setCrewField(editingCrewId, { base_salary: e.target.value.trim() === "" ? null : Number(e.target.value) })} />
+                <Input disabled={salaryEditingDisabled} inputMode="decimal" value={rowsByCrewId[editingCrewId].base_salary ?? ""} onChange={(e) => setCrewField(editingCrewId, { base_salary: e.target.value.trim() === "" ? null : Number(e.target.value) })} />
               </div>
               <div>
                 <Label>{isTanja ? "Reisekosten" : "Reiskosten"}</Label>
-                <Select disabled={monthIsClosed} value={rowsByCrewId[editingCrewId].travel_allowance ? "ja" : "nee"} onValueChange={(v) => setCrewField(editingCrewId, { travel_allowance: v === "ja" })}>
+                <Select disabled={salaryEditingDisabled} value={rowsByCrewId[editingCrewId].travel_allowance ? "ja" : "nee"} onValueChange={(v) => setCrewField(editingCrewId, { travel_allowance: v === "ja" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="ja">Ja</SelectItem><SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem></SelectContent>
                 </Select>
@@ -2364,7 +2396,7 @@ export default function LoonBemerkingenPage() {
               <div>
                 <Label>{isTanja ? "Einbehalt" : "In te houden"}</Label>
                 <Select
-                  disabled={monthIsClosed}
+                  disabled={salaryEditingDisabled}
                   value={rowsByCrewId[editingCrewId].advance_enabled ? "ja" : "nee"}
                   onValueChange={(v) => {
                     const enabled = v === "ja"
@@ -2384,7 +2416,7 @@ export default function LoonBemerkingenPage() {
                   <div>
                     <Label>{isTanja ? "Kategorie" : "Categorie"}</Label>
                     <Select
-                      disabled={monthIsClosed}
+                      disabled={salaryEditingDisabled}
                       value={rowsByCrewId[editingCrewId].deduction_category || "voorschot"}
                       onValueChange={(v) =>
                         setCrewField(editingCrewId, {
@@ -2403,7 +2435,7 @@ export default function LoonBemerkingenPage() {
                   <div>
                     <Label>{isTanja ? "Betrag" : "Bedrag"}</Label>
                     <Input
-                      disabled={monthIsClosed}
+                      disabled={salaryEditingDisabled}
                       inputMode="decimal"
                       value={rowsByCrewId[editingCrewId].advance_amount ?? ""}
                       onChange={(e) =>
@@ -2418,12 +2450,12 @@ export default function LoonBemerkingenPage() {
               )}
               <div>
                 <Label>{isTanja ? "Erhöhungsbetrag" : "Verhoging bedrag"}</Label>
-                <Input disabled={monthIsClosed} inputMode="decimal" value={rowsByCrewId[editingCrewId].raise_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { raise_enabled: e.target.value.trim() !== "", raise_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
+                <Input disabled={salaryEditingDisabled} inputMode="decimal" value={rowsByCrewId[editingCrewId].raise_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { raise_enabled: e.target.value.trim() !== "", raise_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
               </div>
               <div>
                 <Label>{isTanja ? "Uberstunden" : "Overwerk"}</Label>
                 <Select
-                  disabled={monthIsClosed}
+                  disabled={salaryEditingDisabled}
                   value={rowsByCrewId[editingCrewId].overtime_enabled ? "ja" : "nee"}
                   onValueChange={(v) => {
                     const enabled = v === "ja"
@@ -2452,7 +2484,7 @@ export default function LoonBemerkingenPage() {
                 <div>
                   <Label>{isTanja ? "Anzahl Extra-Tage" : "Aantal dagen extra gewerkt"}</Label>
                   <Input
-                    disabled={monthIsClosed}
+                    disabled={salaryEditingDisabled}
                     inputMode="decimal"
                     value={overtimeDaysInput}
                     onChange={(e) => {
@@ -2473,7 +2505,7 @@ export default function LoonBemerkingenPage() {
                       <Label className="text-xs">{isTanja ? "Van" : "Van"}</Label>
                       <Input
                         type="date"
-                        disabled={monthIsClosed}
+                        disabled={salaryEditingDisabled || overtimeCalendarReadOnlyUser}
                         value={overtimeFromDate}
                         onChange={(e) => {
                           const from = e.target.value
@@ -2487,7 +2519,7 @@ export default function LoonBemerkingenPage() {
                       <Label className="text-xs">{isTanja ? "Tot" : "Tot"}</Label>
                       <Input
                         type="date"
-                        disabled={monthIsClosed}
+                        disabled={salaryEditingDisabled || overtimeCalendarReadOnlyUser}
                         value={overtimeToDate}
                         onChange={(e) => {
                           const to = e.target.value
@@ -2507,7 +2539,7 @@ export default function LoonBemerkingenPage() {
               )}
               <div>
                 <Label>{isTanja ? "Bemerkungen" : "Opmerkingen"}</Label>
-                <Input disabled={monthIsClosed} value={rowsByCrewId[editingCrewId].notes || ""} onChange={(e) => setCrewField(editingCrewId, { notes: e.target.value })} />
+                <Input disabled={salaryEditingDisabled} value={rowsByCrewId[editingCrewId].notes || ""} onChange={(e) => setCrewField(editingCrewId, { notes: e.target.value })} />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
@@ -2534,7 +2566,7 @@ export default function LoonBemerkingenPage() {
                 {isTanja ? "Abbrechen" : "Annuleren"}
               </Button>
               <Button
-                disabled={monthIsClosed}
+                disabled={salaryEditingDisabled}
                 onClick={async () => {
                   const preparedRow = syncOvertimeInputToRow(editingCrewId)
                   const ok = await saveCrewRow(editingCrewId, preparedRow || undefined)

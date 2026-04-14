@@ -4,7 +4,7 @@ import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
 
-const ENABLE_EMAIL_VERIFY_LOGIN_FLOW = true
+const ENABLE_EMAIL_VERIFY_LOGIN_FLOW = false
 
 export function AppAccessGate({ children }: { children: React.ReactNode }) {
   const { user, role, mfaRequired, loading, canAccessPath } = useAuth()

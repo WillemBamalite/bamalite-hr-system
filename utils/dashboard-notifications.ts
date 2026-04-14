@@ -6,6 +6,7 @@ export type DashboardNotificationKind =
   | "birthday"
   | "anniversary"
   | "certificate_expiring"
+  | "ship_certificate_paper"
   | "task"
   | "ship_visit"
   | "luxembourg_pending_boarding"
@@ -61,8 +62,9 @@ export function buildDashboardNotifications(args: {
   sickLeave: any[]
   visits: any[]
   getShipsNotVisitedInDays: (days: number, ships: any[]) => any[]
+  shipCertificateAlerts?: DashboardNotification[]
 }) {
-  const { crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays } = args
+  const { crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays, shipCertificateAlerts = [] } = args
 
   const today = startOfDay(new Date())
   const todayMonth = today.getMonth() + 1
@@ -240,6 +242,10 @@ export function buildDashboardNotifications(args: {
         mailSentAt: item.record.expiry_email_sent_at || null,
       },
     })
+  }
+
+  for (const alert of shipCertificateAlerts) {
+    notifications.push(alert)
   }
 
   // Urgente taken en taken met verlopen deadline (blijven in meldingen tot opgelost)

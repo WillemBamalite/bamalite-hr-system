@@ -10,6 +10,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
+const ENABLE_EMAIL_VERIFY_LOGIN_FLOW = false
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -32,13 +34,18 @@ export default function LoginPage() {
       }
       setError(error.message || 'Er is een fout opgetreden bij het inloggen')
     } else {
-      // E-mail 2-stapsverificatie: eerst naar verificatiepagina.
       if (typeof window !== "undefined") {
-        window.sessionStorage.setItem("pending_email_verify", "1")
-        window.sessionStorage.setItem("pending_email_verify_email", email)
+        window.sessionStorage.removeItem("pending_email_verify")
+        window.sessionStorage.removeItem("pending_email_verify_email")
         window.sessionStorage.removeItem("email_verify_otp_requested")
       }
-      router.push(`/login/email-verify?email=${encodeURIComponent(email)}`)
+      if (ENABLE_EMAIL_VERIFY_LOGIN_FLOW) {
+        window.sessionStorage.setItem("pending_email_verify", "1")
+        window.sessionStorage.setItem("pending_email_verify_email", email)
+        router.push(`/login/email-verify?email=${encodeURIComponent(email)}`)
+      } else {
+        router.push("/")
+      }
     }
     
     setLoading(false)

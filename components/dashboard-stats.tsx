@@ -11,12 +11,13 @@ import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
+import { getAllShipCertificateNotificationsForClient } from "@/utils/ship-certificates"
 
 export function DashboardStats() {
   const { crew, ships, sickLeave, loans, tasks, trips, incidents, officialWarnings } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
   const { t, locale } = useLanguage()
-  const { canAccessPath } = useAuth()
+  const { canAccessPath, user } = useAuth()
   const [loonBemerkingenCount, setLoonBemerkingenCount] = useState(0)
   const ABSENT_MARKER = "[AFWEZIG]"
   const uiText = {
@@ -33,6 +34,20 @@ export function DashboardStats() {
 
   const notificationCount = useMemo(() => {
     try {
+      const userEmailForNotifications = String(user?.email || "").toLowerCase()
+      const showShipCertificateNotifications =
+        userEmailForNotifications === "jos@bamalite.com" || userEmailForNotifications === "willem@bamalite.com"
+      const shipCertificateAlerts = showShipCertificateNotifications
+        ? getAllShipCertificateNotificationsForClient().map((n) => ({
+            id: n.id,
+            kind: "ship_certificate_paper" as const,
+            severity: n.severity,
+            title: n.title,
+            description: n.description,
+            href: n.href,
+            meta: n.meta,
+          }))
+        : []
       return buildDashboardNotifications({
         crew: crew || [],
         tasks: tasks || [],
@@ -40,11 +55,12 @@ export function DashboardStats() {
         sickLeave: sickLeave || [],
         visits: visits || [],
         getShipsNotVisitedInDays,
+        shipCertificateAlerts,
       }).length
     } catch {
       return 0
     }
-  }, [crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays])
+  }, [crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays, user?.email])
   
   // Count open tasks from Supabase
   const tasksCount = tasks.filter((t: any) => !t.completed).length

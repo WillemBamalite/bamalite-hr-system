@@ -1818,7 +1818,12 @@ export function ShipOverview() {
                               <div className="flex items-center space-x-3">
                                 <Ship className="w-6 h-6 text-blue-600" />
                                 <div className="flex items-center gap-2">
-                                  <h3 className="text-lg font-semibold">{ship.name}</h3>
+                                  <Link
+                                    href={`/schepen/overzicht/${encodeURIComponent(String(ship.id))}`}
+                                    className="text-lg font-semibold text-gray-900 hover:text-blue-600 hover:underline"
+                                  >
+                                    {ship.name}
+                                  </Link>
                                   {(() => {
                                     const shipTasks = tasks.filter((t: any) => !t.completed && t.related_ship_id === ship.id)
                                     if (shipTasks.length === 0) return null
