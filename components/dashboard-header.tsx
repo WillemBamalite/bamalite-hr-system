@@ -117,6 +117,11 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
       return 0
     }
   })()
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const disableHeaderCalendarClick =
+    userEmailLower === "tanja@bamalite.com" ||
+    userEmailLower === "karina@bamalite.com" ||
+    userEmailLower === "lucie@bamalite.com"
 
   return (
     <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm dashboard-header">
@@ -180,8 +185,15 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
 
         {/* Live Datum & Tijd - Midden */}
         <button
-          onClick={() => setAgendaOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+          onClick={() => {
+            if (disableHeaderCalendarClick) return
+            setAgendaOpen(true)
+          }}
+          disabled={disableHeaderCalendarClick}
+          className={`flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200 transition-colors ${
+            disableHeaderCalendarClick ? "cursor-default" : "hover:bg-blue-100 cursor-pointer"
+          }`}
+          title={disableHeaderCalendarClick ? "Alleen zichtbaar, niet bewerkbaar" : ""}
         >
           <Calendar className="w-5 h-5 text-blue-600" />
           <div className="text-center">

@@ -90,7 +90,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   const { crew, ships, loading, error, updateCrew } = useSupabaseData()
   const { visits } = useShipVisits()
   const { t } = useLanguage()
-  const { role } = useAuth()
+  const { role, user } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -100,6 +100,11 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   const [outReason, setOutReason] = useState("")
   const [resetRotation, setResetRotation] = useState(false)
   const [newRotationDate, setNewRotationDate] = useState("")
+  const currentUserEmail = String(user?.email || "").toLowerCase()
+  const isReadOnlyProfileUser =
+    currentUserEmail === "tanja@bamalite.com" ||
+    currentUserEmail === "karina@bamalite.com" ||
+    currentUserEmail === "lucie@bamalite.com"
 
   const handleMarkOutOfService = async () => {
     if (!outDate || !outReason) {
@@ -154,10 +159,11 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
   // Auto-open edit mode if autoEdit is true
   useEffect(() => {
+    if (isReadOnlyProfileUser) return
     if (autoEdit && mounted && !isEditing) {
       setIsEditing(true)
     }
-  }, [autoEdit, mounted, isEditing])
+  }, [autoEdit, mounted, isEditing, isReadOnlyProfileUser])
 
   // Find the crew member
   const crewMember = crew.find((member: any) => member.id === crewMemberId)
@@ -309,6 +315,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   }
 
     const handleSave = async () => {
+    if (isReadOnlyProfileUser) return
     setIsSaving(true)
     try {
       // Validate required fields
@@ -666,6 +673,9 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           </CardTitle>
           <div className="flex items-center space-x-2">
               {!isEditing ? (
+                isReadOnlyProfileUser ? (
+                  <Badge variant="outline" className="text-slate-600 border-slate-300">Alleen-lezen</Badge>
+                ) : (
                 <Button
                   onClick={() => setIsEditing(true)}
                   variant="outline"
@@ -675,6 +685,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                   <Edit className="w-4 h-4" />
                   <span>{t('edit')}</span>
                 </Button>
+                )
               ) : (
                 <div className="flex items-center space-x-2">
                   <Button

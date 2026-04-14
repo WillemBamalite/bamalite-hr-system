@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { BackButton } from "@/components/ui/back-button"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useAuth } from "@/contexts/AuthContext"
 
 interface Props {
   crewMemberId: string
@@ -19,7 +20,13 @@ interface Props {
 export function CrewMemberHeader({ crewMemberId }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { user } = useAuth()
   const { crew, ships, tasks, loading } = useSupabaseData()
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const isReadOnlyProfileUser =
+    userEmailLower === "tanja@bamalite.com" ||
+    userEmailLower === "karina@bamalite.com" ||
+    userEmailLower === "lucie@bamalite.com"
   
   // Haal data uit Supabase
   const crewMember = crew.find((c: any) => c.id === crewMemberId)
@@ -197,10 +204,12 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                 </div>
               </PopoverContent>
             </Popover>
-            <Button variant="outline">
-              <Edit className="w-4 h-4 mr-2" />
-              Bewerken
-            </Button>
+            {!isReadOnlyProfileUser && (
+              <Button variant="outline">
+                <Edit className="w-4 h-4 mr-2" />
+                Bewerken
+              </Button>
+            )}
           </div>
         </div>
       </div>

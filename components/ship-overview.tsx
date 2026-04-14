@@ -68,7 +68,7 @@ const sortCrewByRank = (crew: any[]) => {
 export function ShipOverview() {
   const { ships, crew, sickLeave, trips, tasks, loading, error, addNoteToCrew, removeNoteFromCrew, crewColorTags, setCrewColorTag, loadData } = useSupabaseData()
   const { t, locale } = useLanguage()
-  const { role } = useAuth()
+  const { role, user } = useAuth()
   const { searchQuery, setSearchQuery, setSearchRunner } = useDashboardSearch()
   const [mounted, setMounted] = useState(false);
   const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null)
@@ -96,6 +96,11 @@ export function ShipOverview() {
     creating: locale === "de" ? "Erstellen..." : locale === "fr" ? "Création..." : "Aanmaken...",
   }
   const ABSENT_MARKER = "[AFWEZIG]"
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const hideABAndColorControls =
+    userEmailLower === "tanja@bamalite.com" ||
+    userEmailLower === "karina@bamalite.com" ||
+    userEmailLower === "lucie@bamalite.com"
 
   const isAbsentLeaveRecord = (record: any) =>
     String(record?.notes || "").toUpperCase().includes(ABSENT_MARKER)
@@ -650,7 +655,7 @@ export function ShipOverview() {
         {/* Top-right controls: A/B designation + color button + optional student badge + dummy delete button */}
         <div className="absolute top-2 right-2 flex items-center gap-2">
           {/* A/B Designation - Prominent indicator (niet voor aflossers of overig personeel) */}
-          {!isAflosser && !isOverigPersoneel && (
+          {!hideABAndColorControls && !isAflosser && !isOverigPersoneel && (
             <div ref={abSelectorRef} className="z-10">
               {abSelectorOpen ? (
                 <div className="bg-white shadow-lg border-2 border-gray-300 rounded-lg p-2 flex gap-2">
@@ -721,7 +726,7 @@ export function ShipOverview() {
               <X className="w-4 h-4" />
             </button>
           )}
-          {!isDummy && (
+          {!hideABAndColorControls && !isDummy && (
             <button
               type="button"
               className="w-6 h-6 rounded border bg-white flex items-center justify-center shadow-sm"
@@ -745,7 +750,7 @@ export function ShipOverview() {
           )}
         </div>
 
-        {paletteOpen && (
+        {!hideABAndColorControls && paletteOpen && (
           <div className="absolute top-10 right-2 bg-white shadow-lg border rounded-md p-2 z-10">
             <div className="flex items-center gap-2">
               {COLOR_OPTIONS.map((c) => (
@@ -1197,6 +1202,7 @@ export function ShipOverview() {
 
   // Handle A/B designation change
   async function handleABDesignationChange(crewId: string, designation: 'A' | 'B' | null) {
+    if (hideABAndColorControls) return
     // Save scroll position before update - prevent any scroll jumps
     if (typeof window === 'undefined') return;
     

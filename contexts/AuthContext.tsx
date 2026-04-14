@@ -28,6 +28,7 @@ const ADMIN_EMAILS = new Set([
 const LIMITED_EMAILS = new Set([
   "tanja@bamalite.com",
   "karina@bamalite.com",
+  "lucie@bamalite.com",
 ])
 
 const LIMITED_ALLOWED_EXACT = new Set([
@@ -63,6 +64,12 @@ const LIMITED_BLOCKED_BEMANNING_SEGMENTS = new Set([
   "tekorten",
 ])
 
+const FIRMA_READONLY_EMAILS = new Set([
+  "tanja@bamalite.com",
+  "karina@bamalite.com",
+  "lucie@bamalite.com",
+])
+
 function resolveRole(email?: string | null): "admin_full" | "limited_edit" {
   const e = (email || "").trim().toLowerCase()
   if (ADMIN_EMAILS.has(e)) return "admin_full"
@@ -70,10 +77,33 @@ function resolveRole(email?: string | null): "admin_full" | "limited_edit" {
   return "limited_edit"
 }
 
-function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string): boolean {
+function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string, email?: string | null): boolean {
   const normalized = path.split("?")[0]
+  const emailLower = (email || "").trim().toLowerCase()
   if (normalized === "/login" || normalized === "/login/email-verify") return true
   if (role === "admin_full") return true
+  if (emailLower === "lucie@bamalite.com") {
+    if (
+      normalized === "/ziekte" ||
+      normalized.startsWith("/ziekte/") ||
+      normalized === "/bemanning/leningen" ||
+      normalized.startsWith("/bemanning/leningen/") ||
+      normalized === "/bemanning/loon-bemerkingen" ||
+      normalized.startsWith("/bemanning/loon-bemerkingen/")
+    ) {
+      return false
+    }
+  }
+  if (FIRMA_READONLY_EMAILS.has(emailLower)) {
+    if (
+      normalized === "/firma-wisseling/wisseling" ||
+      normalized.startsWith("/firma-wisseling/wisseling/") ||
+      normalized === "/firma-wisseling/addendum" ||
+      normalized.startsWith("/firma-wisseling/addendum/")
+    ) {
+      return false
+    }
+  }
   if (LIMITED_ALLOWED_EXACT.has(normalized)) return true
   // Allow crew profile pages like /bemanning/<id>, but keep blocked section pages closed.
   const bemanningMatch = normalized.match(/^\/bemanning\/([^/]+)$/)
@@ -143,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/login')
   }
 
-  const canAccessPath = (path: string) => canAccessPathForRole(role, path)
+  const canAccessPath = (path: string) => canAccessPathForRole(role, path, user?.email)
 
   return (
     <AuthContext.Provider value={{ user, role, mfaRequired, loading, canAccessPath, signIn, signUp, signOut }}>

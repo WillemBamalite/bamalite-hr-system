@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Users, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import { useAuth } from "@/contexts/AuthContext"
 
 const RANK_ORDER = [
   "Schipper",
@@ -20,8 +21,47 @@ const RANK_ORDER = [
 ];
 
 export default function FormerCrewPage() {
+  const { user } = useAuth()
   const { crew, deleteCrew } = useSupabaseData()
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const isReadOnlyFormerCrewUser =
+    userEmailLower === "tanja@bamalite.com" ||
+    userEmailLower === "karina@bamalite.com" ||
+    userEmailLower === "lucie@bamalite.com"
+  const isGermanFormerCrewUser =
+    userEmailLower === "tanja@bamalite.com" || userEmailLower === "lucie@bamalite.com"
+  const uiText = {
+    backToDashboard: isGermanFormerCrewUser ? "Zurück zum Dashboard" : "Terug naar Dashboard",
+    pageTitle: isGermanFormerCrewUser ? "Ehemalige Besatzungsmitglieder" : "Oude Bemanningsleden",
+    pageSubtitle: isGermanFormerCrewUser
+      ? "Besatzungsmitglieder, die außer Dienst sind"
+      : "Bemanningsleden die uit dienst zijn",
+    formerCrewCountSingular: isGermanFormerCrewUser ? "ehemaliges Besatzungsmitglied" : "voormalig bemanningslid",
+    formerCrewCountPlural: isGermanFormerCrewUser ? "ehemalige Besatzungsmitglieder" : "voormalige bemanningsleden",
+    outOfServiceBadge: isGermanFormerCrewUser ? "Außer Dienst" : "Uit dienst",
+    outOfServiceSince: isGermanFormerCrewUser ? "Außer Dienst seit:" : "Uit dienst sinds:",
+    reason: isGermanFormerCrewUser ? "Grund:" : "Reden:",
+    lastShip: isGermanFormerCrewUser ? "Letztes Schiff:" : "Laatste schip:",
+    noFormerByRank: isGermanFormerCrewUser
+      ? "Keine ehemaligen Besatzungsmitglieder in diesem Rang"
+      : "Geen voormalige bemanningsleden in deze rang",
+    other: isGermanFormerCrewUser ? "Sonstiges" : "Overig",
+    noFormerCrewTitle: isGermanFormerCrewUser
+      ? "Keine ehemaligen Besatzungsmitglieder"
+      : "Geen voormalige bemanningsleden",
+    noFormerCrewDescription: isGermanFormerCrewUser
+      ? "Es wurden noch keine Besatzungsmitglieder außer Dienst gesetzt."
+      : "Er zijn nog geen bemanningsleden uit dienst gezet.",
+    deleteConfirm: isGermanFormerCrewUser
+      ? "Weißt du sicher, dass du {name} endgültig löschen möchtest? Dies kann nicht rückgängig gemacht werden."
+      : "Weet je zeker dat je {name} definitief wilt verwijderen? Dit kan niet ongedaan gemaakt worden.",
+    deleteSuccess: isGermanFormerCrewUser
+      ? "Besatzungsmitglied endgültig gelöscht."
+      : "Bemanningslid definitief verwijderd.",
+    deleteError: isGermanFormerCrewUser ? "Löschen fehlgeschlagen. Versuche es erneut." : "Verwijderen mislukt. Probeer opnieuw.",
+    deleteFailedLog: isGermanFormerCrewUser ? "Definitief verwijderen mislukt:" : "Definitief verwijderen mislukt:",
+  }
   
   // Filter crew members die uit dienst zijn
   const formerCrew = crew.filter((c: any) => c.status === 'uit-dienst')
@@ -40,15 +80,16 @@ export default function FormerCrewPage() {
   }, [crew.length])
 
   const handleDeleteCrew = async (crewId: string, fullName: string) => {
-    if (!confirm(`Weet je zeker dat je ${fullName} definitief wilt verwijderen? Dit kan niet ongedaan gemaakt worden.`)) {
+    if (isReadOnlyFormerCrewUser) return
+    if (!confirm(uiText.deleteConfirm.replace("{name}", fullName))) {
       return
     }
     try {
       await deleteCrew(crewId)
-      alert('Bemanningslid definitief verwijderd.')
+      alert(uiText.deleteSuccess)
     } catch (e) {
-      console.error('Definitief verwijderen mislukt:', e)
-      alert('Verwijderen mislukt. Probeer opnieuw.')
+      console.error(uiText.deleteFailedLog, e)
+      alert(uiText.deleteError)
     }
   }
 
@@ -61,12 +102,12 @@ export default function FormerCrewPage() {
         <Link href="/">
           <Button variant="ghost" size="sm" className="flex items-center space-x-2">
             <ArrowLeft className="w-4 h-4" />
-            <span>Terug naar Dashboard</span>
+            <span>{uiText.backToDashboard}</span>
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Oude Bemanningsleden</h1>
-          <p className="text-sm text-gray-600">Bemanningsleden die uit dienst zijn</p>
+          <h1 className="text-2xl font-bold text-gray-900">{uiText.pageTitle}</h1>
+          <p className="text-sm text-gray-600">{uiText.pageSubtitle}</p>
         </div>
       </div>
 
@@ -77,7 +118,7 @@ export default function FormerCrewPage() {
             <div className="flex items-center space-x-2">
               <Users className="w-5 h-5 text-gray-600" />
               <span className="text-sm text-gray-600">
-                {formerCrew.length} voormalig bemanningslid{formerCrew.length !== 1 ? 'en' : ''}
+                {formerCrew.length} {formerCrew.length === 1 ? uiText.formerCrewCountSingular : uiText.formerCrewCountPlural}
               </span>
             </div>
           </CardContent>
@@ -111,28 +152,31 @@ export default function FormerCrewPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className="bg-gray-100 text-gray-800" variant="outline">
-                          Uit dienst
+                          {uiText.outOfServiceBadge}
                         </Badge>
-                        <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteCrew(crew.id, `${crew.first_name} ${crew.last_name}`)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {!isReadOnlyFormerCrewUser && (
+                          <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteCrew(crew.id, `${crew.first_name} ${crew.last_name}`)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
                     <div className="space-y-2 text-sm text-gray-700">
                       {crew.out_of_service_date && (
                         <div>
-                          <strong>Uit dienst sinds:</strong> {new Date(crew.out_of_service_date).toLocaleDateString('nl-NL')}
+                          <strong>{uiText.outOfServiceSince}</strong>{" "}
+                          {new Date(crew.out_of_service_date).toLocaleDateString(isGermanFormerCrewUser ? "de-DE" : "nl-NL")}
                         </div>
                       )}
                       {crew.out_of_service_reason && (
                         <div>
-                          <strong>Reden:</strong> {crew.out_of_service_reason}
+                          <strong>{uiText.reason}</strong> {crew.out_of_service_reason}
                         </div>
                       )}
                       {crew.ship_id && (
                         <div>
-                          <strong>Laatste schip:</strong> {crew.ship_id}
+                          <strong>{uiText.lastShip}</strong> {crew.ship_id}
                         </div>
                       )}
                     </div>
@@ -141,7 +185,7 @@ export default function FormerCrewPage() {
               ))}
             </div>
           ) : (
-            <div className="text-gray-500 text-center py-8">Geen voormalige bemanningsleden in deze rang</div>
+            <div className="text-gray-500 text-center py-8">{uiText.noFormerByRank}</div>
           )}
         </div>
       ))}
@@ -149,7 +193,7 @@ export default function FormerCrewPage() {
       {/* Overig section */}
       {grouped["Overig"]?.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-4">Overig</h2>
+          <h2 className="text-lg font-semibold mb-4">{uiText.other}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {grouped["Overig"].map((crew) => (
               <Card key={crew.id} className="hover:shadow-lg transition-shadow">
@@ -172,28 +216,31 @@ export default function FormerCrewPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className="bg-gray-100 text-gray-800" variant="outline">
-                        Uit dienst
+                        {uiText.outOfServiceBadge}
                       </Badge>
-                      <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteCrew(crew.id, `${crew.first_name} ${crew.last_name}`)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {!isReadOnlyFormerCrewUser && (
+                        <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteCrew(crew.id, `${crew.first_name} ${crew.last_name}`)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
 
                   <div className="space-y-2 text-sm text-gray-700">
                     {crew.out_of_service_date && (
                       <div>
-                        <strong>Uit dienst sinds:</strong> {new Date(crew.out_of_service_date).toLocaleDateString('nl-NL')}
+                        <strong>{uiText.outOfServiceSince}</strong>{" "}
+                        {new Date(crew.out_of_service_date).toLocaleDateString(isGermanFormerCrewUser ? "de-DE" : "nl-NL")}
                       </div>
                     )}
                     {crew.out_of_service_reason && (
                       <div>
-                        <strong>Reden:</strong> {crew.out_of_service_reason}
+                        <strong>{uiText.reason}</strong> {crew.out_of_service_reason}
                       </div>
                     )}
                     {crew.ship_id && (
                       <div>
-                        <strong>Laatste schip:</strong> {crew.ship_id}
+                        <strong>{uiText.lastShip}</strong> {crew.ship_id}
                       </div>
                     )}
                   </div>
@@ -208,8 +255,8 @@ export default function FormerCrewPage() {
       {formerCrew.length === 0 && (
         <div className="text-center py-12">
           <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Geen voormalige bemanningsleden</h3>
-          <p className="text-gray-600">Er zijn nog geen bemanningsleden uit dienst gezet.</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{uiText.noFormerCrewTitle}</h3>
+          <p className="text-gray-600">{uiText.noFormerCrewDescription}</p>
         </div>
       )}
     </div>

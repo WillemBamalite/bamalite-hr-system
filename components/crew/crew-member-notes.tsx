@@ -9,6 +9,7 @@ import { StickyNote, Plus, Save, X, ArrowLeft, MessageSquare, Trash2 } from "luc
 import { useRouter } from "next/navigation"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { format } from "date-fns"
+import { useAuth } from "@/contexts/AuthContext"
 
 interface Props {
   crewMemberId: string
@@ -29,6 +30,12 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
   const [mounted, setMounted] = useState(false)
   
   const { crew, addNoteToCrew, removeNoteFromCrew, deleteArchivedNote } = useSupabaseData()
+  const { user } = useAuth()
+  const currentUserEmail = String(user?.email || "").toLowerCase()
+  const isReadOnlyProfileUser =
+    currentUserEmail === "tanja@bamalite.com" ||
+    currentUserEmail === "karina@bamalite.com" ||
+    currentUserEmail === "lucie@bamalite.com"
 
   // Prevent hydration errors
   useEffect(() => {
@@ -59,6 +66,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
   }))
 
   const handleSaveNote = async () => {
+    if (isReadOnlyProfileUser) return
     if (newNote.trim()) {
       try {
         await addNoteToCrew(crewMemberId, newNote.trim())
@@ -72,6 +80,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
   }
 
   const handleRemoveNote = async (noteId: string) => {
+    if (isReadOnlyProfileUser) return
     if (confirm('Weet je zeker dat je deze notitie wilt verwijderen? Deze wordt gearchiveerd.')) {
       try {
         await removeNoteFromCrew(crewMemberId, noteId)
@@ -83,6 +92,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
   }
 
   const handleDeleteArchivedNote = async (noteId: string) => {
+    if (isReadOnlyProfileUser) return
     if (confirm('Weet je zeker dat je deze gearchiveerde notitie permanent wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.')) {
       try {
         await deleteArchivedNote(crewMemberId, noteId)
@@ -119,7 +129,12 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
             <span>Notities & Opmerkingen</span>
           </CardTitle>
           {!isAddingNote && (
-            <Button variant="outline" size="sm" onClick={() => setIsAddingNote(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddingNote(true)}
+              disabled={isReadOnlyProfileUser}
+            >
               <Plus className="w-4 h-4 mr-2" />
               Notitie
             </Button>
@@ -189,6 +204,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
                   </div>
                   <button
                     onClick={() => handleRemoveNote(note.id)}
+                    disabled={isReadOnlyProfileUser}
                     className="text-red-500 hover:text-red-700 flex-shrink-0"
                     title="Notitie verwijderen (archiveren)"
                   >
@@ -236,6 +252,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
                   </div>
                   <button
                     onClick={() => handleDeleteArchivedNote(note.id)}
+                    disabled={isReadOnlyProfileUser}
                     className="text-red-500 hover:text-red-700 flex-shrink-0"
                     title="Notitie permanent verwijderen"
                   >
@@ -252,7 +269,7 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
           <div className="text-center py-8">
             <StickyNote className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 mb-4">Nog geen notities toegevoegd</p>
-            <Button variant="outline" onClick={() => setIsAddingNote(true)}>
+            <Button variant="outline" onClick={() => setIsAddingNote(true)} disabled={isReadOnlyProfileUser}>
               <Plus className="w-4 h-4 mr-2" />
               Eerste notitie toevoegen
             </Button>

@@ -10,6 +10,7 @@ import { Building2, UserPlus, AlertCircle, Printer } from 'lucide-react'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { DashboardButton } from '@/components/ui/dashboard-button'
 import { CrewMemberPrint } from '@/components/crew/crew-member-print'
+import { useAuth } from '@/contexts/AuthContext'
 
 const COMPANIES = [
   { id: 'bamalite', name: 'Bamalite S.A.', number: 'B 44356' },
@@ -48,8 +49,37 @@ function sortByLastNameAndFirstName(a: any, b: any) {
 
 export default function FirmaWisselingPage() {
   const { crew, ships, loading } = useSupabaseData()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState(COMPANIES[0].id)
   const [printLanguage, setPrintLanguage] = useState<'nl' | 'de'>('nl')
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const isFirmaReadOnlyUser =
+    userEmailLower === "tanja@bamalite.com" ||
+    userEmailLower === "karina@bamalite.com" ||
+    userEmailLower === "lucie@bamalite.com"
+  const isGermanFirmaUser =
+    userEmailLower === "tanja@bamalite.com" || userEmailLower === "lucie@bamalite.com"
+  const uiText = {
+    pageTitle: isGermanFirmaUser ? "Firmenwechsel" : "Firma Wisseling",
+    pageSubtitle: isGermanFirmaUser
+      ? "Übersicht der Besatzungsmitglieder pro Firma"
+      : "Overzicht van bemanningsleden per firma",
+    printLanguageLabel: isGermanFirmaUser ? "Sprache Druckversion:" : "Taal printversie:",
+    printCompany: isGermanFirmaUser ? "Firma drucken" : "Print firma",
+    switchCompany: isGermanFirmaUser ? "Firmenwechsel" : "Wisseling van Firma",
+    noCrewToPrint: isGermanFirmaUser
+      ? "Es gibt keine Besatzungsmitglieder bei dieser Firma zum Drucken."
+      : "Er zijn geen bemanningsleden bij deze firma om te printen.",
+    companyNumber: isGermanFirmaUser ? "Firmennummer:" : "Firmanummer:",
+    crewCountLabel: isGermanFirmaUser ? "Besatzungsmitglied" : "bemanningslid",
+    crewCountPluralSuffix: isGermanFirmaUser ? "er" : "en",
+    noCrewInCompany: isGermanFirmaUser
+      ? "Keine Besatzungsmitglieder bei dieser Firma"
+      : "Geen bemanningsleden bij deze firma",
+    shipOtherCompanyTitle: isGermanFirmaUser
+      ? "Steht auf Schiff einer anderen Firma"
+      : "Staat op schip van andere firma",
+  }
 
   // Filter crew per firma
   const getCrewByCompany = (companyName: string) => {
@@ -146,12 +176,12 @@ export default function FirmaWisselingPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between no-print">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Firma Wisseling</h1>
-          <p className="text-gray-600">Overzicht van bemanningsleden per firma</p>
+          <h1 className="text-3xl font-bold text-gray-900">{uiText.pageTitle}</h1>
+          <p className="text-gray-600">{uiText.pageSubtitle}</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm text-gray-700">
-            <span className="font-medium">Taal printversie:</span>
+            <span className="font-medium">{uiText.printLanguageLabel}</span>
             <div className="inline-flex rounded-md border border-gray-300 bg-white p-0.5">
               <button
                 type="button"
@@ -182,21 +212,23 @@ export default function FirmaWisselingPage() {
               variant="outline"
               onClick={() => {
                 if (activeCompanyCrew.length === 0) {
-                  alert('Er zijn geen bemanningsleden bij deze firma om te printen.')
+                  alert(uiText.noCrewToPrint)
                   return
                 }
                 window.print()
               }}
             >
               <Printer className="w-4 h-4 mr-2" />
-              Print firma ({activeCompanyCrew.length})
+              {uiText.printCompany} ({activeCompanyCrew.length})
             </Button>
-            <Link href="/firma-wisseling/wisseling">
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Wisseling van Firma
-              </Button>
-            </Link>
+            {!isFirmaReadOnlyUser && (
+              <Link href="/firma-wisseling/wisseling">
+                <Button className="bg-blue-600 hover:bg-blue-700">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  {uiText.switchCompany}
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -232,15 +264,16 @@ export default function FirmaWisselingPage() {
                 <CardContent className="p-6">
                   <div className="mb-4">
                     <h2 className="text-2xl font-bold text-gray-900">{company.name}</h2>
-                    <p className="text-gray-600">Firmanummer: {company.number}</p>
+                    <p className="text-gray-600">{uiText.companyNumber} {company.number}</p>
                     <p className="text-sm text-gray-500 mt-1">
-                      {companyCrew.length} bemanningslid{companyCrew.length !== 1 ? 'en' : ''}
+                      {companyCrew.length} {uiText.crewCountLabel}
+                      {companyCrew.length !== 1 ? uiText.crewCountPluralSuffix : ''}
                     </p>
                   </div>
 
                   {companyCrew.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">
-                      Geen bemanningsleden bij deze firma
+                      {uiText.noCrewInCompany}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -263,7 +296,7 @@ export default function FirmaWisselingPage() {
                                       {member.last_name} {member.first_name}
                                     </h3>
                                     {needsCompanySwitch && (
-                                      <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0" title="Staat op schip van andere firma" />
+                                      <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0" title={uiText.shipOtherCompanyTitle} />
                                     )}
                                   </div>
                                   <p className="text-sm text-gray-600 truncate">{member.position}</p>

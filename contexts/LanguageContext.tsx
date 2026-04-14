@@ -20,7 +20,8 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
   const [locale, setLocaleState] = useState<Locale>('nl')
   const { user } = useAuth()
   const userEmail = (user?.email || "").trim().toLowerCase()
-  const isTanja = userEmail === "tanja@bamalite.com"
+  const isGermanUser =
+    userEmail === "tanja@bamalite.com" || userEmail === "lucie@bamalite.com"
 
   // Hard rule: Tanja always German, everyone else always Dutch.
   useEffect(() => {
@@ -28,8 +29,8 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
       setLocaleState('nl')
       return
     }
-    setLocaleState(isTanja ? 'de' : 'nl')
-  }, [user, isTanja])
+    setLocaleState(isGermanUser ? 'de' : 'nl')
+  }, [user, isGermanUser])
 
   const setLocale = async (newLocale: Locale) => {
     // Keep language fixed by user rule.
@@ -37,7 +38,7 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
       setLocaleState('nl')
       return
     }
-    setLocaleState(isTanja ? 'de' : 'nl')
+    setLocaleState(isGermanUser ? 'de' : 'nl')
   }
 
   const t = (key: keyof Translations): string => {
