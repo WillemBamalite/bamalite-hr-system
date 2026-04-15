@@ -5,10 +5,12 @@ import { useParams, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, FileText, Ship } from "lucide-react"
+import { ArrowLeft, FileText, Printer, Ship } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useEffect, useState, type DragEvent, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
@@ -50,6 +52,13 @@ type CertificateContextMenuState = {
   x: number
   y: number
   certificateIndex: number | null
+}
+
+type CloudShipCertificateState = {
+  certificates: EditableShipCertificate[]
+  documents: CertificateDocumentMap
+  removedCertificateKeys: string[]
+  updatedAt: string
 }
 
 const APOLLO_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
@@ -2817,8 +2826,120 @@ const LINDE_SECTIONS: ParticularsSection[] = [
   },
 ]
 
+type ShipParticularsConfig = {
+  sections: ParticularsSection[]
+  classificationDefault: ClassificationEditableValues
+  classificationStorageKey: string
+}
+
+const normalizeShipNameForParticulars = (name: string) =>
+  String(name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
+const getShipParticularsConfigByName = (shipName: string): ShipParticularsConfig | null => {
+  const key = normalizeShipNameForParticulars(shipName)
+  switch (key) {
+    case "apollo":
+      return {
+        sections: APOLLO_SECTIONS,
+        classificationDefault: APOLLO_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "apollo_particulars_classification",
+      }
+    case "jupiter":
+      return {
+        sections: JUPITER_SECTIONS,
+        classificationDefault: JUPITER_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "jupiter_particulars_classification",
+      }
+    case "neptunus":
+      return {
+        sections: NEPTUNUS_SECTIONS,
+        classificationDefault: NEPTUNUS_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "neptunus_particulars_classification",
+      }
+    case "bacchus":
+      return {
+        sections: BACCHUS_SECTIONS,
+        classificationDefault: BACCHUS_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "bacchus_particulars_classification",
+      }
+    case "bellona":
+      return {
+        sections: BELLONA_SECTIONS,
+        classificationDefault: BELLONA_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "bellona_particulars_classification",
+      }
+    case "pluto":
+      return {
+        sections: PLUTO_SECTIONS,
+        classificationDefault: PLUTO_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "pluto_particulars_classification",
+      }
+    case "caritas":
+      return {
+        sections: CARITAS_SECTIONS,
+        classificationDefault: CARITAS_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "caritas_particulars_classification",
+      }
+    case "fraternite":
+      return {
+        sections: FRATERNITE_SECTIONS,
+        classificationDefault: FRATERNITE_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "fraternite_particulars_classification",
+      }
+    case "libertas":
+      return {
+        sections: LIBERTAS_SECTIONS,
+        classificationDefault: LIBERTAS_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "libertas_particulars_classification",
+      }
+    case "maike":
+      return {
+        sections: MAIKE_SECTIONS,
+        classificationDefault: MAIKE_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "maike_particulars_classification",
+      }
+    case "egalite":
+      return {
+        sections: EGALITE_SECTIONS,
+        classificationDefault: EGALITE_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "egalite_particulars_classification",
+      }
+    case "fidelitas":
+      return {
+        sections: FIDELITAS_SECTIONS,
+        classificationDefault: FIDELITAS_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "fidelitas_particulars_classification",
+      }
+    case "serenitas":
+      return {
+        sections: SERENITAS_SECTIONS,
+        classificationDefault: SERENITAS_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "serenitas_particulars_classification",
+      }
+    case "harmonie":
+      return {
+        sections: HARMONIE_SECTIONS,
+        classificationDefault: HARMONIE_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "harmonie_particulars_classification",
+      }
+    case "linde":
+      return {
+        sections: LINDE_SECTIONS,
+        classificationDefault: LINDE_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "linde_particulars_classification",
+      }
+    default:
+      return null
+  }
+}
+
 export default function ShipParticularsPage() {
   const CERTIFICATE_DOCUMENT_BUCKET = "official-warnings"
+  const CERTIFICATE_META_PREFIX = "ship-certificates-meta"
   const params = useParams<{ shipId: string }>()
   const searchParams = useSearchParams()
   const shipId = String(params?.shipId || "")
@@ -2837,6 +2958,9 @@ export default function ShipParticularsPage() {
     y: 0,
     certificateIndex: null,
   })
+  const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const [selectedPrintShipIds, setSelectedPrintShipIds] = useState<string[]>([])
+  const [printShipIds, setPrintShipIds] = useState<string[]>([])
   const [toonNieuwCertificaatFormulier, setToonNieuwCertificaatFormulier] = useState(false)
   const [nieuwCertificaatNaam, setNieuwCertificaatNaam] = useState("")
   const [nieuwCertificaatDatum, setNieuwCertificaatDatum] = useState("")
@@ -2846,6 +2970,8 @@ export default function ShipParticularsPage() {
   const [nieuwCertificaatFout, setNieuwCertificaatFout] = useState("")
 
   const ship = ships.find((s: any) => String(s.id) === shipId)
+  const supportedShipsForPrint = ships.filter((s: any) => Boolean(getShipParticularsConfigByName(s?.name || "")))
+  const allSupportedShipIds = supportedShipsForPrint.map((s: any) => String(s.id))
   const shipNameLower = String(ship?.name || "").trim().toLowerCase()
   const isApollo = shipNameLower === "apollo"
   const isJupiter = shipNameLower === "jupiter"
@@ -2972,6 +3098,7 @@ export default function ShipParticularsPage() {
                                   ? "linde_particulars_classification"
       : ""
   const certificateStorageKey = getShipCertificateStorageKeyByName(ship?.name || "") || ""
+  const printShipIdsToRender = printShipIds.length > 0 ? printShipIds : ship ? [String(ship.id)] : []
 
   const normalizeCertificateName = (value: string) => String(value || "").trim().toLowerCase()
   const normalizeShipStorageName = (value: string) =>
@@ -3024,6 +3151,18 @@ export default function ShipParticularsPage() {
     if (typeof window === "undefined") return
     const storageKey = getCertificateDocumentStorageKey(shipName)
     window.localStorage.setItem(storageKey, JSON.stringify(next))
+    const certificateRaw = certificateStorageKey ? window.localStorage.getItem(certificateStorageKey) : null
+    const certificates = (() => {
+      if (!certificateRaw) return certificatenEditable
+      try {
+        const parsed = JSON.parse(certificateRaw)
+        return Array.isArray(parsed) ? (parsed as EditableShipCertificate[]) : certificatenEditable
+      } catch {
+        return certificatenEditable
+      }
+    })()
+    const removed = loadRemovedCertificateKeys(shipName)
+    void saveCloudShipState(shipName, certificates, next, removed)
   }
 
   const loadRemovedCertificateKeys = (shipName: string): string[] => {
@@ -3046,6 +3185,100 @@ export default function ShipParticularsPage() {
     if (typeof window === "undefined") return
     const storageKey = getRemovedCertificatesStorageKey(shipName)
     window.localStorage.setItem(storageKey, JSON.stringify(removedKeys))
+    const certificateRaw = certificateStorageKey ? window.localStorage.getItem(certificateStorageKey) : null
+    const certificates = (() => {
+      if (!certificateRaw) return certificatenEditable
+      try {
+        const parsed = JSON.parse(certificateRaw)
+        return Array.isArray(parsed) ? (parsed as EditableShipCertificate[]) : certificatenEditable
+      } catch {
+        return certificatenEditable
+      }
+    })()
+    const docs = loadCertificateDocuments(shipName)
+    void saveCloudShipState(shipName, certificates, docs, removedKeys)
+  }
+
+  const getCloudShipStatePath = (shipName: string) =>
+    `${CERTIFICATE_META_PREFIX}/${normalizeShipStorageName(shipName)}/state.json`
+
+  const getCloudGlobalCustomCertificatesPath = () =>
+    `${CERTIFICATE_META_PREFIX}/global/custom-certificates.json`
+
+  const downloadJsonFromStorage = async (path: string): Promise<any | null> => {
+    const { data, error } = await supabase.storage.from(CERTIFICATE_DOCUMENT_BUCKET).download(path)
+    if (error || !data) return null
+    try {
+      const text = await data.text()
+      if (!text) return null
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
+
+  const uploadJsonToStorage = async (path: string, payload: unknown) => {
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" })
+    await supabase.storage.from(CERTIFICATE_DOCUMENT_BUCKET).upload(path, blob, {
+      upsert: true,
+      cacheControl: "0",
+      contentType: "application/json",
+    })
+  }
+
+  const loadCloudGlobalCustomCertificates = async (): Promise<EditableShipCertificate[] | null> => {
+    const parsed = await downloadJsonFromStorage(getCloudGlobalCustomCertificatesPath())
+    if (!parsed || !Array.isArray(parsed.customCertificates)) return null
+    return parsed.customCertificates as EditableShipCertificate[]
+  }
+
+  const saveCloudGlobalCustomCertificates = async (customCertificates: EditableShipCertificate[]) => {
+    await uploadJsonToStorage(getCloudGlobalCustomCertificatesPath(), {
+      customCertificates,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  const loadCloudShipState = async (shipName: string): Promise<CloudShipCertificateState | null> => {
+    const parsed = await downloadJsonFromStorage(getCloudShipStatePath(shipName))
+    if (!parsed || typeof parsed !== "object") return null
+    const certificates = Array.isArray(parsed.certificates) ? parsed.certificates : []
+    const removedCertificateKeys = Array.isArray(parsed.removedCertificateKeys)
+      ? parsed.removedCertificateKeys.map((item: unknown) => normalizeCertificateName(String(item || ""))).filter(Boolean)
+      : []
+
+    const documents: CertificateDocumentMap = {}
+    const rawDocuments = parsed.documents
+    if (rawDocuments && typeof rawDocuments === "object") {
+      Object.entries(rawDocuments as Record<string, unknown>).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          documents[key] = value.filter((doc) => doc && typeof doc === "object") as CertificateDocumentLink[]
+        } else if (value && typeof value === "object") {
+          documents[key] = [value as CertificateDocumentLink]
+        }
+      })
+    }
+
+    return {
+      certificates,
+      documents,
+      removedCertificateKeys,
+      updatedAt: String(parsed.updatedAt || ""),
+    }
+  }
+
+  const saveCloudShipState = async (
+    shipName: string,
+    certificates: EditableShipCertificate[],
+    documents: CertificateDocumentMap,
+    removedCertificateKeys: string[]
+  ) => {
+    await uploadJsonToStorage(getCloudShipStatePath(shipName), {
+      certificates,
+      documents,
+      removedCertificateKeys,
+      updatedAt: new Date().toISOString(),
+    })
   }
 
   const upsertCertificateByName = (
@@ -3064,6 +3297,10 @@ export default function ShipParticularsPage() {
     setCertificatenEditable(next)
     if (typeof window !== "undefined" && certificateStorageKey) {
       window.localStorage.setItem(certificateStorageKey, JSON.stringify(next))
+    }
+    if (ship?.name) {
+      const removed = loadRemovedCertificateKeys(ship.name)
+      void saveCloudShipState(ship.name, next, certificateDocuments, removed)
     }
   }
 
@@ -3084,22 +3321,77 @@ export default function ShipParticularsPage() {
   }, [classificationDefault, classificationStorageKey])
 
   useEffect(() => {
-    const defaults = getShipCertificateDefaultsForClient(ship?.name || "")
-    const removed = new Set(loadRemovedCertificateKeys(ship?.name || ""))
-    const filteredDefaults = defaults.filter(
-      (item) => !removed.has(normalizeCertificateName(item.naam))
-    )
-    setCertificatenEditable(filteredDefaults)
-    if (typeof window === "undefined" || !certificateStorageKey) return
-    const stored = window.localStorage.getItem(certificateStorageKey)
-    if (!stored) return
-    try {
-      const parsed = JSON.parse(stored)
-      setCertificatenEditable(
-        mergeShipCertificatesWithStored(ship?.name || "", parsed, filteredDefaults)
+    if (typeof window === "undefined" || !ship?.name) return
+    let cancelled = false
+
+    const syncCertificateState = async () => {
+      // 1) Global custom certificates from cloud -> local cache
+      const cloudGlobalCustom = await loadCloudGlobalCustomCertificates()
+      if (cancelled) return
+      if (cloudGlobalCustom) {
+        window.localStorage.setItem(
+          GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY,
+          JSON.stringify(cloudGlobalCustom)
+        )
+      } else {
+        const localGlobal = getGlobalCustomCertificatesForClient()
+        if (localGlobal.length > 0) {
+          void saveCloudGlobalCustomCertificates(localGlobal)
+        }
+      }
+
+      // 2) Ship state from cloud (or migrate local -> cloud if cloud empty)
+      const cloudShipState = await loadCloudShipState(ship.name)
+      if (cancelled) return
+
+      const localStoredRaw = certificateStorageKey
+        ? window.localStorage.getItem(certificateStorageKey)
+        : null
+      const localStoredCertificates = (() => {
+        if (!localStoredRaw) return null
+        try {
+          return JSON.parse(localStoredRaw)
+        } catch {
+          return null
+        }
+      })()
+
+      const localRemoved = loadRemovedCertificateKeys(ship.name)
+      const localDocuments = loadCertificateDocuments(ship.name)
+
+      if (cloudShipState) {
+        if (certificateStorageKey) {
+          window.localStorage.setItem(certificateStorageKey, JSON.stringify(cloudShipState.certificates || []))
+        }
+        persistRemovedCertificateKeys(ship.name, cloudShipState.removedCertificateKeys || [])
+        persistCertificateDocuments(ship.name, cloudShipState.documents || {})
+        setCertificateDocuments(cloudShipState.documents || {})
+      } else {
+        const certificatesToMigrate = Array.isArray(localStoredCertificates) ? localStoredCertificates : []
+        void saveCloudShipState(ship.name, certificatesToMigrate, localDocuments, localRemoved)
+      }
+
+      const defaults = getShipCertificateDefaultsForClient(ship.name)
+      const effectiveRemoved = new Set(
+        cloudShipState ? cloudShipState.removedCertificateKeys || [] : localRemoved
       )
-    } catch {
-      // Ignore invalid local state.
+      const filteredDefaults = defaults.filter(
+        (item) => !effectiveRemoved.has(normalizeCertificateName(item.naam))
+      )
+
+      const effectiveStoredCertificates = cloudShipState
+        ? cloudShipState.certificates || []
+        : localStoredCertificates
+
+      const merged = mergeShipCertificatesWithStored(ship.name, effectiveStoredCertificates, filteredDefaults)
+      if (!cancelled) {
+        setCertificatenEditable(merged)
+      }
+    }
+
+    void syncCertificateState()
+    return () => {
+      cancelled = true
     }
   }, [certificateStorageKey, ship?.name])
 
@@ -3132,6 +3424,13 @@ export default function ShipParticularsPage() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!ship) return
+    const currentId = String(ship.id)
+    setSelectedPrintShipIds((prev) => (prev.length > 0 ? prev : [currentId]))
+    setPrintShipIds((prev) => (prev.length > 0 ? prev : [currentId]))
+  }, [ship?.id])
 
   const setClassificationField = (key: keyof ClassificationEditableValues, value: string) => {
     const next = { ...classificationEditable, [key]: value }
@@ -3299,6 +3598,40 @@ export default function ShipParticularsPage() {
     setCertificateContextMenu({ visible: false, x: 0, y: 0, certificateIndex: null })
   }
 
+  const printScheepsgegevens = () => {
+    setPrintDialogOpen(true)
+  }
+
+  const togglePrintShipId = (targetShipId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedPrintShipIds((prev) => Array.from(new Set([...prev, targetShipId])))
+      return
+    }
+    setSelectedPrintShipIds((prev) => prev.filter((id) => id !== targetShipId))
+  }
+
+  const handleToggleSelectAllPrintShips = (checked: boolean) => {
+    if (checked) {
+      setSelectedPrintShipIds(allSupportedShipIds)
+      return
+    }
+    setSelectedPrintShipIds([])
+  }
+
+  const startPrintSelectedShips = () => {
+    if (selectedPrintShipIds.length === 0) {
+      alert("Selecteer minimaal een schip om te printen.")
+      return
+    }
+    setPrintShipIds(selectedPrintShipIds)
+    setPrintDialogOpen(false)
+    setActiveTab("scheepsgegevens")
+    setCertificateContextMenu({ visible: false, x: 0, y: 0, certificateIndex: null })
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => window.print(), 380)
+    }
+  }
+
   const voegNieuwCertificaatToe = () => {
     const naam = nieuwCertificaatNaam.trim()
     if (!naam) {
@@ -3338,6 +3671,7 @@ export default function ShipParticularsPage() {
       const globalExisting = getGlobalCustomCertificatesForClient()
       const nextGlobal = upsertCertificateByName(globalExisting, nieuwCertificaat)
       window.localStorage.setItem(GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY, JSON.stringify(nextGlobal))
+      void saveCloudGlobalCustomCertificates(nextGlobal)
 
       const defaults = getShipCertificateDefaultsForClient(ship?.name || "")
       if (!certificateStorageKey) {
@@ -3365,9 +3699,9 @@ export default function ShipParticularsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="w-full py-6 md:py-8 px-3 md:px-4 max-w-6xl mx-auto">
-        <div className="mb-4 flex items-center justify-between gap-3">
+    <div className="min-h-screen bg-gray-50 print:bg-white">
+      <main className="w-full py-6 md:py-8 px-3 md:px-4 max-w-6xl mx-auto print:max-w-none print:px-0 print:py-0">
+        <div className="mb-4 flex items-center justify-between gap-3 print:hidden">
           <div className="flex items-center gap-3">
             <Link href="/schepen/overzicht">
               <Button variant="ghost" size="sm">
@@ -3383,8 +3717,56 @@ export default function ShipParticularsPage() {
               <p className="text-gray-600">Overzicht van scheepsgegevens uit documentatie</p>
             </div>
           </div>
+          <Button variant="outline" size="sm" onClick={printScheepsgegevens}>
+            <Printer className="w-4 h-4 mr-2" />
+            Print scheepsgegevens
+          </Button>
         </div>
+        <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
+          <DialogContent className="sm:max-w-[560px] print:hidden">
+            <DialogHeader>
+              <DialogTitle>Selecteer te printen schepen</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 border-b pb-3">
+                <Checkbox
+                  id="print-select-all-ships"
+                  checked={allSupportedShipIds.length > 0 && selectedPrintShipIds.length === allSupportedShipIds.length}
+                  onCheckedChange={(checked) => handleToggleSelectAllPrintShips(Boolean(checked))}
+                />
+                <label htmlFor="print-select-all-ships" className="text-sm font-medium text-gray-900 cursor-pointer">
+                  Select all
+                </label>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                {supportedShipsForPrint.map((shipOption: any) => {
+                  const optionId = String(shipOption.id)
+                  const checked = selectedPrintShipIds.includes(optionId)
+                  return (
+                    <div key={optionId} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`print-ship-${optionId}`}
+                        checked={checked}
+                        onCheckedChange={(value) => togglePrintShipId(optionId, Boolean(value))}
+                      />
+                      <label htmlFor={`print-ship-${optionId}`} className="text-sm text-gray-800 cursor-pointer">
+                        {shipOption.name}
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setPrintDialogOpen(false)}>
+                  Annuleren
+                </Button>
+                <Button onClick={startPrintSelectedShips}>Print selectie</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
+        <div className="print:hidden">
         {loading ? (
           <Card>
             <CardContent className="p-6 text-gray-600">Laden...</CardContent>
@@ -3409,8 +3791,11 @@ export default function ShipParticularsPage() {
           </Card>
         ) : (
           <div className="space-y-4">
+            <div className="hidden print:block mb-4">
+              <h1 className="text-xl font-bold text-gray-900">Scheepsgegevens - {ship?.name || "Onbekend schip"}</h1>
+            </div>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full max-w-xl grid-cols-2 mb-2">
+              <TabsList className="grid w-full max-w-xl grid-cols-2 mb-2 print:hidden">
                 <TabsTrigger value="scheepsgegevens" className="text-base">
                   <Ship className="w-4 h-4 mr-2" />
                   Scheepsgegevens
@@ -3423,7 +3808,7 @@ export default function ShipParticularsPage() {
 
               <TabsContent value="scheepsgegevens" className="space-y-4">
                 {sections.map((section) => (
-                  <Card key={section.title}>
+                  <Card key={section.title} className="print:shadow-none print:border-gray-300">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg">{section.title}</CardTitle>
                     </CardHeader>
@@ -3439,8 +3824,11 @@ export default function ShipParticularsPage() {
                                     type="date"
                                     value={classificationEditable[item.editableKey] || ""}
                                     onChange={(e) => setClassificationField(item.editableKey as keyof ClassificationEditableValues, e.target.value)}
-                                    className="h-8 text-xs"
+                                    className="h-8 text-xs print:hidden"
                                   />
+                                  <span className="hidden print:block text-gray-900 text-right">
+                                    {formatIsoToDutchDate(classificationEditable[item.editableKey])}
+                                  </span>
                                 </div>
                               ) : (
                                 <span className="text-gray-900 text-right">
@@ -3485,7 +3873,7 @@ export default function ShipParticularsPage() {
                 ))}
               </TabsContent>
 
-              <TabsContent value="certificaten">
+              <TabsContent value="certificaten" className="print:hidden">
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg">Certificaten & keuringen</CardTitle>
@@ -3698,6 +4086,90 @@ export default function ShipParticularsPage() {
             </Tabs>
           </div>
         )}
+        </div>
+
+        <div className="hidden print:block">
+          {printShipIdsToRender.map((printId) => {
+            const printShip = ships.find((s: any) => String(s.id) === String(printId))
+            const printConfig = getShipParticularsConfigByName(printShip?.name || "")
+            if (!printShip || !printConfig) return null
+
+            const classificationValues = (() => {
+              const defaults = printConfig.classificationDefault
+              if (typeof window === "undefined") return defaults
+              const storedRaw = window.localStorage.getItem(printConfig.classificationStorageKey)
+              if (!storedRaw) return defaults
+              try {
+                const parsed = JSON.parse(storedRaw)
+                return { ...defaults, ...parsed }
+              } catch {
+                return defaults
+              }
+            })()
+
+            return (
+              <div key={`print-${printId}`} className="mb-6 print:mb-8 break-after-page last:break-after-auto">
+                <h1 className="text-xl font-bold text-gray-900 mb-3">
+                  Scheepsgegevens - {printShip.name}
+                </h1>
+                <div className="space-y-4">
+                  {printConfig.sections.map((section) => (
+                    <Card key={`print-${printShip.id}-${section.title}`} className="print:shadow-none print:border-gray-300">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg">{section.title}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {section.items && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm mb-4">
+                            {section.items.map((item) => (
+                              <div key={`print-${printShip.id}-${section.title}-${item.label}`} className="flex justify-between border-b border-gray-100 py-1 gap-4">
+                                <span className="text-gray-600">{item.label}</span>
+                                <span className="text-gray-900 text-right">
+                                  {section.title === "Classificatie" && item.editableKey
+                                    ? formatIsoToDutchDate(classificationValues[item.editableKey])
+                                    : item.value}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {section.tables?.map((table) => (
+                          <div key={`print-${printShip.id}-${section.title}-${table.title}`} className="mt-4">
+                            <h4 className="text-sm font-semibold text-gray-800 mb-2">{table.title}</h4>
+                            <div className="overflow-x-auto border rounded">
+                              <table className="w-full text-xs">
+                                <thead className="bg-gray-100">
+                                  <tr>
+                                    {table.columns.map((col) => (
+                                      <th key={`print-${printShip.id}-${section.title}-${table.title}-${col}`} className="px-2 py-2 text-left font-semibold text-gray-700 border-b">
+                                        {col}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {table.rows.map((row, rowIdx) => (
+                                    <tr key={`print-${printShip.id}-${section.title}-${table.title}-row-${rowIdx}`} className="border-b last:border-b-0">
+                                      {row.map((cell, cellIdx) => (
+                                        <td key={`print-${printShip.id}-${section.title}-${table.title}-row-${rowIdx}-cell-${cellIdx}`} className="px-2 py-1.5 text-gray-800 align-top">
+                                          {cell}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </main>
     </div>
   )
