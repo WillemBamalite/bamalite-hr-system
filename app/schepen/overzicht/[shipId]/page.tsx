@@ -54,6 +54,11 @@ type CertificateContextMenuState = {
   certificateIndex: number | null
 }
 
+const HIDDEN_SCHEEPSGEGEVENS_LABELS = new Set([
+  "Savealls bij tankontluchting",
+  "Opvangranden machinegebied",
+])
+
 type CloudShipCertificateState = {
   certificates: EditableShipCertificate[]
   documents: CertificateDocumentMap
@@ -3815,7 +3820,9 @@ export default function ShipParticularsPage() {
                     <CardContent>
                       {section.items && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm mb-4">
-                          {section.items.map((item) => (
+                          {section.items
+                            .filter((item) => !HIDDEN_SCHEEPSGEGEVENS_LABELS.has(item.label))
+                            .map((item) => (
                             <div key={`${section.title}-${item.label}`} className="flex justify-between border-b border-gray-100 py-1 gap-4">
                               <span className="text-gray-600">{item.label}</span>
                               {section.title === "Classificatie" && item.editableKey ? (
@@ -4121,7 +4128,9 @@ export default function ShipParticularsPage() {
                       <CardContent>
                         {section.items && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm mb-4">
-                            {section.items.map((item) => (
+                            {section.items
+                              .filter((item) => !HIDDEN_SCHEEPSGEGEVENS_LABELS.has(item.label))
+                              .map((item) => (
                               <div key={`print-${printShip.id}-${section.title}-${item.label}`} className="flex justify-between border-b border-gray-100 py-1 gap-4">
                                 <span className="text-gray-600">{item.label}</span>
                                 <span className="text-gray-900 text-right">
