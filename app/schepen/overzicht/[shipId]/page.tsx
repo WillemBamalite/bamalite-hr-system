@@ -66,6 +66,8 @@ type CloudShipCertificateState = {
   updatedAt: string
 }
 
+type ShipParticularValueOverrides = Record<string, string>
+
 const APOLLO_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
   lastClassInspection: "2025-07-09",
   nextClassInspection: "2030-07-08",
@@ -2963,6 +2965,9 @@ export default function ShipParticularsPage() {
     y: 0,
     certificateIndex: null,
   })
+  const [particularValueOverrides, setParticularValueOverrides] = useState<ShipParticularValueOverrides>({})
+  const [editingParticularKey, setEditingParticularKey] = useState<string | null>(null)
+  const [editingParticularValue, setEditingParticularValue] = useState("")
   const [printDialogOpen, setPrintDialogOpen] = useState(false)
   const [selectedPrintShipIds, setSelectedPrintShipIds] = useState<string[]>([])
   const [printShipIds, setPrintShipIds] = useState<string[]>([])
@@ -3210,6 +3215,32 @@ export default function ShipParticularsPage() {
   const getCloudGlobalCustomCertificatesPath = () =>
     `${CERTIFICATE_META_PREFIX}/global/custom-certificates.json`
 
+  const getParticularOverridesStorageKey = (shipName: string) =>
+    `${normalizeShipStorageName(shipName)}_particulars_value_overrides`
+
+  const getCloudParticularOverridesPath = (shipName: string) =>
+    `${CERTIFICATE_META_PREFIX}/${normalizeShipStorageName(shipName)}/particulars-overrides.json`
+
+  const getParticularFieldKey = (sectionTitle: string, label: string) =>
+    `${sectionTitle}::${label}`
+
+  const loadLocalParticularOverrides = (shipName: string): ShipParticularValueOverrides => {
+    if (typeof window === "undefined") return {}
+    const raw = window.localStorage.getItem(getParticularOverridesStorageKey(shipName))
+    if (!raw) return {}
+    try {
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === "object" ? (parsed as ShipParticularValueOverrides) : {}
+    } catch {
+      return {}
+    }
+  }
+
+  const persistLocalParticularOverrides = (shipName: string, overrides: ShipParticularValueOverrides) => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(getParticularOverridesStorageKey(shipName), JSON.stringify(overrides))
+  }
+
   const downloadJsonFromStorage = async (path: string): Promise<any | null> => {
     const { data, error } = await supabase.storage.from(CERTIFICATE_DOCUMENT_BUCKET).download(path)
     if (error || !data) return null
@@ -3240,6 +3271,23 @@ export default function ShipParticularsPage() {
   const saveCloudGlobalCustomCertificates = async (customCertificates: EditableShipCertificate[]) => {
     await uploadJsonToStorage(getCloudGlobalCustomCertificatesPath(), {
       customCertificates,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  const loadCloudParticularOverrides = async (shipName: string): Promise<ShipParticularValueOverrides | null> => {
+    const parsed = await downloadJsonFromStorage(getCloudParticularOverridesPath(shipName))
+    if (!parsed || typeof parsed !== "object") return null
+    if (!parsed.overrides || typeof parsed.overrides !== "object") return null
+    return parsed.overrides as ShipParticularValueOverrides
+  }
+
+  const saveCloudParticularOverrides = async (
+    shipName: string,
+    overrides: ShipParticularValueOverrides
+  ) => {
+    await uploadJsonToStorage(getCloudParticularOverridesPath(shipName), {
+      overrides,
       updatedAt: new Date().toISOString(),
     })
   }
@@ -3409,6 +3457,37 @@ export default function ShipParticularsPage() {
   }, [ship?.name])
 
   useEffect(() => {
+    if (typeof window === "undefined" || !ship?.name) {
+      setParticularValueOverrides({})
+      setEditingParticularKey(null)
+      setEditingParticularValue("")
+      return
+    }
+
+    let cancelled = false
+    const syncParticularOverrides = async () => {
+      const cloudOverrides = await loadCloudParticularOverrides(ship.name)
+      if (cancelled) return
+      if (cloudOverrides) {
+        setParticularValueOverrides(cloudOverrides)
+        persistLocalParticularOverrides(ship.name, cloudOverrides)
+        return
+      }
+
+      const localOverrides = loadLocalParticularOverrides(ship.name)
+      setParticularValueOverrides(localOverrides)
+      if (Object.keys(localOverrides).length > 0) {
+        void saveCloudParticularOverrides(ship.name, localOverrides)
+      }
+    }
+
+    void syncParticularOverrides()
+    return () => {
+      cancelled = true
+    }
+  }, [ship?.name])
+
+  useEffect(() => {
     const requestedTab = String(searchParams?.get("tab") || "").toLowerCase()
     if (requestedTab === "certificaten") {
       setActiveTab("certificaten")
@@ -3443,6 +3522,25 @@ export default function ShipParticularsPage() {
     if (typeof window !== "undefined" && classificationStorageKey) {
       window.localStorage.setItem(classificationStorageKey, JSON.stringify(next))
     }
+  }
+
+  const beginEditParticularValue = (sectionTitle: string, label: string, currentValue: string) => {
+    const key = getParticularFieldKey(sectionTitle, label)
+    setEditingParticularKey(key)
+    setEditingParticularValue(currentValue)
+  }
+
+  const saveParticularValue = (sectionTitle: string, label: string, value: string) => {
+    if (!ship?.name) return
+    const fieldKey = getParticularFieldKey(sectionTitle, label)
+    const nextOverrides = {
+      ...particularValueOverrides,
+      [fieldKey]: value,
+    }
+    setParticularValueOverrides(nextOverrides)
+    persistLocalParticularOverrides(ship.name, nextOverrides)
+    void saveCloudParticularOverrides(ship.name, nextOverrides)
+    setEditingParticularKey(null)
   }
 
   const setCertificaatHuidig = (index: number, value: string) => {
@@ -3822,28 +3920,71 @@ export default function ShipParticularsPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm mb-4">
                           {section.items
                             .filter((item) => !HIDDEN_SCHEEPSGEGEVENS_LABELS.has(item.label))
-                            .map((item) => (
-                            <div key={`${section.title}-${item.label}`} className="flex justify-between border-b border-gray-100 py-1 gap-4">
-                              <span className="text-gray-600">{item.label}</span>
-                              {section.title === "Classificatie" && item.editableKey ? (
-                                <div className="w-[180px]">
-                                  <Input
-                                    type="date"
-                                    value={classificationEditable[item.editableKey] || ""}
-                                    onChange={(e) => setClassificationField(item.editableKey as keyof ClassificationEditableValues, e.target.value)}
-                                    className="h-8 text-xs print:hidden"
-                                  />
-                                  <span className="hidden print:block text-gray-900 text-right">
-                                    {formatIsoToDutchDate(classificationEditable[item.editableKey])}
-                                  </span>
+                            .map((item) => {
+                              const fieldKey = getParticularFieldKey(section.title, item.label)
+                              const displayValue = particularValueOverrides[fieldKey] ?? item.value
+                              const isEditingField = editingParticularKey === fieldKey
+
+                              return (
+                                <div key={`${section.title}-${item.label}`} className="flex justify-between border-b border-gray-100 py-1 gap-4">
+                                  <span className="text-gray-600">{item.label}</span>
+                                  {section.title === "Classificatie" && item.editableKey ? (
+                                    <div className="w-[180px]">
+                                      <Input
+                                        type="date"
+                                        value={classificationEditable[item.editableKey] || ""}
+                                        onChange={(e) =>
+                                          setClassificationField(
+                                            item.editableKey as keyof ClassificationEditableValues,
+                                            e.target.value
+                                          )
+                                        }
+                                        className="h-8 text-xs print:hidden"
+                                      />
+                                      <span className="hidden print:block text-gray-900 text-right">
+                                        {formatIsoToDutchDate(classificationEditable[item.editableKey])}
+                                      </span>
+                                    </div>
+                                  ) : isEditingField ? (
+                                    <div className="w-[220px]">
+                                      <Input
+                                        autoFocus
+                                        value={editingParticularValue}
+                                        onChange={(e) => setEditingParticularValue(e.target.value)}
+                                        onBlur={() =>
+                                          saveParticularValue(section.title, item.label, editingParticularValue)
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            saveParticularValue(section.title, item.label, editingParticularValue)
+                                          } else if (e.key === "Escape") {
+                                            setEditingParticularKey(null)
+                                          }
+                                        }}
+                                        className="h-8 text-xs"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <span
+                                      className="text-gray-900 text-right cursor-text"
+                                      onDoubleClick={() =>
+                                        beginEditParticularValue(section.title, item.label, displayValue)
+                                      }
+                                      onClick={(e) => {
+                                        if (e.detail === 2) {
+                                          beginEditParticularValue(section.title, item.label, displayValue)
+                                        }
+                                      }}
+                                      title="Dubbelklik om te wijzigen"
+                                    >
+                                      {item.editableKey
+                                        ? formatIsoToDutchDate(classificationEditable[item.editableKey])
+                                        : displayValue}
+                                    </span>
+                                  )}
                                 </div>
-                              ) : (
-                                <span className="text-gray-900 text-right">
-                                  {item.editableKey ? formatIsoToDutchDate(classificationEditable[item.editableKey]) : item.value}
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                              )
+                            })}
                         </div>
                       )}
                       {section.tables?.map((table) => (
@@ -4113,6 +4254,7 @@ export default function ShipParticularsPage() {
                 return defaults
               }
             })()
+            const printParticularOverrides = loadLocalParticularOverrides(printShip.name)
 
             return (
               <div key={`print-${printId}`} className="mb-6 print:mb-8 break-after-page last:break-after-auto">
@@ -4136,7 +4278,7 @@ export default function ShipParticularsPage() {
                                 <span className="text-gray-900 text-right">
                                   {section.title === "Classificatie" && item.editableKey
                                     ? formatIsoToDutchDate(classificationValues[item.editableKey])
-                                    : item.value}
+                                    : printParticularOverrides[getParticularFieldKey(section.title, item.label)] ?? item.value}
                                 </span>
                               </div>
                             ))}
