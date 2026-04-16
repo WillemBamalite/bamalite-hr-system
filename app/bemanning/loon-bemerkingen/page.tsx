@@ -1344,7 +1344,7 @@ export default function LoonBemerkingenPage() {
     }
 
     const targetRows = Object.values(rowsByCrewId)
-      .filter((r) => typeof r.base_salary === "number" && (r.base_salary || 0) > 0)
+      .filter((r) => typeof r.base_salary === "number" && Number(r.base_salary || 0) > CLOTHING_ALLOWANCE_FIXED)
 
     if (targetRows.length === 0) {
       alert(isTanja ? "Geen medewerkers met basissalaris gevonden." : "Geen medewerkers met basissalaris gevonden.")
@@ -1353,8 +1353,8 @@ export default function LoonBemerkingenPage() {
 
     const ok = window.confirm(
       isTanja
-        ? `Inflatiecorrectie van ${percent}% toepassen op ${targetRows.length} medewerkers?`
-        : `Inflatiecorrectie van ${percent}% toepassen op ${targetRows.length} medewerkers?`
+        ? `Inflatiecorrectie van ${percent}% toepassen op ${targetRows.length} medewerkers (excl. kledinggeld)?`
+        : `Inflatiecorrectie van ${percent}% toepassen op ${targetRows.length} medewerkers (excl. kledinggeld)?`
     )
     if (!ok) return
 
@@ -1362,7 +1362,8 @@ export default function LoonBemerkingenPage() {
       setApplyingInflation(true)
       const batchId = `infl-${monthKey}-${Date.now()}`
       const updatedRows: SalaryDraft[] = targetRows.map((row) => {
-        const base = Number(row.base_salary || 0)
+        const baseIncl = Number(row.base_salary || 0)
+        const base = Math.max(0, baseIncl - CLOTHING_ALLOWANCE_FIXED)
         const inflationAmount = Number(((base * percent) / 100).toFixed(2))
         const existingRaise = Number(row.raise_amount || 0)
         const existingInflation = Number(row.inflation_adjustment || 0)
