@@ -90,12 +90,22 @@ function normalizeTextForPDF(text: string): string {
   if (!text) return text
   
   // Unicode normalisatie: vervang speciale karakters met ASCII-equivalenten
-  return text
+  const normalized = text
     .normalize('NFD') // Decomposeer Unicode-karakters (bijv. č -> c + ˇ)
     .replace(/[\u0300-\u036f]/g, '') // Verwijder diakritische tekens (accents)
     .replace(/[^\x00-\x7F]/g, (char) => {
       // Vervang overige niet-ASCII karakters met ASCII-equivalenten
       const replacements: Record<string, string> = {
+        // Poolse karakters (NFD decomposeert o.a. ł niet)
+        'ą': 'a', 'Ą': 'A',
+        'ć': 'c', 'Ć': 'C',
+        'ę': 'e', 'Ę': 'E',
+        'ł': 'l', 'Ł': 'L',
+        'ń': 'n', 'Ń': 'N',
+        'ó': 'o', 'Ó': 'O',
+        'ś': 's', 'Ś': 'S',
+        'ź': 'z', 'Ź': 'Z',
+        'ż': 'z', 'Ż': 'Z',
         'č': 'c', 'ć': 'c', 'Č': 'C', 'Ć': 'C',
         'š': 's', 'Š': 'S',
         'ž': 'z', 'Ž': 'Z',
@@ -120,8 +130,11 @@ function normalizeTextForPDF(text: string): string {
         'œ': 'oe', 'Œ': 'OE',
         'ß': 'ss',
       }
-      return replacements[char] || char
+      return replacements[char] || ''
     })
+
+  // Extra safety net: garandeer WinAnsi-veilige output
+  return normalized.replace(/[^\x00-\x7F]/g, '')
 }
 
 /**
@@ -742,6 +755,29 @@ function fillContractFields(
       'reiskosten': data.reiskosten || '',
       'scheepsnaam': data.shipName || '',
     }
+
+    // Template fallback: sommige PDF editors hernoemen velden naar Text1..Text21.
+    // Koppel die automatisch aan de regel1..regel21 waarden zodat contracten
+    // blijven werken wanneer veldnamen in het template gewijzigd zijn.
+    for (let i = 1; i <= 21; i++) {
+      const regelKey = `regel${i}`
+      const regelValue = fieldMappings[regelKey]
+      if (typeof regelValue !== 'undefined') {
+        const aliasKeys = [
+          `text${i}`,
+          `text_${i}`,
+          `textfield${i}`,
+          `field${i}`,
+          `line${i}`,
+          `regel_${i}`,
+        ]
+        aliasKeys.forEach((alias) => {
+          if (!(alias in fieldMappings)) {
+            fieldMappings[alias] = regelValue
+          }
+        })
+      }
+    }
     
     // Normaliseer alle waarden in fieldMappings voor PDF encoding
     Object.keys(fieldMappings).forEach(key => {
@@ -992,7 +1028,10 @@ function fillContractFields(
         
         if (matches) {
           try {
-            if (field.constructor.name === 'PDFTextField') {
+            const isTextField = field.constructor.name === 'PDFTextField' ||
+                                field.constructor.name === 'e' ||
+                                typeof (field as any).setText === 'function'
+            if (isTextField) {
               // Stel bold font in VOOR het invullen van de tekst
               try {
                 const acroField = (field as any).acroField
