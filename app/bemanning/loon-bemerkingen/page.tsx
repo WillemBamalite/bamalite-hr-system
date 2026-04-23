@@ -220,6 +220,41 @@ const getContractBaseSalaryInclClothing = (crewMember: any): number | null => {
   return noteBase > 0 ? noteBase : null
 }
 
+const getCrewBaseSalaryExclClothing = (crewMember: any): number => {
+  const baseRaw =
+    crewMember?.basis_salaris ??
+    crewMember?.basissalaris ??
+    crewMember?.basisSalaris ??
+    crewMember?.salaris ??
+    crewMember?.salary ??
+    null
+  return parseMoney(baseRaw)
+}
+
+const getCrewClothingAllowance = (crewMember: any): number => {
+  const clothingRaw =
+    crewMember?.kleding_geld ??
+    crewMember?.kledinggeld ??
+    crewMember?.kledingGeld ??
+    crewMember?.clothing_allowance ??
+    null
+  return parseMoney(clothingRaw)
+}
+
+const normalizeBaseSalaryInclClothingForCrew = (
+  baseSalary: number | null | undefined,
+  crewMember: any
+): number | null => {
+  if (typeof baseSalary !== "number" || !Number.isFinite(baseSalary)) return null
+  const clothing = getCrewClothingAllowance(crewMember)
+  const crewBaseExcl = getCrewBaseSalaryExclClothing(crewMember)
+  if (clothing <= 0 || crewBaseExcl <= 0) return baseSalary
+  if (Math.abs(baseSalary - crewBaseExcl) < 0.01) {
+    return baseSalary + clothing
+  }
+  return baseSalary
+}
+
 const getContractTravelEnabled = (crewMember: any): boolean => {
   const notesText = Array.isArray(crewMember?.notes)
     ? crewMember.notes.join(" | ")
@@ -543,7 +578,10 @@ export default function LoonBemerkingenPage() {
             typeof previous?.raise_amount === "number"
               ? previous.raise_amount
               : (previousMeta?.raise_amount || 0)
-          const previousBaseSalary = typeof previous?.base_salary === "number" ? previous.base_salary : null
+          const previousBaseSalary = normalizeBaseSalaryInclClothingForCrew(
+            typeof previous?.base_salary === "number" ? previous.base_salary : null,
+            c
+          )
           const inheritedBaseSalary =
             previousBaseSalary !== null
               ? previousBaseSalary + (previousRaiseEnabled ? previousRaiseAmount : 0)
@@ -578,7 +616,10 @@ export default function LoonBemerkingenPage() {
             ),
             base_salary:
               typeof current?.base_salary === "number"
-                ? current.base_salary
+                ? (
+                    normalizeBaseSalaryInclClothingForCrew(current.base_salary, c) ??
+                    current.base_salary
+                  )
                 : (inheritedBaseSalary ?? contractBaseSalaryInclClothing),
             travel_allowance:
               typeof current?.travel_allowance === "boolean"
