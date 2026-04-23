@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, FileText, Printer, Ship } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
-import { useEffect, useState, type DragEvent, type MouseEvent } from "react"
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
 import {
   GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY,
@@ -67,6 +67,17 @@ type CloudShipCertificateState = {
 }
 
 type ShipParticularValueOverrides = Record<string, string>
+
+type LocalCertificateStateMeta = {
+  updatedAt: string
+  savedAt: string
+}
+
+type CloudParticularState = {
+  overrides: ShipParticularValueOverrides
+  classification: ClassificationEditableValues | null
+  updatedAt: string
+}
 
 const APOLLO_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
   lastClassInspection: "2025-07-09",
@@ -2959,6 +2970,9 @@ export default function ShipParticularsPage() {
   const [certificateDocuments, setCertificateDocuments] = useState<CertificateDocumentMap>({})
   const [dragOverCertificateIndex, setDragOverCertificateIndex] = useState<number | null>(null)
   const [uploadingCertificateIndex, setUploadingCertificateIndex] = useState<number | null>(null)
+  const [certificatesDirty, setCertificatesDirty] = useState(false)
+  const [certificatesSaving, setCertificatesSaving] = useState(false)
+  const [certificatesSaveMessage, setCertificatesSaveMessage] = useState("")
   const [certificateContextMenu, setCertificateContextMenu] = useState<CertificateContextMenuState>({
     visible: false,
     x: 0,
@@ -2978,6 +2992,8 @@ export default function ShipParticularsPage() {
   const [nieuwCertificaatWaarschuwing, setNieuwCertificaatWaarschuwing] = useState("1")
   const [nieuwCertificaatVoorAlleSchepen, setNieuwCertificaatVoorAlleSchepen] = useState("nee")
   const [nieuwCertificaatFout, setNieuwCertificaatFout] = useState("")
+  const certificatesSyncReadyRef = useRef(false)
+  const certificateAutosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const ship = ships.find((s: any) => String(s.id) === shipId)
   const supportedShipsForPrint = ships.filter((s: any) => Boolean(getShipParticularsConfigByName(s?.name || "")))
@@ -3109,6 +3125,36 @@ export default function ShipParticularsPage() {
       : ""
   const certificateStorageKey = getShipCertificateStorageKeyByName(ship?.name || "") || ""
   const printShipIdsToRender = printShipIds.length > 0 ? printShipIds : ship ? [String(ship.id)] : []
+  const certificateStateMetaStorageKey = certificateStorageKey
+    ? `${certificateStorageKey}_state_meta`
+    : ""
+
+  const loadCertificateStateMeta = (): LocalCertificateStateMeta => {
+    if (typeof window === "undefined" || !certificateStateMetaStorageKey) {
+      return { updatedAt: "", savedAt: "" }
+    }
+    try {
+      const raw = window.localStorage.getItem(certificateStateMetaStorageKey)
+      if (!raw) return { updatedAt: "", savedAt: "" }
+      const parsed = JSON.parse(raw)
+      return {
+        updatedAt: String(parsed?.updatedAt || ""),
+        savedAt: String(parsed?.savedAt || ""),
+      }
+    } catch {
+      return { updatedAt: "", savedAt: "" }
+    }
+  }
+
+  const persistCertificateStateMeta = (meta: LocalCertificateStateMeta) => {
+    if (typeof window === "undefined" || !certificateStateMetaStorageKey) return
+    window.localStorage.setItem(certificateStateMetaStorageKey, JSON.stringify(meta))
+  }
+
+  const parseTime = (iso: string) => {
+    const ms = new Date(String(iso || "")).getTime()
+    return Number.isFinite(ms) ? ms : 0
+  }
 
   const normalizeCertificateName = (value: string) => String(value || "").trim().toLowerCase()
   const normalizeShipStorageName = (value: string) =>
@@ -3157,22 +3203,24 @@ export default function ShipParticularsPage() {
     }
   }
 
-  const persistCertificateDocuments = (shipName: string, next: CertificateDocumentMap) => {
+  const persistCertificateDocuments = (
+    shipName: string,
+    next: CertificateDocumentMap,
+    options?: { markDirty?: boolean }
+  ) => {
     if (typeof window === "undefined") return
+    const shouldMarkDirty = options?.markDirty !== false
     const storageKey = getCertificateDocumentStorageKey(shipName)
     window.localStorage.setItem(storageKey, JSON.stringify(next))
-    const certificateRaw = certificateStorageKey ? window.localStorage.getItem(certificateStorageKey) : null
-    const certificates = (() => {
-      if (!certificateRaw) return certificatenEditable
-      try {
-        const parsed = JSON.parse(certificateRaw)
-        return Array.isArray(parsed) ? (parsed as EditableShipCertificate[]) : certificatenEditable
-      } catch {
-        return certificatenEditable
-      }
-    })()
-    const removed = loadRemovedCertificateKeys(shipName)
-    void saveCloudShipState(shipName, certificates, next, removed)
+    const meta = loadCertificateStateMeta()
+    persistCertificateStateMeta({
+      ...meta,
+      updatedAt: new Date().toISOString(),
+    })
+    if (shouldMarkDirty) {
+      setCertificatesDirty(true)
+      setCertificatesSaveMessage("")
+    }
   }
 
   const loadRemovedCertificateKeys = (shipName: string): string[] => {
@@ -3191,22 +3239,24 @@ export default function ShipParticularsPage() {
     }
   }
 
-  const persistRemovedCertificateKeys = (shipName: string, removedKeys: string[]) => {
+  const persistRemovedCertificateKeys = (
+    shipName: string,
+    removedKeys: string[],
+    options?: { markDirty?: boolean }
+  ) => {
     if (typeof window === "undefined") return
+    const shouldMarkDirty = options?.markDirty !== false
     const storageKey = getRemovedCertificatesStorageKey(shipName)
     window.localStorage.setItem(storageKey, JSON.stringify(removedKeys))
-    const certificateRaw = certificateStorageKey ? window.localStorage.getItem(certificateStorageKey) : null
-    const certificates = (() => {
-      if (!certificateRaw) return certificatenEditable
-      try {
-        const parsed = JSON.parse(certificateRaw)
-        return Array.isArray(parsed) ? (parsed as EditableShipCertificate[]) : certificatenEditable
-      } catch {
-        return certificatenEditable
-      }
-    })()
-    const docs = loadCertificateDocuments(shipName)
-    void saveCloudShipState(shipName, certificates, docs, removedKeys)
+    const meta = loadCertificateStateMeta()
+    persistCertificateStateMeta({
+      ...meta,
+      updatedAt: new Date().toISOString(),
+    })
+    if (shouldMarkDirty) {
+      setCertificatesDirty(true)
+      setCertificatesSaveMessage("")
+    }
   }
 
   const getCloudShipStatePath = (shipName: string) =>
@@ -3275,19 +3325,39 @@ export default function ShipParticularsPage() {
     })
   }
 
-  const loadCloudParticularOverrides = async (shipName: string): Promise<ShipParticularValueOverrides | null> => {
+  const loadCloudParticularState = async (shipName: string): Promise<CloudParticularState | null> => {
     const parsed = await downloadJsonFromStorage(getCloudParticularOverridesPath(shipName))
     if (!parsed || typeof parsed !== "object") return null
-    if (!parsed.overrides || typeof parsed.overrides !== "object") return null
-    return parsed.overrides as ShipParticularValueOverrides
+    const rawOverrides = parsed.overrides
+    const overrides =
+      rawOverrides && typeof rawOverrides === "object"
+        ? (rawOverrides as ShipParticularValueOverrides)
+        : {}
+    const rawClassification = parsed.classification
+    const classification =
+      rawClassification && typeof rawClassification === "object"
+        ? ({
+            lastClassInspection: String((rawClassification as any).lastClassInspection || ""),
+            nextClassInspection: String((rawClassification as any).nextClassInspection || ""),
+            lastDryDock: String((rawClassification as any).lastDryDock || ""),
+            lastBoxCoolerInspection: String((rawClassification as any).lastBoxCoolerInspection || ""),
+          } as ClassificationEditableValues)
+        : null
+    return {
+      overrides,
+      classification,
+      updatedAt: String(parsed.updatedAt || ""),
+    }
   }
 
-  const saveCloudParticularOverrides = async (
+  const saveCloudParticularState = async (
     shipName: string,
-    overrides: ShipParticularValueOverrides
+    overrides: ShipParticularValueOverrides,
+    classification: ClassificationEditableValues
   ) => {
     await uploadJsonToStorage(getCloudParticularOverridesPath(shipName), {
       overrides,
+      classification,
       updatedAt: new Date().toISOString(),
     })
   }
@@ -3350,10 +3420,34 @@ export default function ShipParticularsPage() {
     setCertificatenEditable(next)
     if (typeof window !== "undefined" && certificateStorageKey) {
       window.localStorage.setItem(certificateStorageKey, JSON.stringify(next))
+      const meta = loadCertificateStateMeta()
+      persistCertificateStateMeta({
+        ...meta,
+        updatedAt: new Date().toISOString(),
+      })
     }
-    if (ship?.name) {
+    setCertificatesDirty(true)
+    setCertificatesSaveMessage("")
+  }
+
+  const saveCertificatesNow = async () => {
+    if (!ship?.name) return
+    setCertificatesSaving(true)
+    setCertificatesSaveMessage("")
+    try {
       const removed = loadRemovedCertificateKeys(ship.name)
-      void saveCloudShipState(ship.name, next, certificateDocuments, removed)
+      await saveCloudShipState(ship.name, certificatenEditable, certificateDocuments, removed)
+      const meta = loadCertificateStateMeta()
+      persistCertificateStateMeta({
+        ...meta,
+        savedAt: new Date().toISOString(),
+      })
+      setCertificatesDirty(false)
+      setCertificatesSaveMessage("Opgeslagen")
+    } catch (error: any) {
+      setCertificatesSaveMessage(`Opslaan mislukt: ${error?.message || "onbekende fout"}`)
+    } finally {
+      setCertificatesSaving(false)
     }
   }
 
@@ -3376,6 +3470,7 @@ export default function ShipParticularsPage() {
   useEffect(() => {
     if (typeof window === "undefined" || !ship?.name) return
     let cancelled = false
+    certificatesSyncReadyRef.current = false
 
     const syncCertificateState = async () => {
       // 1) Global custom certificates from cloud -> local cache
@@ -3411,40 +3506,64 @@ export default function ShipParticularsPage() {
 
       const localRemoved = loadRemovedCertificateKeys(ship.name)
       const localDocuments = loadCertificateDocuments(ship.name)
+      const localMeta = loadCertificateStateMeta()
+      const localUpdatedAtMs = parseTime(localMeta.updatedAt)
+      const localSavedAtMs = parseTime(localMeta.savedAt)
+      const cloudUpdatedAtMs = parseTime(cloudShipState?.updatedAt || "")
+      const hasUnsavedLocalChanges = localUpdatedAtMs > localSavedAtMs
+      const useLocalAsSource =
+        Array.isArray(localStoredCertificates) &&
+        localStoredCertificates.length > 0 &&
+        localUpdatedAtMs > 0 &&
+        localUpdatedAtMs >= cloudUpdatedAtMs
 
-      if (cloudShipState) {
+      if (cloudShipState && !useLocalAsSource) {
         if (certificateStorageKey) {
           window.localStorage.setItem(certificateStorageKey, JSON.stringify(cloudShipState.certificates || []))
         }
-        persistRemovedCertificateKeys(ship.name, cloudShipState.removedCertificateKeys || [])
-        persistCertificateDocuments(ship.name, cloudShipState.documents || {})
+        persistRemovedCertificateKeys(ship.name, cloudShipState.removedCertificateKeys || [], {
+          markDirty: false,
+        })
+        persistCertificateDocuments(ship.name, cloudShipState.documents || {}, { markDirty: false })
         setCertificateDocuments(cloudShipState.documents || {})
+        persistCertificateStateMeta({
+          updatedAt: cloudShipState.updatedAt || "",
+          savedAt: cloudShipState.updatedAt || "",
+        })
+        setCertificatesDirty(false)
       } else {
         const certificatesToMigrate = Array.isArray(localStoredCertificates) ? localStoredCertificates : []
-        void saveCloudShipState(ship.name, certificatesToMigrate, localDocuments, localRemoved)
+        setCertificateDocuments(localDocuments)
+        setCertificatesDirty(
+          hasUnsavedLocalChanges || useLocalAsSource || certificatesToMigrate.length > 0 || localRemoved.length > 0
+        )
       }
 
       const defaults = getShipCertificateDefaultsForClient(ship.name)
       const effectiveRemoved = new Set(
-        cloudShipState ? cloudShipState.removedCertificateKeys || [] : localRemoved
+        cloudShipState && !useLocalAsSource
+          ? cloudShipState.removedCertificateKeys || []
+          : localRemoved
       )
       const filteredDefaults = defaults.filter(
         (item) => !effectiveRemoved.has(normalizeCertificateName(item.naam))
       )
 
-      const effectiveStoredCertificates = cloudShipState
+      const effectiveStoredCertificates = cloudShipState && !useLocalAsSource
         ? cloudShipState.certificates || []
         : localStoredCertificates
 
       const merged = mergeShipCertificatesWithStored(ship.name, effectiveStoredCertificates, filteredDefaults)
       if (!cancelled) {
         setCertificatenEditable(merged)
+        certificatesSyncReadyRef.current = true
       }
     }
 
     void syncCertificateState()
     return () => {
       cancelled = true
+      certificatesSyncReadyRef.current = false
     }
   }, [certificateStorageKey, ship?.name])
 
@@ -3466,18 +3585,43 @@ export default function ShipParticularsPage() {
 
     let cancelled = false
     const syncParticularOverrides = async () => {
-      const cloudOverrides = await loadCloudParticularOverrides(ship.name)
+      const cloudState = await loadCloudParticularState(ship.name)
       if (cancelled) return
-      if (cloudOverrides) {
-        setParticularValueOverrides(cloudOverrides)
-        persistLocalParticularOverrides(ship.name, cloudOverrides)
+      if (cloudState) {
+        setParticularValueOverrides(cloudState.overrides || {})
+        persistLocalParticularOverrides(ship.name, cloudState.overrides || {})
+        if (typeof window !== "undefined" && classificationStorageKey) {
+          const cloudClassification = cloudState.classification
+          if (cloudClassification) {
+            const mergedClassification = {
+              ...classificationDefault,
+              ...cloudClassification,
+            }
+            setClassificationEditable(mergedClassification)
+            window.localStorage.setItem(classificationStorageKey, JSON.stringify(mergedClassification))
+          }
+        }
         return
       }
 
       const localOverrides = loadLocalParticularOverrides(ship.name)
       setParticularValueOverrides(localOverrides)
-      if (Object.keys(localOverrides).length > 0) {
-        void saveCloudParticularOverrides(ship.name, localOverrides)
+      let localClassification = classificationDefault
+      if (typeof window !== "undefined" && classificationStorageKey) {
+        try {
+          const storedClassification = window.localStorage.getItem(classificationStorageKey)
+          if (storedClassification) {
+            localClassification = {
+              ...classificationDefault,
+              ...JSON.parse(storedClassification),
+            }
+          }
+        } catch {
+          localClassification = classificationDefault
+        }
+      }
+      if (Object.keys(localOverrides).length > 0 || Object.values(localClassification).some(Boolean)) {
+        void saveCloudParticularState(ship.name, localOverrides, localClassification)
       }
     }
 
@@ -3485,7 +3629,7 @@ export default function ShipParticularsPage() {
     return () => {
       cancelled = true
     }
-  }, [ship?.name])
+  }, [ship?.name, classificationDefault, classificationStorageKey])
 
   useEffect(() => {
     const requestedTab = String(searchParams?.get("tab") || "").toLowerCase()
@@ -3493,6 +3637,40 @@ export default function ShipParticularsPage() {
       setActiveTab("certificaten")
     }
   }, [searchParams])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !certificatesDirty) return
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+    }
+  }, [certificatesDirty])
+
+  useEffect(() => {
+    if (!ship?.name || !certificatesDirty || certificatesSaving || !certificatesSyncReadyRef.current) return
+    if (certificateAutosaveTimeoutRef.current) {
+      clearTimeout(certificateAutosaveTimeoutRef.current)
+    }
+    certificateAutosaveTimeoutRef.current = setTimeout(() => {
+      void saveCertificatesNow()
+    }, 900)
+    return () => {
+      if (certificateAutosaveTimeoutRef.current) {
+        clearTimeout(certificateAutosaveTimeoutRef.current)
+        certificateAutosaveTimeoutRef.current = null
+      }
+    }
+  }, [
+    ship?.name,
+    certificatesDirty,
+    certificatesSaving,
+    certificatenEditable,
+    certificateDocuments,
+  ])
 
   useEffect(() => {
     const closeContextMenu = () =>
@@ -3522,6 +3700,9 @@ export default function ShipParticularsPage() {
     if (typeof window !== "undefined" && classificationStorageKey) {
       window.localStorage.setItem(classificationStorageKey, JSON.stringify(next))
     }
+    if (ship?.name) {
+      void saveCloudParticularState(ship.name, particularValueOverrides, next)
+    }
   }
 
   const beginEditParticularValue = (sectionTitle: string, label: string, currentValue: string) => {
@@ -3539,7 +3720,7 @@ export default function ShipParticularsPage() {
     }
     setParticularValueOverrides(nextOverrides)
     persistLocalParticularOverrides(ship.name, nextOverrides)
-    void saveCloudParticularOverrides(ship.name, nextOverrides)
+    void saveCloudParticularState(ship.name, nextOverrides, classificationEditable)
     setEditingParticularKey(null)
   }
 
@@ -3735,7 +3916,7 @@ export default function ShipParticularsPage() {
     }
   }
 
-  const voegNieuwCertificaatToe = () => {
+  const voegNieuwCertificaatToe = async () => {
     const naam = nieuwCertificaatNaam.trim()
     if (!naam) {
       setNieuwCertificaatFout("Vul een certificaatnaam in.")
@@ -3774,7 +3955,14 @@ export default function ShipParticularsPage() {
       const globalExisting = getGlobalCustomCertificatesForClient()
       const nextGlobal = upsertCertificateByName(globalExisting, nieuwCertificaat)
       window.localStorage.setItem(GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY, JSON.stringify(nextGlobal))
-      void saveCloudGlobalCustomCertificates(nextGlobal)
+      try {
+        await saveCloudGlobalCustomCertificates(nextGlobal)
+      } catch (error: any) {
+        setNieuwCertificaatFout(
+          `Opslaan globaal certificaat mislukt: ${error?.message || "onbekende fout"}`
+        )
+        return
+      }
 
       const defaults = getShipCertificateDefaultsForClient(ship?.name || "")
       if (!certificateStorageKey) {
@@ -4104,7 +4292,13 @@ export default function ShipParticularsPage() {
                         </div>
                         {nieuwCertificaatFout && <div className="text-xs font-medium text-red-700">{nieuwCertificaatFout}</div>}
                         <div>
-                          <Button type="button" size="sm" onClick={voegNieuwCertificaatToe}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              void voegNieuwCertificaatToe()
+                            }}
+                          >
                             Certificaat toevoegen
                           </Button>
                         </div>
@@ -4207,6 +4401,36 @@ export default function ShipParticularsPage() {
                         </div>
                       )
                     })}
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                      <div className="text-xs text-gray-700">
+                        {certificatesDirty
+                          ? "Er zijn niet-opgeslagen wijzigingen in certificaten."
+                          : "Alle certificaatwijzigingen zijn opgeslagen."}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {certificatesSaveMessage && (
+                          <div
+                            className={`text-xs ${
+                              certificatesSaveMessage.toLowerCase().includes("mislukt")
+                                ? "text-red-700"
+                                : "text-green-700"
+                            }`}
+                          >
+                            {certificatesSaveMessage}
+                          </div>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={certificatesSaving || !certificatesDirty}
+                          onClick={() => {
+                            void saveCertificatesNow()
+                          }}
+                        >
+                          {certificatesSaving ? "Opslaan..." : "Opslaan wijzigingen"}
+                        </Button>
+                      </div>
+                    </div>
                     {certificateContextMenu.visible && certificateContextMenu.certificateIndex !== null && (
                       <div
                         className="fixed z-50 min-w-[220px] rounded-md border border-gray-200 bg-white shadow-lg"
