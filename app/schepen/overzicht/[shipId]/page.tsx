@@ -3305,11 +3305,14 @@ export default function ShipParticularsPage() {
 
   const uploadJsonToStorage = async (path: string, payload: unknown) => {
     const blob = new Blob([JSON.stringify(payload)], { type: "application/json" })
-    await supabase.storage.from(CERTIFICATE_DOCUMENT_BUCKET).upload(path, blob, {
+    const { error } = await supabase.storage.from(CERTIFICATE_DOCUMENT_BUCKET).upload(path, blob, {
       upsert: true,
       cacheControl: "0",
       contentType: "application/json",
     })
+    if (error) {
+      throw new Error(error.message || "Kon bestand niet opslaan in cloudopslag.")
+    }
   }
 
   const loadCloudGlobalCustomCertificates = async (): Promise<EditableShipCertificate[] | null> => {
@@ -3445,7 +3448,13 @@ export default function ShipParticularsPage() {
       setCertificatesDirty(false)
       setCertificatesSaveMessage("Opgeslagen")
     } catch (error: any) {
-      setCertificatesSaveMessage(`Opslaan mislukt: ${error?.message || "onbekende fout"}`)
+      const rawMessage = String(error?.message || "onbekende fout")
+      const isRlsError = rawMessage.toLowerCase().includes("row-level security")
+      setCertificatesSaveMessage(
+        isRlsError
+          ? "Opslaan mislukt: Supabase opslagrechten (RLS) blokkeren cloud-sync."
+          : `Opslaan mislukt: ${rawMessage}`
+      )
     } finally {
       setCertificatesSaving(false)
     }
