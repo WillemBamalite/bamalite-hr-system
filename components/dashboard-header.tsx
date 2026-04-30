@@ -16,7 +16,6 @@ import { CalendarDialog } from "@/components/agenda/calendar-dialog"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
-import { getAllShipCertificateNotificationsForClient } from "@/utils/ship-certificates"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -105,20 +104,6 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   }
   const notificationCount = (() => {
     if (dataLoading) return 0
-    const userEmailForNotifications = String(user?.email || "").toLowerCase()
-    const showShipCertificateNotifications =
-      userEmailForNotifications === "jos@bamalite.com" || userEmailForNotifications === "willem@bamalite.com"
-    const shipCertificateAlerts = showShipCertificateNotifications
-      ? getAllShipCertificateNotificationsForClient().map((n) => ({
-          id: n.id,
-          kind: "ship_certificate_paper" as const,
-          severity: n.severity,
-          title: n.title,
-          description: n.description,
-          href: n.href,
-          meta: n.meta,
-        }))
-      : []
     try {
       return buildDashboardNotifications({
         crew: crew || [],
@@ -127,7 +112,6 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         sickLeave: sickLeave || [],
         visits: visits || [],
         getShipsNotVisitedInDays,
-        shipCertificateAlerts,
       }).length
     } catch {
       return 0
