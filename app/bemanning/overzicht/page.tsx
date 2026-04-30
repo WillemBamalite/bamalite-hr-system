@@ -149,6 +149,12 @@ export default function CrewOverviewPage() {
           <h1 className="text-3xl font-bold text-gray-900">{t('crew')} {t('overview')}</h1>
         </div>
         <div className="flex gap-2">
+          <Link href="/bemanning/dienstjubilea">
+            <Button variant="outline">
+              <span className="mr-2">⭐</span>
+              Dienstjubilea
+            </Button>
+          </Link>
           <Link href="/bemanning/nieuw">
             <Button className="bg-green-600 hover:bg-green-700">
               <span className="mr-2">➕</span>

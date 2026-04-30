@@ -9,6 +9,10 @@
       "schedule": "0 8 * * *"
     },
     {
+      "path": "/api/daily-notifications-email",
+      "schedule": "30 8 * * *"
+    },
+    {
       "path": "/api/agenda-sync",
       "schedule": "*/10 * * * *"
     },
