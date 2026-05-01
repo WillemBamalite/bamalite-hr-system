@@ -9,8 +9,8 @@
       "schedule": "0 8 * * *"
     },
     {
-      "path": "/api/daily-notifications-email",
-      "schedule": "30 8 * * *"
+      "path": "/api/notifications/morning-bundle",
+      "schedule": "30 7 * * *"
     },
     {
       "path": "/api/agenda-sync",

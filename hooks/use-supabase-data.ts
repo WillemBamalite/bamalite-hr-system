@@ -1,5 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { authenticatedFetch } from '@/lib/authenticated-fetch'
+
+async function notifyTaskEvent(payload: {
+  type: 'task_created' | 'task_updated' | 'task_completed'
+  title?: string
+  body?: string
+  url?: string
+  eventKey?: string
+}) {
+  try {
+    await authenticatedFetch('/api/notifications/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  } catch (err) {
+    console.error('notifyTaskEvent error:', err)
+  }
+}
 
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
@@ -2348,6 +2367,18 @@ export function useSupabaseData() {
         throw error
       }
       await loadData()
+
+      const taskTitle = String(taskData?.title || data?.title || 'Nieuwe taak')
+      const priority = String(taskData?.priority || data?.priority || '').toLowerCase()
+      const isUrgent = priority === 'urgent' || priority === 'high'
+      void notifyTaskEvent({
+        type: 'task_created',
+        title: isUrgent ? 'URGENT taak toegevoegd' : 'Nieuwe taak toegevoegd',
+        body: taskTitle,
+        url: '/taken',
+        eventKey: `task_created:${data?.id || Date.now()}`,
+      })
+
       return data
     } catch (err: any) {
       console.error('Error adding task:', err)
@@ -2363,9 +2394,22 @@ export function useSupabaseData() {
         .from('tasks')
         .update(updates)
         .eq('id', taskId)
-      
+
       if (error) throw error
       await loadData()
+
+      const titleHint = updates?.title ? String(updates.title) : ''
+      const statusHint = updates?.status ? String(updates.status) : ''
+      const priorityHint = updates?.priority ? String(updates.priority) : ''
+      const bits = [titleHint, statusHint && `status: ${statusHint}`, priorityHint && `prioriteit: ${priorityHint}`]
+        .filter(Boolean)
+      void notifyTaskEvent({
+        type: 'task_updated',
+        title: 'Taak bijgewerkt',
+        body: bits.join(' • ') || 'Taakgegevens zijn aangepast.',
+        url: '/taken',
+        eventKey: `task_updated:${taskId}:${Date.now()}`,
+      })
     } catch (err) {
       console.error('Error updating task:', err)
       throw err
@@ -2430,6 +2474,14 @@ export function useSupabaseData() {
       }
 
       await loadData()
+
+      void notifyTaskEvent({
+        type: 'task_completed',
+        title: 'Taak afgerond',
+        body: 'Een taak is gemarkeerd als voltooid.',
+        url: '/taken',
+        eventKey: `task_completed:${taskId}:${Date.now()}`,
+      })
     } catch (err) {
       console.error('Error completing task:', err)
       throw err

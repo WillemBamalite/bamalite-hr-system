@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
+import { PushToggle } from "@/components/notifications/push-toggle"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
@@ -217,6 +218,10 @@ export default function MeldingenPage() {
           <div className="flex items-center gap-2">
             <DashboardButton />
           </div>
+        </div>
+
+        <div className="mb-6">
+          <PushToggle />
         </div>
 
         {loading && (

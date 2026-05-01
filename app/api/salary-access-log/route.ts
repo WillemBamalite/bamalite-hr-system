@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { Resend } from "resend"
 import { requireApiAccess } from "@/lib/api-security"
+import { sendPushToRecipients, shouldDispatch } from "@/lib/notifications/push-server"
 
 function getBearerToken(request: NextRequest): string | null {
   const auth = request.headers.get("authorization") || ""
@@ -107,6 +108,20 @@ export async function POST(request: NextRequest) {
         { success: false, error: sendError.message || "Resend verzenden mislukt" },
         { status: 500 }
       )
+    }
+
+    const eventKey = `salary-login:${callerEmail}:${now.toISOString().slice(0, 16)}`
+    if (shouldDispatch(eventKey)) {
+      try {
+        await sendPushToRecipients({
+          title: "Salarislijst login",
+          body: `${displayName} is ingelogd in de salarislijst (${when}).`,
+          url: "/meldingen",
+          eventKey,
+        })
+      } catch (pushErr) {
+        console.error("Push salary login mislukt:", pushErr)
+      }
     }
 
     return NextResponse.json({ success: true })
