@@ -252,3 +252,12 @@ body {
     margin: 1cm;
   }
 } 
+
+/* Newsletter page should render without the global app header */
+body.newsletter-page-mode .dashboard-header {
+  display: none !important;
+}
+
+body.newsletter-page-mode .app-container {
+  min-width: 0 !important;
+}

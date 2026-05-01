@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, UserPlus, Ship, AlertTriangle, Calendar } from "lucide-react"
+import { Plus, UserPlus, Ship, Newspaper } from "lucide-react"
 import Link from "next/link"
 import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -28,6 +28,14 @@ export function CrewQuickActions() {
       description: t('addANewShip'),
       icon: Ship,
       href: "/schepen/nieuw",
+      color: "bg-blue-500 hover:bg-blue-600",
+      textColor: "text-white",
+    },
+    {
+      title: "Maandelijkse nieuwsbrief",
+      description: "Overzicht per maand voor de schepen",
+      icon: Newspaper,
+      href: "/nieuwsbrief/maandelijks",
       color: "bg-blue-500 hover:bg-blue-600",
       textColor: "text-white",
     },
