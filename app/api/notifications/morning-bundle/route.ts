@@ -189,7 +189,6 @@ export async function GET(request: NextRequest) {
       taken: (byKind["task"] || []).filter((t) => t.severity === "danger").length,
       jarigen: (byKind["birthday"] || []).length,
       jubilea: (byKind["anniversary"] || []).length,
-      bezoeken: (byKind["ship_visit"] || []).length,
       luxembourg: (byKind["luxembourg_pending_boarding"] || []).length,
       proeftijd: (byKind["probation"] || []).length,
     }
@@ -200,7 +199,6 @@ export async function GET(request: NextRequest) {
     if (counts.ziekbriefje) pushBits.push(`${counts.ziekbriefje} ziekbriefje${counts.ziekbriefje === 1 ? "" : "s"} verloopt vandaag/binnenkort`)
     if (counts.jarigen) pushBits.push(`${counts.jarigen} jarige${counts.jarigen === 1 ? "" : "n"}`)
     if (counts.jubilea) pushBits.push(`${counts.jubilea} jubileum${counts.jubilea === 1 ? "" : "s"}`)
-    if (counts.bezoeken) pushBits.push(`${counts.bezoeken} scheepsbezoek${counts.bezoeken === 1 ? "" : "en"}`)
     if (counts.luxembourg) pushBits.push(`${counts.luxembourg} nog in te schrijven`)
 
     let pushResult: any = { skipped: true }

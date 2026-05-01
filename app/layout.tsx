@@ -15,6 +15,7 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Bemanningslijst',
   description: 'Bemanningslijst management systeem - Updated 2025',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: '/bemanningslijst-icon.png.png',
     shortcut: '/bemanningslijst-icon.png.png',
