@@ -149,3 +149,18 @@ export async function sendTestPush(): Promise<{ success: boolean; error?: string
   }
   return { success: true }
 }
+
+export async function runMorningBundleNow(): Promise<{ success: boolean; error?: string }> {
+  const token = await getAuthToken()
+  const resp = await fetch("/api/notifications/morning-bundle", {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "")
+    return { success: false, error: `Server fout: ${text || resp.status}` }
+  }
+  return { success: true }
+}

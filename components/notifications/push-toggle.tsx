@@ -9,6 +9,7 @@ import {
   getCurrentPushPermission,
   getCurrentSubscription,
   isPushSupported,
+  runMorningBundleNow,
   sendTestPush,
 } from "@/lib/notifications/push-client"
 
@@ -75,6 +76,18 @@ export function PushToggle() {
     setBusy(false)
   }
 
+  const handleMorningTest = async () => {
+    setBusy(true)
+    setMessage("")
+    const res = await runMorningBundleNow()
+    setMessage(
+      res.success
+        ? "Ochtendbundel gestart. In testmodus gaat push + mail alleen naar jou."
+        : res.error || "Kon ochtendbundel niet starten."
+    )
+    setBusy(false)
+  }
+
   return (
     <div className="rounded-md border bg-white p-4">
       <div className="flex items-start gap-3">
@@ -112,6 +125,9 @@ export function PushToggle() {
               <>
                 <Button onClick={handleTest} disabled={busy} variant="outline">
                   <Send className="w-4 h-4 mr-2" /> Testmelding sturen
+                </Button>
+                <Button onClick={handleMorningTest} disabled={busy} variant="outline">
+                  <Send className="w-4 h-4 mr-2" /> Test ochtendmelding nu
                 </Button>
                 <Button onClick={handleDisable} disabled={busy} variant="outline">
                   <BellOff className="w-4 h-4 mr-2" /> Uitzetten
