@@ -8,7 +8,7 @@
  *
  * Schakelaar uit (NOTIFICATIONS_TEST_MODE=false of weg):
  *  - PUSH_RECIPIENTS = willem + leo
- *  - DAILY_EMAIL_MANAGEMENT = willem + leo + bart + jos
+ *  - DAILY_EMAIL_MANAGEMENT = willem + leo + bart
  *  - DAILY_EMAIL_OFFICE = karina + tanja + lucie
  */
 
@@ -23,7 +23,6 @@ const PROD_DAILY_EMAIL_MANAGEMENT = [
   "willem@bamalite.com",
   "leo@bamalite.com",
   "bart@bamalite.com",
-  "jos@bamalite.com",
 ] as const
 
 const PROD_DAILY_EMAIL_OFFICE = [
