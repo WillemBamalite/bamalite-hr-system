@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, LogOut, User, Calendar, Globe, Printer, Clock, ListTodo, Search, ChevronDown, ChevronUp } from "lucide-react"
+import { Bell, LogOut, User, Calendar, Printer, ListTodo, Search, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
@@ -16,6 +16,7 @@ import { CalendarDialog } from "@/components/agenda/calendar-dialog"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
+import { HeaderPushSettings } from "@/components/notifications/header-push-settings"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -209,6 +210,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
             <div className="flex items-center gap-3 dashboard-header-actions-row">
+              <HeaderPushSettings />
               {role === "admin_full" && <Link href="/meldingen" className="relative">
                 <Button
                   variant="outline"

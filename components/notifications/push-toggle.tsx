@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { Bell, BellOff, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { supabase } from "@/lib/supabase"
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -13,23 +12,22 @@ import {
   runMorningBundleNow,
   sendTestPush,
 } from "@/lib/notifications/push-client"
+import { cn } from "@/lib/utils"
 
 type Status = "loading" | "unsupported" | "enabled" | "disabled" | "blocked"
 
-const PUSH_SETUP_EMAILS = new Set(["willem@bamalite.com", "leo@bamalite.com"])
+export type PushToggleVariant = "card" | "menu"
 
-const dismissKey = (email: string) => `push-setup-dismissed:${email.toLowerCase()}`
+type PushToggleProps = {
+  /** card = volledige kaart; menu = compact voor header-dropdown */
+  variant?: PushToggleVariant
+}
 
-export function PushToggle() {
+export function PushToggle({ variant = "card" }: PushToggleProps) {
   const [status, setStatus] = useState<Status>("loading")
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string>("")
   const [isTestMode, setIsTestMode] = useState(false)
-  const [viewerEmail, setViewerEmail] = useState<string>("")
-  const [dismissed, setDismissed] = useState(false)
-  const [gateReady, setGateReady] = useState(false)
-
-  const eligible = viewerEmail ? PUSH_SETUP_EMAILS.has(viewerEmail.toLowerCase()) : false
 
   const refreshStatus = async () => {
     if (!(await isPushSupported())) {
@@ -46,19 +44,6 @@ export function PushToggle() {
   }
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const { data } = await supabase.auth.getSession()
-        const email = String(data?.session?.user?.email || "").trim().toLowerCase()
-        setViewerEmail(email)
-        if (typeof window !== "undefined" && email) {
-          setDismissed(window.localStorage.getItem(dismissKey(email)) === "1")
-        }
-      } catch {
-        setViewerEmail("")
-      }
-      setGateReady(true)
-    })()
     refreshStatus()
     void (async () => {
       try {
@@ -71,12 +56,6 @@ export function PushToggle() {
     })()
   }, [])
 
-  const persistDismiss = () => {
-    if (!viewerEmail || typeof window === "undefined") return
-    window.localStorage.setItem(dismissKey(viewerEmail), "1")
-    setDismissed(true)
-  }
-
   const handleEnable = async () => {
     setBusy(true)
     setMessage("")
@@ -85,7 +64,6 @@ export function PushToggle() {
       setMessage(res.error || "Kon push niet aanzetten.")
     } else {
       setMessage("Push aangezet voor dit apparaat.")
-      persistDismiss()
     }
     await refreshStatus()
     setBusy(false)
@@ -99,10 +77,6 @@ export function PushToggle() {
       setMessage(res.error || "Kon push niet uitschakelen.")
     } else {
       setMessage("Push uitgeschakeld op dit apparaat.")
-      if (typeof window !== "undefined" && viewerEmail) {
-        window.localStorage.removeItem(dismissKey(viewerEmail))
-        setDismissed(false)
-      }
     }
     await refreshStatus()
     setBusy(false)
@@ -132,74 +106,92 @@ export function PushToggle() {
     setBusy(false)
   }
 
-  if (!gateReady) return null
-  if (!eligible) return null
-  if (dismissed && !(isTestMode && status === "enabled")) return null
-  if (status === "enabled" && !isTestMode) return null
+  const isMenu = variant === "menu"
 
   return (
-    <div className="rounded-md border bg-white p-4">
-      <div className="flex items-start gap-3">
-        <Bell className="w-5 h-5 text-blue-700 mt-0.5" />
-        <div className="flex-1">
-          <div className="text-sm font-semibold text-gray-900">
+    <div
+      className={cn(
+        isMenu ? "border-0 bg-transparent p-0 shadow-none" : "rounded-md border bg-white p-4"
+      )}
+    >
+      <div className={cn("flex items-start gap-3", isMenu && "gap-2")}>
+        <Bell className={cn("text-blue-700 mt-0.5 shrink-0", isMenu ? "w-4 h-4" : "w-5 h-5")} />
+        <div className="flex-1 min-w-0">
+          <div
+            className={cn(
+              "font-semibold text-gray-900",
+              isMenu ? "text-xs" : "text-sm"
+            )}
+          >
             Pushmeldingen op dit apparaat
           </div>
-          <div className="text-xs text-gray-600 mt-1">
-            Schakel meldingen in om direct op je telefoon op de hoogte te blijven van
-            taken, salarislogins en het ochtenddagoverzicht. Werkt het beste vanuit
-            Chrome op Android of Safari op iPhone (eerst toevoegen aan beginscherm).
+          <div className={cn("text-gray-600 mt-1", isMenu ? "text-[11px] leading-snug" : "text-xs")}>
+            Schakel meldingen in om direct op je telefoon op de hoogte te blijven van taken,
+            salarislogins en het ochtenddagoverzicht. Werkt het beste vanuit Chrome op Android of
+            Safari op iPhone (eerst toevoegen aan beginscherm).
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className={cn("flex flex-wrap gap-2", isMenu ? "mt-2" : "mt-3")}>
             {status === "loading" && (
-              <span className="text-xs text-gray-500">Status laden...</span>
+              <span className={cn("text-gray-500", isMenu ? "text-[11px]" : "text-xs")}>
+                Status laden...
+              </span>
             )}
             {status === "unsupported" && (
-              <span className="text-xs text-gray-500">
+              <span className={cn("text-gray-500", isMenu ? "text-[11px]" : "text-xs")}>
                 Deze browser ondersteunt geen push.
               </span>
             )}
             {status === "blocked" && (
-              <span className="text-xs text-red-700">
+              <span className={cn("text-red-700", isMenu ? "text-[11px]" : "text-xs")}>
                 Toestemming geblokkeerd in browserinstellingen.
               </span>
             )}
             {status === "disabled" && (
-              <>
-                <Button onClick={handleEnable} disabled={busy} className="bg-blue-600 hover:bg-blue-700">
-                  <Bell className="w-4 h-4 mr-2" /> Pushmeldingen aanzetten
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => persistDismiss()}
-                  className="text-xs text-gray-600 underline px-2 py-2"
-                >
-                  Niet nu
-                </button>
-              </>
+              <Button
+                onClick={handleEnable}
+                disabled={busy}
+                size={isMenu ? "sm" : "default"}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Bell className={cn("mr-2", isMenu ? "w-3.5 h-3.5" : "w-4 h-4")} />
+                Pushmeldingen aanzetten
+              </Button>
             )}
             {status === "enabled" && (
               <>
                 {isTestMode && (
                   <>
-                    <Button onClick={handleTest} disabled={busy} variant="outline">
-                      <Send className="w-4 h-4 mr-2" /> Testmelding sturen
+                    <Button onClick={handleTest} disabled={busy} variant="outline" size={isMenu ? "sm" : "default"}>
+                      <Send className={cn("mr-2", isMenu ? "w-3.5 h-3.5" : "w-4 h-4")} />
+                      Testmelding sturen
                     </Button>
-                    <Button onClick={handleMorningTest} disabled={busy} variant="outline">
-                      <Send className="w-4 h-4 mr-2" /> Test ochtendmelding nu
+                    <Button
+                      onClick={handleMorningTest}
+                      disabled={busy}
+                      variant="outline"
+                      size={isMenu ? "sm" : "default"}
+                    >
+                      <Send className={cn("mr-2", isMenu ? "w-3.5 h-3.5" : "w-4 h-4")} />
+                      Test ochtendmelding nu
                     </Button>
                   </>
                 )}
-                <Button onClick={handleDisable} disabled={busy} variant="outline">
-                  <BellOff className="w-4 h-4 mr-2" /> Uitzetten
+                {!isTestMode && (
+                  <span className={cn("text-gray-600 self-center", isMenu ? "text-[11px]" : "text-xs")}>
+                    Push staat aan op dit apparaat.
+                  </span>
+                )}
+                <Button onClick={handleDisable} disabled={busy} variant="outline" size={isMenu ? "sm" : "default"}>
+                  <BellOff className={cn("mr-2", isMenu ? "w-3.5 h-3.5" : "w-4 h-4")} />
+                  Uitzetten
                 </Button>
               </>
             )}
           </div>
 
           {message && (
-            <div className="mt-2 text-xs text-gray-700">{message}</div>
+            <div className={cn("mt-2 text-gray-700", isMenu ? "text-[11px]" : "text-xs")}>{message}</div>
           )}
         </div>
       </div>
