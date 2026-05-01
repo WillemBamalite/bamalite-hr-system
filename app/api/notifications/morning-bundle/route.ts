@@ -12,6 +12,7 @@ import {
   getDailyEmailManagementRecipients,
   getDailyEmailOfficeRecipients,
   getPushRecipients,
+  isTestMode,
 } from "@/lib/notifications/recipients"
 
 const transporter = nodemailer.createTransport({
@@ -206,10 +207,13 @@ export async function GET(request: NextRequest) {
     const ymd = new Date().toISOString().slice(0, 10)
     const pushKey = `morning-bundle:${ymd}`
     if (pushBits.length > 0 && pushRecipients.length > 0 && shouldDispatch(pushKey, 6 * 60 * 60 * 1000)) {
+      const pushBody = isTestMode()
+        ? `DEMO ochtendmelding: ${pushBits.join(" • ")}.`
+        : pushBits.join(" • ")
       pushResult = await sendPushToRecipients(
         {
           title: "Dagoverzicht Bamalite HR",
-          body: pushBits.join(" • "),
+          body: pushBody,
           url: "/meldingen",
           eventKey: pushKey,
         },
@@ -223,7 +227,6 @@ export async function GET(request: NextRequest) {
       { label: "Urgente taken", items: (byKind["task"] || []).filter((t) => t.severity === "danger") },
       { label: "Verjaardagen vandaag", items: byKind["birthday"] || [] },
       { label: "Dienstjubilea", items: byKind["anniversary"] || [] },
-      { label: "Scheepsbezoeken", items: byKind["ship_visit"] || [] },
       { label: "Nog in te schrijven", items: byKind["luxembourg_pending_boarding"] || [] },
       { label: "Proeftijd", items: byKind["probation"] || [] },
     ]
