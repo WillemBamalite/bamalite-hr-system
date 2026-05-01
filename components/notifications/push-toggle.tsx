@@ -19,6 +19,7 @@ export function PushToggle() {
   const [status, setStatus] = useState<Status>("loading")
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string>("")
+  const [isTestMode, setIsTestMode] = useState(false)
 
   const refreshStatus = async () => {
     if (!(await isPushSupported())) {
@@ -36,6 +37,15 @@ export function PushToggle() {
 
   useEffect(() => {
     refreshStatus()
+    void (async () => {
+      try {
+        const resp = await fetch("/api/notifications/public-key")
+        const json = await resp.json().catch(() => ({}))
+        setIsTestMode(Boolean(json?.testMode))
+      } catch {
+        setIsTestMode(false)
+      }
+    })()
   }, [])
 
   const handleEnable = async () => {
@@ -123,12 +133,16 @@ export function PushToggle() {
             )}
             {status === "enabled" && (
               <>
-                <Button onClick={handleTest} disabled={busy} variant="outline">
-                  <Send className="w-4 h-4 mr-2" /> Testmelding sturen
-                </Button>
-                <Button onClick={handleMorningTest} disabled={busy} variant="outline">
-                  <Send className="w-4 h-4 mr-2" /> Test ochtendmelding nu
-                </Button>
+                {isTestMode && (
+                  <>
+                    <Button onClick={handleTest} disabled={busy} variant="outline">
+                      <Send className="w-4 h-4 mr-2" /> Testmelding sturen
+                    </Button>
+                    <Button onClick={handleMorningTest} disabled={busy} variant="outline">
+                      <Send className="w-4 h-4 mr-2" /> Test ochtendmelding nu
+                    </Button>
+                  </>
+                )}
                 <Button onClick={handleDisable} disabled={busy} variant="outline">
                   <BellOff className="w-4 h-4 mr-2" /> Uitzetten
                 </Button>
