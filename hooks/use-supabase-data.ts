@@ -20,6 +20,19 @@ async function notifyTaskEvent(payload: {
   }
 }
 
+async function getCurrentUserDisplayName(): Promise<string> {
+  try {
+    const { data } = await supabase.auth.getSession()
+    const email = String(data?.session?.user?.email || '').trim().toLowerCase()
+    if (!email) return 'Iemand'
+    const local = email.split('@')[0] || ''
+    if (!local) return 'Iemand'
+    return local.charAt(0).toUpperCase() + local.slice(1)
+  } catch {
+    return 'Iemand'
+  }
+}
+
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
 export function calculateWorkDaysVasteDienst(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -2399,14 +2412,13 @@ export function useSupabaseData() {
       await loadData()
 
       const titleHint = updates?.title ? String(updates.title) : ''
-      const statusHint = updates?.status ? String(updates.status) : ''
-      const priorityHint = updates?.priority ? String(updates.priority) : ''
-      const bits = [titleHint, statusHint && `status: ${statusHint}`, priorityHint && `prioriteit: ${priorityHint}`]
-        .filter(Boolean)
+      const actorName = await getCurrentUserDisplayName()
+      const baseText = `${actorName} heeft een statusupdate gedaan bij taak`
+      const bodyText = titleHint ? `${baseText}: ${titleHint}` : `${baseText}.`
       void notifyTaskEvent({
         type: 'task_updated',
-        title: 'Taak bijgewerkt',
-        body: bits.join(' • ') || 'Taakgegevens zijn aangepast.',
+        title: 'Statusupdate taak',
+        body: bodyText,
         url: '/taken',
         eventKey: `task_updated:${taskId}:${Date.now()}`,
       })

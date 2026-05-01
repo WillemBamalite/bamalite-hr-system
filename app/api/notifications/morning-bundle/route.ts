@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
       { label: "Nog in te schrijven", items: byKind["luxembourg_pending_boarding"] || [] },
       { label: "Proeftijd", items: byKind["probation"] || [] },
     ]
-    const mgmtHtml = buildEmailHtml("Dagoverzicht (management)", mgmtGroups, todayText)
+    const mgmtHtml = buildEmailHtml("Dagoverzicht", mgmtGroups, todayText)
     const mgmtTotal = mgmtGroups.reduce((acc, g) => acc + g.items.length, 0)
     const mgmtRecipients = getDailyEmailManagementRecipients()
 
@@ -274,7 +274,7 @@ export async function GET(request: NextRequest) {
       { label: "Verjaardagen vandaag", items: byKind["birthday"] || [] },
       { label: "Dienstjubilea", items: byKind["anniversary"] || [] },
     ]
-    const officeHtml = buildEmailHtml("Dagoverzicht (kantoor)", officeGroups, todayText)
+    const officeHtml = buildEmailHtml("Dagoverzicht", officeGroups, todayText)
     const officeTotal = officeGroups.reduce((acc, g) => acc + g.items.length, 0)
     const officeRecipients = getDailyEmailOfficeRecipients()
 
