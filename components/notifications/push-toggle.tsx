@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Bell, BellOff, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { supabase } from "@/lib/supabase"
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -15,11 +16,20 @@ import {
 
 type Status = "loading" | "unsupported" | "enabled" | "disabled" | "blocked"
 
+const PUSH_SETUP_EMAILS = new Set(["willem@bamalite.com", "leo@bamalite.com"])
+
+const dismissKey = (email: string) => `push-setup-dismissed:${email.toLowerCase()}`
+
 export function PushToggle() {
   const [status, setStatus] = useState<Status>("loading")
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string>("")
   const [isTestMode, setIsTestMode] = useState(false)
+  const [viewerEmail, setViewerEmail] = useState<string>("")
+  const [dismissed, setDismissed] = useState(false)
+  const [gateReady, setGateReady] = useState(false)
+
+  const eligible = viewerEmail ? PUSH_SETUP_EMAILS.has(viewerEmail.toLowerCase()) : false
 
   const refreshStatus = async () => {
     if (!(await isPushSupported())) {
@@ -36,6 +46,19 @@ export function PushToggle() {
   }
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        const email = String(data?.session?.user?.email || "").trim().toLowerCase()
+        setViewerEmail(email)
+        if (typeof window !== "undefined" && email) {
+          setDismissed(window.localStorage.getItem(dismissKey(email)) === "1")
+        }
+      } catch {
+        setViewerEmail("")
+      }
+      setGateReady(true)
+    })()
     refreshStatus()
     void (async () => {
       try {
@@ -48,6 +71,12 @@ export function PushToggle() {
     })()
   }, [])
 
+  const persistDismiss = () => {
+    if (!viewerEmail || typeof window === "undefined") return
+    window.localStorage.setItem(dismissKey(viewerEmail), "1")
+    setDismissed(true)
+  }
+
   const handleEnable = async () => {
     setBusy(true)
     setMessage("")
@@ -56,6 +85,7 @@ export function PushToggle() {
       setMessage(res.error || "Kon push niet aanzetten.")
     } else {
       setMessage("Push aangezet voor dit apparaat.")
+      persistDismiss()
     }
     await refreshStatus()
     setBusy(false)
@@ -69,6 +99,10 @@ export function PushToggle() {
       setMessage(res.error || "Kon push niet uitschakelen.")
     } else {
       setMessage("Push uitgeschakeld op dit apparaat.")
+      if (typeof window !== "undefined" && viewerEmail) {
+        window.localStorage.removeItem(dismissKey(viewerEmail))
+        setDismissed(false)
+      }
     }
     await refreshStatus()
     setBusy(false)
@@ -97,6 +131,11 @@ export function PushToggle() {
     )
     setBusy(false)
   }
+
+  if (!gateReady) return null
+  if (!eligible) return null
+  if (dismissed && !(isTestMode && status === "enabled")) return null
+  if (status === "enabled" && !isTestMode) return null
 
   return (
     <div className="rounded-md border bg-white p-4">
@@ -127,9 +166,18 @@ export function PushToggle() {
               </span>
             )}
             {status === "disabled" && (
-              <Button onClick={handleEnable} disabled={busy} className="bg-blue-600 hover:bg-blue-700">
-                <Bell className="w-4 h-4 mr-2" /> Pushmeldingen aanzetten
-              </Button>
+              <>
+                <Button onClick={handleEnable} disabled={busy} className="bg-blue-600 hover:bg-blue-700">
+                  <Bell className="w-4 h-4 mr-2" /> Pushmeldingen aanzetten
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => persistDismiss()}
+                  className="text-xs text-gray-600 underline px-2 py-2"
+                >
+                  Niet nu
+                </button>
+              </>
             )}
             {status === "enabled" && (
               <>
