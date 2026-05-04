@@ -10,11 +10,24 @@ async function notifyTaskEvent(payload: {
   eventKey?: string
 }) {
   try {
-    await authenticatedFetch('/api/notifications/dispatch', {
+    const res = await authenticatedFetch('/api/notifications/dispatch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.warn('notifyTaskEvent: dispatch niet ok', res.status, text)
+    } else {
+      const json = await res.json().catch(() => ({}))
+      const r = json?.result
+      if (r && typeof r.sent === 'number' && r.sent === 0 && typeof r.total === 'number') {
+        console.warn(
+          'notifyTaskEvent: push verstuurd naar 0 apparaten (geen actieve subscription voor willem/leo in DB?)',
+          r
+        )
+      }
+    }
   } catch (err) {
     console.error('notifyTaskEvent error:', err)
   }
