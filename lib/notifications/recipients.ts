@@ -1,23 +1,11 @@
 /**
- * Centrale lijst van ontvangers + testmodus voor notificaties.
+ * Centrale lijst van ontvangers + testmodus voor dagmail (ochtendbundel).
  *
- * Testmodus: zet env var NOTIFICATIONS_TEST_MODE=true.
- * In testmodus:
- *  - alle live push gaat naar TEST_USER (alleen die e-mail krijgt push)
- *  - alle e-mails gaan naar TEST_USER ipv echte groepen
- *
- * Schakelaar uit (NOTIFICATIONS_TEST_MODE=false of weg):
- *  - PUSH_RECIPIENTS = willem + leo
- *  - DAILY_EMAIL_MANAGEMENT = willem + leo + bart
- *  - DAILY_EMAIL_OFFICE = karina + tanja + lucie
+ * Testmodus: env NOTIFICATIONS_TEST_MODE=true → alle dagmail naar TEST_USER.
+ * Uit: management- en kantoorlijsten zoals hieronder.
  */
 
 export const TEST_USER = "willem@bamalite.com"
-
-const PROD_PUSH_RECIPIENTS = [
-  "willem@bamalite.com",
-  "leo@bamalite.com",
-] as const
 
 const PROD_DAILY_EMAIL_MANAGEMENT = [
   "willem@bamalite.com",
@@ -34,11 +22,6 @@ const PROD_DAILY_EMAIL_OFFICE = [
 export function isTestMode(): boolean {
   const value = (process.env.NOTIFICATIONS_TEST_MODE || "").toLowerCase().trim()
   return value === "true" || value === "1" || value === "yes"
-}
-
-export function getPushRecipients(): string[] {
-  if (isTestMode()) return [TEST_USER]
-  return [...PROD_PUSH_RECIPIENTS]
 }
 
 export function getDailyEmailManagementRecipients(): string[] {

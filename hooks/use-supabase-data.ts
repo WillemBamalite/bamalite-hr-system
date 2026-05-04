@@ -1,51 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { authenticatedFetch } from '@/lib/authenticated-fetch'
-
-async function notifyTaskEvent(payload: {
-  type: 'task_created' | 'task_updated' | 'task_completed'
-  title?: string
-  body?: string
-  url?: string
-  eventKey?: string
-}) {
-  try {
-    const res = await authenticatedFetch('/api/notifications/dispatch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      console.warn('notifyTaskEvent: dispatch niet ok', res.status, text)
-    } else {
-      const json = await res.json().catch(() => ({}))
-      const r = json?.result
-      if (r && typeof r.sent === 'number' && r.sent === 0 && typeof r.total === 'number') {
-        console.warn(
-          'notifyTaskEvent: push verstuurd naar 0 apparaten (geen actieve subscription voor willem/leo in DB?)',
-          r
-        )
-      }
-    }
-  } catch (err) {
-    console.error('notifyTaskEvent error:', err)
-  }
-}
-
-async function getCurrentUserDisplayName(): Promise<string> {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const email = String(data?.session?.user?.email || '').trim().toLowerCase()
-    if (!email) return 'Iemand'
-    const local = email.split('@')[0] || ''
-    if (!local) return 'Iemand'
-    return local.charAt(0).toUpperCase() + local.slice(1)
-  } catch {
-    return 'Iemand'
-  }
-}
-
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
 export function calculateWorkDaysVasteDienst(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -2394,17 +2348,6 @@ export function useSupabaseData() {
       }
       await loadData()
 
-      const taskTitle = String(taskData?.title || data?.title || 'Nieuwe taak')
-      const priority = String(taskData?.priority || data?.priority || '').toLowerCase()
-      const isUrgent = priority === 'urgent' || priority === 'high'
-      void notifyTaskEvent({
-        type: 'task_created',
-        title: isUrgent ? 'URGENT taak toegevoegd' : 'Nieuwe taak toegevoegd',
-        body: taskTitle,
-        url: '/taken',
-        eventKey: `task_created:${data?.id || Date.now()}`,
-      })
-
       return data
     } catch (err: any) {
       console.error('Error adding task:', err)
@@ -2424,17 +2367,6 @@ export function useSupabaseData() {
       if (error) throw error
       await loadData()
 
-      const titleHint = updates?.title ? String(updates.title) : ''
-      const actorName = await getCurrentUserDisplayName()
-      const baseText = `${actorName} heeft een statusupdate gedaan bij taak`
-      const bodyText = titleHint ? `${baseText}: ${titleHint}` : `${baseText}.`
-      void notifyTaskEvent({
-        type: 'task_updated',
-        title: 'Statusupdate taak',
-        body: bodyText,
-        url: '/taken',
-        eventKey: `task_updated:${taskId}:${Date.now()}`,
-      })
     } catch (err) {
       console.error('Error updating task:', err)
       throw err
@@ -2499,14 +2431,6 @@ export function useSupabaseData() {
       }
 
       await loadData()
-
-      void notifyTaskEvent({
-        type: 'task_completed',
-        title: 'Taak afgerond',
-        body: 'Een taak is gemarkeerd als voltooid.',
-        url: '/taken',
-        eventKey: `task_completed:${taskId}:${Date.now()}`,
-      })
     } catch (err) {
       console.error('Error completing task:', err)
       throw err

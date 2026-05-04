@@ -3,16 +3,10 @@ import nodemailer from "nodemailer"
 import { createServerSupabase } from "@/lib/supabase-server"
 import { requireApiAccess } from "@/lib/api-security"
 import { buildDashboardNotifications, type DashboardNotification } from "@/utils/dashboard-notifications"
-import {
-  sendPushToRecipients,
-  shouldDispatch,
-  logDispatch,
-} from "@/lib/notifications/push-server"
+import { logNotificationDispatch } from "@/lib/notifications/dispatch-log"
 import {
   getDailyEmailManagementRecipients,
   getDailyEmailOfficeRecipients,
-  getPushRecipients,
-  isTestMode,
 } from "@/lib/notifications/recipients"
 
 const transporter = nodemailer.createTransport({
@@ -22,27 +16,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_APP_PASSWORD,
   },
 })
-
-const kindLabel = (kind: string) => {
-  switch (kind) {
-    case "birthday":
-      return "Verjaardagen"
-    case "probation":
-      return "Proeftijd"
-    case "task":
-      return "Taken"
-    case "ship_visit":
-      return "Scheepsbezoeken"
-    case "certificate_expiring":
-      return "Ziektebriefjes"
-    case "anniversary":
-      return "Dienstjubilea"
-    case "luxembourg_pending_boarding":
-      return "Nieuw personeel"
-    default:
-      return "Overig"
-  }
-}
 
 const severityLabel = (severity: string) => {
   switch (severity) {
@@ -177,7 +150,6 @@ export async function GET(request: NextRequest) {
 
     const todayText = new Date().toLocaleDateString("nl-NL")
 
-    // Groepering per kind voor flexibele samenstelling per ontvangergroep
     const byKind: Record<string, DashboardNotification[]> = {}
     notifications.forEach((n) => {
       const k = n.kind
@@ -185,42 +157,9 @@ export async function GET(request: NextRequest) {
       byKind[k].push(n)
     })
 
-    const counts = {
-      ziekbriefje: (byKind["certificate_expiring"] || []).length,
-      taken: (byKind["task"] || []).filter((t) => t.severity === "danger").length,
-      jarigen: (byKind["birthday"] || []).length,
-      jubilea: (byKind["anniversary"] || []).length,
-      luxembourg: (byKind["luxembourg_pending_boarding"] || []).length,
-      proeftijd: (byKind["probation"] || []).length,
-    }
-
-    // 1) Ochtend gebundelde push naar willem + leo
-    const pushRecipients = getPushRecipients()
-    const pushBits: string[] = []
-    if (counts.ziekbriefje) pushBits.push(`${counts.ziekbriefje} ziekbriefje${counts.ziekbriefje === 1 ? "" : "s"} verloopt vandaag/binnenkort`)
-    if (counts.jarigen) pushBits.push(`${counts.jarigen} jarige${counts.jarigen === 1 ? "" : "n"}`)
-    if (counts.jubilea) pushBits.push(`${counts.jubilea} jubileum${counts.jubilea === 1 ? "" : "s"}`)
-    if (counts.luxembourg) pushBits.push(`${counts.luxembourg} nog in te schrijven`)
-
-    let pushResult: any = { skipped: true }
     const ymd = new Date().toISOString().slice(0, 10)
-    const pushKey = `morning-bundle:${ymd}`
-    if (pushBits.length > 0 && pushRecipients.length > 0 && shouldDispatch(pushKey, 6 * 60 * 60 * 1000)) {
-      const pushBody = isTestMode()
-        ? `DEMO ochtendmelding: ${pushBits.join(" • ")}.`
-        : pushBits.join(" • ")
-      pushResult = await sendPushToRecipients(
-        {
-          title: "Dagoverzicht Bamalite HR",
-          body: pushBody,
-          url: "/meldingen",
-          eventKey: pushKey,
-        },
-        pushRecipients
-      )
-    }
 
-    // 2) Mail naar management
+    // 1) Mail naar management
     const mgmtGroups = [
       { label: "Ziektebriefjes", items: byKind["certificate_expiring"] || [] },
       { label: "Urgente taken", items: (byKind["task"] || []).filter((t) => t.severity === "danger") },
@@ -246,7 +185,7 @@ export async function GET(request: NextRequest) {
         mgmtSent = true
         await Promise.all(
           mgmtRecipients.map((r) =>
-            logDispatch({
+            logNotificationDispatch({
               event_key: `daily-email-management:${ymd}`,
               channel: "email",
               recipient: r,
@@ -256,7 +195,7 @@ export async function GET(request: NextRequest) {
           )
         )
       } catch (err: any) {
-        await logDispatch({
+        await logNotificationDispatch({
           event_key: `daily-email-management:${ymd}`,
           channel: "email",
           recipient: mgmtRecipients.join(","),
@@ -267,7 +206,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3) Mail naar office
+    // 2) Mail naar office
     const officeGroups = [
       { label: "Ziektebriefjes", items: byKind["certificate_expiring"] || [] },
       { label: "Verjaardagen vandaag", items: byKind["birthday"] || [] },
@@ -290,7 +229,7 @@ export async function GET(request: NextRequest) {
         officeSent = true
         await Promise.all(
           officeRecipients.map((r) =>
-            logDispatch({
+            logNotificationDispatch({
               event_key: `daily-email-office:${ymd}`,
               channel: "email",
               recipient: r,
@@ -300,7 +239,7 @@ export async function GET(request: NextRequest) {
           )
         )
       } catch (err: any) {
-        await logDispatch({
+        await logNotificationDispatch({
           event_key: `daily-email-office:${ymd}`,
           channel: "email",
           recipient: officeRecipients.join(","),
@@ -313,7 +252,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      pushResult,
       mgmt: { sent: mgmtSent, total: mgmtTotal, recipients: mgmtRecipients },
       office: { sent: officeSent, total: officeTotal, recipients: officeRecipients },
     })

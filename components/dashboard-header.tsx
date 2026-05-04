@@ -16,7 +16,6 @@ import { CalendarDialog } from "@/components/agenda/calendar-dialog"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
-import { HeaderPushSettings } from "@/components/notifications/header-push-settings"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -210,7 +209,6 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
             <div className="flex items-center gap-3 dashboard-header-actions-row">
-              <HeaderPushSettings />
               {role === "admin_full" && <Link href="/meldingen" className="relative">
                 <Button
                   variant="outline"
