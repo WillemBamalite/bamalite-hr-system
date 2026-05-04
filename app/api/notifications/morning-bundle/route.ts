@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import nodemailer from "nodemailer"
-import { supabase } from "@/lib/supabase"
+import { createServerSupabase } from "@/lib/supabase-server"
 import { requireApiAccess } from "@/lib/api-security"
 import { buildDashboardNotifications, type DashboardNotification } from "@/utils/dashboard-notifications"
 import {
@@ -150,6 +150,7 @@ export async function GET(request: NextRequest) {
     const accessError = await requireApiAccess(request, "cron_or_admin")
     if (accessError) return accessError
 
+    const supabase = createServerSupabase()
     const [crewRes, tasksRes, shipsRes, sickLeaveRes, visitsRes] = await Promise.all([
       supabase.from("crew").select("*"),
       supabase.from("tasks").select("*"),

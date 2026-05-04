@@ -22,6 +22,27 @@ async function getAuthToken(): Promise<string | null> {
   }
 }
 
+/** Registratie voor /sw.js (niet getRegistration("/sw.js") — dat is geen document-URL en faalt o.a. op iOS). */
+async function getPushServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null
+  const regs = await navigator.serviceWorker.getRegistrations()
+  for (const reg of regs) {
+    const script =
+      reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || ""
+    if (script.endsWith("/sw.js")) return reg
+  }
+  const fallback = await navigator.serviceWorker.getRegistration()
+  if (fallback) {
+    const script =
+      fallback.active?.scriptURL ||
+      fallback.installing?.scriptURL ||
+      fallback.waiting?.scriptURL ||
+      ""
+    if (script.endsWith("/sw.js")) return fallback
+  }
+  return null
+}
+
 export async function isPushSupported(): Promise<boolean> {
   if (typeof window === "undefined") return false
   if (!("serviceWorker" in navigator)) return false
@@ -37,7 +58,7 @@ export async function getCurrentPushPermission(): Promise<NotificationPermission
 
 export async function getCurrentSubscription(): Promise<PushSubscription | null> {
   if (!(await isPushSupported())) return null
-  const reg = await navigator.serviceWorker.getRegistration("/sw.js")
+  const reg = await getPushServiceWorkerRegistration()
   if (!reg) return null
   const sub = await reg.pushManager.getSubscription()
   return sub
@@ -57,9 +78,10 @@ export async function enablePushNotifications(): Promise<{
       return { success: false, error: "Toestemming geweigerd in browser." }
     }
 
-    const reg =
-      (await navigator.serviceWorker.getRegistration("/sw.js")) ||
-      (await navigator.serviceWorker.register("/sw.js"))
+    let reg = await getPushServiceWorkerRegistration()
+    if (!reg) {
+      reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" })
+    }
     await navigator.serviceWorker.ready
 
     const keyResp = await fetch("/api/notifications/public-key")

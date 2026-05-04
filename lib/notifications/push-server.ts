@@ -1,7 +1,7 @@
 import "server-only"
 
 import webpush from "web-push"
-import { createClient } from "@supabase/supabase-js"
+import { createServerSupabase } from "@/lib/supabase-server"
 import { getPushRecipients } from "./recipients"
 
 type PushPayload = {
@@ -11,15 +11,6 @@ type PushPayload = {
   tag?: string
   eventKey?: string
 }
-
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "https://ocwraavhrtpvbqlkwnlb.supabase.co"
-
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9jd3JhYXZocnRwdmJxbGt3bmxiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM0NDEzOTAsImV4cCI6MjA2OTAxNzM5MH0.TC3wV4T74ZBadMtIXI1QBroYbo844ejqv_pJtg0th04"
 
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:willem@bamalite.com"
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""
@@ -37,20 +28,12 @@ function ensureVapid() {
   vapidConfigured = true
 }
 
-function getServerSupabase() {
-  // Service-role indien beschikbaar (bypasst RLS), anders anon (alleen lezen waar policies toelaten).
-  const key = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY
-  return createClient(SUPABASE_URL, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-}
-
 export async function sendPushToRecipients(
   payload: PushPayload,
   recipientsOverride?: string[]
 ): Promise<{ sent: number; failed: number; total: number }> {
   ensureVapid()
-  const supabase = getServerSupabase()
+  const supabase = createServerSupabase()
   const recipients =
     recipientsOverride && recipientsOverride.length > 0
       ? recipientsOverride
@@ -134,7 +117,7 @@ export async function logDispatch(args: {
   error?: string
 }) {
   try {
-    const supabase = getServerSupabase()
+    const supabase = createServerSupabase()
     await supabase.from("notification_dispatch_log").insert({
       event_key: args.event_key,
       channel: args.channel,
