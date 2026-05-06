@@ -184,6 +184,13 @@ const LINDE_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
   lastBoxCoolerInspection: "2023-09-22",
 }
 
+const PRIMERA_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
+  lastClassInspection: "2021-05-10",
+  nextClassInspection: "2026-07-12",
+  lastDryDock: "2021-05-10",
+  lastBoxCoolerInspection: "2021-05-10",
+}
+
 const APOLLO_SECTIONS: ParticularsSection[] = [
   {
     title: "Algemene informatie",
@@ -2844,6 +2851,163 @@ const LINDE_SECTIONS: ParticularsSection[] = [
   },
 ]
 
+const PRIMERA_SECTIONS: ParticularsSection[] = [
+  {
+    title: "Algemene informatie",
+    items: [
+      { label: "Type schip", value: "SP Barge" },
+      { label: "Scheepsnaam", value: "PRIMERA" },
+      { label: "ENI nummer", value: "02326537" },
+      { label: "MMSI", value: "244620352" },
+      { label: "Vlag", value: "LUXEMBOURG" },
+      { label: "ADN type", value: "Type C (Chemical)" },
+      { label: "Dubbelwandig", value: "Ja" },
+      { label: "Bouwjaar", value: "2004" },
+      { label: "Opleverdatum", value: "14-07-2004" },
+      { label: "Rookdetectie", value: "Ja (3, optisch)" },
+      { label: "Overdruksysteem", value: "Ja (achter-accommodatie)" },
+    ],
+  },
+  {
+    title: "Classificatie",
+    items: [
+      { label: "Classificatiemaatschappij", value: "Lloyd's Register (L.R.)" },
+      { label: "Class-notaties", value: 'A1, I.W.W. Tanker Type C, p.v. +50kPa, S.G. 1.0, L.S. "T", LMC' },
+      { label: "Laatste klasse-inspectie", value: "10-05-2021", editableKey: "lastClassInspection" },
+      { label: "Volgende klasse-inspectie", value: "12-07-2026", editableKey: "nextClassInspection" },
+      { label: "Laatste droogdok", value: "10-05-2021", editableKey: "lastDryDock" },
+      { label: "Laatste inspectie box cooler(s)", value: "10-05-2021", editableKey: "lastBoxCoolerInspection" },
+    ],
+  },
+  {
+    title: "Afmetingen en tonnage",
+    items: [
+      { label: "Lengte over alles", value: "134,99 m" },
+      { label: "Breedte over alles", value: "16,80 m" },
+      { label: "Holte", value: "5,47 m" },
+      { label: "Doorvaarthoogte (ledig, stuurhuis hoog)", value: "11,70 m" },
+      { label: "Doorvaarthoogte (geladen, stuurhuis laag)", value: "5,70 m" },
+      { label: "Min. doorvaarthoogte (ledig, stuurhuis laag)", value: "8,60 m" },
+      { label: "Min. doorvaarthoogte (100% ballast)", value: "8,50 m" },
+      { label: "Lichtscheepsgewicht", value: "2200,00 ton" },
+      { label: "Maximum tonnage", value: "6673,00 ton" },
+      { label: "Tonnage bij 2m10", value: "2239,00 ton" },
+      { label: "Inzinking per centimeter op laadlijn", value: "21,00 ton/cm" },
+      { label: "Max diepgang geladen", value: "4,20 m" },
+      { label: "Max diepgang ledig", value: "2,20 m" },
+    ],
+  },
+  {
+    title: "Eigendom en exploitatie",
+    items: [
+      { label: "Telefoon schip", value: "+31 653 984 961" },
+      { label: "E-mail schip", value: "primera@brugoshipping.lu" },
+      { label: "Eigenaar", value: "Bamalité SA" },
+      { label: "Adres eigenaar", value: "20 Rue de Vianden, L-2680 Luxembourg" },
+      { label: "Technisch operator", value: "Interstream Barging" },
+      { label: "Adres operator", value: "Baanhoek 188, 3361GN Sliedrecht" },
+      { label: "Operator sinds", value: "14-03-2005" },
+      { label: "Naam veiligheidsadviseur", value: "D. Beernaert" },
+      { label: "Telefoon veiligheidsadviseur", value: "+32 9 344 98 58" },
+    ],
+  },
+  {
+    title: "Lading en tanks",
+    items: [
+      { label: "Aantal ladingtanks", value: "20" },
+      { label: "Totale tankinhoud (100%)", value: "7570,00 cbm" },
+      { label: "Sloptanks", value: "Ja (3 tanks, 28,00 cbm)" },
+      { label: "Permanent ballastsysteem dubbelwand/void", value: "Ja" },
+      { label: "Max laadtempo homogeen", value: "2193,00 cbm/uur" },
+      { label: "Laadtempo start/midden/einde", value: "460 / 1000 / 240 cbm/uur" },
+      { label: "Ontwerpdruk ladingleidingen", value: "10,00 bar" },
+      { label: "Diameter vul-/dropleiding", value: "200 mm" },
+      { label: "Hoogte einde dropleiding boven tankbodem", value: "20,00 cm" },
+      { label: "Aantal ladingpompen", value: "5" },
+      { label: "Max pomp capaciteit", value: "1625,00 cbm/uur" },
+      { label: "Gemiddeld los tempo", value: "800,00 cbm/uur" },
+      { label: "Tegendruk bij max pompcapaciteit", value: "8,00 bar" },
+      { label: "Pompkamer aanwezig", value: "Nee" },
+      { label: "Ladingleidingen onder dek", value: "Nee" },
+      { label: "Waterspray systeem", value: "Ja" },
+      { label: "Drukalarm 40 kPa", value: "Ja" },
+      { label: "Tankniveausysteem", value: "Ja (magnetorstriktive)" },
+      { label: "High-level alarm", value: "Ja (90,00%)" },
+      { label: "Overfill alarm", value: "Ja (97,50%)" },
+      { label: "Class approved loading instrument", value: "Ja (Locopias)" },
+    ],
+    tables: [
+      {
+        title: "Tankcapaciteiten",
+        columns: ["Tank", "Locatie", "Inhoud (m3)", "Coating", "Conditie"],
+        rows: [
+          ["Cargo Tank 1-20", "Vol schip", "7570,00", "Integral Cargo Tank", "Goed"],
+          ["Slop Tanks 1-3", "Vol schip", "28,00", "Integral Cargo Tank", "Goed"],
+        ],
+      },
+    ],
+  },
+  {
+    title: "Mooring en hijsmiddelen",
+    items: [
+      { label: "Afmeerlieren", value: "Nee" },
+      { label: "Hijsinstallaties / kranen", value: "Ja" },
+      { label: "Veilige werklast kraan (SWL)", value: "2000,00" },
+      { label: "Locatie kraan", value: "Poop deck" },
+      { label: "Maximaal bereik", value: "18,00 m" },
+    ],
+  },
+  {
+    title: "Veiligheid en noodvoorzieningen",
+    items: [
+      { label: "P&I Club", value: "The Steamship Mutual Underwriting Association Ltd" },
+      { label: "Milieuaansprakelijkheid", value: "USD 1.000.000.000" },
+      { label: "P&I dekt wrakopruiming", value: "Nee" },
+      { label: "Opvangranden rondom dek", value: "Ja (20,00 cm)" },
+      { label: "Savealls bij tankontluchting", value: "Ja" },
+      { label: "Opvangranden machinegebied", value: "Ja" },
+      { label: "Druppelbakken manifold", value: "Ja (4 stuks, 100 L, draagbaar)" },
+      { label: "Absorptiemateriaal", value: "Ja (200 L)" },
+      { label: "Oliekeringsscherm", value: "Ja (9 m)" },
+      { label: "Reddingsboot", value: "Ja (GRP/FRP, zonder davits)" },
+      { label: "Pollution incident laatste 12 maanden", value: "Nee" },
+      { label: "Laatste SIRE inspectie", value: "13-01-2026 (Amsterdam)" },
+    ],
+  },
+  {
+    title: "Voortstuwing",
+    items: [
+      { label: "Brandstof", value: "Gasoil" },
+      { label: "Voortstuwingstype", value: "Fixed propellor" },
+      { label: "Vermogen", value: "3600,00 BHP" },
+      { label: "Aantal hoofdmotoren", value: "2" },
+      { label: "Hoofdmotorfabrikant", value: "ABC" },
+      { label: "CCR / Euro-niveau", value: "CCR II" },
+      { label: "Bilge hoog-alarm", value: "Ja (gekoppeld aan algemeen alarm)" },
+      { label: "Vast brandblussysteem", value: "Ja (FK-5-1-12)" },
+      { label: "Boegschroef / boegbesturing", value: "Ja, 4 channels, 1182 BHP" },
+      { label: "Hekschroef", value: "Nee" },
+      { label: "Aantal schroeven", value: "2" },
+      { label: "Stuurinrichting storingsalarm op brug", value: "Ja" },
+    ],
+  },
+  {
+    title: "Stuurhuis en navigatie",
+    items: [
+      { label: "Eenmansradarnavigatie", value: "Ja" },
+      { label: "CCTV", value: "Ja (foreship, bakboord, stuurboord)" },
+      { label: "Stuurhuis type", value: "Hefbaar" },
+      { label: "Bovenbouw zakt over onderbouw", value: "Nee" },
+      { label: "ECDIS", value: "Ja" },
+      { label: "Radar overlay op ECDIS", value: "Nee" },
+      { label: "VDR aanwezig", value: "Nee" },
+      { label: "Laden/lossen bedienbaar vanuit stuurhuis", value: "Nee" },
+      { label: "Brughoogtedetectiesysteem", value: "Nee" },
+      { label: "Semi-autonoom systeem", value: "Nee" },
+    ],
+  },
+]
+
 type ShipParticularsConfig = {
   sections: ParticularsSection[]
   classificationDefault: ClassificationEditableValues
@@ -2950,6 +3114,12 @@ const getShipParticularsConfigByName = (shipName: string): ShipParticularsConfig
         classificationDefault: LINDE_CLASSIFICATION_DEFAULT,
         classificationStorageKey: "linde_particulars_classification",
       }
+    case "primera":
+      return {
+        sections: PRIMERA_SECTIONS,
+        classificationDefault: PRIMERA_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "primera_particulars_classification",
+      }
     default:
       return null
   }
@@ -3014,6 +3184,7 @@ export default function ShipParticularsPage() {
   const isSerenitas = shipNameLower === "serenitas"
   const isHarmonie = shipNameLower === "harmonie"
   const isLinde = shipNameLower === "linde"
+  const isPrimera = shipNameLower === "primera"
   const isSupportedShip =
     isApollo ||
     isJupiter ||
@@ -3029,7 +3200,8 @@ export default function ShipParticularsPage() {
     isFidelitas ||
     isSerenitas ||
     isHarmonie ||
-    isLinde
+    isLinde ||
+    isPrimera
   const sections = isApollo
     ? APOLLO_SECTIONS
     : isJupiter
@@ -3060,6 +3232,8 @@ export default function ShipParticularsPage() {
                                 ? HARMONIE_SECTIONS
                                 : isLinde
                                   ? LINDE_SECTIONS
+                                  : isPrimera
+                                    ? PRIMERA_SECTIONS
           : []
   const classificationDefault = isApollo
     ? APOLLO_CLASSIFICATION_DEFAULT
@@ -3091,6 +3265,8 @@ export default function ShipParticularsPage() {
                                 ? HARMONIE_CLASSIFICATION_DEFAULT
                                 : isLinde
                                   ? LINDE_CLASSIFICATION_DEFAULT
+                                  : isPrimera
+                                    ? PRIMERA_CLASSIFICATION_DEFAULT
       : APOLLO_CLASSIFICATION_DEFAULT
   const classificationStorageKey = isApollo
     ? "apollo_particulars_classification"
@@ -3122,6 +3298,8 @@ export default function ShipParticularsPage() {
                                 ? "harmonie_particulars_classification"
                                 : isLinde
                                   ? "linde_particulars_classification"
+                                  : isPrimera
+                                    ? "primera_particulars_classification"
       : ""
   const certificateStorageKey = getShipCertificateStorageKeyByName(ship?.name || "") || ""
   const printShipIdsToRender = printShipIds.length > 0 ? printShipIds : ship ? [String(ship.id)] : []
