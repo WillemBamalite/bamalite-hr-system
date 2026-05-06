@@ -1,6 +1,7 @@
 "use client"
 
 import { startOfDay } from "date-fns"
+import { supabase } from "@/lib/supabase"
 
 export type EditableShipCertificate = {
   naam: string
@@ -959,6 +960,15 @@ const parseIntervalYears = (value: string): number | null => {
 const normalizeCertificateName = (certificateName: string) =>
   String(certificateName || "").trim().toLowerCase()
 
+const normalizeShipStorageName = (value: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
 const sanitizeStoredCertificate = (raw: unknown): EditableShipCertificate | null => {
   if (!raw || typeof raw !== "object") return null
   const item = raw as Partial<EditableShipCertificate>
@@ -1201,6 +1211,60 @@ export const getShipCertificatesForClient = (shipName: string): EditableShipCert
     return mergeShipCertificatesWithStored(shipName, parsed, defaults)
   } catch {
     return defaults
+  }
+}
+
+export const getRemovedShipCertificateNamesForClient = (shipName: string): Set<string> => {
+  if (typeof window === "undefined") return new Set()
+  try {
+    const storageKey = `${normalizeShipStorageName(shipName)}_particulars_certificaten_removed`
+    const raw = window.localStorage.getItem(storageKey)
+    const parsed = raw ? JSON.parse(raw) : null
+    if (!Array.isArray(parsed)) return new Set()
+    const names = parsed
+      .map((item) => normalizeCertificateName(String(item || "")))
+      .filter(Boolean)
+    return new Set(names)
+  } catch {
+    return new Set()
+  }
+}
+
+export const getVisibleShipCertificatesForClient = (shipName: string): EditableShipCertificate[] => {
+  const all = getShipCertificatesForClient(shipName)
+  const removedNames = getRemovedShipCertificateNamesForClient(shipName)
+  if (removedNames.size === 0) return all
+  return all.filter((cert) => !removedNames.has(normalizeCertificateName(cert.naam)))
+}
+
+export const getVisibleShipCertificatesSharedForClient = async (shipName: string): Promise<EditableShipCertificate[]> => {
+  const safeShipName = String(shipName || "").trim()
+  if (!safeShipName) return []
+  try {
+    const shipKey = normalizeShipStorageName(safeShipName)
+    const { data, error } = await supabase
+      .from("ship_certificate_states")
+      .select("certificates, removed_certificate_keys")
+      .eq("ship_key", shipKey)
+      .limit(1)
+
+    if (error) return getVisibleShipCertificatesForClient(safeShipName)
+    const row = Array.isArray(data) ? data[0] : null
+    if (!row) return getVisibleShipCertificatesForClient(safeShipName)
+
+    const defaults = getShipCertificateDefaultsForClient(safeShipName)
+    const merged = mergeShipCertificatesWithStored(safeShipName, row.certificates, defaults)
+    const removed = Array.isArray((row as any).removed_certificate_keys)
+      ? new Set(
+          (row as any).removed_certificate_keys
+            .map((item: unknown) => normalizeCertificateName(String(item || "")))
+            .filter(Boolean)
+        )
+      : new Set<string>()
+    if (removed.size === 0) return merged
+    return merged.filter((cert) => !removed.has(normalizeCertificateName(cert.naam)))
+  } catch {
+    return getVisibleShipCertificatesForClient(safeShipName)
   }
 }
 

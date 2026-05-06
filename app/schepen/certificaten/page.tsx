@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { AlertCircle, AlertTriangle, ChevronRight, Ship } from "lucide-react"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { Card, CardContent } from "@/components/ui/card"
@@ -9,7 +9,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import {
   formatIsoToDutchDate,
   getCertificateStatus,
-  getShipCertificatesForClient,
+  getVisibleShipCertificatesSharedForClient,
 } from "@/utils/ship-certificates"
 
 type CertIssue = {
@@ -21,13 +21,14 @@ type CertIssue = {
 
 export default function SchepenCertificatenPage() {
   const { ships, loading } = useSupabaseData()
+  const [shipIssueMap, setShipIssueMap] = useState<Record<string, CertIssue[]>>({})
 
-  const shipsWithCertificateStatus = useMemo(() => {
+  const loadIssues = useCallback(async () => {
     const now = new Date()
-    return (ships || [])
-      .map((ship: any) => {
+    const entries = await Promise.all(
+      (ships || []).map(async (ship: any) => {
         const shipName = String(ship?.name || "").trim()
-        const certs = getShipCertificatesForClient(shipName)
+        const certs = await getVisibleShipCertificatesSharedForClient(shipName)
         const issues: CertIssue[] = certs
           .map((cert) => {
             const statusInfo = getCertificateStatus(cert, now)
@@ -45,6 +46,49 @@ export default function SchepenCertificatenPage() {
             const bDays = b.daysUntil ?? Number.MAX_SAFE_INTEGER
             return aDays - bDays
           })
+        return [String(ship.id), issues] as const
+      })
+    )
+    setShipIssueMap(Object.fromEntries(entries))
+  }, [ships])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await loadIssues()
+      if (cancelled) return
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [loadIssues])
+
+  useEffect(() => {
+    const onFocus = () => {
+      void loadIssues()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void loadIssues()
+      }
+    }
+    const interval = window.setInterval(() => {
+      void loadIssues()
+    }, 30000)
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [loadIssues])
+
+  const shipsWithCertificateStatus = useMemo(() => {
+    return (ships || [])
+      .map((ship: any) => {
+        const shipName = String(ship?.name || "").trim()
+        const issues = shipIssueMap[String(ship.id)] || []
 
         const expiredCount = issues.filter((i) => i.severity === "expired").length
         const warningCount = issues.filter((i) => i.severity === "warning").length
@@ -57,7 +101,7 @@ export default function SchepenCertificatenPage() {
         }
       })
       .sort((a, b) => a.name.localeCompare(b.name, "nl", { sensitivity: "base" }))
-  }, [ships])
+  }, [ships, shipIssueMap])
 
   return (
     <div className="min-h-screen bg-gray-50">

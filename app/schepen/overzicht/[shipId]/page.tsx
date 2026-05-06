@@ -3405,6 +3405,26 @@ export default function ShipParticularsPage() {
       removedCertificateKeys,
       updatedAt: new Date().toISOString(),
     })
+    // DB-spiegel voor gedeeld certificatenoverzicht (zodat alle gebruikers dezelfde wijzigingen zien).
+    try {
+      const shipKey = normalizeShipStorageName(shipName)
+      const { error: mirrorError } = await supabase.from("ship_certificate_states").upsert(
+        {
+          ship_key: shipKey,
+          ship_name: shipName,
+          certificates,
+          removed_certificate_keys: removedCertificateKeys,
+          documents,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "ship_key" }
+      )
+      if (mirrorError) {
+        console.warn("ship_certificate_states upsert mislukt:", mirrorError.message || mirrorError)
+      }
+    } catch (error) {
+      console.warn("Kon ship_certificate_states niet bijwerken:", (error as any)?.message || error)
+    }
   }
 
   const upsertCertificateByName = (
