@@ -191,6 +191,13 @@ const PRIMERA_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
   lastBoxCoolerInspection: "2021-05-10",
 }
 
+const VOLUNTAS_CLASSIFICATION_DEFAULT: ClassificationEditableValues = {
+  lastClassInspection: "2021-06-14",
+  nextClassInspection: "2026-07-06",
+  lastDryDock: "2021-05-05",
+  lastBoxCoolerInspection: "2021-05-05",
+}
+
 const APOLLO_SECTIONS: ParticularsSection[] = [
   {
     title: "Algemene informatie",
@@ -3008,6 +3015,181 @@ const PRIMERA_SECTIONS: ParticularsSection[] = [
   },
 ]
 
+const VOLUNTAS_SECTIONS: ParticularsSection[] = [
+  {
+    title: "Algemene informatie",
+    items: [
+      { label: "Type schip", value: "SP Barge" },
+      { label: "Scheepsnaam", value: "Voluntas" },
+      { label: "ENI nummer", value: "06003745" },
+      { label: "MMSI", value: "205351390" },
+      { label: "Vlag", value: "BELGIUM" },
+      { label: "ADN type", value: "Type C (Chemical)" },
+      { label: "Constructie cargotanks", value: "2" },
+      { label: "Type cargotanks", value: "2. Integral Cargo Tank" },
+      { label: "Temperatuurklasse", value: "T4" },
+      { label: "Explosiegroep", value: "IIB" },
+      { label: "Dubbelwandig", value: "Ja" },
+      { label: "Alle cargotanks met langsschot", value: "Nee" },
+      { label: "Bouwjaar", value: "2001" },
+      { label: "Opleverdatum", value: "09-01-2001" },
+      { label: "Flame arrestor explosiegroep", value: "IIB3: 0.65 - 0.75" },
+      { label: "Rookdetectiesysteem", value: "Ja (3 detectoren, optisch)" },
+      { label: "Beschermde zones rookdetectie", value: "Machinekamer voor/achter" },
+      { label: "Overdruksysteem", value: "Ja (stuurhuis/accommodatie voor en achter)" },
+    ],
+  },
+  {
+    title: "Classificatie",
+    items: [
+      { label: "Classificatiemaatschappij", value: "Bureau Veritas (B.V.)" },
+      { label: "Class-notaties", value: "I 5 IN (0,6) (Z)" },
+      { label: "Laatste klasse-inspectie", value: "14-06-2021", editableKey: "lastClassInspection" },
+      { label: "Volgende klasse-inspectie", value: "06-07-2026", editableKey: "nextClassInspection" },
+      { label: "Laatste droogdok", value: "05-05-2021", editableKey: "lastDryDock" },
+      { label: "Laatste inspectie box cooler(s)", value: "05-05-2021", editableKey: "lastBoxCoolerInspection" },
+    ],
+  },
+  {
+    title: "Afmetingen en tonnage",
+    items: [
+      { label: "Lengte over alles", value: "109,70 m" },
+      { label: "Breedte over alles", value: "11,45 m" },
+      { label: "Holte", value: "5,40 m" },
+      { label: "Doorvaarthoogte (ledig, stuurhuis hoog)", value: "6,20 m" },
+      { label: "Doorvaarthoogte (geladen, stuurhuis laag)", value: "-" },
+      { label: "Min. doorvaarthoogte (ledig, stuurhuis laag)", value: "-" },
+      { label: "Min. doorvaarthoogte (100% ballast)", value: "-" },
+      { label: "Lichtscheepsgewicht", value: "1170,00 ton" },
+      { label: "Maximum tonnage", value: "2511,00 ton" },
+      { label: "Tonnage bij 2m10", value: "1200,00 ton" },
+      { label: "Inzinking per centimeter op laadlijn", value: "11,00 ton/cm" },
+      { label: "Max diepgang geladen", value: "3,22 m" },
+      { label: "Max diepgang ledig", value: "1,70 m" },
+      { label: "Max diepgang ledig (100% ballast)", value: "-" },
+    ],
+  },
+  {
+    title: "Eigendom en exploitatie",
+    items: [
+      { label: "Telefoon schip", value: "+32 475290201" },
+      { label: "E-mail schip", value: "-" },
+      { label: "Eigenaar", value: "Bamalite S.A." },
+      { label: "Adres eigenaar", value: "Zeedijk 671, 9300 Knokken, BE" },
+      { label: "Technisch operator", value: "Naval Inland Navigation" },
+      { label: "Adres operator", value: "Stokerijstraat 25 B 31, 2110 Wijnegem, BE" },
+      { label: "Operator sinds", value: "15-11-2023" },
+      { label: "Naam veiligheidsadviseur", value: "Arian van der Meij" },
+      { label: "Telefoon veiligheidsadviseur", value: "+32 (0) 3 3693778" },
+    ],
+  },
+  {
+    title: "Lading en tanks",
+    items: [
+      { label: "Aantal ladingtanks", value: "9" },
+      { label: "Totale tankinhoud (100%)", value: "3351,00 cbm" },
+      { label: "Sloptanks", value: "Ja (1 tank, 25,00 cbm)" },
+      { label: "Permanent ballastsysteem dubbelwand/void", value: "Ja" },
+      { label: "Max laadtempo homogeen", value: "800,00 cbm/uur" },
+      { label: "Laadtempo start/midden/einde", value: "300 / 800 / 200 cbm/uur" },
+      { label: "Ontwerpdruk ladingleidingen", value: "10,00 bar" },
+      { label: "Diameter vul-/dropleiding", value: "6 inch" },
+      { label: "Bocht voor einde dropleiding", value: "Nee" },
+      { label: "Hoogte einde dropleiding boven tankbodem", value: "2,00 cm" },
+      { label: "Obstakels voor einde dropleiding", value: "Nee" },
+      { label: "Aantal ladingpompen", value: "9" },
+      { label: "Max pomp capaciteit", value: "900,00 cbm/uur" },
+      { label: "Gemiddeld los tempo", value: "800,00 cbm/uur" },
+      { label: "Tegendruk bij max pompcapaciteit", value: "6,00 bar" },
+      { label: "Pompkamer aanwezig", value: "Nee" },
+      { label: "Ladingleidingen onder dek", value: "Nee" },
+      { label: "Vapour recovery verwarmd", value: "Ja" },
+      { label: "Waterspray systeem", value: "Ja" },
+      { label: "Drukalarm 40 kPa", value: "Ja" },
+      { label: "Tankniveausysteem", value: "Ja (vlotter)" },
+      { label: "High-level alarm", value: "Ja (90,00%)" },
+      { label: "Overfill alarm", value: "Ja (97,00%)" },
+      { label: "Sampler aansluiting", value: "Ja (tanks)" },
+      { label: "Closed waterdip", value: "Nee" },
+      { label: "Efficiënt stripping systeem", value: "Ja" },
+      { label: "Class approved loading instrument", value: "Ja (TankStar)" },
+    ],
+    tables: [
+      {
+        title: "Tankcapaciteiten",
+        columns: ["Tank", "Locatie", "Inhoud (m3)", "Coating", "Conditie"],
+        rows: [
+          ["Cargo Tanks", "Vol schip", "3351,00", "Integral Cargo Tank", "Goed"],
+          ["Slop Tank", "Vol schip", "25,00", "Integral Cargo Tank", "Goed"],
+        ],
+      },
+    ],
+  },
+  {
+    title: "Mooring en hijsmiddelen",
+    items: [
+      { label: "Afmeerlieren", value: "Ja" },
+      { label: "Gedeelde trommel voor", value: "Nee" },
+      { label: "Gedeelde trommel achter", value: "Nee" },
+      { label: "Fail-safe systeem voor", value: "Ja" },
+      { label: "Fail-safe systeem achter", value: "Ja" },
+      { label: "Hijsinstallaties / kranen", value: "Ja" },
+      { label: "Veilige werklast kraan (SWL)", value: "1500,00" },
+      { label: "Locatie kraan", value: "Achterdek" },
+      { label: "Maximaal bereik", value: "15,00 m" },
+    ],
+  },
+  {
+    title: "Veiligheid en noodvoorzieningen",
+    items: [
+      { label: "P&I Club", value: "The Standard Club Ltd" },
+      { label: "Milieuaansprakelijkheid", value: "USD 1.000.000.000" },
+      { label: "P&I dekt wrakopruiming", value: "Ja" },
+      { label: "Opvangranden rondom dek", value: "Ja (10,00 cm)" },
+      { label: "Savealls bij tankontluchting", value: "Nee" },
+      { label: "Opvangranden machinegebied", value: "Nee" },
+      { label: "Druppelbakken manifold", value: "Ja (2 stuks, draagbaar)" },
+      { label: "Absorptiemateriaal", value: "Ja (200 L)" },
+      { label: "Oliekeringsscherm", value: "Ja (1 m)" },
+      { label: "Reddingsboot", value: "Ja (GRP/FRP, zonder davits)" },
+      { label: "Pollution incident laatste 12 maanden", value: "Nee" },
+      { label: "Laatste SIRE inspectie", value: "05-11-2024 (Dordrecht)" },
+    ],
+  },
+  {
+    title: "Voortstuwing",
+    items: [
+      { label: "Brandstof", value: "Gasoil" },
+      { label: "Voortstuwingstype", value: "Fixed propellor" },
+      { label: "Vermogen", value: "1350,00 kW" },
+      { label: "Aantal hoofdmotoren", value: "1" },
+      { label: "Hoofdmotorfabrikant", value: "CAT 3512" },
+      { label: "CCR / Euro-niveau", value: "CCR I" },
+      { label: "Bilge hoog-alarm", value: "Ja (gekoppeld aan algemeen alarm)" },
+      { label: "Vast brandblussysteem", value: "Ja (HFC-227 ea)" },
+      { label: "Boegschroef / boegbesturing", value: "Ja, 360 graden, 440 BHP" },
+      { label: "Hekschroef", value: "Nee" },
+      { label: "Aantal schroeven", value: "1" },
+      { label: "Stuurinrichting storingsalarm op brug", value: "Ja" },
+    ],
+  },
+  {
+    title: "Stuurhuis en navigatie",
+    items: [
+      { label: "Eenmansradarnavigatie", value: "Ja" },
+      { label: "CCTV", value: "Ja (voor, bakboord, stuurboord)" },
+      { label: "Stuurhuis type", value: "Hefbaar" },
+      { label: "Bovenbouw zakt over onderbouw", value: "Ja" },
+      { label: "ECDIS", value: "Ja" },
+      { label: "Radar overlay op ECDIS", value: "Nee" },
+      { label: "VDR aanwezig", value: "Nee" },
+      { label: "Laden/lossen bedienbaar vanuit stuurhuis", value: "Nee" },
+      { label: "Brughoogtedetectiesysteem", value: "Nee" },
+      { label: "Semi-autonoom systeem", value: "Nee" },
+    ],
+  },
+]
+
 type ShipParticularsConfig = {
   sections: ParticularsSection[]
   classificationDefault: ClassificationEditableValues
@@ -3114,6 +3296,12 @@ const getShipParticularsConfigByName = (shipName: string): ShipParticularsConfig
         classificationDefault: LINDE_CLASSIFICATION_DEFAULT,
         classificationStorageKey: "linde_particulars_classification",
       }
+    case "voluntas":
+      return {
+        sections: VOLUNTAS_SECTIONS,
+        classificationDefault: VOLUNTAS_CLASSIFICATION_DEFAULT,
+        classificationStorageKey: "voluntas_particulars_classification",
+      }
     case "primera":
       return {
         sections: PRIMERA_SECTIONS,
@@ -3185,6 +3373,7 @@ export default function ShipParticularsPage() {
   const isHarmonie = shipNameLower === "harmonie"
   const isLinde = shipNameLower === "linde"
   const isPrimera = shipNameLower === "primera"
+  const isVoluntas = shipNameLower === "voluntas"
   const isSupportedShip =
     isApollo ||
     isJupiter ||
@@ -3201,7 +3390,8 @@ export default function ShipParticularsPage() {
     isSerenitas ||
     isHarmonie ||
     isLinde ||
-    isPrimera
+    isPrimera ||
+    isVoluntas
   const sections = isApollo
     ? APOLLO_SECTIONS
     : isJupiter
@@ -3234,6 +3424,8 @@ export default function ShipParticularsPage() {
                                   ? LINDE_SECTIONS
                                   : isPrimera
                                     ? PRIMERA_SECTIONS
+                                    : isVoluntas
+                                      ? VOLUNTAS_SECTIONS
           : []
   const classificationDefault = isApollo
     ? APOLLO_CLASSIFICATION_DEFAULT
@@ -3267,6 +3459,8 @@ export default function ShipParticularsPage() {
                                   ? LINDE_CLASSIFICATION_DEFAULT
                                   : isPrimera
                                     ? PRIMERA_CLASSIFICATION_DEFAULT
+                                    : isVoluntas
+                                      ? VOLUNTAS_CLASSIFICATION_DEFAULT
       : APOLLO_CLASSIFICATION_DEFAULT
   const classificationStorageKey = isApollo
     ? "apollo_particulars_classification"
@@ -3300,6 +3494,8 @@ export default function ShipParticularsPage() {
                                   ? "linde_particulars_classification"
                                   : isPrimera
                                     ? "primera_particulars_classification"
+                                    : isVoluntas
+                                      ? "voluntas_particulars_classification"
       : ""
   const certificateStorageKey = getShipCertificateStorageKeyByName(ship?.name || "") || ""
   const printShipIdsToRender = printShipIds.length > 0 ? printShipIds : ship ? [String(ship.id)] : []

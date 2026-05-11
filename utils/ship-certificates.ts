@@ -34,6 +34,7 @@ type ShipCertificateConfig = {
     | "harmonie"
     | "linde"
     | "primera"
+    | "voluntas"
   shipName: string
   storageKey: string
   source: CertificateTemplate[]
@@ -840,6 +841,59 @@ const PRIMERA_CERTIFICATES_SOURCE: CertificateTemplate[] = [
   { naam: "BIQ inspectie", huidig: "13-1-2026", intervalJaar: "1" },
 ]
 
+const VOLUNTAS_CERTIFICATES_SOURCE: CertificateTemplate[] = [
+  { naam: "Certificaat van Goedkeuring", huidig: "6-7-2021", intervalJaar: "5" },
+  { naam: "Certificaat van Onderzoek", huidig: "6-7-2021", intervalJaar: "5" },
+  { naam: "Certificaat Klasse", huidig: "6-6-2021", intervalJaar: "5" },
+  { naam: "Certificaat Gasdetectie Statement", huidig: "5-3-2024", intervalJaar: "2,5" },
+  { naam: "EEG ijkcertificaat", huidig: "-", intervalJaar: "-" },
+  { naam: "AB Restlading certificaat", huidig: "-", intervalJaar: "-" },
+  { naam: "Stuurwerk Certificaat", huidig: "2-10-2023", intervalJaar: "3" },
+  { naam: "Inbouwverklaring Radar en Bochtaanwijzer", huidig: "19-10-2023", intervalJaar: "5" },
+  { naam: "Meetbrief", huidig: "-", intervalJaar: "20" },
+  { naam: "Toestellenlijst", huidig: "26-2-2025", intervalJaar: "3" },
+  { naam: "Attest Tachograaf", huidig: "25-2-2025", intervalJaar: "5" },
+  { naam: "Rijnvaartverklaring", huidig: "-", intervalJaar: "-" },
+  { naam: "Exploitatievergunning Luxembourg", huidig: "-", intervalJaar: "5" },
+  { naam: "Exploitatievergunning Belgie", huidig: "-", intervalJaar: "2" },
+  { naam: "Afgifte Vaartijdenboek", huidig: "-", intervalJaar: "-" },
+  { naam: "Zendvergunning", huidig: "19-10-2023", intervalJaar: "5" },
+  { naam: "Bilge Boekje", huidig: "-", intervalJaar: "-" },
+  { naam: "Over- en onderdrukventielen", huidig: "16-6-2021", intervalJaar: "5" },
+  { naam: "Stoffenlijst", huidig: "-", intervalJaar: "2" },
+  { naam: "Overeenkomst Veiligheidsadviseur", huidig: "31-12-2024", intervalJaar: "1" },
+  { naam: "Diktemeting Certificaat", huidig: "-", intervalJaar: "5" },
+  { naam: "Autokraan Keuring", huidig: "23-6-2020", intervalJaar: "10" },
+  { naam: "Certificaat Afdichting Roerwerk", huidig: "-", intervalJaar: "5" },
+  { naam: "Certificaat Afdichting Schroefas", huidig: "-", intervalJaar: "5" },
+  { naam: "Ankerketting Rapport", huidig: "-", intervalJaar: "5" },
+  { naam: "Afpersen van Tanks", huidig: "-", intervalJaar: "10" },
+  { naam: "Afpersen van Leidingen", huidig: "-", intervalJaar: "5" },
+  { naam: "10 jaarlijkse keuring afpersen brandblusinstallatie", huidig: "-", intervalJaar: "10" },
+  { naam: "5 jaarlijkse keuring Stuurhuis kolom", huidig: "14-4-2026", intervalJaar: "1" },
+  { naam: "Certificaat Green Award", huidig: "-", intervalJaar: "3" },
+  { naam: "Verklaring Overdruk", huidig: "6-7-2021", intervalJaar: "5" },
+  { naam: "Certificaat Laad en Losslangen", huidig: "1-8-2025", intervalJaar: "1" },
+  { naam: "Certificaat Drainslangen", huidig: "20-5-2025", intervalJaar: "1" },
+  { naam: "Certificaat Brandblussers", huidig: "17-1-2025", intervalJaar: "2" },
+  { naam: "Certificaat Brandslangen", huidig: "17-1-2025", intervalJaar: "2" },
+  { naam: "Certificaat Brandmeldcentrale", huidig: "13-3-2026", intervalJaar: "1" },
+  { naam: "Certificaat Draagbare Gasdetectiemeter", huidig: "28-4-2026", intervalJaar: "1" },
+  { naam: "Certificaat Toximeter", huidig: "28-4-2026", intervalJaar: "1" },
+  { naam: "Certificaat H2s Meters", huidig: "28-4-2026", intervalJaar: "1" },
+  { naam: "Certificaat Thermometer", huidig: "-", intervalJaar: "5" },
+  { naam: "Certificaat Volgelaatsmaskers", huidig: "28-4-2026", intervalJaar: "1" },
+  { naam: "Certificaat Brandblusinstallatie", huidig: "19-8-2025", intervalJaar: "2" },
+  { naam: "Certificaat Zwemvesten", huidig: "28-4-2026", intervalJaar: "1" },
+  { naam: "Certificaat Valbeveiliging", huidig: "-", intervalJaar: "-" },
+  { naam: "Certificaat Luchtnetsysteem", huidig: "-", intervalJaar: "1" },
+  { naam: "Certificaat AED", huidig: "-", intervalJaar: "1" },
+  { naam: "Certificaat Vaste Gasdetectie", huidig: "13-3-2026", intervalJaar: "1,5" },
+  { naam: "Verklaring ADN Kisten", huidig: "-", intervalJaar: "1" },
+  { naam: "Verklaring EHBO Kisten", huidig: "-", intervalJaar: "1" },
+  { naam: "BIQ inspectie", huidig: "18-8-2025", intervalJaar: "1" },
+]
+
 const SHIP_CERTIFICATE_CONFIGS: ShipCertificateConfig[] = [
   {
     shipKey: "apollo",
@@ -936,6 +990,12 @@ const SHIP_CERTIFICATE_CONFIGS: ShipCertificateConfig[] = [
     shipName: "Primera",
     storageKey: "primera_particulars_certificaten",
     source: PRIMERA_CERTIFICATES_SOURCE,
+  },
+  {
+    shipKey: "voluntas",
+    shipName: "Voluntas",
+    storageKey: "voluntas_particulars_certificaten",
+    source: VOLUNTAS_CERTIFICATES_SOURCE,
   },
 ]
 
