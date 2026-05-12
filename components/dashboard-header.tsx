@@ -71,8 +71,16 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     }
   }
 
+  const isCertificatesOverviewPage = pathname === "/schepen/certificaten"
+
   const uiText = {
     subtitle: locale === "de" ? "Verwaltung von Besatzung und Schiffen" : locale === "fr" ? "Gestion équipage et navires" : "Beheer bemanning en schepen",
+    certificatesPageSubtitle:
+      locale === "de"
+        ? "Übersicht nach Schiff – abgelaufene und bald ablaufende Zertifikate"
+        : locale === "fr"
+          ? "Vue par navire – certificats expirés ou bientôt expirés"
+          : "Overzicht per schip – verlopen en bijna verlopen certificaten",
     searchPlaceholder: locale === "de" ? "Auf Seite suchen..." : locale === "fr" ? "Rechercher sur la page..." : "Zoek in pagina...",
     previousResult: locale === "de" ? "Vorheriges Ergebnis" : locale === "fr" ? "Résultat précédent" : "Vorige resultaat",
     nextResult: locale === "de" ? "Nächstes Ergebnis" : locale === "fr" ? "Résultat suivant" : "Volgende resultaat",
@@ -138,8 +146,14 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
             />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Bemanningslijst</h1>
-            <p className="text-gray-600">{uiText.subtitle}</p>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {isCertificatesOverviewPage
+                ? "Verloopdatums Certificaten en Verklaringen"
+                : "Bemanningslijst"}
+            </h1>
+            <p className="text-gray-600">
+              {isCertificatesOverviewPage ? uiText.certificatesPageSubtitle : uiText.subtitle}
+            </p>
           </div>
         </Link>
 
@@ -209,25 +223,27 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
             <div className="flex items-center gap-3 dashboard-header-actions-row">
-              {role === "admin_full" && <Link href="/meldingen" className="relative">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`flex items-center gap-2 ${
-                    notificationCount > 0
-                      ? "border-red-400 text-red-700 hover:bg-red-50 hover:text-red-800"
-                      : ""
-                  }`}
-                >
-                  <Bell className="w-4 h-4" />
-                  {uiText.notifications}
-                </Button>
-                {notificationCount > 0 && (
-                  <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
-                    {notificationCount > 99 ? "99+" : notificationCount}
-                  </span>
-                )}
-              </Link>}
+              {role === "admin_full" && (
+                <Link href="/meldingen" className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`flex items-center gap-2 ${
+                      !isCertificatesOverviewPage && notificationCount > 0
+                        ? "border-red-400 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        : ""
+                    }`}
+                  >
+                    <Bell className="w-4 h-4" />
+                    {uiText.notifications}
+                  </Button>
+                  {!isCertificatesOverviewPage && notificationCount > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
+                      {notificationCount > 99 ? "99+" : notificationCount}
+                    </span>
+                  )}
+                </Link>
+              )}
               {/* Snelknop: Nieuwe taak overal in de app */}
               {role === "admin_full" && <Link href="/taken?newTask=1">
                 <Button

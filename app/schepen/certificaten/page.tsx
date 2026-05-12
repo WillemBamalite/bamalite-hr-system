@@ -19,6 +19,80 @@ type CertIssue = {
   severity: "expired" | "warning"
 }
 
+type ShipCertRow = {
+  id: string
+  name: string
+  issues: CertIssue[]
+  expiredCount: number
+  warningCount: number
+}
+
+function ShipCertificateTile({ ship }: { ship: ShipCertRow }) {
+  const preview = ship.issues.slice(0, 5)
+  const tileStyle =
+    ship.expiredCount > 0
+      ? "border-2 border-red-600 bg-red-100 shadow-sm hover:bg-red-200/90 hover:border-red-700"
+      : ship.warningCount > 0
+        ? "border-2 border-orange-500 bg-orange-100 shadow-sm hover:bg-orange-200/90 hover:border-orange-600"
+        : "border-2 border-emerald-600 bg-emerald-100 shadow-sm hover:bg-emerald-200/90 hover:border-emerald-700"
+
+  return (
+    <Link href={`/schepen/overzicht/${ship.id}`} className="block">
+      <Card className={`h-full hover:shadow-lg transition-all cursor-pointer ${tileStyle}`}>
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="text-lg font-semibold text-gray-900 leading-tight">{ship.name}</div>
+            <ChevronRight className="w-4 h-4 text-gray-600 shrink-0 mt-1" />
+          </div>
+
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-medium">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${
+                ship.expiredCount > 0 ? "bg-red-700 text-white" : "bg-red-200 text-red-900"
+              }`}
+            >
+              <AlertCircle className="w-3 h-3" />
+              {ship.expiredCount} verlopen
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${
+                ship.warningCount > 0 ? "bg-orange-600 text-white" : "bg-orange-200 text-orange-900"
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              {ship.warningCount} bijna
+            </span>
+          </div>
+
+          {preview.length === 0 ? (
+            <div className="text-xs font-medium text-emerald-900 bg-emerald-200/80 rounded-md border-2 border-emerald-600 p-2.5">
+              Geen verlopen of bijna verlopen certificaten.
+            </div>
+          ) : (
+            <ul className="space-y-1.5 text-xs">
+              {preview.map((item) => (
+                <li key={`${ship.id}-${item.name}-${item.expiryIso}`} className="leading-snug text-gray-800">
+                  <span
+                    className={
+                      item.severity === "expired" ? "font-semibold text-red-800" : "font-semibold text-orange-800"
+                    }
+                  >
+                    {item.name}
+                  </span>
+                  <span className="text-gray-700"> - {formatIsoToDutchDate(item.expiryIso)}</span>
+                </li>
+              ))}
+              {ship.issues.length > preview.length && (
+                <li className="text-gray-700 font-medium italic">+{ship.issues.length - preview.length} meer...</li>
+              )}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </Link>
+  )
+}
+
 export default function SchepenCertificatenPage() {
   const { ships, loading } = useSupabaseData()
   const [shipIssueMap, setShipIssueMap] = useState<Record<string, CertIssue[]>>({})
@@ -84,23 +158,41 @@ export default function SchepenCertificatenPage() {
     }
   }, [loadIssues])
 
-  const shipsWithCertificateStatus = useMemo(() => {
-    return (ships || [])
-      .map((ship: any) => {
-        const shipName = String(ship?.name || "").trim()
-        const issues = shipIssueMap[String(ship.id)] || []
+  const shipsGroupedBySeverity = useMemo(() => {
+    const rows: ShipCertRow[] = (ships || []).map((ship: any) => {
+      const shipName = String(ship?.name || "").trim()
+      const issues = shipIssueMap[String(ship.id)] || []
+      const expiredCount = issues.filter((i) => i.severity === "expired").length
+      const warningCount = issues.filter((i) => i.severity === "warning").length
+      return {
+        id: String(ship.id),
+        name: shipName || "Onbekend schip",
+        issues,
+        expiredCount,
+        warningCount,
+      }
+    })
 
-        const expiredCount = issues.filter((i) => i.severity === "expired").length
-        const warningCount = issues.filter((i) => i.severity === "warning").length
-        return {
-          id: String(ship.id),
-          name: shipName || "Onbekend schip",
-          issues,
-          expiredCount,
-          warningCount,
-        }
+    const byName = (a: ShipCertRow, b: ShipCertRow) => a.name.localeCompare(b.name, "nl", { sensitivity: "base" })
+
+    const expired = rows
+      .filter((s) => s.expiredCount > 0)
+      .sort((a, b) => {
+        if (b.expiredCount !== a.expiredCount) return b.expiredCount - a.expiredCount
+        if (b.warningCount !== a.warningCount) return b.warningCount - a.warningCount
+        return byName(a, b)
       })
-      .sort((a, b) => a.name.localeCompare(b.name, "nl", { sensitivity: "base" }))
+
+    const warningOnly = rows
+      .filter((s) => s.expiredCount === 0 && s.warningCount > 0)
+      .sort((a, b) => {
+        if (b.warningCount !== a.warningCount) return b.warningCount - a.warningCount
+        return byName(a, b)
+      })
+
+    const ok = rows.filter((s) => s.expiredCount === 0 && s.warningCount === 0).sort(byName)
+
+    return { expired, warningOnly, ok }
   }, [ships, shipIssueMap])
 
   return (
@@ -109,7 +201,10 @@ export default function SchepenCertificatenPage() {
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Schepen en Certificaten</h1>
-            <p className="text-gray-600">Klik op een schip om direct naar scheepsgegevens te gaan.</p>
+            <p className="text-gray-600">
+              Klik op een schip om direct naar scheepsgegevens te gaan. Eerst schepen met verlopen certificaten, daarna
+              bijna verlopen, onderaan alles in orde.
+            </p>
           </div>
         </div>
 
@@ -118,63 +213,66 @@ export default function SchepenCertificatenPage() {
             <CardContent className="p-6 text-gray-600">Laden...</CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {shipsWithCertificateStatus.map((ship) => {
-              const preview = ship.issues.slice(0, 5)
-              const tileStyle =
-                ship.expiredCount > 0
-                  ? "border-red-200 hover:border-red-300 bg-red-50/40"
-                  : ship.warningCount > 0
-                    ? "border-orange-200 hover:border-orange-300 bg-orange-50/40"
-                    : "border-emerald-200 hover:border-emerald-300 bg-emerald-50/40"
-              return (
-                <Link key={ship.id} href={`/schepen/overzicht/${ship.id}`} className="block">
-                  <Card className={`h-full hover:shadow-md transition-all cursor-pointer ${tileStyle}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="text-lg font-semibold text-gray-900 leading-tight">{ship.name}</div>
-                        <ChevronRight className="w-4 h-4 text-gray-400 shrink-0 mt-1" />
-                      </div>
+          <div className="space-y-10">
+            {shipsGroupedBySeverity.expired.length > 0 && (
+              <section aria-labelledby="cert-section-expired">
+                <h2
+                  id="cert-section-expired"
+                  className="mb-3 flex flex-wrap items-center gap-2 text-base font-bold text-red-900"
+                >
+                  <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-red-600" aria-hidden />
+                  Verlopen certificaten
+                  <span className="rounded-full bg-red-700 px-2 py-0.5 text-xs font-semibold text-white">
+                    {shipsGroupedBySeverity.expired.length} schepen
+                  </span>
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  {shipsGroupedBySeverity.expired.map((ship) => (
+                    <ShipCertificateTile key={ship.id} ship={ship} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-                      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-red-800">
-                          <AlertCircle className="w-3 h-3" />
-                          {ship.expiredCount} verlopen
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-orange-800">
-                          <AlertTriangle className="w-3 h-3" />
-                          {ship.warningCount} bijna
-                        </span>
-                      </div>
+            {shipsGroupedBySeverity.warningOnly.length > 0 && (
+              <section aria-labelledby="cert-section-warning">
+                <h2
+                  id="cert-section-warning"
+                  className="mb-3 flex flex-wrap items-center gap-2 text-base font-bold text-orange-900"
+                >
+                  <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-orange-500" aria-hidden />
+                  Bijna verlopen
+                  <span className="rounded-full bg-orange-600 px-2 py-0.5 text-xs font-semibold text-white">
+                    {shipsGroupedBySeverity.warningOnly.length} schepen
+                  </span>
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  {shipsGroupedBySeverity.warningOnly.map((ship) => (
+                    <ShipCertificateTile key={ship.id} ship={ship} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-                      {preview.length === 0 ? (
-                        <div className="text-xs text-emerald-700 bg-emerald-50 rounded border border-emerald-200 p-2">
-                          Geen verlopen of bijna verlopen certificaten.
-                        </div>
-                      ) : (
-                        <ul className="space-y-1.5 text-xs">
-                          {preview.map((item) => (
-                            <li key={`${ship.id}-${item.name}-${item.expiryIso}`} className="leading-snug text-gray-700">
-                              <span
-                                className={
-                                  item.severity === "expired" ? "font-medium text-red-700" : "font-medium text-orange-700"
-                                }
-                              >
-                                {item.name}
-                              </span>
-                              <span className="text-gray-500"> - {formatIsoToDutchDate(item.expiryIso)}</span>
-                            </li>
-                          ))}
-                          {ship.issues.length > preview.length && (
-                            <li className="text-gray-500 italic">+{ship.issues.length - preview.length} meer...</li>
-                          )}
-                        </ul>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Link>
-              )
-            })}
+            {shipsGroupedBySeverity.ok.length > 0 && (
+              <section aria-labelledby="cert-section-ok">
+                <h2
+                  id="cert-section-ok"
+                  className="mb-3 flex flex-wrap items-center gap-2 text-base font-bold text-emerald-900"
+                >
+                  <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-600" aria-hidden />
+                  Geen verlopen of bijna verlopen certificaten
+                  <span className="rounded-full bg-emerald-700 px-2 py-0.5 text-xs font-semibold text-white">
+                    {shipsGroupedBySeverity.ok.length} schepen
+                  </span>
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  {shipsGroupedBySeverity.ok.map((ship) => (
+                    <ShipCertificateTile key={ship.id} ship={ship} />
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </main>

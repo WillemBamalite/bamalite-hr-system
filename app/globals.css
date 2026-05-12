@@ -168,6 +168,14 @@ body {
 
 /* Print styles - print exact wat er op het scherm staat */
 @media print {
+  /* Certificaatlijst vanaf scheepspagina: geen dashboard-header (logo/Bemanningslijst/meldingen) */
+  html.certificate-print-mode .dashboard-header,
+  html.certificate-print-mode .print-header,
+  body.certificate-print-mode .dashboard-header,
+  body.certificate-print-mode .print-header {
+    display: none !important;
+  }
+
   /* Verberg alleen knoppen en navigatie elementen, maar behoud header */
   .print-button,
   button[class*="print"],

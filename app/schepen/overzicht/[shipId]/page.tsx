@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, FileText, Printer, Ship } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
-import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
 import {
   GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY,
@@ -3313,6 +3313,40 @@ const getShipParticularsConfigByName = (shipName: string): ShipParticularsConfig
   }
 }
 
+function sortCertificatesForPrintList(certificates: EditableShipCertificate[]): EditableShipCertificate[] {
+  const rank = (cert: EditableShipCertificate) => {
+    const info = getCertificateStatus(cert)
+    if (info.status === "expired") return 0
+    if (info.status === "warning") return 1
+    return 2
+  }
+  return [...certificates].sort((a, b) => {
+    const ra = rank(a)
+    const rb = rank(b)
+    if (ra !== rb) return ra - rb
+    const da = getCertificateStatus(a).daysUntilExpiry ?? 999999
+    const db = getCertificateStatus(b).daysUntilExpiry ?? 999999
+    if (da !== db) return da - db
+    return a.naam.localeCompare(b.naam, "nl", { sensitivity: "base" })
+  })
+}
+
+function loadMergedCertificatesForPrintFromStorage(shipName: string): EditableShipCertificate[] {
+  if (typeof window === "undefined") return []
+  const key = getShipCertificateStorageKeyByName(shipName)
+  if (!key) return []
+  const defaults = getShipCertificateDefaultsForClient(shipName)
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return mergeShipCertificatesWithStored(shipName, [], defaults)
+    const parsed = JSON.parse(raw)
+    const arr = Array.isArray(parsed) ? parsed : []
+    return mergeShipCertificatesWithStored(shipName, arr, defaults)
+  } catch {
+    return mergeShipCertificatesWithStored(shipName, [], defaults)
+  }
+}
+
 export default function ShipParticularsPage() {
   const CERTIFICATE_DOCUMENT_BUCKET = "official-warnings"
   const CERTIFICATE_META_PREFIX = "ship-certificates-meta"
@@ -3341,8 +3375,11 @@ export default function ShipParticularsPage() {
   const [editingParticularKey, setEditingParticularKey] = useState<string | null>(null)
   const [editingParticularValue, setEditingParticularValue] = useState("")
   const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const [printDialogKind, setPrintDialogKind] = useState<"scheepsgegevens" | "certificaten" | null>(null)
+  const [printCertificatesLayout, setPrintCertificatesLayout] = useState(false)
   const [selectedPrintShipIds, setSelectedPrintShipIds] = useState<string[]>([])
   const [printShipIds, setPrintShipIds] = useState<string[]>([])
+  const [printCertificateShipIds, setPrintCertificateShipIds] = useState<string[]>([])
   const [toonNieuwCertificaatFormulier, setToonNieuwCertificaatFormulier] = useState(false)
   const [nieuwCertificaatNaam, setNieuwCertificaatNaam] = useState("")
   const [nieuwCertificaatDatum, setNieuwCertificaatDatum] = useState("")
@@ -3358,6 +3395,15 @@ export default function ShipParticularsPage() {
   const ship = ships.find((s: any) => String(s.id) === shipId)
   const supportedShipsForPrint = ships.filter((s: any) => Boolean(getShipParticularsConfigByName(s?.name || "")))
   const allSupportedShipIds = supportedShipsForPrint.map((s: any) => String(s.id))
+  const shipsWithCertificatePrint = useMemo(
+    () =>
+      ships.filter((s: any) => Boolean(getShipCertificateStorageKeyByName(String(s?.name || "").trim()))),
+    [ships]
+  )
+  const allCertificateShipIds = useMemo(
+    () => shipsWithCertificatePrint.map((s: any) => String(s.id)),
+    [shipsWithCertificatePrint]
+  )
   const shipNameLower = String(ship?.name || "").trim().toLowerCase()
   const isApollo = shipNameLower === "apollo"
   const isJupiter = shipNameLower === "jupiter"
@@ -4099,6 +4145,47 @@ export default function ShipParticularsPage() {
     setPrintShipIds((prev) => (prev.length > 0 ? prev : [currentId]))
   }, [ship?.id])
 
+  const printCertificatesLayoutRef = useRef(false)
+  useEffect(() => {
+    printCertificatesLayoutRef.current = printCertificatesLayout
+  }, [printCertificatesLayout])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return
+    const onBeforePrint = () => {
+      if (!printCertificatesLayoutRef.current) return
+      document.documentElement.classList.add("certificate-print-mode")
+      document.body.classList.add("certificate-print-mode")
+    }
+    const onAfterPrint = () => {
+      setPrintCertificatesLayout(false)
+      setPrintCertificateShipIds([])
+    }
+    window.addEventListener("beforeprint", onBeforePrint)
+    window.addEventListener("afterprint", onAfterPrint)
+    return () => {
+      window.removeEventListener("beforeprint", onBeforePrint)
+      window.removeEventListener("afterprint", onAfterPrint)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const root = document.documentElement
+    const body = document.body
+    if (printCertificatesLayout) {
+      root.classList.add("certificate-print-mode")
+      body.classList.add("certificate-print-mode")
+    } else {
+      root.classList.remove("certificate-print-mode")
+      body.classList.remove("certificate-print-mode")
+    }
+    return () => {
+      root.classList.remove("certificate-print-mode")
+      body.classList.remove("certificate-print-mode")
+    }
+  }, [printCertificatesLayout])
+
   const setClassificationField = (key: keyof ClassificationEditableValues, value: string) => {
     const next = { ...classificationEditable, [key]: value }
     setClassificationEditable(next)
@@ -4313,6 +4400,30 @@ export default function ShipParticularsPage() {
   }
 
   const printScheepsgegevens = () => {
+    setPrintCertificatesLayout(false)
+    setPrintCertificateShipIds([])
+    setPrintDialogKind("scheepsgegevens")
+    setPrintDialogOpen(true)
+  }
+
+  const openPrintCertificatesDialog = () => {
+    if (typeof window === "undefined") return
+    if (!ship?.name || !certificateStorageKey) {
+      alert("Voor dit schip zijn geen certificaten beschikbaar om te printen.")
+      return
+    }
+    if (allCertificateShipIds.length === 0) {
+      alert("Er zijn geen schepen met een certificaatlijst om te printen.")
+      return
+    }
+    setPrintCertificatesLayout(false)
+    setPrintDialogKind("certificaten")
+    const currentId = String(ship.id)
+    setSelectedPrintShipIds((prev) => {
+      const filtered = prev.filter((id) => allCertificateShipIds.includes(id))
+      if (filtered.length > 0) return filtered
+      return allCertificateShipIds.includes(currentId) ? [currentId] : [allCertificateShipIds[0]]
+    })
     setPrintDialogOpen(true)
   }
 
@@ -4325,8 +4436,9 @@ export default function ShipParticularsPage() {
   }
 
   const handleToggleSelectAllPrintShips = (checked: boolean) => {
+    const ids = printDialogKind === "certificaten" ? allCertificateShipIds : allSupportedShipIds
     if (checked) {
-      setSelectedPrintShipIds(allSupportedShipIds)
+      setSelectedPrintShipIds(ids)
       return
     }
     setSelectedPrintShipIds([])
@@ -4337,14 +4449,43 @@ export default function ShipParticularsPage() {
       alert("Selecteer minimaal een schip om te printen.")
       return
     }
+    setPrintCertificatesLayout(false)
+    setPrintCertificateShipIds([])
     setPrintShipIds(selectedPrintShipIds)
     setPrintDialogOpen(false)
+    setPrintDialogKind(null)
     setActiveTab("scheepsgegevens")
     setCertificateContextMenu({ visible: false, x: 0, y: 0, certificateIndex: null })
     if (typeof window !== "undefined") {
       window.setTimeout(() => window.print(), 380)
     }
   }
+
+  const startPrintSelectedCertificates = () => {
+    if (typeof window === "undefined") return
+    const chosen = selectedPrintShipIds.filter((id) => allCertificateShipIds.includes(id))
+    if (chosen.length === 0) {
+      alert("Selecteer minimaal een schip met een certificaatlijst.")
+      return
+    }
+    document.documentElement.classList.add("certificate-print-mode")
+    document.body.classList.add("certificate-print-mode")
+    setPrintCertificateShipIds(chosen)
+    setPrintCertificatesLayout(true)
+    setPrintDialogOpen(false)
+    setPrintDialogKind(null)
+    setActiveTab("certificaten")
+    setCertificateContextMenu({ visible: false, x: 0, y: 0, certificateIndex: null })
+    window.setTimeout(() => window.print(), 380)
+  }
+
+  const dialogShipIdsForPrint =
+    printDialogKind === "certificaten" ? allCertificateShipIds : allSupportedShipIds
+  const dialogShipRowsForPrint =
+    printDialogKind === "certificaten" ? shipsWithCertificatePrint : supportedShipsForPrint
+  const allDialogShipsSelected =
+    dialogShipIdsForPrint.length > 0 &&
+    dialogShipIdsForPrint.every((id) => selectedPrintShipIds.includes(id))
 
   const voegNieuwCertificaatToe = async () => {
     const naam = nieuwCertificaatNaam.trim()
@@ -4438,21 +4579,39 @@ export default function ShipParticularsPage() {
               <p className="text-gray-600">Overzicht van scheepsgegevens uit documentatie</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={printScheepsgegevens}>
-            <Printer className="w-4 h-4 mr-2" />
-            Print scheepsgegevens
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={printScheepsgegevens}>
+              <Printer className="w-4 h-4 mr-2" />
+              Print scheepsgegevens
+            </Button>
+            {isSupportedShip && certificateStorageKey ? (
+              <Button variant="outline" size="sm" onClick={openPrintCertificatesDialog}>
+                <FileText className="w-4 h-4 mr-2" />
+                Print certificaten
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
+        <Dialog
+          open={printDialogOpen}
+          onOpenChange={(open) => {
+            setPrintDialogOpen(open)
+            if (!open) setPrintDialogKind(null)
+          }}
+        >
           <DialogContent className="sm:max-w-[560px] print:hidden">
             <DialogHeader>
-              <DialogTitle>Selecteer te printen schepen</DialogTitle>
+              <DialogTitle>
+                {printDialogKind === "certificaten"
+                  ? "Selecteer schepen voor certificaatprint"
+                  : "Selecteer te printen schepen"}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               <div className="flex items-center space-x-2 border-b pb-3">
                 <Checkbox
                   id="print-select-all-ships"
-                  checked={allSupportedShipIds.length > 0 && selectedPrintShipIds.length === allSupportedShipIds.length}
+                  checked={allDialogShipsSelected}
                   onCheckedChange={(checked) => handleToggleSelectAllPrintShips(Boolean(checked))}
                 />
                 <label htmlFor="print-select-all-ships" className="text-sm font-medium text-gray-900 cursor-pointer">
@@ -4460,7 +4619,7 @@ export default function ShipParticularsPage() {
                 </label>
               </div>
               <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                {supportedShipsForPrint.map((shipOption: any) => {
+                {dialogShipRowsForPrint.map((shipOption: any) => {
                   const optionId = String(shipOption.id)
                   const checked = selectedPrintShipIds.includes(optionId)
                   return (
@@ -4481,7 +4640,15 @@ export default function ShipParticularsPage() {
                 <Button variant="outline" onClick={() => setPrintDialogOpen(false)}>
                   Annuleren
                 </Button>
-                <Button onClick={startPrintSelectedShips}>Print selectie</Button>
+                <Button
+                  onClick={() =>
+                    printDialogKind === "certificaten"
+                      ? startPrintSelectedCertificates()
+                      : startPrintSelectedShips()
+                  }
+                >
+                  Print selectie
+                </Button>
               </div>
             </div>
           </DialogContent>
@@ -4912,7 +5079,7 @@ export default function ShipParticularsPage() {
         )}
         </div>
 
-        <div className="hidden print:block">
+        <div className={`hidden ${printCertificatesLayout ? "print:hidden" : "print:block"}`}>
           {printShipIdsToRender.map((printId) => {
             const printShip = ships.find((s: any) => String(s.id) === String(printId))
             const printConfig = getShipParticularsConfigByName(printShip?.name || "")
@@ -4997,6 +5164,90 @@ export default function ShipParticularsPage() {
             )
           })}
         </div>
+
+        {printCertificatesLayout && printCertificateShipIds.length > 0 ? (
+          <div className={`hidden print:block`}>
+            {printCertificateShipIds.map((certPrintShipId, shipIdx) => {
+              const printCertShip = ships.find((s: any) => String(s.id) === String(certPrintShipId))
+              if (!printCertShip?.name) return null
+              if (!getShipCertificateStorageKeyByName(printCertShip.name)) return null
+              const certsForShip = sortCertificatesForPrintList(
+                String(ship?.id) === String(printCertShip.id)
+                  ? certificatenEditable
+                  : loadMergedCertificatesForPrintFromStorage(printCertShip.name)
+              )
+              const printedOn = new Date().toLocaleDateString("nl-NL", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })
+              return (
+                <div
+                  key={`cert-print-${certPrintShipId}`}
+                  className={shipIdx > 0 ? "print:break-before-page" : ""}
+                >
+                  <div className="mb-4 certificate-print-title">
+                    <h1 className="text-2xl font-bold text-gray-900">
+                      Verloopdatums Certificaten, Keuringen en Verklaringen
+                    </h1>
+                    <p className="text-base font-semibold text-gray-800 mt-2">Schip: {printCertShip.name}</p>
+                    <p className="text-sm text-gray-600 mt-1">Afgedrukt op {printedOn}</p>
+                    <p className="text-sm text-gray-900 mt-3 font-medium">
+                      <span className="inline-block mr-1 h-3 w-3 rounded-sm bg-red-600 align-middle" aria-hidden />
+                      <span className="text-red-900 font-bold">Rood</span> = verlopen ·{" "}
+                      <span
+                        className="inline-block mr-1 h-3 w-3 rounded-sm bg-orange-500 align-middle"
+                        aria-hidden
+                      />
+                      <span className="text-orange-900 font-bold">Oranje</span> = bijna verlopen
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Gesorteerd: eerst verlopen, dan bijna verlopen, daarna overige.
+                    </p>
+                  </div>
+                  <table className="w-full text-sm border-collapse border-2 border-gray-800 certificate-print-table">
+                    <thead>
+                      <tr className="bg-gray-300">
+                        <th className="border-2 border-gray-800 px-3 py-2 text-left font-bold">Certificaat</th>
+                        <th className="border-2 border-gray-800 px-3 py-2 text-left font-bold">Huidig</th>
+                        <th className="border-2 border-gray-800 px-3 py-2 text-left font-bold">Verloopdatum</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {certsForShip.map((cert) => {
+                        const verloopIso = calculateCertificateExpiryDateIso(cert.huidig, cert.intervalJaar)
+                        const statusInfo = getCertificateStatus(cert)
+                        const rowClass =
+                          statusInfo.status === "expired"
+                            ? "bg-red-300 text-red-950 border-red-800"
+                            : statusInfo.status === "warning"
+                              ? "bg-orange-300 text-orange-950 border-orange-800"
+                              : "bg-white text-gray-900"
+                        const rowPrintColorStyle: CSSProperties = {
+                          WebkitPrintColorAdjust: "exact",
+                          printColorAdjust: "exact",
+                        }
+                        const cellBorder = "border-2 border-gray-700 px-3 py-2 align-top"
+                        return (
+                          <tr
+                            key={`print-cert-${printCertShip.id}-${cert.naam}`}
+                            className={rowClass}
+                            style={rowPrintColorStyle}
+                          >
+                            <td className={`${cellBorder} font-semibold`}>{cert.naam}</td>
+                            <td className={cellBorder}>{cert.huidig ? formatIsoToDutchDate(cert.huidig) : "-"}</td>
+                            <td className={cellBorder}>{verloopIso ? formatIsoToDutchDate(verloopIso) : "-"}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
       </main>
     </div>
   )
