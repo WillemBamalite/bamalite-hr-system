@@ -174,6 +174,28 @@ const parseDecimalInput = (value: string): number => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+/** Salarisvelden: komma als decimaal, optioneel punt als duizendtallen (zelfde als parseMoney). */
+const parseSalaryMoneyInput = (raw: string): number | null => {
+  const s = String(raw || "").trim()
+  if (s === "") return null
+  const n = parseMoney(s)
+  return Number.isFinite(n) ? n : null
+}
+
+const parseSalaryMoneyInputOrZero = (raw: string): number => {
+  const s = String(raw || "").trim()
+  if (s === "") return 0
+  return parseMoney(s)
+}
+
+/** Tekst voor het basissalaris-veld (komma als decimaal), niet telkens naar number normaliseren tijdens typen. */
+const formatSalaryInputFromNumber = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return ""
+  const n = Number(value)
+  if (Number.isInteger(n)) return String(n)
+  return String(n).replace(".", ",")
+}
+
 const formatInputDateToDutch = (isoDate: string) => {
   const [y, m, d] = String(isoDate || "").split("-")
   if (!y || !m || !d) return ""
@@ -419,6 +441,7 @@ export default function LoonBemerkingenPage() {
   const [lastSavedAt, setLastSavedAt] = useState<string>("")
   const [activeCompanyTab, setActiveCompanyTab] = useState<string>("")
   const [editingCrewId, setEditingCrewId] = useState<string | null>(null)
+  const [baseSalaryEditText, setBaseSalaryEditText] = useState("")
   const [overtimeDaysInput, setOvertimeDaysInput] = useState<string>("")
   const [overtimeFromDate, setOvertimeFromDate] = useState<string>("")
   const [overtimeToDate, setOvertimeToDate] = useState<string>("")
@@ -774,12 +797,14 @@ export default function LoonBemerkingenPage() {
 
   useEffect(() => {
     if (!editingCrewId || !rowsByCrewId[editingCrewId]) {
+      setBaseSalaryEditText("")
       setOvertimeDaysInput("")
       setOvertimeFromDate("")
       setOvertimeToDate("")
       return
     }
     const current = rowsByCrewId[editingCrewId]
+    setBaseSalaryEditText(formatSalaryInputFromNumber(current.base_salary))
     setOvertimeDaysInput(
       typeof current.overtime_days === "number" ? String(current.overtime_days).replace(".", ",") : ""
     )
@@ -2426,7 +2451,23 @@ export default function LoonBemerkingenPage() {
               </div>
               <div>
                 <Label>{isTanja ? "Grundgehalt inkl. Kleidungsgeld" : "Basissalaris incl kledinggeld"}</Label>
-                <Input disabled={salaryEditingDisabled} inputMode="decimal" value={rowsByCrewId[editingCrewId].base_salary ?? ""} onChange={(e) => setCrewField(editingCrewId, { base_salary: e.target.value.trim() === "" ? null : Number(e.target.value) })} />
+                <Input
+                  type="text"
+                  disabled={salaryEditingDisabled}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={baseSalaryEditText}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\s/g, "")
+                    if (v !== "" && !/^[-\d.,]*$/.test(v)) return
+                    setBaseSalaryEditText(v)
+                  }}
+                  onBlur={() => {
+                    const parsed = parseSalaryMoneyInput(baseSalaryEditText.trim())
+                    setCrewField(editingCrewId, { base_salary: parsed })
+                    setBaseSalaryEditText(formatSalaryInputFromNumber(parsed))
+                  }}
+                />
               </div>
               <div>
                 <Label>{isTanja ? "Reisekosten" : "Reiskosten"}</Label>
@@ -2483,7 +2524,7 @@ export default function LoonBemerkingenPage() {
                       onChange={(e) =>
                         setCrewField(editingCrewId, {
                           advance_enabled: true,
-                          advance_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value),
+                          advance_amount: parseSalaryMoneyInputOrZero(e.target.value),
                         })
                       }
                     />
@@ -2492,7 +2533,18 @@ export default function LoonBemerkingenPage() {
               )}
               <div>
                 <Label>{isTanja ? "Erhöhungsbetrag" : "Verhoging bedrag"}</Label>
-                <Input disabled={salaryEditingDisabled} inputMode="decimal" value={rowsByCrewId[editingCrewId].raise_amount ?? ""} onChange={(e) => setCrewField(editingCrewId, { raise_enabled: e.target.value.trim() !== "", raise_amount: e.target.value.trim() === "" ? 0 : Number(e.target.value) })} />
+                <Input
+                  disabled={salaryEditingDisabled}
+                  inputMode="decimal"
+                  value={rowsByCrewId[editingCrewId].raise_amount ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    setCrewField(editingCrewId, {
+                      raise_enabled: raw.trim() !== "",
+                      raise_amount: parseSalaryMoneyInputOrZero(raw),
+                    })
+                  }}
+                />
               </div>
               <div>
                 <Label>{isTanja ? "Uberstunden" : "Overwerk"}</Label>
@@ -2610,8 +2662,13 @@ export default function LoonBemerkingenPage() {
               <Button
                 disabled={salaryEditingDisabled}
                 onClick={async () => {
+                  if (!editingCrewId) return
+                  const parsedBase = parseSalaryMoneyInput(baseSalaryEditText.trim())
                   const preparedRow = syncOvertimeInputToRow(editingCrewId)
-                  const ok = await saveCrewRow(editingCrewId, preparedRow || undefined)
+                  const base = preparedRow || rowsByCrewId[editingCrewId]
+                  if (!base) return
+                  const toSave: SalaryDraft = { ...base, base_salary: parsedBase }
+                  const ok = await saveCrewRow(editingCrewId, toSave)
                   if (ok) {
                     setEditingCrewId(null)
                     setShowSalaryHistory(false)
