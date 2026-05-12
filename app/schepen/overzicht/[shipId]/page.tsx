@@ -3350,6 +3350,8 @@ export default function ShipParticularsPage() {
   const [nieuwCertificaatWaarschuwing, setNieuwCertificaatWaarschuwing] = useState("1")
   const [nieuwCertificaatVoorAlleSchepen, setNieuwCertificaatVoorAlleSchepen] = useState("nee")
   const [nieuwCertificaatFout, setNieuwCertificaatFout] = useState("")
+  const [editingIntervalIndex, setEditingIntervalIndex] = useState<number | null>(null)
+  const [editingIntervalValue, setEditingIntervalValue] = useState("")
   const certificatesSyncReadyRef = useRef(false)
   const certificateAutosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -4139,6 +4141,31 @@ export default function ShipParticularsPage() {
     saveShipCertificates(next)
   }
 
+  const beginEditCertificaatInterval = (index: number, intervalJaar: number | null) => {
+    setEditingIntervalIndex(index)
+    setEditingIntervalValue(intervalJaar === null ? "" : formatInterval(intervalJaar))
+  }
+
+  const saveCertificaatInterval = (index: number) => {
+    const raw = editingIntervalValue.trim()
+    if (raw === "" || raw === "-") {
+      const next = certificatenEditable.map((item, idx) => (idx === index ? { ...item, intervalJaar: null } : item))
+      saveShipCertificates(next)
+      setEditingIntervalIndex(null)
+      return
+    }
+
+    const parsed = Number(raw.replace(",", "."))
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      alert("Vul een geldig interval in (bijv. 1 of 0,5).")
+      return
+    }
+
+    const next = certificatenEditable.map((item, idx) => (idx === index ? { ...item, intervalJaar: parsed } : item))
+    saveShipCertificates(next)
+    setEditingIntervalIndex(null)
+  }
+
   const uploadCertificateDocument = async (index: number, file: File | null) => {
     if (!file || !ship?.name) return
     const certificate = certificatenEditable[index]
@@ -4769,9 +4796,31 @@ export default function ShipParticularsPage() {
                             </div>
                             <div className="space-y-1">
                               <div className="text-gray-600">Interval (jaar)</div>
-                              <div className="h-9 rounded-md border border-gray-200 bg-gray-50 px-3 flex items-center text-gray-900">
-                                {formatInterval(certificaat.intervalJaar)}
-                              </div>
+                              {editingIntervalIndex === index ? (
+                                <Input
+                                  autoFocus
+                                  value={editingIntervalValue}
+                                  onChange={(e) => setEditingIntervalValue(e.target.value)}
+                                  onBlur={() => saveCertificaatInterval(index)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      saveCertificaatInterval(index)
+                                    } else if (e.key === "Escape") {
+                                      setEditingIntervalIndex(null)
+                                    }
+                                  }}
+                                  className="h-9 text-xs"
+                                  placeholder="Bijv. 1 of 0,5"
+                                />
+                              ) : (
+                                <div
+                                  className="h-9 rounded-md border border-gray-200 bg-gray-50 px-3 flex items-center text-gray-900 cursor-text"
+                                  onDoubleClick={() => beginEditCertificaatInterval(index, certificaat.intervalJaar)}
+                                  title="Dubbelklik om interval te wijzigen"
+                                >
+                                  {formatInterval(certificaat.intervalJaar)}
+                                </div>
+                              )}
                             </div>
                             <div className="space-y-1">
                               <div className="text-gray-600">Waarschuwen vanaf</div>
