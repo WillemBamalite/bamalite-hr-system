@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { AlertCircle, AlertTriangle, ChevronRight, Ship } from "lucide-react"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
+import { ShipOverviewDownloadButton } from "@/components/schepen/ship-overview-download-dialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import {
@@ -79,7 +80,10 @@ function ShipCertificateTile({ ship }: { ship: ShipCertRow }) {
                   >
                     {item.name}
                   </span>
-                  <span className="text-gray-700"> - {formatIsoToDutchDate(item.expiryIso)}</span>
+                  <span className="text-gray-700">
+                    {" "}
+                    — verloopt op {formatIsoToDutchDate(item.expiryIso)}
+                  </span>
                 </li>
               ))}
               {ship.issues.length > preview.length && (
@@ -198,14 +202,20 @@ export default function SchepenCertificatenPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full py-6 md:py-8 px-3 md:px-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold text-gray-900">Schepen en Certificaten</h1>
             <p className="text-gray-600">
               Klik op een schip om direct naar scheepsgegevens te gaan. Eerst schepen met verlopen certificaten, daarna
-              bijna verlopen, onderaan alles in orde.
+              bijna verlopen, onderaan alles in orde. De datum bij elk certificaat is de berekende verloopdatum (laatste
+              keuring plus interval), vergeleken met vandaag.
             </p>
           </div>
+          {!loading && ships && ships.length > 0 ? (
+            <ShipOverviewDownloadButton
+              ships={(ships as any[]).map((s) => ({ id: String(s.id), name: String(s.name || "").trim() }))}
+            />
+          ) : null}
         </div>
 
         {loading ? (

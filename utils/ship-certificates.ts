@@ -1020,7 +1020,8 @@ const parseIntervalYears = (value: string): number | null => {
 const normalizeCertificateName = (certificateName: string) =>
   String(certificateName || "").trim().toLowerCase()
 
-const normalizeShipStorageName = (value: string) =>
+/** Zelfde normalisatie als schip-paden in Storage (o.a. state.json, particular overrides). */
+export const normalizeShipStorageName = (value: string) =>
   String(value || "")
     .trim()
     .toLowerCase()
