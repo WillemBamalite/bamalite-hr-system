@@ -8,6 +8,7 @@ import {
   getDailyEmailManagementRecipients,
   getDailyEmailOfficeRecipients,
 } from "@/lib/notifications/recipients"
+import { createDueHrOnboardingTasks } from "@/lib/hr-onboarding-scheduled-tasks"
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -124,6 +125,19 @@ export async function GET(request: NextRequest) {
     if (accessError) return accessError
 
     const supabase = createServerSupabase()
+
+    let hrOnboarding: Awaited<ReturnType<typeof createDueHrOnboardingTasks>> | null = null
+    try {
+      hrOnboarding = await createDueHrOnboardingTasks(supabase)
+    } catch (e: any) {
+      console.error("createDueHrOnboardingTasks (morning-bundle):", e)
+      hrOnboarding = {
+        createdFunctioneren: 0,
+        createdSamenwerking: 0,
+        errors: [e?.message || String(e)],
+      }
+    }
+
     const [crewRes, tasksRes, shipsRes, sickLeaveRes, visitsRes] = await Promise.all([
       supabase.from("crew").select("*"),
       supabase.from("tasks").select("*"),
@@ -252,6 +266,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      hrOnboarding,
       mgmt: { sent: mgmtSent, total: mgmtTotal, recipients: mgmtRecipients },
       office: { sent: officeSent, total: officeTotal, recipients: officeRecipients },
     })

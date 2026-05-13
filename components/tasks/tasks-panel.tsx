@@ -19,6 +19,7 @@ import { format, isPast, isToday, differenceInDays, startOfDay } from "date-fns"
 import { nl } from "date-fns/locale"
 import { supabase } from "@/lib/supabase"
 import { isRealCrewMember } from "@/utils/crew-filters"
+import { parseFlexibleDate } from "@/utils/dashboard-notifications"
 
 export function TasksPanel() {
   const searchParams = useSearchParams()
@@ -118,7 +119,10 @@ export function TasksPanel() {
 
     try {
       const today = startOfDay(new Date())
-      const deadlineDate = startOfDay(new Date(task.deadline))
+      const parsed = parseFlexibleDate(task.deadline)
+      if (!parsed) return false
+      const deadlineDate = startOfDay(parsed)
+      if (isNaN(deadlineDate.getTime())) return false
       // Verberg zolang de deadline nog in de toekomst ligt
       return deadlineDate > today
     } catch {

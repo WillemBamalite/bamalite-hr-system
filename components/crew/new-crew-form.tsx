@@ -13,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { CalendarIcon, UserPlus, Save, X } from "lucide-react"
-import { format } from "date-fns"
+import { addDays, format, startOfDay } from "date-fns"
 import { nl } from "date-fns/locale"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -283,8 +283,15 @@ export function NewCrewForm() {
         await addCrew(crewMember as any)
       }
 
-      // Kleine helper voor datumformat (YYYY-MM-DD)
-      const formatDate = (date: Date) => date.toISOString().split("T")[0]
+      /** Kalenderdatum uit formulier (yyyy-MM-dd) → lokale start van dag (geen UTC-shift via toISOString). */
+      const parseFormYmd = (ymd: string): Date | null => {
+        const raw = (ymd || "").trim()
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null
+        const [y, m, d] = raw.split("-").map(Number)
+        const dt = startOfDay(new Date(y, m - 1, d))
+        return isNaN(dt.getTime()) ? null : dt
+      }
+      const formatLocalYmd = (date: Date) => format(date, "yyyy-MM-dd")
 
       // Haal scheepsnaam op
       const selectedShip = ships.find(ship => ship.id === formData.shipId)
@@ -292,7 +299,7 @@ export function NewCrewForm() {
 
       // Automatische taken voor nieuw personeel
       try {
-        const today = new Date()
+        const todayLocal = startOfDay(new Date())
 
         // Basisgegevens voor alle automatische taken
         const baseTaskData = {
@@ -301,7 +308,7 @@ export function NewCrewForm() {
           related_ship_id: (formData.shipId === "none" || formData.shipId === "unassigned") ? null : formData.shipId,
           assigned_to: "Nautic",
           priority: "normaal",
-          created_date: formatDate(today),
+          created_date: formatLocalYmd(todayLocal),
           created_by: "HR-systeem",
           status: "open",
           completed: false
@@ -314,47 +321,20 @@ export function NewCrewForm() {
           formData.shipId !== "unassigned" &&
           formData.startDate
         ) {
-          const startDateObj = new Date(formData.startDate)
-          if (!isNaN(startDateObj.getTime())) {
-            const contactDeadline = new Date(startDateObj)
-            contactDeadline.setDate(contactDeadline.getDate() - 7)
-
+          const startLocal = parseFormYmd(formData.startDate)
+          if (startLocal) {
+            const contactDeadline = addDays(startLocal, -7)
             await addTask({
               ...baseTaskData,
               title: `In contact brengen met ${shipName || "schip"}`,
               description: `Breng ${formData.firstName} ${formData.lastName} in contact met het schip (${shipName || "schip"}) ongeveer een week voordat hij/zij aan boord gaat.`,
-              deadline: formatDate(contactDeadline)
+              deadline: formatLocalYmd(contactDeadline),
             })
           }
         }
 
-        // Zorg dat we een geldige in_dienst_vanaf datum hebben voor taken 2 en 3
-        if (formData.in_dienst_vanaf) {
-          const inDienstDate = new Date(formData.in_dienst_vanaf)
-          if (!isNaN(inDienstDate.getTime())) {
-            // 2) 10 dagen na in dienst: vragen naar functioneren
-            const functionerenDate = new Date(inDienstDate)
-            functionerenDate.setDate(functionerenDate.getDate() + 10)
-
-            await addTask({
-              ...baseTaskData,
-              title: `Vragen naar functioneren - ${formData.firstName} ${formData.lastName}`,
-              description: `Neem contact op met ${formData.firstName} ${formData.lastName} (en eventueel het schip) om na ongeveer 10 dagen te vragen naar het functioneren.`,
-              deadline: formatDate(functionerenDate)
-            })
-
-            // 3) 10 dagen voor einde proeftijd (uitgaande van 90 dagen proeftijd ⇒ dag 80)
-            const proefEindeReminderDate = new Date(inDienstDate)
-            proefEindeReminderDate.setDate(proefEindeReminderDate.getDate() + 80)
-
-            await addTask({
-              ...baseTaskData,
-              title: `Samenwerking doorzetten of stoppen - ${formData.firstName} ${formData.lastName}`,
-              description: `Beoordeel rond het einde van de proeftijd of de samenwerking met ${formData.firstName} ${formData.lastName} wordt doorgezet of gestopt.`,
-              deadline: formatDate(proefEindeReminderDate)
-            })
-          }
-        }
+        // Vragen naar functioneren + samenwerking/stoppen: worden niet hier aangemaakt maar door
+        // de dagelijkse cron (createDueHrOnboardingTasks in morning-bundle), pas na 10 dagen / 2 maanden.
       } catch (taskError) {
         console.error("❌ Fout bij het aanmaken van automatische taken voor nieuw personeel:", taskError)
         alert("Let op: het bemanningslid is opgeslagen, maar de automatische taken konden niet allemaal worden aangemaakt.")

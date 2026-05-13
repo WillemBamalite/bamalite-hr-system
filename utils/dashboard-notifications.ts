@@ -1,4 +1,4 @@
-import { format, isPast, isToday, startOfDay } from "date-fns"
+import { format, isAfter, isPast, isToday, startOfDay } from "date-fns"
 
 export type DashboardNotificationSeverity = "info" | "warning" | "danger"
 export type DashboardNotificationKind =
@@ -23,15 +23,27 @@ export type DashboardNotification = {
 
 const toYmd = (d: Date) => format(d, "yyyy-MM-dd")
 
-const parseFlexibleDate = (value: unknown): Date | null => {
+export const parseFlexibleDate = (value: unknown): Date | null => {
   if (!value || typeof value !== "string") return null
   const raw = value.trim()
   if (!raw) return null
 
-  // yyyy-MM-dd
+  // yyyy-MM-dd (altijd kalenderdatum in lokale tijd, geen UTC-midnight-parse)
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const d = new Date(raw)
-    return isNaN(d.getTime()) ? null : d
+    const [ys, ms, ds] = raw.split("-")
+    const y = Number(ys)
+    const monthIndex = Number(ms) - 1
+    const day = Number(ds)
+    const d = new Date(y, monthIndex, day)
+    if (
+      d.getFullYear() === y &&
+      d.getMonth() === monthIndex &&
+      d.getDate() === day &&
+      !isNaN(d.getTime())
+    ) {
+      return d
+    }
+    return null
   }
 
   // dd-MM-yyyy
@@ -248,10 +260,28 @@ export function buildDashboardNotifications(args: {
     notifications.push(alert)
   }
 
+  /** Automatische onboarding-taken: niet in meldingen/e-mail tot de deadline-dag bereikt is. */
+  const isHrOnboardingTaskWithFutureDeadline = (task: any) => {
+    if (String(task?.created_by || "") !== "HR-systeem") return false
+    const title = (task?.title || "").toLowerCase()
+    if (
+      !title.startsWith("vragen naar functioneren") &&
+      !title.startsWith("samenwerking doorzetten of stoppen")
+    ) {
+      return false
+    }
+    const parsed = task?.deadline ? parseFlexibleDate(task.deadline) : null
+    if (!parsed) return false
+    const deadlineDay = startOfDay(parsed)
+    if (isNaN(deadlineDay.getTime())) return false
+    return isAfter(deadlineDay, today)
+  }
+
   // Urgente taken en taken met verlopen deadline (blijven in meldingen tot opgelost)
   const urgentTasks =
     (tasks || []).filter((task: any) => {
       if (task?.status === "completed" || task?.completed === true) return false
+      if (isHrOnboardingTaskWithFutureDeadline(task)) return false
       if (task?.priority === "urgent") return true
       if (task?.deadline) {
         const parsedDeadline = parseFlexibleDate(task.deadline)
