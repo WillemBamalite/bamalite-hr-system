@@ -1020,7 +1020,7 @@ const parseIntervalYears = (value: string): number | null => {
 const normalizeCertificateName = (certificateName: string) =>
   String(certificateName || "").trim().toLowerCase()
 
-export const normalizeShipStorageName = (value: string) =>
+const normalizeShipStorageName = (value: string) =>
   String(value || "")
     .trim()
     .toLowerCase()
@@ -1114,18 +1114,6 @@ const normalizeShipName = (shipName: string) =>
 export const getShipCertificateConfigByName = (shipName: string): ShipCertificateConfig | null => {
   const normalized = normalizeShipName(shipName)
   return SHIP_CERTIFICATE_CONFIGS.find((c) => normalizeShipName(c.shipName) === normalized) || null
-}
-
-/** Unieke certificaatnamen uit alle scheepssjablonen (voor export/selectie-UI). */
-export const getAllTemplateCertificateNames = (): string[] => {
-  const names = new Set<string>()
-  for (const config of SHIP_CERTIFICATE_CONFIGS) {
-    for (const row of config.source) {
-      const n = String(row.naam || "").trim()
-      if (n) names.add(n)
-    }
-  }
-  return Array.from(names).sort((a, b) => a.localeCompare(b, "nl", { sensitivity: "base" }))
 }
 
 export const getShipCertificateStorageKeyByName = (shipName: string): string | null => {
