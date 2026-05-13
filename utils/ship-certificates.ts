@@ -1120,6 +1120,18 @@ export const getShipCertificateStorageKeyByName = (shipName: string): string | n
   return getShipCertificateConfigByName(shipName)?.storageKey || null
 }
 
+/** Unieke certificaatnamen uit alle scheepssjablonen (voor export/filter UI). */
+export const getAllTemplateCertificateNames = (): string[] => {
+  const names = new Set<string>()
+  for (const config of SHIP_CERTIFICATE_CONFIGS) {
+    for (const item of config.source) {
+      const n = String(item.naam || "").trim()
+      if (n) names.add(n)
+    }
+  }
+  return Array.from(names).sort((a, b) => a.localeCompare(b, "nl", { sensitivity: "base" }))
+}
+
 export const getShipCertificateDefaultsByName = (shipName: string): EditableShipCertificate[] => {
   const config = getShipCertificateConfigByName(shipName)
   if (!config) return []
@@ -1297,28 +1309,87 @@ export const getVisibleShipCertificatesForClient = (shipName: string): EditableS
   return all.filter((cert) => !removedNames.has(normalizeCertificateName(cert.naam)))
 }
 
+/** Zelfde bucket/pad als op de schippagina: daar wordt state eerst naar Storage geschreven. */
+const CERTIFICATE_CLOUD_BUCKET = "official-warnings"
+const CERTIFICATE_CLOUD_META_PREFIX = "ship-certificates-meta"
+
+function parseUpdatedAtMs(iso: string): number {
+  const ms = new Date(String(iso || "").trim()).getTime()
+  return Number.isFinite(ms) ? ms : 0
+}
+
+type CloudShipCertificateStateJson = {
+  certificates?: unknown
+  removedCertificateKeys?: unknown
+  updatedAt?: string
+}
+
+async function loadShipCertificateStateFromCloudStorage(
+  shipName: string
+): Promise<CloudShipCertificateStateJson | null> {
+  const path = `${CERTIFICATE_CLOUD_META_PREFIX}/${normalizeShipStorageName(shipName)}/state.json`
+  try {
+    const { data, error } = await supabase.storage.from(CERTIFICATE_CLOUD_BUCKET).download(path)
+    if (error || !data) return null
+    const text = await data.text()
+    if (!text?.trim()) return null
+    const parsed = JSON.parse(text) as CloudShipCertificateStateJson
+    return parsed && typeof parsed === "object" ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export const getVisibleShipCertificatesSharedForClient = async (shipName: string): Promise<EditableShipCertificate[]> => {
   const safeShipName = String(shipName || "").trim()
   if (!safeShipName) return []
   try {
     const shipKey = normalizeShipStorageName(safeShipName)
-    const { data, error } = await supabase
-      .from("ship_certificate_states")
-      .select("certificates, removed_certificate_keys")
-      .eq("ship_key", shipKey)
-      .limit(1)
 
-    if (error) return getShipCertificateDefaultsForClient(safeShipName)
-    const row = Array.isArray(data) ? data[0] : null
-    if (!row) return getShipCertificateDefaultsForClient(safeShipName)
+    const [storageState, dbResponse] = await Promise.all([
+      loadShipCertificateStateFromCloudStorage(safeShipName),
+      supabase
+        .from("ship_certificate_states")
+        .select("certificates, removed_certificate_keys, updated_at")
+        .eq("ship_key", shipKey)
+        .limit(1),
+    ])
+
+    const dbRow =
+      !dbResponse.error && Array.isArray(dbResponse.data) && dbResponse.data[0] ? dbResponse.data[0] : null
+
+    if (!storageState && !dbRow) {
+      return getShipCertificateDefaultsForClient(safeShipName)
+    }
+
+    const storageMs = parseUpdatedAtMs(storageState?.updatedAt || "")
+    const dbMs = parseUpdatedAtMs(String((dbRow as { updated_at?: string })?.updated_at || ""))
+
+    let certificatesRaw: unknown
+    let removedRaw: unknown
+
+    if (storageState && dbRow) {
+      if (storageMs >= dbMs) {
+        certificatesRaw = storageState.certificates
+        removedRaw = storageState.removedCertificateKeys
+      } else {
+        certificatesRaw = dbRow.certificates
+        removedRaw = (dbRow as { removed_certificate_keys?: unknown }).removed_certificate_keys
+      }
+    } else if (storageState) {
+      certificatesRaw = storageState.certificates
+      removedRaw = storageState.removedCertificateKeys
+    } else {
+      certificatesRaw = dbRow!.certificates
+      removedRaw = (dbRow as { removed_certificate_keys?: unknown }).removed_certificate_keys
+    }
 
     const defaults = getShipCertificateDefaultsForClient(safeShipName)
-    const merged = mergeShipCertificatesWithStored(safeShipName, row.certificates, defaults)
-    const removed = Array.isArray((row as any).removed_certificate_keys)
+    const merged = mergeShipCertificatesWithStored(safeShipName, certificatesRaw, defaults)
+
+    const removed = Array.isArray(removedRaw)
       ? new Set(
-          (row as any).removed_certificate_keys
-            .map((item: unknown) => normalizeCertificateName(String(item || "")))
-            .filter(Boolean)
+          removedRaw.map((item: unknown) => normalizeCertificateName(String(item || ""))).filter(Boolean)
         )
       : new Set<string>()
     if (removed.size === 0) return merged
