@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, LogOut, User, Calendar, Printer, ListTodo, Search, ChevronDown, ChevronUp } from "lucide-react"
+import { LogOut, Calendar, Printer, ListTodo, Search, ChevronDown, ChevronUp, Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
@@ -8,14 +8,12 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
-import { useState, useEffect } from "react"
-import { format, formatDistanceToNow } from "date-fns"
+import { useState, useEffect, useMemo } from "react"
+import { format } from "date-fns"
 import { nl, de, fr } from "date-fns/locale"
-import { useLastActivity } from "@/hooks/use-last-activity"
 import { CalendarDialog } from "@/components/agenda/calendar-dialog"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
-import { useShipVisits } from "@/hooks/use-ship-visits"
-import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
+import { taskHasUnreadStatusFromOthers } from "@/utils/task-status-unread"
 
 interface DashboardHeaderProps {
   // Empty for now, can add props later if needed
@@ -30,11 +28,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const [agendaOpen, setAgendaOpen] = useState(false)
   const [headerFindQuery, setHeaderFindQuery] = useState("")
   const [headerFindMatches, setHeaderFindMatches] = useState(0)
-  const { lastActivity, loading: activityLoading } = useLastActivity()
-  const { crew, tasks, ships, sickLeave, loading: dataLoading } = useSupabaseData()
-  const { visits, getShipsNotVisitedInDays } = useShipVisits()
-  
-  // Prevent hydration errors
+  const { tasks, loading: tasksLoading } = useSupabaseData()
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -87,11 +81,21 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     hitSingle: locale === "de" ? "Treffer" : locale === "fr" ? "résultat" : "treffer",
     hitPlural: locale === "de" ? "Treffer" : locale === "fr" ? "résultats" : "treffers",
     loading: locale === "de" ? "Laden..." : locale === "fr" ? "Chargement..." : "Laden...",
-    notifications: locale === "de" ? "Benachrichtigungen" : locale === "fr" ? "Notifications" : "Meldingen",
     newTask: locale === "de" ? "Neue Aufgabe" : locale === "fr" ? "Nouvelle tâche" : "Nieuwe taak",
     print: locale === "de" ? "Drucken" : locale === "fr" ? "Imprimer" : "Print",
+    statusUpdates: locale === "de" ? "Statusupdates" : locale === "fr" ? "Mises à jour" : "Statusupdates",
   }
-  
+
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const statusUnreadCount = useMemo(() => {
+    if (!userEmailLower || tasksLoading) return 0
+    try {
+      return (tasks || []).filter((t: any) => taskHasUnreadStatusFromOthers(t, userEmailLower)).length
+    } catch {
+      return 0
+    }
+  }, [tasks, tasksLoading, userEmailLower])
+
   // Don't show header on login page
   if (pathname === '/login') {
     return null
@@ -110,22 +114,6 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
       false, // showDialog
     )
   }
-  const notificationCount = (() => {
-    if (dataLoading) return 0
-    try {
-      return buildDashboardNotifications({
-        crew: crew || [],
-        tasks: tasks || [],
-        ships: ships || [],
-        sickLeave: sickLeave || [],
-        visits: visits || [],
-        getShipsNotVisitedInDays,
-      }).length
-    } catch {
-      return 0
-    }
-  })()
-  const userEmailLower = String(user?.email || "").toLowerCase()
   const disableHeaderCalendarClick =
     userEmailLower === "tanja@bamalite.com" ||
     userEmailLower === "karina@bamalite.com" ||
@@ -223,23 +211,24 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
             <div className="flex items-center gap-3 dashboard-header-actions-row">
-              {role === "admin_full" && (
-                <Link href="/meldingen" className="relative">
+              {role === "admin_full" && user && (
+                <Link href="/taken?statusUnread=1" className="relative">
                   <Button
                     variant="outline"
                     size="sm"
                     className={`flex items-center gap-2 ${
-                      !isCertificatesOverviewPage && notificationCount > 0
-                        ? "border-red-400 text-red-700 hover:bg-red-50 hover:text-red-800"
-                        : ""
+                      statusUnreadCount > 0 ? "border-amber-500 text-amber-800 hover:bg-amber-50" : ""
                     }`}
+                    title="Taken met ongelezen statusupdates van collega's"
                   >
-                    <Bell className="w-4 h-4" />
-                    {uiText.notifications}
+                    <Bell
+                      className={`w-4 h-4 shrink-0 ${statusUnreadCount > 0 ? "task-status-bell-attention text-amber-600" : ""}`}
+                    />
+                    {uiText.statusUpdates}
                   </Button>
-                  {!isCertificatesOverviewPage && notificationCount > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
-                      {notificationCount > 99 ? "99+" : notificationCount}
+                  {statusUnreadCount > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
+                      {statusUnreadCount > 99 ? "99+" : statusUnreadCount}
                     </span>
                   )}
                 </Link>
@@ -255,10 +244,6 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
                   {uiText.newTask}
                 </Button>
               </Link>}
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-                <User className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-700">{user.email}</span>
-              </div>
               <Button
                 variant="outline"
                 size="sm"

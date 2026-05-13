@@ -269,3 +269,19 @@ body.newsletter-page-mode .dashboard-header {
 body.newsletter-page-mode .app-container {
   min-width: 0 !important;
 }
+
+/* Header: statusupdate-melding (taak) */
+@keyframes task-status-bell-attention {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.12);
+  }
+}
+.task-status-bell-attention {
+  animation: task-status-bell-attention 1.1s ease-in-out infinite;
+}

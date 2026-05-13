@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -20,13 +21,16 @@ import { nl } from "date-fns/locale"
 import { supabase } from "@/lib/supabase"
 import { isRealCrewMember } from "@/utils/crew-filters"
 import { parseFlexibleDate } from "@/utils/dashboard-notifications"
+import { buildNextStatusReads, taskHasUnreadStatusFromOthers } from "@/utils/task-status-unread"
 
 export function TasksPanel() {
   const searchParams = useSearchParams()
   const highlightedTaskId = searchParams.get('taskId')
   const newTaskParam = searchParams.get('newTask')
+  const statusUnreadOnly = searchParams.get("statusUnread") === "1"
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
   const { user } = useAuth()
+  const viewerEmailLower = (user?.email || "").trim().toLowerCase()
   const [showDialog, setShowDialog] = useState(false)
   
   // Scroll naar gehighlighte taak wanneer deze beschikbaar is en selecteer juiste assignee
@@ -69,6 +73,11 @@ export function TasksPanel() {
       setShowDialog(true)
     }
   }, [newTaskParam])
+
+  useEffect(() => {
+    if (statusUnreadOnly) setFilter("open")
+  }, [statusUnreadOnly])
+
   const [selectedTaskType, setSelectedTaskType] = useState<"ship" | "crew" | "algemeen" | "">("")
   const [selectedShipId, setSelectedShipId] = useState<string>("")
   const [selectedCrewId, setSelectedCrewId] = useState<string>("")
@@ -295,8 +304,12 @@ export function TasksPanel() {
       t.status !== "completed" &&
       !isFutureAutoOnboardingTask(t)
   )
+  const openTasksVisible =
+    statusUnreadOnly && viewerEmailLower
+      ? openTasks.filter((t: any) => taskHasUnreadStatusFromOthers(t, viewerEmailLower))
+      : openTasks
   const completedTasks = tasks.filter((t: any) => t.completed || t.status === 'completed')
-  const filteredTasks = filter === "open" ? openTasks : completedTasks
+  const filteredTasks = filter === "open" ? openTasksVisible : completedTasks
 
   // Sync lokale status-updates met bestaande data (pak laatste entry uit status_updates)
   useEffect(() => {
@@ -662,6 +675,17 @@ export function TasksPanel() {
     }
   }
 
+  const handleMarkStatusRead = async (task: any) => {
+    if (!viewerEmailLower) return
+    try {
+      const next = buildNextStatusReads(task, viewerEmailLower)
+      await updateTask(task.id, { status_reads: next })
+    } catch (error) {
+      console.error("Error marking status read:", error)
+      alert("Kon niet opslaan als gelezen. Probeer opnieuw.")
+    }
+  }
+
   const getStatusBadge = (status: string | null, completed: boolean) => {
     // If task is completed, always show completed status
     if (completed || status === 'completed') {
@@ -768,7 +792,7 @@ export function TasksPanel() {
             onClick={() => setFilter("open")}
             size="sm"
           >
-            Openstaande Taken ({openTasks.length})
+            Openstaande Taken ({openTasksVisible.length})
           </Button>
           <Button
             variant={filter === "completed" ? "default" : "outline"}
@@ -783,6 +807,17 @@ export function TasksPanel() {
           Nieuwe Taak
         </Button>
       </div>
+
+      {statusUnreadOnly && viewerEmailLower && (
+        <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-950">
+          <span>
+            Alleen openstaande taken met een <strong>ongelezen statusupdate van een collega</strong>.
+          </span>
+          <Link href="/taken" className="font-medium text-amber-900 underline shrink-0 hover:text-amber-950">
+            Alle taken tonen
+          </Link>
+        </div>
+      )}
 
       {/* Tabs per assignee */}
       <div className="flex items-center gap-2 mb-4">
@@ -866,11 +901,18 @@ export function TasksPanel() {
                       const deadlineStatus = getDeadlineStatus(task.deadline)
 
                       const isHighlighted = highlightedTaskId === task.id
+                      const statusUnreadRing =
+                        viewerEmailLower && taskHasUnreadStatusFromOthers(task, viewerEmailLower) && !isHighlighted
+                      const cardRing = isHighlighted
+                        ? "ring-4 ring-orange-400 ring-offset-2"
+                        : statusUnreadRing
+                          ? "ring-2 ring-amber-500 ring-offset-1"
+                          : ""
                       return (
                         <Card 
                           key={task.id}
                           data-task-id={task.id}
-                          className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
+                          className={`${task.completed ? "opacity-60" : ""} ${cardRing}`}
                         >
                             <CardContent className="p-4">
                               <div className="space-y-4">
@@ -985,6 +1027,17 @@ export function TasksPanel() {
                                     </div>
                                   )
                                 })()}
+                                {viewerEmailLower && taskHasUnreadStatusFromOthers(task, viewerEmailLower) && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full border-amber-300 text-amber-900 hover:bg-amber-50"
+                                    onClick={() => handleMarkStatusRead(task)}
+                                  >
+                                    Statusupdates markeren als gelezen
+                                  </Button>
+                                )}
 
                                 {/* Bijlagen bij deze taak - altijd zichtbaar */}
                                 <div className="space-y-1">
@@ -1209,11 +1262,18 @@ export function TasksPanel() {
                       const deadlineStatus = getDeadlineStatus(task.deadline)
 
                       const isHighlighted = highlightedTaskId === task.id
+                      const statusUnreadRing =
+                        viewerEmailLower && taskHasUnreadStatusFromOthers(task, viewerEmailLower) && !isHighlighted
+                      const cardRing = isHighlighted
+                        ? "ring-4 ring-orange-400 ring-offset-2"
+                        : statusUnreadRing
+                          ? "ring-2 ring-amber-500 ring-offset-1"
+                          : ""
                       return (
                         <Card 
                           key={task.id}
                           data-task-id={task.id}
-                          className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
+                          className={`${task.completed ? "opacity-60" : ""} ${cardRing}`}
                         >
                             <CardContent className="p-4">
                               <div className="space-y-4">
@@ -1328,6 +1388,17 @@ export function TasksPanel() {
                                     </div>
                                   )
                                 })()}
+                                {viewerEmailLower && taskHasUnreadStatusFromOthers(task, viewerEmailLower) && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full border-amber-300 text-amber-900 hover:bg-amber-50"
+                                    onClick={() => handleMarkStatusRead(task)}
+                                  >
+                                    Statusupdates markeren als gelezen
+                                  </Button>
+                                )}
 
                                 {/* Bijlagen bij deze taak - altijd zichtbaar */}
                                 <div className="space-y-1">
@@ -1552,11 +1623,18 @@ export function TasksPanel() {
                       const deadlineStatus = getDeadlineStatus(task.deadline)
 
                       const isHighlighted = highlightedTaskId === task.id
+                      const statusUnreadRing =
+                        viewerEmailLower && taskHasUnreadStatusFromOthers(task, viewerEmailLower) && !isHighlighted
+                      const cardRing = isHighlighted
+                        ? "ring-4 ring-orange-400 ring-offset-2"
+                        : statusUnreadRing
+                          ? "ring-2 ring-amber-500 ring-offset-1"
+                          : ""
                       return (
                         <Card 
                           key={task.id}
                           data-task-id={task.id}
-                          className={`${task.completed ? "opacity-60" : ""} ${isHighlighted ? "ring-4 ring-orange-400 ring-offset-2" : ""}`}
+                          className={`${task.completed ? "opacity-60" : ""} ${cardRing}`}
                         >
                             <CardContent className="p-4">
                               <div className="space-y-4">
@@ -1671,6 +1749,17 @@ export function TasksPanel() {
                                     </div>
                                   )
                                 })()}
+                                {viewerEmailLower && taskHasUnreadStatusFromOthers(task, viewerEmailLower) && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full border-amber-300 text-amber-900 hover:bg-amber-50"
+                                    onClick={() => handleMarkStatusRead(task)}
+                                  >
+                                    Statusupdates markeren als gelezen
+                                  </Button>
+                                )}
 
                                 {/* Bijlagen bij deze taak - altijd zichtbaar */}
                                 <div className="space-y-1">
