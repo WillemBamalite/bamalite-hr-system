@@ -1020,7 +1020,7 @@ const parseIntervalYears = (value: string): number | null => {
 const normalizeCertificateName = (certificateName: string) =>
   String(certificateName || "").trim().toLowerCase()
 
-const normalizeShipStorageName = (value: string) =>
+export const normalizeShipStorageName = (value: string) =>
   String(value || "")
     .trim()
     .toLowerCase()
@@ -1114,6 +1114,18 @@ const normalizeShipName = (shipName: string) =>
 export const getShipCertificateConfigByName = (shipName: string): ShipCertificateConfig | null => {
   const normalized = normalizeShipName(shipName)
   return SHIP_CERTIFICATE_CONFIGS.find((c) => normalizeShipName(c.shipName) === normalized) || null
+}
+
+/** Unieke certificaatnamen uit alle scheepssjablonen (voor export/selectie-UI). */
+export const getAllTemplateCertificateNames = (): string[] => {
+  const names = new Set<string>()
+  for (const config of SHIP_CERTIFICATE_CONFIGS) {
+    for (const row of config.source) {
+      const n = String(row.naam || "").trim()
+      if (n) names.add(n)
+    }
+  }
+  return Array.from(names).sort((a, b) => a.localeCompare(b, "nl", { sensitivity: "base" }))
 }
 
 export const getShipCertificateStorageKeyByName = (shipName: string): string | null => {
@@ -1308,9 +1320,9 @@ export const getVisibleShipCertificatesSharedForClient = async (shipName: string
       .eq("ship_key", shipKey)
       .limit(1)
 
-    if (error) return getVisibleShipCertificatesForClient(safeShipName)
+    if (error) return getShipCertificateDefaultsForClient(safeShipName)
     const row = Array.isArray(data) ? data[0] : null
-    if (!row) return getVisibleShipCertificatesForClient(safeShipName)
+    if (!row) return getShipCertificateDefaultsForClient(safeShipName)
 
     const defaults = getShipCertificateDefaultsForClient(safeShipName)
     const merged = mergeShipCertificatesWithStored(safeShipName, row.certificates, defaults)
@@ -1324,7 +1336,7 @@ export const getVisibleShipCertificatesSharedForClient = async (shipName: string
     if (removed.size === 0) return merged
     return merged.filter((cert) => !removed.has(normalizeCertificateName(cert.naam)))
   } catch {
-    return getVisibleShipCertificatesForClient(safeShipName)
+    return getShipCertificateDefaultsForClient(safeShipName)
   }
 }
 
