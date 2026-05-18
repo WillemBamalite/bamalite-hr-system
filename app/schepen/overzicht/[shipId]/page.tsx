@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, FileText, Printer, Ship } from "lucide-react"
+import { ArrowLeft, ClipboardList, FileText, Printer, Ship } from "lucide-react"
+import { ShipFormsTab } from "@/components/schepen/ship-forms-tab"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
@@ -4131,6 +4132,8 @@ export default function ShipParticularsPage() {
     const requestedTab = String(searchParams?.get("tab") || "").toLowerCase()
     if (requestedTab === "certificaten") {
       setActiveTab("certificaten")
+    } else if (requestedTab === "formulieren") {
+      setActiveTab("formulieren")
     }
   }, [searchParams])
 
@@ -4709,26 +4712,29 @@ export default function ShipParticularsPage() {
             <CardContent className="p-6 text-red-600">Schip niet gevonden.</CardContent>
           </Card>
         ) : !isSupportedShip ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Scheepsgegevens nog niet ingevoerd</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-gray-700">
-              <p>
-                Voor <strong>{ship.name}</strong> is de pagina met scheepsgegevens nog niet gevuld.
-              </p>
-              <p>
-                We starten met Apollo, Jupiter, Neptunus, Bacchus, Bellona, Pluto, Caritas, Fraternite, Libertas, Maike, Egalite, Fidelitas, Serenitas, Harmonie en Linde en vullen daarna de overige schepen op dezelfde manier.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Scheepsgegevens nog niet ingevoerd</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-gray-700">
+                <p>
+                  Voor <strong>{ship.name}</strong> is de pagina met scheepsgegevens nog niet gevuld.
+                </p>
+                <p>
+                  We starten met Apollo, Jupiter, Neptunus, Bacchus, Bellona, Pluto, Caritas, Fraternite, Libertas, Maike, Egalite, Fidelitas, Serenitas, Harmonie en Linde en vullen daarna de overige schepen op dezelfde manier.
+                </p>
+              </CardContent>
+            </Card>
+            <ShipFormsTab shipId={shipId} shipName={ship.name} />
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="hidden print:block mb-4">
               <h1 className="text-xl font-bold text-gray-900">Scheepsgegevens - {ship?.name || "Onbekend schip"}</h1>
             </div>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full max-w-xl grid-cols-2 mb-2 print:hidden">
+              <TabsList className="grid w-full max-w-3xl grid-cols-3 mb-2 print:hidden">
                 <TabsTrigger value="scheepsgegevens" className="text-base">
                   <Ship className="w-4 h-4 mr-2" />
                   Scheepsgegevens
@@ -4736,6 +4742,10 @@ export default function ShipParticularsPage() {
                 <TabsTrigger value="certificaten" className="text-base">
                   <FileText className="w-4 h-4 mr-2" />
                   Certificaten
+                </TabsTrigger>
+                <TabsTrigger value="formulieren" className="text-base">
+                  <ClipboardList className="w-4 h-4 mr-2" />
+                  Formulieren
                 </TabsTrigger>
               </TabsList>
 
@@ -5118,6 +5128,10 @@ export default function ShipParticularsPage() {
                     )}
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="formulieren" className="print:hidden">
+                <ShipFormsTab shipId={shipId} shipName={ship.name} />
               </TabsContent>
             </Tabs>
           </div>
