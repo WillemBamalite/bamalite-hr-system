@@ -36,3 +36,36 @@ export const SHIP_FORM_DEFINITIONS: ShipFormDefinition[] = [
 ]
 
 export const SHIP_FORM_KEYS = new Set(SHIP_FORM_DEFINITIONS.map((f) => f.key))
+
+export type ShipFormLayoutState = {
+  custom_forms: ShipFormDefinition[]
+  removed_form_keys: string[]
+}
+
+export const createEmptyShipFormLayout = (): ShipFormLayoutState => ({
+  custom_forms: [],
+  removed_form_keys: [],
+})
+
+export const slugifyShipFormLabel = (label: string) => {
+  const slug = String(label || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return slug || `formulier-${Date.now()}`
+}
+
+export const buildVisibleShipForms = (layout: ShipFormLayoutState): ShipFormDefinition[] => {
+  const removed = new Set(layout.removed_form_keys.map((k) => String(k || "").trim()).filter(Boolean))
+  const defaults = SHIP_FORM_DEFINITIONS.filter((f) => !removed.has(f.key))
+  const defaultKeys = new Set(defaults.map((f) => f.key))
+  const custom = (layout.custom_forms || []).filter(
+    (f) => f.key && f.label && !removed.has(f.key) && !defaultKeys.has(f.key)
+  )
+  return [...defaults, ...custom]
+}
+
+export const isDefaultShipFormKey = (formKey: string) => SHIP_FORM_KEYS.has(formKey)
