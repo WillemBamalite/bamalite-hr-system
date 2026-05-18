@@ -14,11 +14,14 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
 import { isCopiedCrewMember, isRealCrewMember } from "@/utils/crew-filters"
 
+const TRAVEL_AMOUNT_OPTIONS = [0, 150, 300] as const
+type TravelAmountOption = (typeof TRAVEL_AMOUNT_OPTIONS)[number]
+
 type SalaryHistoryItem = {
   id: string
   month_key: string
   base_salary: number
-  travel_allowance: boolean
+  travel_amount: number
   raise_amount: number
   advance_amount: number
   overtime_days: number
@@ -92,7 +95,7 @@ type SalaryDraft = {
   in_service_from: string | null
   iban: string
   base_salary: number | null
-  travel_allowance: boolean
+  travel_amount: TravelAmountOption
   advance_enabled: boolean
   advance_amount: number | null
   deduction_category: "lening" | "voorschot" | "kleding" | "opleidingskosten" | "boetes" | "overig"
@@ -215,12 +218,17 @@ const buildOvertimeNoteFromDateRange = (fromIso: string, toIso: string) => {
   return `van ${from} tot ${to}`
 }
 
-const getContractBaseSalaryInclClothing = (crewMember: any): number | null => {
-  const notesText = Array.isArray(crewMember?.notes)
+const getCrewNotesText = (crewMember: any): string =>
+  Array.isArray(crewMember?.notes)
     ? crewMember.notes.join(" | ")
     : String(crewMember?.notes || "")
+
+const getContractBaseSalaryInclClothing = (crewMember: any): number | null => {
+  const notesText = getCrewNotesText(crewMember)
   const noteMatch = notesText.match(/contract_basis_salaris_excl_kleding:([0-9.,-]+)/i)
   const noteBase = noteMatch ? parseMoney(noteMatch[1]) : 0
+  const noteClothingMatch = notesText.match(/contract_kledinggeld:([0-9.,-]+)/i)
+  const noteClothing = noteClothingMatch ? parseMoney(noteClothingMatch[1]) : 0
 
   const baseRaw =
     crewMember?.basis_salaris ??
@@ -229,17 +237,12 @@ const getContractBaseSalaryInclClothing = (crewMember: any): number | null => {
     crewMember?.salaris ??
     crewMember?.salary ??
     null
-  const clothingRaw =
-    crewMember?.kleding_geld ??
-    crewMember?.kledinggeld ??
-    crewMember?.kledingGeld ??
-    crewMember?.clothing_allowance ??
-    null
   const base = parseMoney(baseRaw)
-  const clothing = parseMoney(clothingRaw)
+  const clothing = getCrewClothingAllowance(crewMember)
   const total = base + clothing
   if (total > 0) return total
-  return noteBase > 0 ? noteBase : null
+  if (noteBase > 0) return noteBase + noteClothing
+  return null
 }
 
 const getCrewBaseSalaryExclClothing = (crewMember: any): number => {
@@ -260,24 +263,63 @@ const getCrewClothingAllowance = (crewMember: any): number => {
     crewMember?.kledingGeld ??
     crewMember?.clothing_allowance ??
     null
-  return parseMoney(clothingRaw)
+  const fromFields = parseMoney(clothingRaw)
+  if (fromFields > 0) return fromFields
+
+  const notesText = getCrewNotesText(crewMember)
+  const contractMatch = notesText.match(/contract_kledinggeld:([0-9.,-]+)/i)
+  if (contractMatch) return parseMoney(contractMatch[1])
+  const reasonMatch = notesText.match(/kledinggeld:([0-9.,-]+)/i)
+  if (reasonMatch) return parseMoney(reasonMatch[1])
+  return 0
 }
 
-const normalizeBaseSalaryInclClothingForCrew = (
+const getContractBaseSalaryExclClothing = (crewMember: any): number | null => {
+  const fromCrew = getCrewBaseSalaryExclClothing(crewMember)
+  if (fromCrew > 0) return fromCrew
+
+  const notesText = getCrewNotesText(crewMember)
+  const noteExclMatch = notesText.match(/contract_basis_salaris_excl_kleding:([0-9.,-]+)/i)
+  const noteExcl = noteExclMatch ? parseMoney(noteExclMatch[1]) : 0
+  if (noteExcl > 0) return noteExcl
+
+  const incl = getContractBaseSalaryInclClothing(crewMember)
+  if (incl !== null && incl > 0) {
+    const clothing = getCrewClothingAllowance(crewMember) || CLOTHING_ALLOWANCE_FIXED
+    return Math.max(0, incl - clothing)
+  }
+  return null
+}
+
+/** Zorg dat opgeslagen/getoond basissalaris exclusief kledinggeld is (pro-rata-basis). */
+const normalizeBaseSalaryExclClothingForCrew = (
   baseSalary: number | null | undefined,
   crewMember: any
 ): number | null => {
   if (typeof baseSalary !== "number" || !Number.isFinite(baseSalary)) return null
-  const clothing = getCrewClothingAllowance(crewMember)
-  const crewBaseExcl = getCrewBaseSalaryExclClothing(crewMember)
-  if (clothing <= 0 || crewBaseExcl <= 0) return baseSalary
-  if (Math.abs(baseSalary - crewBaseExcl) < 0.01) {
-    return baseSalary + clothing
-  }
+  const clothing = getCrewClothingAllowance(crewMember) || CLOTHING_ALLOWANCE_FIXED
+  const crewExcl = getCrewBaseSalaryExclClothing(crewMember)
+
+  const notesText = getCrewNotesText(crewMember)
+  const noteExclMatch = notesText.match(/contract_basis_salaris_excl_kleding:([0-9.,-]+)/i)
+  const noteExcl = noteExclMatch ? parseMoney(noteExclMatch[1]) : 0
+
+  if (crewExcl > 0 && Math.abs(baseSalary - crewExcl) < 0.01) return baseSalary
+  if (noteExcl > 0 && Math.abs(baseSalary - noteExcl) < 0.01) return baseSalary
+  if (crewExcl > 0 && Math.abs(baseSalary - (crewExcl + clothing)) < 0.01) return crewExcl
+  if (noteExcl > 0 && Math.abs(baseSalary - (noteExcl + clothing)) < 0.01) return noteExcl
+
   return baseSalary
 }
 
-const getContractTravelEnabled = (crewMember: any): boolean => {
+const normalizeTravelAmount = (value: unknown): TravelAmountOption => {
+  const amount = typeof value === "number" ? value : parseMoney(value)
+  if (amount >= 225) return 300
+  if (amount >= 75) return 150
+  return 0
+}
+
+const getContractTravelAmount = (crewMember: any): TravelAmountOption => {
   const notesText = Array.isArray(crewMember?.notes)
     ? crewMember.notes.join(" | ")
     : String(crewMember?.notes || "")
@@ -290,10 +332,28 @@ const getContractTravelEnabled = (crewMember: any): boolean => {
     crewMember?.travelAllowance ??
     crewMember?.reis_kosten ??
     null
-  if (typeof travelRaw === "boolean") return travelRaw
+  if (typeof travelRaw === "boolean") return travelRaw ? 300 : 0
   const directTravel = parseMoney(travelRaw)
-  if (directTravel > 0) return true
-  return noteTravel > 0
+  if (directTravel > 0) return normalizeTravelAmount(directTravel)
+  if (noteTravel > 0) return normalizeTravelAmount(noteTravel)
+  return 0
+}
+
+const resolveTravelAmountFromRow = (dbRow: any, meta: ReturnType<typeof parseSalaryMetaFromReason>): TravelAmountOption => {
+  if (typeof meta?.travel_amount === "number") {
+    return normalizeTravelAmount(meta.travel_amount)
+  }
+  if (dbRow?.travel_allowance === true) return 300
+  if (dbRow?.travel_allowance === false) return 0
+  if (typeof dbRow?.travel_allowance === "number") {
+    return normalizeTravelAmount(dbRow.travel_allowance)
+  }
+  return 0
+}
+
+const formatTravelDisplay = (amount: number, german = false) => {
+  if (amount <= 0) return german ? "Nein" : "Nee"
+  return `Ja (+${formatCurrency(amount)})`
 }
 
 const normalizeIban = (iban: string) => String(iban || "").replace(/\s+/g, "").toUpperCase()
@@ -384,6 +444,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       month_closed_at?: string
       approval_leo?: boolean
       approval_karina?: boolean
+      travel_amount?: number
     }
     return {
       iban: String(parsed.iban || ""),
@@ -413,6 +474,10 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       month_closed_at: String(parsed.month_closed_at || ""),
       approval_leo: parsed.approval_leo === true,
       approval_karina: parsed.approval_karina === true,
+      travel_amount:
+        typeof parsed.travel_amount === "number"
+          ? normalizeTravelAmount(parsed.travel_amount)
+          : undefined,
     }
   } catch {
     return null
@@ -601,7 +666,7 @@ export default function LoonBemerkingenPage() {
             typeof previous?.raise_amount === "number"
               ? previous.raise_amount
               : (previousMeta?.raise_amount || 0)
-          const previousBaseSalary = normalizeBaseSalaryInclClothingForCrew(
+          const previousBaseSalary = normalizeBaseSalaryExclClothingForCrew(
             typeof previous?.base_salary === "number" ? previous.base_salary : null,
             c
           )
@@ -609,8 +674,8 @@ export default function LoonBemerkingenPage() {
             previousBaseSalary !== null
               ? previousBaseSalary + (previousRaiseEnabled ? previousRaiseAmount : 0)
               : null
-          const contractBaseSalaryInclClothing = getContractBaseSalaryInclClothing(c)
-          const contractTravelEnabled = getContractTravelEnabled(c)
+          const contractBaseSalaryExclClothing = getContractBaseSalaryExclClothing(c)
+          const contractTravelAmount = getContractTravelAmount(c)
           const base = current || previous || null
           const currentCompany = String(current?.company || "").trim()
           const previousCompany = String(previous?.company || "").trim()
@@ -640,16 +705,15 @@ export default function LoonBemerkingenPage() {
             base_salary:
               typeof current?.base_salary === "number"
                 ? (
-                    normalizeBaseSalaryInclClothingForCrew(current.base_salary, c) ??
+                    normalizeBaseSalaryExclClothingForCrew(current.base_salary, c) ??
                     current.base_salary
                   )
-                : (inheritedBaseSalary ?? contractBaseSalaryInclClothing),
-            travel_allowance:
-              typeof current?.travel_allowance === "boolean"
-                ? current.travel_allowance
-                : (typeof previous?.travel_allowance === "boolean"
-                    ? previous.travel_allowance
-                    : contractTravelEnabled),
+                : (inheritedBaseSalary ?? contractBaseSalaryExclClothing),
+            travel_amount: current
+              ? resolveTravelAmountFromRow(current, currentMeta)
+              : (previous
+                  ? resolveTravelAmountFromRow(previous, previousMeta)
+                  : contractTravelAmount),
             advance_enabled:
               hasManualCurrentDeduction
                 ? (current?.advance_enabled ?? currentMeta?.advance_enabled ?? false) === true
@@ -913,10 +977,12 @@ export default function LoonBemerkingenPage() {
     }
     if (year !== payoutYear || month !== payoutMonth) return 0
 
-    return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+    const startMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    return getSalaryMonthDivisorDays(startMonthKey)
   }
 
-  const getDaysInMonth = (selectedMonthKey: string) => {
+  /** Kalenderdagen in maand (voor gewerkte dagen / te-goed-telling). */
+  const getCalendarDaysInMonth = (selectedMonthKey: string) => {
     const [yearStr, monthStr] = selectedMonthKey.split("-")
     const year = Number(yearStr)
     const month = Number(monthStr)
@@ -924,31 +990,57 @@ export default function LoonBemerkingenPage() {
     return new Date(year, month, 0).getDate()
   }
 
-  const getProratedBaseSalaryForMonth = (row: SalaryDraft, selectedMonthKey: string) => {
-    const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
-    if (baseSalary <= 0) return 0
-    if (!row.in_service_from) return baseSalary
+  /** Salarisdagtarief: maand = 30 dagen, februari = 28. */
+  const getSalaryMonthDivisorDays = (selectedMonthKey: string) => {
+    const [, monthStr] = (selectedMonthKey || "").split("-")
+    const month = Number(monthStr)
+    return month === 2 ? 28 : 30
+  }
+
+  const getProratedMonthlyAmount = (
+    fullAmount: number,
+    row: SalaryDraft,
+    selectedMonthKey: string
+  ) => {
+    if (fullAmount <= 0) return 0
+    if (!row.in_service_from) return fullAmount
     const start = new Date(row.in_service_from)
-    if (isNaN(start.getTime())) return baseSalary
+    if (isNaN(start.getTime())) return fullAmount
 
     const [yearStr, monthStr] = selectedMonthKey.split("-")
     const year = Number(yearStr)
     const month = Number(monthStr)
-    if (!year || !month) return baseSalary
+    if (!year || !month) return fullAmount
 
-    const isStartMonth = start.getFullYear() === year && (start.getMonth() + 1) === month
-    if (!isStartMonth) return baseSalary
+    const isStartMonth = start.getFullYear() === year && start.getMonth() + 1 === month
+    if (!isStartMonth) return fullAmount
 
     const startDay = start.getDate()
-    const daysInMonth = getDaysInMonth(selectedMonthKey)
-    if (daysInMonth <= 0) return baseSalary
+    const calendarDays = getCalendarDaysInMonth(selectedMonthKey)
+    const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
+    if (calendarDays <= 0 || divisorDays <= 0) return fullAmount
 
     // Betaaldag is de 25e: start op/na 25 gaat naar te-goed in volgende maand.
     if (startDay >= 25) return 0
 
-    const workedDays = daysInMonth - startDay + 1
-    const dayRate = baseSalary / daysInMonth
-    return dayRate * workedDays
+    const workedDays = calendarDays - startDay + 1
+    return (fullAmount / divisorDays) * workedDays
+  }
+
+  const getRowBaseSalaryExclClothing = (row: SalaryDraft) => {
+    const crewMember = crewById.get(String(row.crew_id))
+    const raw = typeof row.base_salary === "number" ? row.base_salary : 0
+    return normalizeBaseSalaryExclClothingForCrew(raw, crewMember) ?? raw
+  }
+
+  const getRowClothingAllowance = (row: SalaryDraft) => {
+    const crewMember = crewById.get(String(row.crew_id))
+    const fromContract = getCrewClothingAllowance(crewMember)
+    return fromContract > 0 ? fromContract : CLOTHING_ALLOWANCE_FIXED
+  }
+
+  const getProratedBaseSalaryForMonth = (row: SalaryDraft, selectedMonthKey: string) => {
+    return getProratedMonthlyAmount(getRowBaseSalaryExclClothing(row), row, selectedMonthKey)
   }
 
   const isLoanInstallmentDueForMonth = (loan: any, selectedMonthKey: string) => {
@@ -984,8 +1076,10 @@ export default function LoonBemerkingenPage() {
   }
 
   const getAutoProrationNote = (row: SalaryDraft, selectedMonthKey: string) => {
-    const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
-    if (baseSalary <= 0 || !row.in_service_from) return ""
+    const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
+    const clothingAmount = getRowClothingAllowance(row)
+    const travelAmount = row.travel_amount || 0
+    if ((baseSalaryExcl <= 0 && travelAmount <= 0) || !row.in_service_from) return ""
     const start = new Date(row.in_service_from)
     if (isNaN(start.getTime())) return ""
 
@@ -998,17 +1092,27 @@ export default function LoonBemerkingenPage() {
     if (!isStartMonth) return ""
 
     const startDay = start.getDate()
-    const daysInMonth = getDaysInMonth(selectedMonthKey)
-    const dayRate = daysInMonth > 0 ? baseSalary / daysInMonth : 0
-
+    const calendarDays = getCalendarDaysInMonth(selectedMonthKey)
+    const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
     if (startDay >= 25) {
-      return `Start op ${startDay}e (na betaaldag 25e): basissalaris gaat via te-goed naar volgende maand.`
+      const extras = [
+        clothingAmount > 0 ? `kledinggeld ${formatCurrency(clothingAmount)}` : "",
+        travelAmount > 0 ? `reiskosten ${formatCurrency(travelAmount)}` : "",
+      ].filter(Boolean)
+      const extraSuffix = extras.length > 0 ? ` (+ ${extras.join(" + ")})` : ""
+      return `Start op ${startDay}e (na betaaldag 25e): salaris excl. kledinggeld via te-goed naar volgende maand${extraSuffix}.`
     }
 
-    const workedDays = daysInMonth - startDay + 1
-    const prorated = dayRate * workedDays
-    if (prorated >= baseSalary) return ""
-    return `Pro-rata salaris vanaf ${startDay}/${String(month).padStart(2, "0")}: ${workedDays}/${daysInMonth} dagen gewerkt.`
+    const workedDays = calendarDays - startDay + 1
+    const proratedBase = getProratedBaseSalaryForMonth(row, selectedMonthKey)
+    if (proratedBase >= baseSalaryExcl) return ""
+
+    const extras = [
+      clothingAmount > 0 ? `kledinggeld ${formatCurrency(clothingAmount)}` : "",
+      travelAmount > 0 ? `reiskosten ${formatCurrency(travelAmount)}` : "",
+    ].filter(Boolean)
+    const extraSuffix = extras.length > 0 ? ` + ${extras.join(" + ")}` : ""
+    return `Pro-rata vanaf ${startDay}/${String(month).padStart(2, "0")}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
   }
 
   const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -1043,21 +1147,35 @@ export default function LoonBemerkingenPage() {
   }
 
   const getSalaryTotals = (row: SalaryDraft) => {
-    const baseSalary = typeof row.base_salary === "number" ? row.base_salary : 0
-    const payableBaseSalary = getProratedBaseSalaryForMonth(row, monthKey)
-    const travelAmount = row.travel_allowance ? 300 : 0
+    const selectedMonthKey = row.month_key || monthKey
+    const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
+    const payableBaseSalary = getProratedBaseSalaryForMonth(row, selectedMonthKey)
+    const clothingAmount = getRowClothingAllowance(row)
+    const travelAmount = row.travel_amount || 0
     const advanceAmount = row.advance_enabled ? (typeof row.advance_amount === "number" ? row.advance_amount : 0) : 0
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
-    const teGoedDays = getTeGoedDays(row.in_service_from, monthKey)
-    const sourceDaysInMonth = getTeGoedSourceDaysInMonth(row.in_service_from, monthKey)
-    const amountPerDay = sourceDaysInMonth > 0 ? baseSalary / sourceDaysInMonth : 0
+    const teGoedDays = getTeGoedDays(row.in_service_from, selectedMonthKey)
+    const sourceDaysInMonth = getTeGoedSourceDaysInMonth(row.in_service_from, selectedMonthKey)
+    const amountPerDay = sourceDaysInMonth > 0 ? baseSalaryExcl / sourceDaysInMonth : 0
     const teGoedAmount = teGoedDays > 0 ? amountPerDay * teGoedDays : 0
-    const totalSalaryMonth = payableBaseSalary + travelAmount + raiseAmount - advanceAmount + teGoedAmount
-    return { baseSalary, payableBaseSalary, travelAmount, advanceAmount, raiseAmount, teGoedDays, amountPerDay, teGoedAmount, totalSalaryMonth }
+    const totalSalaryMonth =
+      payableBaseSalary + clothingAmount + travelAmount + raiseAmount - advanceAmount + teGoedAmount
+    return {
+      baseSalary: baseSalaryExcl,
+      payableBaseSalary,
+      clothingAmount,
+      travelAmount,
+      advanceAmount,
+      raiseAmount,
+      teGoedDays,
+      amountPerDay,
+      teGoedAmount,
+      totalSalaryMonth,
+    }
   }
 
   const getOverworkAmount = (row: SalaryDraft) => {
-    const baseSalaryIncl = typeof row.base_salary === "number" ? row.base_salary : 0
+    const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
     if (overtimeDays <= 0) return 0
     const crewMember = crewById.get(String(row.crew_id))
@@ -1067,7 +1185,6 @@ export default function LoonBemerkingenPage() {
       position.includes("captain") ||
       position.includes("schipper") ||
       position.includes("skipper")
-    const baseSalaryExcl = Math.max(0, baseSalaryIncl - CLOTHING_ALLOWANCE_FIXED)
     if (!isCaptainOrSkipper && baseSalaryExcl <= 0) return 0
     const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalaryExcl / 15)
     return perDayOverwork * overtimeDays
@@ -1172,12 +1289,16 @@ export default function LoonBemerkingenPage() {
       }
     }
 
+    const crewMember = crewById.get(String(crewId))
+    const baseSalaryExcl =
+      normalizeBaseSalaryExclClothingForCrew(row.base_salary, crewMember) ?? row.base_salary
+
     const payload = {
       crew_id: row.crew_id,
       company: row.company,
       month_key: row.month_key,
-      base_salary: row.base_salary ?? null,
-      travel_allowance: !!row.travel_allowance,
+      base_salary: baseSalaryExcl ?? null,
+      travel_allowance: row.travel_amount > 0,
       advance_enabled: !!row.advance_enabled,
       advance_amount: row.advance_amount ?? 0,
       raise_enabled: !!row.raise_enabled,
@@ -1215,6 +1336,7 @@ export default function LoonBemerkingenPage() {
           month_closed_at: String(row.month_closed_at || "").trim(),
           approval_leo: !!row.approval_leo,
           approval_karina: !!row.approval_karina,
+          travel_amount: row.travel_amount || 0,
         })}` +
         (String(row.review_comment || "").trim()
           ? `\n${REVIEW_META_PREFIX}${JSON.stringify({
@@ -1428,8 +1550,7 @@ export default function LoonBemerkingenPage() {
       setApplyingInflation(true)
       const batchId = `infl-${monthKey}-${Date.now()}`
       const updatedRows: SalaryDraft[] = targetRows.map((row) => {
-        const baseIncl = Number(row.base_salary || 0)
-        const base = Math.max(0, baseIncl - CLOTHING_ALLOWANCE_FIXED)
+        const base = getRowBaseSalaryExclClothing(row)
         const inflationAmount = Number(((base * percent) / 100).toFixed(2))
         const existingRaise = Number(row.raise_amount || 0)
         const existingInflation = Number(row.inflation_adjustment || 0)
@@ -1596,10 +1717,14 @@ export default function LoonBemerkingenPage() {
           crew_id: String(item?.crew_id || crewId),
           company: item?.company || null,
           month_key: String(item?.month_key || ""),
-          in_service_from: null,
+          in_service_from: crewById.get(crewId)?.in_dienst_vanaf || null,
           iban: String(item?.iban ?? meta?.iban ?? ""),
-          base_salary: typeof item?.base_salary === "number" ? item.base_salary : 0,
-          travel_allowance: !!item?.travel_allowance,
+          base_salary:
+            normalizeBaseSalaryExclClothingForCrew(
+              typeof item?.base_salary === "number" ? item.base_salary : 0,
+              crewById.get(crewId)
+            ) ?? (typeof item?.base_salary === "number" ? item.base_salary : 0),
+          travel_amount: resolveTravelAmountFromRow(item, meta),
           advance_enabled: (item?.advance_enabled ?? meta?.advance_enabled ?? false) === true,
           advance_amount: typeof item?.advance_amount === "number" ? item.advance_amount : (meta?.advance_amount || 0),
           raise_enabled: (item?.raise_enabled ?? meta?.raise_enabled ?? false) === true,
@@ -1624,7 +1749,7 @@ export default function LoonBemerkingenPage() {
           id: row.id || `${row.crew_id}-${row.month_key}`,
           month_key: row.month_key,
           base_salary: Number(row.base_salary || 0),
-          travel_allowance: row.travel_allowance,
+          travel_amount: Number(totals.travelAmount || 0),
           raise_amount: Number(row.raise_amount || 0),
           advance_amount: Number(row.advance_amount || 0),
           overtime_days: Number(row.overtime_days || 0),
@@ -1656,7 +1781,7 @@ export default function LoonBemerkingenPage() {
           inService: formatDateShort(r.in_service_from),
           iban: r.iban || "",
           baseSalary,
-          travel: r.travel_allowance ? "Ja (+300)" : "Nee (0)",
+          travel: formatTravelDisplay(travelAmount),
           advance: r.advance_enabled ? `Ja (-${advanceAmount.toFixed(2)})` : "Nee",
           raise: r.raise_enabled ? `Ja (+${raiseAmount.toFixed(2)})` : "Nee",
           teGoed: teGoedDays > 0 ? `${teGoedDays} (${teGoedAmount.toFixed(2)})` : "",
@@ -1732,7 +1857,7 @@ export default function LoonBemerkingenPage() {
                 <td>${escapeHtml(formatDateShort(r.in_service_from))}</td>
                 <td>${escapeHtml(r.iban || "")}</td>
                 <td class="num">${formatEuro(baseSalary)}</td>
-                <td>${r.travel_allowance ? "Ja (+300,00)" : "Nee"}</td>
+                <td>${escapeHtml(formatTravelDisplay(travelAmount))}</td>
                 <td>${r.advance_enabled ? `Ja (-${formatEuro(advanceAmount)})` : "Nee"}</td>
                 <td>${r.raise_enabled ? `Ja (+${formatEuro(raiseAmount)})` : "Nee"}</td>
                 <td>${teGoedDays > 0 ? `${teGoedDays} dagen (+${formatEuro(teGoedAmount)})` : "-"}</td>
@@ -1753,7 +1878,7 @@ export default function LoonBemerkingenPage() {
                   <th>Naam</th>
                   <th>Datum in dienst</th>
                   <th>IBAN</th>
-                  <th>Basissalaris incl. kledinggeld</th>
+                  <th>Basissalaris excl. kledinggeld</th>
                   <th>Reiskosten</th>
                   <th>Voorschot</th>
                   <th>Verhoging</th>
@@ -2283,7 +2408,7 @@ export default function LoonBemerkingenPage() {
                       {(groupedByCompany[activeCompanyTab] || []).map((r: SalaryDraft) => {
                         const crewMember = crewById.get(String(r.crew_id))
                         const name = crewMember ? formatCrewName(crewMember) : "Onbekend"
-                        const { travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
+                        const { baseSalary, travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
                         return (
                           <tr
                             key={`${r.crew_id}-${r.month_key}`}
@@ -2297,8 +2422,8 @@ export default function LoonBemerkingenPage() {
                             </td>
                             <td className="px-3 py-2">{formatDateShort(r.in_service_from)}</td>
                             <td className="px-3 py-2">{r.iban || "-"}</td>
-                            <td className="px-3 py-2">{formatCurrency(r.base_salary || 0)}</td>
-                            <td className="px-3 py-2">{r.travel_allowance ? `Ja (+${formatCurrency(travelAmount)})` : (isTanja ? "Nein" : "Nee")}</td>
+                            <td className="px-3 py-2">{formatCurrency(baseSalary)}</td>
+                            <td className="px-3 py-2">{formatTravelDisplay(travelAmount, isTanja)}</td>
                             <td className="px-3 py-2">
                               {r.advance_enabled
                                 ? `${getDeductionCategoryLabel(r.deduction_category)} (-${formatCurrency(advanceAmount)})`
@@ -2450,7 +2575,7 @@ export default function LoonBemerkingenPage() {
                 <Input value={rowsByCrewId[editingCrewId].iban || ""} onChange={(e) => setCrewField(editingCrewId, { iban: e.target.value })} />
               </div>
               <div>
-                <Label>{isTanja ? "Grundgehalt inkl. Kleidungsgeld" : "Basissalaris incl kledinggeld"}</Label>
+                <Label>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl. kledinggeld"}</Label>
                 <Input
                   type="text"
                   disabled={salaryEditingDisabled}
@@ -2464,16 +2589,33 @@ export default function LoonBemerkingenPage() {
                   }}
                   onBlur={() => {
                     const parsed = parseSalaryMoneyInput(baseSalaryEditText.trim())
-                    setCrewField(editingCrewId, { base_salary: parsed })
-                    setBaseSalaryEditText(formatSalaryInputFromNumber(parsed))
+                    const normalized =
+                      normalizeBaseSalaryExclClothingForCrew(
+                        parsed,
+                        crewById.get(editingCrewId)
+                      ) ?? parsed
+                    setCrewField(editingCrewId, { base_salary: normalized })
+                    setBaseSalaryEditText(formatSalaryInputFromNumber(normalized))
                   }}
                 />
               </div>
               <div>
                 <Label>{isTanja ? "Reisekosten" : "Reiskosten"}</Label>
-                <Select disabled={salaryEditingDisabled} value={rowsByCrewId[editingCrewId].travel_allowance ? "ja" : "nee"} onValueChange={(v) => setCrewField(editingCrewId, { travel_allowance: v === "ja" })}>
+                <Select
+                  disabled={salaryEditingDisabled}
+                  value={String(rowsByCrewId[editingCrewId].travel_amount || 0)}
+                  onValueChange={(v) =>
+                    setCrewField(editingCrewId, {
+                      travel_amount: normalizeTravelAmount(Number(v)),
+                    })
+                  }
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="ja">Ja</SelectItem><SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem></SelectContent>
+                  <SelectContent>
+                    <SelectItem value="0">{isTanja ? "Nein" : "Nee"}</SelectItem>
+                    <SelectItem value="150">€ 150</SelectItem>
+                    <SelectItem value="300">€ 300</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
               <div>
@@ -2667,7 +2809,14 @@ export default function LoonBemerkingenPage() {
                   const preparedRow = syncOvertimeInputToRow(editingCrewId)
                   const base = preparedRow || rowsByCrewId[editingCrewId]
                   if (!base) return
-                  const toSave: SalaryDraft = { ...base, base_salary: parsedBase }
+                  const toSave: SalaryDraft = {
+                    ...base,
+                    base_salary:
+                      normalizeBaseSalaryExclClothingForCrew(
+                        parsedBase,
+                        crewById.get(editingCrewId)
+                      ) ?? parsedBase,
+                  }
                   const ok = await saveCrewRow(editingCrewId, toSave)
                   if (ok) {
                     setEditingCrewId(null)
@@ -2708,7 +2857,7 @@ export default function LoonBemerkingenPage() {
                           <tr key={item.id} className="border-t">
                             <td className="px-2 py-1">{item.month_key}</td>
                             <td className="px-2 py-1">{formatCurrency(item.base_salary)}</td>
-                            <td className="px-2 py-1">{item.travel_allowance ? `Ja (+${formatCurrency(300)})` : "Nee"}</td>
+                            <td className="px-2 py-1">{formatTravelDisplay(item.travel_amount || 0)}</td>
                             <td className="px-2 py-1">{formatCurrency(item.raise_amount)}</td>
                             <td className="px-2 py-1">{formatCurrency(item.advance_amount)}</td>
                             <td className="px-2 py-1">
