@@ -32,6 +32,25 @@ const getErrMsg = (e: unknown) => {
   return any.message || any.error?.message || String(e)
 }
 
+const isValidIsoDateValue = (value: string) => {
+  const normalized = String(value || "").trim()
+  if (!normalized) return true
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return false
+  const [yearStr, monthStr, dayStr] = normalized.split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if (!Number.isFinite(year) || year < 1900 || year > 2100) return false
+  if (!Number.isFinite(month) || month < 1 || month > 12) return false
+  if (!Number.isFinite(day) || day < 1 || day > 31) return false
+  const parsed = new Date(year, month - 1, day)
+  return (
+    parsed.getFullYear() === year &&
+    parsed.getMonth() === month - 1 &&
+    parsed.getDate() === day
+  )
+}
+
 export function ShipFormsTab({ shipId, shipName }: Props) {
   const [recordsByKey, setRecordsByKey] = useState<Record<string, ShipFormRecord>>({})
   const [dateDraftByKey, setDateDraftByKey] = useState<Record<string, string>>({})
@@ -137,6 +156,10 @@ export function ShipFormsTab({ shipId, shipName }: Props) {
     const normalized = String(dateValue || "").trim()
     const saved = String(recordsByKey[formKey]?.form_date || "")
     if (normalized === saved) return
+    if (normalized && !isValidIsoDateValue(normalized)) {
+      setDateDraftByKey((prev) => ({ ...prev, [formKey]: saved }))
+      return
+    }
 
     setBusyKey(formKey)
     try {
@@ -289,9 +312,16 @@ export function ShipFormsTab({ shipId, shipName }: Props) {
                     value={dateValue}
                     disabled={isUploading}
                     onChange={(e) => {
-                      const next = e.target.value
-                      setDateDraftByKey((prev) => ({ ...prev, [formDef.key]: next }))
-                      void saveDate(formDef.key, next)
+                      setDateDraftByKey((prev) => ({ ...prev, [formDef.key]: e.target.value }))
+                    }}
+                    onBlur={(e) => {
+                      void saveDate(formDef.key, e.target.value)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        void saveDate(formDef.key, dateDraftByKey[formDef.key] ?? "")
+                      }
                     }}
                     className="h-9 text-xs"
                   />
