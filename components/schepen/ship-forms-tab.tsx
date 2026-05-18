@@ -18,6 +18,7 @@ import {
   SHIP_FORMS_STORAGE_BUCKET,
   buildShipFormStoragePath,
 } from "@/utils/ship-forms-storage"
+import { useTabFullscreenSearch } from "@/components/schepen/tab-fullscreen-shell"
 
 export type ShipFormRecord = {
   id?: string
@@ -121,6 +122,16 @@ export function ShipFormsTab({ shipId, shipName }: Props) {
   })
 
   const visibleForms = useMemo(() => buildVisibleShipForms(layout), [layout])
+  const fullscreenSearch = useTabFullscreenSearch()
+  const formsToShow = useMemo(() => {
+    if (!fullscreenSearch.isFullscreen) return visibleForms
+    const q = fullscreenSearch.searchQuery.trim().toLowerCase()
+    if (!q) return visibleForms
+    return visibleForms.filter(
+      (form) =>
+        form.label.toLowerCase().includes(q) || form.key.toLowerCase().replace(/-/g, " ").includes(q)
+    )
+  }, [visibleForms, fullscreenSearch])
 
   const persistLayout = async (nextLayout: ShipFormLayoutState) => {
     const { error } = await supabase.from("ship_form_layout").upsert(
@@ -537,7 +548,15 @@ export function ShipFormsTab({ shipId, shipName }: Props) {
           </div>
         )}
 
-        {visibleForms.map((formDef) => {
+        {fullscreenSearch.isFullscreen &&
+        fullscreenSearch.searchQuery.trim() &&
+        formsToShow.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+            Geen formulieren gevonden voor &quot;{fullscreenSearch.searchQuery.trim()}&quot;.
+          </div>
+        ) : null}
+
+        {formsToShow.map((formDef) => {
           const record = recordsByKey[formDef.key]
           const dateValue = dateDraftByKey[formDef.key] ?? ""
           const hasDocument = !!record?.file_path

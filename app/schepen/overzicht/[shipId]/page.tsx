@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, ClipboardList, FileText, Printer, Ship } from "lucide-react"
 import { ShipFormsTab } from "@/components/schepen/ship-forms-tab"
+import { TabFullscreenShell } from "@/components/schepen/tab-fullscreen-shell"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
@@ -4726,7 +4727,13 @@ export default function ShipParticularsPage() {
                 </p>
               </CardContent>
             </Card>
-            <ShipFormsTab shipId={shipId} shipName={ship.name} />
+            <TabFullscreenShell
+              title={`Formulieren — ${ship.name}`}
+              enableSearch
+              searchPlaceholder="Zoek formulier..."
+            >
+              <ShipFormsTab shipId={shipId} shipName={ship.name} />
+            </TabFullscreenShell>
           </div>
         ) : (
           <div className="space-y-4">
@@ -4862,6 +4869,13 @@ export default function ShipParticularsPage() {
               </TabsContent>
 
               <TabsContent value="certificaten" className="print:hidden">
+                <TabFullscreenShell
+                  title={`Certificaten — ${ship.name}`}
+                  subtitle="Huidige datum is aanpasbaar per certificaat. Verloopdatum wordt automatisch berekend op basis van het interval."
+                  enableSearch
+                  searchPlaceholder="Zoek certificaat..."
+                >
+                {(search) => (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg">Certificaten & keuringen</CardTitle>
@@ -4956,7 +4970,15 @@ export default function ShipParticularsPage() {
                         </div>
                       </div>
                     )}
-                    {certificatenEditable.map((certificaat, index) => {
+                    {certificatenEditable
+                      .map((certificaat, index) => ({ certificaat, index }))
+                      .filter(({ certificaat }) => {
+                        if (!search.isFullscreen) return true
+                        const q = search.searchQuery.trim().toLowerCase()
+                        if (!q) return true
+                        return certificaat.naam.toLowerCase().includes(q)
+                      })
+                      .map(({ certificaat, index }) => {
                       const verloopIso = calculateCertificateExpiryDateIso(certificaat.huidig, certificaat.intervalJaar)
                       const statusInfo = getCertificateStatus(certificaat)
                       const documentKey = getCertificateDocumentMapKey(certificaat.naam)
@@ -5075,6 +5097,15 @@ export default function ShipParticularsPage() {
                         </div>
                       )
                     })}
+                    {search.isFullscreen &&
+                    search.searchQuery.trim() &&
+                    !certificatenEditable.some((certificaat) =>
+                      certificaat.naam.toLowerCase().includes(search.searchQuery.trim().toLowerCase())
+                    ) ? (
+                      <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                        Geen certificaten gevonden voor &quot;{search.searchQuery.trim()}&quot;.
+                      </div>
+                    ) : null}
                     <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                       <div className="text-xs text-gray-700">
                         {certificatesDirty
@@ -5128,10 +5159,19 @@ export default function ShipParticularsPage() {
                     )}
                   </CardContent>
                 </Card>
+                )}
+                </TabFullscreenShell>
               </TabsContent>
 
               <TabsContent value="formulieren" className="print:hidden">
-                <ShipFormsTab shipId={shipId} shipName={ship.name} />
+                <TabFullscreenShell
+                  title={`Formulieren — ${ship.name}`}
+                  subtitle="Per formulier een datum en een document. Rechtsklik op een kaart om te verwijderen."
+                  enableSearch
+                  searchPlaceholder="Zoek formulier..."
+                >
+                  <ShipFormsTab shipId={shipId} shipName={ship.name} />
+                </TabFullscreenShell>
               </TabsContent>
             </Tabs>
           </div>
