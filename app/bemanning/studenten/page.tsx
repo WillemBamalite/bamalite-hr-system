@@ -15,10 +15,12 @@ import { Calendar, Clock, MapPin, UserX, CheckCircle, AlertCircle, GraduationCap
 import Link from "next/link";
 import { format } from 'date-fns';
 import { isRealCrewMember } from "@/utils/crew-filters";
+import { usePathname } from "next/navigation";
 
 export default function StudentenManagementPage() {
   const { crew, ships, loading, error, updateCrew } = useSupabaseData();
   const { t } = useLanguage();
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const [showAddStudentDialog, setShowAddStudentDialog] = useState(false);
   const [showCompleteEducationDialog, setShowCompleteEducationDialog] = useState(false);
@@ -31,6 +33,12 @@ export default function StudentenManagementPage() {
   const [showSchoolPeriodsDialog, setShowSchoolPeriodsDialog] = useState(false);
   const [schoolPeriodsStudent, setSchoolPeriodsStudent] = useState<any>(null);
   const [schoolPeriodsDraft, setSchoolPeriodsDraft] = useState<Array<{ fromDate: string; toDate: string; reason: string }>>([]);
+  const overviewTabs = [
+    { href: "/bemanning/overzicht", label: "Totaal bemanningsleden" },
+    { href: "/bemanning/studenten", label: "Stagiairs" },
+    { href: "/bemanning/oude-bemanningsleden", label: "Oud medewerkers" },
+    { href: "/bemanning/officiele-waarschuwingen", label: "Waarschuwingen" },
+  ];
 
   // Prevent hydration errors
   useEffect(() => {
@@ -269,6 +277,26 @@ export default function StudentenManagementPage() {
               Student Toevoegen
             </Button>
           </div>
+        </div>
+      </div>
+      <div className="mb-6 overflow-x-auto">
+        <div className="inline-flex rounded-md border border-gray-200 bg-white p-1 min-w-max">
+          {overviewTabs.map((tab) => {
+            const active = pathname === tab.href;
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`px-4 py-2 text-sm rounded-md transition ${
+                  active
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
         </div>
       </div>
 

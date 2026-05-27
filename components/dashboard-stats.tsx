@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, FileWarning, Bell, ScrollText } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, Bell, ScrollText } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -14,7 +14,7 @@ import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 
 export function DashboardStats() {
-  const { crew, ships, sickLeave, loans, tasks, trips, incidents, officialWarnings } = useSupabaseData()
+  const { crew, ships, sickLeave, loans, tasks, trips, incidents } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
   const { t, locale } = useLanguage()
   const { canAccessPath, user } = useAuth()
@@ -54,15 +54,6 @@ export function DashboardStats() {
   
   // Count open incidents
   const openIncidentsCount = incidents.filter((i: any) => i.status === 'open' || i.status === 'in_behandeling').length
-
-  const activeOfficialWarningsCount = (officialWarnings || []).filter((w: any) => {
-    const exp = new Date(w?.expires_at || 0)
-    if (isNaN(exp.getTime())) return true
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    exp.setHours(0, 0, 0, 0)
-    return exp >= today
-  }).length
 
   useEffect(() => {
     const loadLoonBemerkingenCount = async () => {
@@ -264,12 +255,7 @@ export function DashboardStats() {
         nogAfTeRonden: nogAfTeRonden.length
       };
     })(),
-    oudMedewerkers: crew.filter((c) => c.status === 'uit-dienst').length,
     openLeningen: (loans || []).filter((l: any) => l.status === 'open').length,
-    studentenStats: {
-      BBL: crew.filter((c: any) => c.is_student && c.status !== 'uit-dienst' && c.education_type === 'BBL').length,
-      BOL: crew.filter((c: any) => c.is_student && c.status !== 'uit-dienst' && c.education_type === 'BOL').length
-    },
     medischeKeuringen: (() => {
       // Zelfde logica als pagina Medische Keuringen: som van Verlopen + Binnenkort (3 mnd)
       const activeCrewForMedical = activeCrew.filter((c: any) => 
@@ -455,41 +441,24 @@ export function DashboardStats() {
           </Link>
         </div>}
 
-        {/* 5. Studenten */}
-        {canAccessPath("/bemanning/studenten") && <div className="aspect-[3/1]">
-          <Link href="/bemanning/studenten" className="h-full flex flex-col bg-purple-50 border border-purple-200 rounded-lg p-2 md:p-4 text-center hover:bg-purple-100 transition cursor-pointer">
-            <div className="text-sm md:text-base font-semibold text-purple-900 mb-1 md:mb-2 text-center">{t('students')}</div>
-            <div className="text-sm md:text-base text-purple-800 space-y-0.5 md:space-y-1">
-              <div className="flex justify-between">
-                <span>BBL:</span>
-                <span className="font-semibold text-purple-900">{stats.studentenStats.BBL}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>BOL:</span>
-                <span className="font-semibold text-purple-900">{stats.studentenStats.BOL}</span>
-              </div>
-            </div>
-          </Link>
-        </div>}
-
-        {/* 6. Taken */}
-        {canAccessPath("/taken") && <div className="aspect-[3/1]">
-          <Link href="/taken" className="h-full flex flex-col items-center justify-center bg-amber-50 border border-amber-200 rounded-lg p-2 md:p-4 text-center hover:bg-amber-100 transition cursor-pointer">
-            <div className="text-xl md:text-2xl font-extrabold text-amber-800">{tasksCount}</div>
-            <div className='text-xl md:text-2xl font-semibold text-amber-800 mt-1 flex items-center justify-center gap-1'>
-              <ListTodo className="w-3.5 h-3.5 md:w-4 md:h-4" />
-              <span>Taken</span>
-            </div>
-          </Link>
-        </div>}
-
-        {/* 7. Scheepsbezoeken */}
+        {/* 6. Scheepsbezoeken */}
         {canAccessPath("/schepen/bezoeken") && <div className="aspect-[3/1]">
           <Link href="/schepen/bezoeken" className="h-full flex flex-col items-center justify-center bg-indigo-50 border border-indigo-200 rounded-lg p-2 md:p-4 text-center hover:bg-indigo-100 transition cursor-pointer">
             <div className="text-xl md:text-2xl font-extrabold text-indigo-800">{stats.scheepsbezoeken}</div>
             <div className='text-xl md:text-2xl font-semibold text-indigo-800 mt-1 flex items-center justify-center gap-1'>
               <Calendar className="w-3.5 h-3.5 md:w-4 md:h-4" />
               <span>Scheepsbezoeken</span>
+            </div>
+          </Link>
+        </div>}
+
+        {/* 7. Taken */}
+        {canAccessPath("/taken") && <div className="aspect-[3/1]">
+          <Link href="/taken" className="h-full flex flex-col items-center justify-center bg-amber-50 border border-amber-200 rounded-lg p-2 md:p-4 text-center hover:bg-amber-100 transition cursor-pointer">
+            <div className="text-xl md:text-2xl font-extrabold text-amber-800">{tasksCount}</div>
+            <div className='text-xl md:text-2xl font-semibold text-amber-800 mt-1 flex items-center justify-center gap-1'>
+              <ListTodo className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              <span>Taken</span>
             </div>
           </Link>
         </div>}
@@ -524,14 +493,6 @@ export function DashboardStats() {
           </Link>
         </div>}
 
-        {/* 11. Oud medewerkers */}
-        {canAccessPath("/bemanning/oude-bemanningsleden") && <div className="aspect-[3/1]">
-          <Link href="/bemanning/oude-bemanningsleden" className="h-full flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-lg p-2 md:p-4 text-center hover:bg-slate-100 transition cursor-pointer">
-            <div className="text-xl md:text-2xl font-extrabold text-slate-800">{stats.oudMedewerkers}</div>
-            <div className='text-xl md:text-2xl font-semibold text-slate-800 mt-1'>{t('oldEmployees')}</div>
-          </Link>
-        </div>}
-
         {/* 12. Firma Wisseling */}
         {canAccessPath("/firma-wisseling") && <div className="aspect-[3/1]">
           <Link href="/firma-wisseling" className="h-full flex flex-col bg-orange-50 border border-orange-200 rounded-lg p-2 md:p-4 text-center hover:bg-orange-100 transition cursor-pointer">
@@ -553,20 +514,6 @@ export function DashboardStats() {
                 {uiText.noAction}
               </div>
             )}
-          </Link>
-        </div>}
-
-        {/* 13. Officiële waarschuwingen */}
-        {canAccessPath("/bemanning/officiele-waarschuwingen") && <div className="aspect-[3/1]">
-          <Link
-            href="/bemanning/officiele-waarschuwingen"
-            className="h-full flex flex-col items-center justify-center bg-rose-50 border border-rose-200 rounded-lg p-2 md:p-4 text-center hover:bg-rose-100 transition cursor-pointer"
-          >
-            <div className="text-xl md:text-2xl font-extrabold text-rose-800">{activeOfficialWarningsCount}</div>
-            <div className="text-xl md:text-2xl font-semibold text-rose-800 mt-1 flex items-center justify-center gap-1">
-              <FileWarning className="w-3.5 h-3.5 md:w-4 md:h-4" />
-              <span>Waarschuwingen</span>
-            </div>
           </Link>
         </div>}
 

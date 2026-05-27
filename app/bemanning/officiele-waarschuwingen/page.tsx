@@ -13,6 +13,8 @@ import { BackButton } from "@/components/ui/back-button"
 import { generateOfficialWarningLetter } from "@/utils/contract-generator"
 import { supabase } from "@/lib/supabase"
 import { isRealCrewMember } from "@/utils/crew-filters"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 const BUCKET = "official-warnings"
 
@@ -57,6 +59,7 @@ const addYearsIso = (isoDate: string, years: number) => {
 
 export default function OfficieleWaarschuwingenPage() {
   const { crew, loading, error, officialWarnings, addOfficialWarning, deleteOfficialWarning, loadData } = useSupabaseData()
+  const pathname = usePathname()
   const [mounted, setMounted] = useState(false)
 
   const [crewId, setCrewId] = useState<string>("")
@@ -67,6 +70,12 @@ export default function OfficieleWaarschuwingenPage() {
   const [submitting, setSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const overviewTabs = [
+    { href: "/bemanning/overzicht", label: "Totaal bemanningsleden" },
+    { href: "/bemanning/studenten", label: "Stagiairs" },
+    { href: "/bemanning/oude-bemanningsleden", label: "Oud medewerkers" },
+    { href: "/bemanning/officiele-waarschuwingen", label: "Waarschuwingen" },
+  ]
 
   useEffect(() => setMounted(true), [])
 
@@ -316,6 +325,26 @@ export default function OfficieleWaarschuwingenPage() {
       <div className="flex items-center justify-between mb-4">
         <BackButton />
         <DashboardButton />
+      </div>
+      <div className="mb-6 overflow-x-auto">
+        <div className="inline-flex rounded-md border border-gray-200 bg-white p-1 min-w-max">
+          {overviewTabs.map((tab) => {
+            const active = pathname === tab.href
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`px-4 py-2 text-sm rounded-md transition ${
+                  active
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            )
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

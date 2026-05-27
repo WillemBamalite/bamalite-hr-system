@@ -12,6 +12,7 @@ import { useState, useEffect, useRef } from "react"
 import { BackButton } from "@/components/ui/back-button"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { countsAsTotalCrewMember } from "@/utils/crew-filters"
+import { usePathname } from "next/navigation"
 
 const RANK_ORDER = [
   "Kapitein",
@@ -25,6 +26,7 @@ const RANK_ORDER = [
 export default function CrewOverviewPage() {
   const { crew, ships, loading, error, crewColorTags, setCrewColorTag } = useSupabaseData()
   const { t } = useLanguage()
+  const pathname = usePathname()
   const [filteredCrew, setFilteredCrew] = useState<any[]>([])
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
   // Colors are persisted in Supabase via hook
@@ -36,6 +38,12 @@ export default function CrewOverviewPage() {
     "#FEF3C7", // amber-100
     "#E0E7FF", // indigo-100
     "#F3E8FF", // purple-100
+  ]
+  const overviewTabs = [
+    { href: "/bemanning/overzicht", label: "Totaal bemanningsleden" },
+    { href: "/bemanning/studenten", label: "Stagiairs" },
+    { href: "/bemanning/oude-bemanningsleden", label: "Oud medewerkers" },
+    { href: "/bemanning/officiele-waarschuwingen", label: "Waarschuwingen" },
   ]
 
   // Gebruik uitsluitend live Supabase data voor het overzicht
@@ -164,7 +172,26 @@ export default function CrewOverviewPage() {
           </Link>
         </div>
       </div>
-      
+      <div className="mb-6 overflow-x-auto">
+        <div className="inline-flex rounded-md border border-gray-200 bg-white p-1 min-w-max">
+          {overviewTabs.map((tab) => {
+            const active = pathname === tab.href
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`px-4 py-2 text-sm rounded-md transition ${
+                  active
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
 
       {RANK_ORDER.map((rank) => (
         <div key={rank} className="mb-8">

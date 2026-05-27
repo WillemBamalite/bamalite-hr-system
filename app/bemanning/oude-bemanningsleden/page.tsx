@@ -10,6 +10,7 @@ import { ArrowLeft, Users, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
+import { usePathname } from "next/navigation"
 
 const RANK_ORDER = [
   "Schipper",
@@ -22,6 +23,7 @@ const RANK_ORDER = [
 
 export default function FormerCrewPage() {
   const { user } = useAuth()
+  const pathname = usePathname()
   const { crew, deleteCrew } = useSupabaseData()
   const [grouped, setGrouped] = useState<{ [rank: string]: any[] }>({})
   const userEmailLower = String(user?.email || "").toLowerCase()
@@ -62,6 +64,12 @@ export default function FormerCrewPage() {
     deleteError: isGermanFormerCrewUser ? "Löschen fehlgeschlagen. Versuche es erneut." : "Verwijderen mislukt. Probeer opnieuw.",
     deleteFailedLog: isGermanFormerCrewUser ? "Definitief verwijderen mislukt:" : "Definitief verwijderen mislukt:",
   }
+  const overviewTabs = [
+    { href: "/bemanning/overzicht", label: "Totaal bemanningsleden" },
+    { href: "/bemanning/studenten", label: "Stagiairs" },
+    { href: "/bemanning/oude-bemanningsleden", label: "Oud medewerkers" },
+    { href: "/bemanning/officiele-waarschuwingen", label: "Waarschuwingen" },
+  ]
   
   // Filter crew members die uit dienst zijn
   const formerCrew = crew.filter((c: any) => c.status === 'uit-dienst')
@@ -108,6 +116,26 @@ export default function FormerCrewPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{uiText.pageTitle}</h1>
           <p className="text-sm text-gray-600">{uiText.pageSubtitle}</p>
+        </div>
+      </div>
+      <div className="mb-6 overflow-x-auto">
+        <div className="inline-flex rounded-md border border-gray-200 bg-white p-1 min-w-max">
+          {overviewTabs.map((tab) => {
+            const active = pathname === tab.href
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`px-4 py-2 text-sm rounded-md transition ${
+                  active
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            )
+          })}
         </div>
       </div>
 
