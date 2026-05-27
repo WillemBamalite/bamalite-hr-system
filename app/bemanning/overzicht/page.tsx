@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { useState, useEffect, useRef } from "react"
 import { BackButton } from "@/components/ui/back-button"
 import { DashboardButton } from "@/components/ui/dashboard-button"
+import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 
 const RANK_ORDER = [
   "Kapitein",
@@ -46,7 +47,7 @@ export default function CrewOverviewPage() {
 
   useEffect(() => {
     const merged = buildLiveCrew(crew)
-    const visible = merged.filter((c: any) => c.status !== 'uit-dienst' && !c.is_dummy)
+    const visible = merged.filter(countsAsTotalCrewMember)
     setFilteredCrew(visible)
     const groupedData: { [rank: string]: any[] } = {}
     visible.forEach((c: any) => {
@@ -62,7 +63,7 @@ export default function CrewOverviewPage() {
     if (typeof window === 'undefined') return
     const update = () => {
       const merged = buildLiveCrew(crew)
-      const visible = merged.filter((c: any) => c.status !== 'uit-dienst' && !c.is_dummy)
+      const visible = merged.filter(countsAsTotalCrewMember)
       setFilteredCrew(visible)
       const groupedData: { [rank: string]: any[] } = {}
       visible.forEach((c: any) => {

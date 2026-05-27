@@ -1027,6 +1027,11 @@ export default function AflosserDetailPage() {
               {aflosser.first_name} {aflosser.last_name}
             </h1>
             <p className="text-gray-600">Aflosser</p>
+            <div className="mt-2">
+              <Link href={`/bemanning/${aflosser.id}`}>
+                <Button size="sm" variant="outline">Open volledig profiel</Button>
+              </Link>
+            </div>
             </div>
           </div>
           <div className="flex gap-2">

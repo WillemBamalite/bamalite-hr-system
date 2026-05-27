@@ -270,6 +270,19 @@ body.newsletter-page-mode .app-container {
   min-width: 0 !important;
 }
 
+/* Volledig scherm op certificaten/formulieren: geen dashboard-header */
+body.tab-fullscreen-mode {
+  overflow: hidden !important;
+}
+
+body.tab-fullscreen-mode .dashboard-header {
+  display: none !important;
+}
+
+body.tab-fullscreen-mode .app-container {
+  min-height: 0 !important;
+}
+
 /* Header: statusupdate-melding (taak) */
 @keyframes task-status-bell-attention {
   0%,

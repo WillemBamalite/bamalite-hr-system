@@ -9,6 +9,7 @@ import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { BackButton } from "@/components/ui/back-button"
+import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 
 export default function CrewPrintPage() {
   const { crew, ships, sickLeave, loading, error } = useSupabaseData()
@@ -29,7 +30,7 @@ export default function CrewPrintPage() {
   
   // Bereken stats
   const stats = {
-    totalCrew: crew.filter((c: any) => c.status !== 'uit-dienst').length,
+    totalCrew: crew.filter(countsAsTotalCrewMember).length,
     onBoard: crew.filter((c: any) => c.status === 'aan-boord').length,
     atHome: crew.filter((c: any) => c.status === 'thuis').length,
     sick: crew.filter((c: any) => c.status === 'ziek').length,

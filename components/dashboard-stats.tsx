@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
+import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 
 export function DashboardStats() {
   const { crew, ships, sickLeave, loans, tasks, trips, incidents, officialWarnings } = useSupabaseData()
@@ -94,14 +95,8 @@ export function DashboardStats() {
   const activeCrew = crew.filter((c) => c.status !== 'uit-dienst' && !c.is_dummy)
   
   const stats = {
-    // Totaal bemanningsleden: alleen actieve vaste bemanning (geen aflossers, geen uit-dienst, geen dummy's)
-    totalCrew: activeCrew.filter((c) => 
-      c.position !== 'Aflosser' && 
-      c.position !== 'aflosser' && 
-      c.is_aflosser !== true &&
-      c.status !== 'uit-dienst' &&
-      !c.is_dummy
-    ).length,
+    // Totaal bemanningsleden: vaste bemanning met contract, geen aflossers/werving/uit-dienst
+    totalCrew: activeCrew.filter(countsAsTotalCrewMember).length,
     reizenStats: {
       gepland: trips.filter((trip: any) => trip.status === 'gepland').length,
       ingedeeld: trips.filter((trip: any) => trip.status === 'ingedeeld').length,

@@ -17,6 +17,7 @@ import { Calendar, Stethoscope, AlertTriangle, CheckCircle, Phone, MapPin } from
 import { format, addYears, addMonths, addDays, isAfter, isBefore, differenceInDays } from "date-fns"
 import { nl } from "date-fns/locale"
 import Link from "next/link"
+import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 
 export default function MedischeKeuringenPage() {
   const { crew, ships, loading, error, updateCrew } = useSupabaseData()
@@ -299,12 +300,9 @@ export default function MedischeKeuringenPage() {
     )
   }
 
-  // Filter alleen relevante bemanningsleden (geen aflossers, geen uit-dienst)
-  // BOL-studenten hoeven niet medisch gekeurd te worden -> uitsluiten
+  // Zelfde selectie als totaal bemanningsleden (+ BOL-studenten uitgesloten voor keuring)
   const activeCrew = crew.filter((member: any) =>
-    member.status !== 'uit-dienst' &&
-    !member.is_aflosser &&
-    member.position !== 'Aflosser' &&
+    countsAsTotalCrewMember(member) &&
     !(member.is_student && member.education_type === 'BOL')
   )
 

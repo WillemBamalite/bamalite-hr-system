@@ -1325,15 +1325,26 @@ export function useSupabaseData() {
         .single()
 
       if (error) {
-        console.error('Supabase error updating crew:', error)
-        throw error
+        const msg =
+          (error as any)?.message ||
+          (error as any)?.error?.message ||
+          (error as any)?.details ||
+          (error as any)?.hint ||
+          JSON.stringify(error)
+        console.error('Supabase error updating crew:', msg, error)
+        throw new Error(msg && msg !== '{}' ? msg : 'Supabase update error (crew)')
       }
 
       console.log('Crew member updated successfully')
       await loadData()
       return data
     } catch (err) {
-      console.error('Error updating crew:', err)
+      const msg =
+        (err as any)?.message ||
+        (err as any)?.error?.message ||
+        (err as any)?.details ||
+        JSON.stringify(err)
+      console.error('Error updating crew:', msg, err)
       throw err
     }
   }

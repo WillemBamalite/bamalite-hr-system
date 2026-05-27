@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCircle, Edit, Save, X, Trash2, Ship, Clock, ArrowRight, ArrowLeft } from "lucide-react"
+import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCircle, Edit, Save, X, Trash2, Ship, Clock, ArrowRight, ArrowLeft, Settings } from "lucide-react"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
@@ -16,6 +16,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { generateOutOfServiceLetter, downloadContract } from "@/utils/contract-generator"
+import Link from "next/link"
 
 const POSITION_OPTIONS = [
   "Kapitein",
@@ -87,7 +88,7 @@ interface Props {
 }
 
 export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = false }: Props) {
-  const { crew, ships, loading, error, updateCrew } = useSupabaseData()
+  const { crew, ships, trips, loading, error, updateCrew } = useSupabaseData()
   const { visits } = useShipVisits()
   const { t } = useLanguage()
   const { role, user } = useAuth()
@@ -96,6 +97,8 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   const [isSaving, setIsSaving] = useState(false)
   const [editData, setEditData] = useState<Record<string, any>>({})
   const [showOutDialog, setShowOutDialog] = useState(false)
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [outDate, setOutDate] = useState("")
   const [outReason, setOutReason] = useState("")
   const [resetRotation, setResetRotation] = useState(false)
@@ -105,6 +108,62 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     currentUserEmail === "tanja@bamalite.com" ||
     currentUserEmail === "karina@bamalite.com" ||
     currentUserEmail === "lucie@bamalite.com"
+
+  const getRoleType = (member: any) => {
+    if (!member) return "vast"
+    if (member.is_uitzendbureau === true) return "uitzend"
+    if (member.is_zelfstandig === true) return "zelfstandig"
+    if ((member.is_aflosser === true || String(member.position || "").toLowerCase() === "aflosser") && member.vaste_dienst === true) {
+      return "vaste-aflosser"
+    }
+    if (member.is_aflosser === true || String(member.position || "").toLowerCase() === "aflosser") return "losse-aflosser"
+    return "vast"
+  }
+
+  const applyRoleTypeToData = (current: Record<string, any>, roleType: string) => {
+    const next = { ...current }
+    if (roleType === "vast") {
+      next.is_aflosser = false
+      next.vaste_dienst = false
+      next.is_uitzendbureau = false
+      next.is_zelfstandig = false
+      if (String(next.position || "").toLowerCase() === "aflosser") next.position = "Matroos"
+      return next
+    }
+    if (roleType === "vaste-aflosser") {
+      next.is_aflosser = true
+      next.vaste_dienst = true
+      next.is_uitzendbureau = false
+      next.is_zelfstandig = false
+      next.position = "Aflosser"
+      return next
+    }
+    if (roleType === "losse-aflosser") {
+      next.is_aflosser = true
+      next.vaste_dienst = false
+      next.is_uitzendbureau = false
+      next.is_zelfstandig = false
+      next.position = "Aflosser"
+      return next
+    }
+    if (roleType === "uitzend") {
+      next.is_aflosser = true
+      next.vaste_dienst = false
+      next.is_uitzendbureau = true
+      next.is_zelfstandig = false
+      next.position = "Aflosser"
+      return next
+    }
+    if (roleType === "zelfstandig") {
+      next.is_aflosser = true
+      next.vaste_dienst = false
+      next.is_uitzendbureau = false
+      next.is_zelfstandig = true
+      next.position = "Aflosser"
+      return next
+    }
+    return next
+  }
 
   const handleMarkOutOfService = async () => {
     if (!outDate || !outReason) {
@@ -198,6 +257,29 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     )
   }, [crewMember])
 
+  const hasAflosserHistory = useMemo(() => {
+    if (!crewMember) return false
+    const hasAflosserFlags =
+      (crewMember as any).is_aflosser === true ||
+      (crewMember as any).vaste_dienst === true ||
+      (crewMember as any).is_uitzendbureau === true ||
+      (crewMember as any).is_zelfstandig === true ||
+      String(crewMember.position || "").toLowerCase() === "aflosser"
+    if (hasAflosserFlags) return true
+    return (trips || []).some((trip: any) => trip?.aflosser_id === crewMember.id)
+  }, [crewMember, trips])
+
+  const isCurrentlyAflosser = useMemo(() => {
+    if (!crewMember) return false
+    return (
+      (crewMember as any).is_aflosser === true ||
+      (crewMember as any).vaste_dienst === true ||
+      (crewMember as any).is_uitzendbureau === true ||
+      (crewMember as any).is_zelfstandig === true ||
+      String(crewMember.position || "").toLowerCase() === "aflosser"
+    )
+  }, [crewMember])
+
   // Initialize edit data when crew member is found
   useEffect(() => {
     if (crewMember) {
@@ -216,10 +298,15 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         matricule: (crewMember as any).matricule ?? "",
         expected_start_date: (crewMember as any).expected_start_date || "",
         in_dienst_vanaf: (crewMember as any).in_dienst_vanaf || "",
-        in_dienst_vanaf: (crewMember as any).in_dienst_vanaf || "",
         arbeidsovereenkomst: (crewMember as any).arbeidsovereenkomst || false,
         ingeschreven_luxembourg: (crewMember as any).ingeschreven_luxembourg || false,
         verzekerd: (crewMember as any).verzekerd || false,
+        recruitment_status: (crewMember as any).recruitment_status || "aangenomen",
+        sub_status: (crewMember as any).sub_status || "",
+        vaste_dienst: (crewMember as any).vaste_dienst || false,
+        is_aflosser: (crewMember as any).is_aflosser || false,
+        is_uitzendbureau: (crewMember as any).is_uitzendbureau || false,
+        is_zelfstandig: (crewMember as any).is_zelfstandig || false,
         address: crewMember.address || {
           street: "",
           city: "",
@@ -359,6 +446,12 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         arbeidsovereenkomst: editData.arbeidsovereenkomst,
         ingeschreven_luxembourg: editData.ingeschreven_luxembourg,
         verzekerd: editData.verzekerd,
+        recruitment_status: editData.recruitment_status || null,
+        sub_status: editData.sub_status || null,
+        vaste_dienst: editData.vaste_dienst === true,
+        is_aflosser: editData.is_aflosser === true,
+        is_uitzendbureau: editData.is_uitzendbureau === true,
+        is_zelfstandig: editData.is_zelfstandig === true,
         notes: editData.notes,
         address: editData.address,
         diplomas: editData.diplomas
@@ -502,6 +595,17 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         birth_date: crewMember.birth_date || "",
         birth_place: (crewMember as any).birth_place || "",
         matricule: (crewMember as any).matricule ?? "",
+        expected_start_date: (crewMember as any).expected_start_date || "",
+        in_dienst_vanaf: (crewMember as any).in_dienst_vanaf || "",
+        arbeidsovereenkomst: (crewMember as any).arbeidsovereenkomst || false,
+        ingeschreven_luxembourg: (crewMember as any).ingeschreven_luxembourg || false,
+        verzekerd: (crewMember as any).verzekerd || false,
+        recruitment_status: (crewMember as any).recruitment_status || "aangenomen",
+        sub_status: (crewMember as any).sub_status || "",
+        vaste_dienst: (crewMember as any).vaste_dienst || false,
+        is_aflosser: (crewMember as any).is_aflosser || false,
+        is_uitzendbureau: (crewMember as any).is_uitzendbureau || false,
+        is_zelfstandig: (crewMember as any).is_zelfstandig || false,
         address: crewMember.address || {
           street: "",
           city: "",
@@ -561,6 +665,72 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     return editData.arbeidsovereenkomst && 
            editData.ingeschreven_luxembourg && 
            editData.verzekerd;
+  }
+
+  const handleSettingsSave = async () => {
+    if (isReadOnlyProfileUser) return
+    setIsSavingSettings(true)
+    try {
+      const basePayload: any = {
+        status: editData.status,
+        position: editData.position,
+        in_dienst_vanaf: editData.in_dienst_vanaf || null,
+        arbeidsovereenkomst: editData.arbeidsovereenkomst === true,
+        ingeschreven_luxembourg: editData.ingeschreven_luxembourg === true,
+        verzekerd: editData.verzekerd === true,
+        vaste_dienst: editData.vaste_dienst === true,
+        is_aflosser: editData.is_aflosser === true,
+        is_uitzendbureau: editData.is_uitzendbureau === true,
+        is_zelfstandig: editData.is_zelfstandig === true,
+      }
+      const extendedPayload: any = {
+        ...basePayload,
+        recruitment_status: editData.recruitment_status || null,
+        sub_status: editData.sub_status || null,
+      }
+      const saveWithSchemaFallback = async (payload: Record<string, any>) => {
+        const removableKeys = new Set([
+          "recruitment_status",
+          "sub_status",
+          "is_aflosser",
+          "vaste_dienst",
+          "is_uitzendbureau",
+          "is_zelfstandig",
+          "arbeidsovereenkomst",
+          "ingeschreven_luxembourg",
+          "verzekerd",
+          "in_dienst_vanaf",
+        ])
+        let currentPayload: Record<string, any> = { ...payload }
+
+        for (let i = 0; i < 8; i++) {
+          try {
+            await updateCrew(crewMemberId, currentPayload)
+            return
+          } catch (err: any) {
+            const msg = String(err?.message || err || "")
+            const missingColMatch = msg.match(/Could not find the '([^']+)' column/i)
+            const missingCol = missingColMatch?.[1]
+            if (!missingCol || !removableKeys.has(missingCol) || !(missingCol in currentPayload)) {
+              throw err
+            }
+            const { [missingCol]: _drop, ...rest } = currentPayload
+            currentPayload = rest
+          }
+        }
+        await updateCrew(crewMemberId, currentPayload)
+      }
+
+      await saveWithSchemaFallback(extendedPayload)
+      setShowSettingsDialog(false)
+      if (onProfileUpdate) onProfileUpdate()
+    } catch (e) {
+      const msg = String((e as any)?.message || e || "Onbekende fout")
+      console.error("Error saving profile settings:", msg, e)
+      alert(`Instellingen opslaan mislukt: ${msg}`)
+    } finally {
+      setIsSavingSettings(false)
+    }
   }
 
   const renderField = (label: string, value: any, field: string, type: string = "text") => {
@@ -676,15 +846,26 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                 isReadOnlyProfileUser ? (
                   <Badge variant="outline" className="text-slate-600 border-slate-300">Alleen-lezen</Badge>
                 ) : (
-                <Button
-                  onClick={() => setIsEditing(true)}
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center space-x-2"
-                >
-                  <Edit className="w-4 h-4" />
-                  <span>{t('edit')}</span>
-                </Button>
+                  <>
+                    <Button
+                      onClick={() => setShowSettingsDialog(true)}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center space-x-2"
+                    >
+                      <Settings className="w-4 h-4" />
+                      <span>Instellingen</span>
+                    </Button>
+                    <Button
+                      onClick={() => setIsEditing(true)}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center space-x-2"
+                    >
+                      <Edit className="w-4 h-4" />
+                      <span>{t('edit')}</span>
+                    </Button>
+                  </>
                 )
               ) : (
                 <div className="flex items-center space-x-2">
@@ -742,6 +923,16 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
               <Badge variant="outline" className="text-orange-600">
                 Aflosser
               </Badge>
+              )}
+              {hasAflosserHistory && !isCurrentlyAflosser && (
+                <Badge variant="outline" className="text-amber-700 border-amber-300">
+                  Voormalig aflosser
+                </Badge>
+              )}
+              {hasAflosserHistory && (
+                <Link href={`/bemanning/aflossers/${crewMember.id}`}>
+                  <Button variant="outline" size="sm">Bekijk aflosserhistorie</Button>
+                </Link>
               )}
             </div>
         </div>
@@ -1150,6 +1341,119 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         </CardContent>
       </Card>
 
+
+    <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Personeelsinstellingen</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700">Roltype</label>
+            <Select
+              value={getRoleType(editData)}
+              onValueChange={(value) => setEditData((prev: Record<string, any>) => applyRoleTypeToData(prev, value))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Kies roltype" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="vast">Vaste bemanning</SelectItem>
+                <SelectItem value="vaste-aflosser">Vaste aflosser</SelectItem>
+                <SelectItem value="losse-aflosser">Losse aflosser</SelectItem>
+                <SelectItem value="uitzend">Aflosser via uitzendbureau</SelectItem>
+                <SelectItem value="zelfstandig">Zelfstandige aflosser</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700">Functie</label>
+            <Select
+              value={editData.position || "Matroos"}
+              onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, position: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Kies functie" />
+              </SelectTrigger>
+              <SelectContent>
+                {POSITION_OPTIONS.map(option => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700">Recruitment status</label>
+            <Select
+              value={editData.recruitment_status || "aangenomen"}
+              onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, recruitment_status: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Kies recruitment status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="aangenomen">Aangenomen</SelectItem>
+                <SelectItem value="nog-te-benaderen">Nog te benaderen</SelectItem>
+                <SelectItem value="geen-interesse">Geen interesse</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700">Sub status</label>
+            <Select
+              value={editData.sub_status || "__none__"}
+              onValueChange={(value) => setEditData((prev: Record<string, any>) => ({ ...prev, sub_status: value === "__none__" ? "" : value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Geen sub status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Geen sub status</SelectItem>
+                <SelectItem value="later-terugkomen">Later terugkomen</SelectItem>
+                <SelectItem value="nog-te-benaderen">Nog te benaderen</SelectItem>
+                <SelectItem value="wacht-op-startdatum">Wacht op startdatum</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            <label className="flex items-center space-x-3 text-sm">
+              <input
+                type="checkbox"
+                checked={editData.arbeidsovereenkomst || false}
+                onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, arbeidsovereenkomst: e.target.checked }))}
+              />
+              <span>Arbeidsovereenkomst getekend</span>
+            </label>
+            <label className="flex items-center space-x-3 text-sm">
+              <input
+                type="checkbox"
+                checked={editData.ingeschreven_luxembourg || false}
+                onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, ingeschreven_luxembourg: e.target.checked }))}
+              />
+              <span>Ingeschreven Luxembourg</span>
+            </label>
+            <label className="flex items-center space-x-3 text-sm">
+              <input
+                type="checkbox"
+                checked={editData.verzekerd || false}
+                onChange={(e) => setEditData((prev: Record<string, any>) => ({ ...prev, verzekerd: e.target.checked }))}
+              />
+              <span>Verzekerd</span>
+            </label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>{t('cancel')}</Button>
+          <Button onClick={handleSettingsSave} disabled={isSavingSettings}>
+            {isSavingSettings ? `${t('save')}...` : t('save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     {/* Uit dienst dialog */}
     <Dialog open={showOutDialog} onOpenChange={setShowOutDialog}>

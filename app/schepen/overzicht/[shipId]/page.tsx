@@ -3392,6 +3392,7 @@ export default function ShipParticularsPage() {
   const [editingIntervalIndex, setEditingIntervalIndex] = useState<number | null>(null)
   const [editingIntervalValue, setEditingIntervalValue] = useState("")
   const certificatesSyncReadyRef = useRef(false)
+  const certificatesDirtyRef = useRef(false)
   const certificateAutosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const ship = ships.find((s: any) => String(s.id) === shipId)
@@ -3599,6 +3600,35 @@ export default function ShipParticularsPage() {
   const getCertificateDocumentMapKey = (certificateName: string) =>
     normalizeCertificateName(certificateName).replace(/\s+/g, " ").trim()
 
+  const normalizeCertificateDocumentMap = (map: CertificateDocumentMap): CertificateDocumentMap => {
+    const merged: CertificateDocumentMap = {}
+    Object.entries(map || {}).forEach(([rawKey, docs]) => {
+      if (!Array.isArray(docs) || docs.length === 0) return
+      const key = getCertificateDocumentMapKey(rawKey)
+      const validDocs = docs.filter(
+        (doc) => doc && typeof doc === "object" && String(doc.fileUrl || "").trim()
+      ) as CertificateDocumentLink[]
+      if (validDocs.length === 0) return
+      merged[key] = [...(merged[key] || []), ...validDocs]
+    })
+    Object.keys(merged).forEach((key) => {
+      merged[key].sort(
+        (a, b) =>
+          new Date(a.uploadedAt || 0).getTime() - new Date(b.uploadedAt || 0).getTime()
+      )
+    })
+    return merged
+  }
+
+  const getLatestCertificateDocument = (docs: CertificateDocumentLink[]) => {
+    if (!docs.length) return null
+    return docs.reduce((latest, doc) => {
+      const latestTime = new Date(latest.uploadedAt || 0).getTime()
+      const docTime = new Date(doc.uploadedAt || 0).getTime()
+      return docTime >= latestTime ? doc : latest
+    })
+  }
+
   const sanitizeFileName = (value: string) => String(value || "").replace(/[^a-zA-Z0-9._-]/g, "_")
 
   const loadCertificateDocuments = (shipName: string): CertificateDocumentMap => {
@@ -3621,7 +3651,7 @@ export default function ShipParticularsPage() {
           normalized[key] = [value as CertificateDocumentLink]
         }
       })
-      return normalized
+      return normalizeCertificateDocumentMap(normalized)
     } catch {
       return {}
     }
@@ -3634,8 +3664,9 @@ export default function ShipParticularsPage() {
   ) => {
     if (typeof window === "undefined") return
     const shouldMarkDirty = options?.markDirty !== false
+    const normalized = normalizeCertificateDocumentMap(next)
     const storageKey = getCertificateDocumentStorageKey(shipName)
-    window.localStorage.setItem(storageKey, JSON.stringify(next))
+    window.localStorage.setItem(storageKey, JSON.stringify(normalized))
     const meta = loadCertificateStateMeta()
     persistCertificateStateMeta({
       ...meta,
@@ -3811,7 +3842,7 @@ export default function ShipParticularsPage() {
 
     return {
       certificates,
-      documents,
+      documents: normalizeCertificateDocumentMap(documents),
       removedCertificateKeys,
       updatedAt: String(parsed.updatedAt || ""),
     }
@@ -3823,9 +3854,10 @@ export default function ShipParticularsPage() {
     documents: CertificateDocumentMap,
     removedCertificateKeys: string[]
   ) => {
+    const normalizedDocuments = normalizeCertificateDocumentMap(documents)
     await uploadJsonToStorage(getCloudShipStatePath(shipName), {
       certificates,
-      documents,
+      documents: normalizedDocuments,
       removedCertificateKeys,
       updatedAt: new Date().toISOString(),
     })
@@ -3838,7 +3870,7 @@ export default function ShipParticularsPage() {
           ship_name: shipName,
           certificates,
           removed_certificate_keys: removedCertificateKeys,
-          documents,
+          documents: normalizedDocuments,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "ship_key" }
@@ -3905,14 +3937,17 @@ export default function ShipParticularsPage() {
   }
 
   const applyCloudShipState = (shipName: string, cloudShipState: CloudShipCertificateState) => {
+    if (certificatesDirtyRef.current) return
+
+    const normalizedDocuments = normalizeCertificateDocumentMap(cloudShipState.documents || {})
     if (typeof window !== "undefined" && certificateStorageKey) {
       window.localStorage.setItem(certificateStorageKey, JSON.stringify(cloudShipState.certificates || []))
     }
     persistRemovedCertificateKeys(shipName, cloudShipState.removedCertificateKeys || [], {
       markDirty: false,
     })
-    persistCertificateDocuments(shipName, cloudShipState.documents || {}, { markDirty: false })
-    setCertificateDocuments(cloudShipState.documents || {})
+    persistCertificateDocuments(shipName, normalizedDocuments, { markDirty: false })
+    setCertificateDocuments(normalizedDocuments)
     persistCertificateStateMeta({
       updatedAt: cloudShipState.updatedAt || "",
       savedAt: cloudShipState.updatedAt || "",
@@ -4041,7 +4076,7 @@ export default function ShipParticularsPage() {
     let cancelled = false
     const refreshFromCloud = async () => {
       const cloudShipState = await loadCloudShipState(ship.name)
-      if (cancelled || !cloudShipState) return
+      if (cancelled || !cloudShipState || certificatesDirtyRef.current) return
       applyCloudShipState(ship.name, cloudShipState)
     }
     const onFocus = () => {
@@ -4148,6 +4183,10 @@ export default function ShipParticularsPage() {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload)
     }
+  }, [certificatesDirty])
+
+  useEffect(() => {
+    certificatesDirtyRef.current = certificatesDirty
   }, [certificatesDirty])
 
   useEffect(() => {
@@ -4342,9 +4381,9 @@ export default function ShipParticularsPage() {
 
       const key = getCertificateDocumentMapKey(certificate.naam)
       const existingDocs = certificateDocuments[key] || []
-      let nextDocs = [...existingDocs]
+      let shouldDeleteOld = false
       if (existingDocs.length > 0 && typeof window !== "undefined") {
-        const shouldDeleteOld = window.confirm("Wil je het oude certificaat verwijderen?")
+        shouldDeleteOld = window.confirm("Wil je het oude certificaat verwijderen?")
         if (shouldDeleteOld) {
           const oldPaths = existingDocs.map((doc) => doc.storagePath).filter(Boolean)
           if (oldPaths.length > 0) {
@@ -4355,23 +4394,31 @@ export default function ShipParticularsPage() {
               alert(`Waarschuwing: oud certificaat kon niet uit opslag verwijderd worden (${removeError.message || "onbekende fout"}).`)
             }
           }
-          nextDocs = []
         }
       }
 
-      nextDocs.push({
+      const newLink: CertificateDocumentLink = {
         fileName: file.name,
         fileUrl: publicUrl,
         storagePath: uploadData.path,
         uploadedAt: new Date().toISOString(),
-      })
-
-      const next: CertificateDocumentMap = {
-        ...certificateDocuments,
-        [key]: nextDocs,
       }
-      setCertificateDocuments(next)
-      persistCertificateDocuments(ship.name, next)
+
+      setCertificateDocuments((prev) => {
+        const base: CertificateDocumentMap = {}
+        Object.entries(prev).forEach(([rawKey, docs]) => {
+          if (shouldDeleteOld && getCertificateDocumentMapKey(rawKey) === key) return
+          base[rawKey] = docs
+        })
+        const prevDocs = shouldDeleteOld ? [] : base[key] || []
+        const nextDocs = shouldDeleteOld ? [newLink] : [...prevDocs, newLink]
+        const next = normalizeCertificateDocumentMap({
+          ...base,
+          [key]: nextDocs,
+        })
+        persistCertificateDocuments(ship.name, next)
+        return next
+      })
     } catch (error: any) {
       alert(`Fout bij uploaden document: ${error?.message || "Onbekende fout"}`)
     } finally {
@@ -4383,9 +4430,10 @@ export default function ShipParticularsPage() {
   const openCertificateDocument = (certificateName: string) => {
     const key = getCertificateDocumentMapKey(certificateName)
     const docs = certificateDocuments[key] || []
-    const doc = docs[docs.length - 1]
+    const doc = getLatestCertificateDocument(docs)
     if (!doc?.fileUrl || typeof window === "undefined") return
-    window.open(doc.fileUrl, "_blank", "noopener,noreferrer")
+    const url = doc.fileUrl.includes("?") ? doc.fileUrl : `${doc.fileUrl}?v=${encodeURIComponent(doc.uploadedAt || doc.storagePath)}`
+    window.open(url, "_blank", "noopener,noreferrer")
   }
 
   const handleCertificateDrop = async (index: number, event: DragEvent<HTMLDivElement>) => {
