@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
-import { isCopiedCrewMember, isRealCrewMember } from "@/utils/crew-filters"
+import { isCopiedCrewMember, isExcludedFromSalaryMonth, isRealCrewMember, parseCrewDate } from "@/utils/crew-filters"
 
 const TRAVEL_AMOUNT_OPTIONS = [0, 150, 300] as const
 type TravelAmountOption = (typeof TRAVEL_AMOUNT_OPTIONS)[number]
@@ -93,6 +93,7 @@ type SalaryDraft = {
   company: string | null
   month_key: string
   in_service_from: string | null
+  out_of_service_date: string | null
   iban: string
   base_salary: number | null
   travel_amount: TravelAmountOption
@@ -257,21 +258,8 @@ const getCrewBaseSalaryExclClothing = (crewMember: any): number => {
 }
 
 const getCrewClothingAllowance = (crewMember: any): number => {
-  const clothingRaw =
-    crewMember?.kleding_geld ??
-    crewMember?.kledinggeld ??
-    crewMember?.kledingGeld ??
-    crewMember?.clothing_allowance ??
-    null
-  const fromFields = parseMoney(clothingRaw)
-  if (fromFields > 0) return fromFields
-
-  const notesText = getCrewNotesText(crewMember)
-  const contractMatch = notesText.match(/contract_kledinggeld:([0-9.,-]+)/i)
-  if (contractMatch) return parseMoney(contractMatch[1])
-  const reasonMatch = notesText.match(/kledinggeld:([0-9.,-]+)/i)
-  if (reasonMatch) return parseMoney(reasonMatch[1])
-  return 0
+  // Bedrijfsregel: kledinggeld is voor iedereen altijd vast EUR 25 per maand.
+  return CLOTHING_ALLOWANCE_FIXED
 }
 
 const getContractBaseSalaryExclClothing = (crewMember: any): number | null => {
@@ -395,6 +383,7 @@ const isEligibleForSalaryPage = (member: any) => {
 }
 
 const isEligibleForSalaryMonth = (member: any, selectedMonthKey: string) => {
+  if (isExcludedFromSalaryMonth(member, selectedMonthKey)) return false
   const inDienstVanaf = String(member?.in_dienst_vanaf || "").trim()
   if (!inDienstVanaf) return true
   const d = new Date(inDienstVanaf)
@@ -693,6 +682,7 @@ export default function LoonBemerkingenPage() {
             company: (c.company ?? current?.company ?? previous?.company ?? null) || null,
             month_key: monthKey,
             in_service_from: c?.in_dienst_vanaf || null,
+            out_of_service_date: c?.out_of_service_date || null,
             iban: String(
               current?.iban ??
               currentMeta?.iban ??
@@ -997,33 +987,55 @@ export default function LoonBemerkingenPage() {
     return month === 2 ? 28 : 30
   }
 
+  /**
+   * Gewerkte dagen in salarismaand (kalenderdagen, incl. start/eind).
+   * null = volledige maand, 0 = geen basis deze maand (bv. start na 25e).
+   */
+  const getWorkedDaysInSalaryMonth = (row: SalaryDraft, selectedMonthKey: string): number | null => {
+    const [yearStr, monthStr] = selectedMonthKey.split("-")
+    const year = Number(yearStr)
+    const month = Number(monthStr)
+    if (!year || !month) return null
+
+    const calendarDays = getCalendarDaysInMonth(selectedMonthKey)
+    const start = row.in_service_from ? parseCrewDate(row.in_service_from) : null
+    const end = row.out_of_service_date ? parseCrewDate(row.out_of_service_date) : null
+
+    const isStartMonth = !!(start && start.getFullYear() === year && start.getMonth() + 1 === month)
+    const isEndMonth = !!(end && end.getFullYear() === year && end.getMonth() + 1 === month)
+
+    if (!isStartMonth && !isEndMonth) return null
+
+    let rangeStart = 1
+    let rangeEnd = calendarDays
+
+    if (isStartMonth && start) {
+      const startDay = start.getDate()
+      if (startDay >= 25) return 0
+      rangeStart = Math.max(rangeStart, startDay)
+    }
+
+    if (isEndMonth && end) {
+      rangeEnd = Math.min(rangeEnd, end.getDate())
+    }
+
+    if (rangeEnd < rangeStart) return 0
+    return rangeEnd - rangeStart + 1
+  }
+
   const getProratedMonthlyAmount = (
     fullAmount: number,
     row: SalaryDraft,
     selectedMonthKey: string
   ) => {
     if (fullAmount <= 0) return 0
-    if (!row.in_service_from) return fullAmount
-    const start = new Date(row.in_service_from)
-    if (isNaN(start.getTime())) return fullAmount
+    const workedDays = getWorkedDaysInSalaryMonth(row, selectedMonthKey)
+    if (workedDays === null) return fullAmount
 
-    const [yearStr, monthStr] = selectedMonthKey.split("-")
-    const year = Number(yearStr)
-    const month = Number(monthStr)
-    if (!year || !month) return fullAmount
-
-    const isStartMonth = start.getFullYear() === year && start.getMonth() + 1 === month
-    if (!isStartMonth) return fullAmount
-
-    const startDay = start.getDate()
-    const calendarDays = getCalendarDaysInMonth(selectedMonthKey)
     const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
-    if (calendarDays <= 0 || divisorDays <= 0) return fullAmount
+    if (divisorDays <= 0) return fullAmount
+    if (workedDays <= 0) return 0
 
-    // Betaaldag is de 25e: start op/na 25 gaat naar te-goed in volgende maand.
-    if (startDay >= 25) return 0
-
-    const workedDays = calendarDays - startDay + 1
     return (fullAmount / divisorDays) * workedDays
   }
 
@@ -1079,40 +1091,50 @@ export default function LoonBemerkingenPage() {
     const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
     const clothingAmount = getRowClothingAllowance(row)
     const travelAmount = row.travel_amount || 0
-    if ((baseSalaryExcl <= 0 && travelAmount <= 0) || !row.in_service_from) return ""
-    const start = new Date(row.in_service_from)
-    if (isNaN(start.getTime())) return ""
+    if (baseSalaryExcl <= 0 && travelAmount <= 0) return ""
 
     const [yearStr, monthStr] = selectedMonthKey.split("-")
     const year = Number(yearStr)
     const month = Number(monthStr)
     if (!year || !month) return ""
 
-    const isStartMonth = start.getFullYear() === year && (start.getMonth() + 1) === month
-    if (!isStartMonth) return ""
+    const start = row.in_service_from ? parseCrewDate(row.in_service_from) : null
+    const end = row.out_of_service_date ? parseCrewDate(row.out_of_service_date) : null
+    const isStartMonth = !!(start && start.getFullYear() === year && start.getMonth() + 1 === month)
+    const isEndMonth = !!(end && end.getFullYear() === year && end.getMonth() + 1 === month)
 
-    const startDay = start.getDate()
-    const calendarDays = getCalendarDaysInMonth(selectedMonthKey)
+    if (!isStartMonth && !isEndMonth) return ""
+
     const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
-    if (startDay >= 25) {
-      const extras = [
-        clothingAmount > 0 ? `kledinggeld ${formatCurrency(clothingAmount)}` : "",
-        travelAmount > 0 ? `reiskosten ${formatCurrency(travelAmount)}` : "",
-      ].filter(Boolean)
-      const extraSuffix = extras.length > 0 ? ` (+ ${extras.join(" + ")})` : ""
-      return `Start op ${startDay}e (na betaaldag 25e): salaris excl. kledinggeld via te-goed naar volgende maand${extraSuffix}.`
-    }
-
-    const workedDays = calendarDays - startDay + 1
-    const proratedBase = getProratedBaseSalaryForMonth(row, selectedMonthKey)
-    if (proratedBase >= baseSalaryExcl) return ""
-
     const extras = [
       clothingAmount > 0 ? `kledinggeld ${formatCurrency(clothingAmount)}` : "",
       travelAmount > 0 ? `reiskosten ${formatCurrency(travelAmount)}` : "",
     ].filter(Boolean)
     const extraSuffix = extras.length > 0 ? ` + ${extras.join(" + ")}` : ""
-    return `Pro-rata vanaf ${startDay}/${String(month).padStart(2, "0")}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
+
+    if (isStartMonth && start && start.getDate() >= 25) {
+      const extraStartSuffix = extras.length > 0 ? ` (+ ${extras.join(" + ")})` : ""
+      return `Start op ${start.getDate()}e (na betaaldag 25e): salaris excl. kledinggeld via te-goed naar volgende maand${extraStartSuffix}.`
+    }
+
+    const workedDays = getWorkedDaysInSalaryMonth(row, selectedMonthKey)
+    if (workedDays === null) return ""
+
+    const proratedBase = getProratedBaseSalaryForMonth(row, selectedMonthKey)
+    if (proratedBase >= baseSalaryExcl) return ""
+
+    const monthLabel = String(month).padStart(2, "0")
+
+    if (isStartMonth && isEndMonth && start && end) {
+      return `Pro-rata ${start.getDate()}/${monthLabel}-${end.getDate()}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
+    }
+    if (isEndMonth && end) {
+      return `Pro-rata t/m ${end.getDate()}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
+    }
+    if (isStartMonth && start) {
+      return `Pro-rata vanaf ${start.getDate()}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
+    }
+    return ""
   }
 
   const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -1718,6 +1740,7 @@ export default function LoonBemerkingenPage() {
           company: item?.company || null,
           month_key: String(item?.month_key || ""),
           in_service_from: crewById.get(crewId)?.in_dienst_vanaf || null,
+          out_of_service_date: crewById.get(crewId)?.out_of_service_date || null,
           iban: String(item?.iban ?? meta?.iban ?? ""),
           base_salary:
             normalizeBaseSalaryExclClothingForCrew(

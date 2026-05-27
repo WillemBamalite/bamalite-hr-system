@@ -95,8 +95,8 @@ export function DashboardStats() {
   const activeCrew = crew.filter((c) => c.status !== 'uit-dienst' && !c.is_dummy)
   
   const stats = {
-    // Totaal bemanningsleden: vaste bemanning met contract, geen aflossers/werving/uit-dienst
-    totalCrew: activeCrew.filter(countsAsTotalCrewMember).length,
+    // Totaal bemanningsleden (incl. uit-dienst met toekomstige einddatum)
+    totalCrew: crew.filter((c) => !c.is_dummy && countsAsTotalCrewMember(c)).length,
     reizenStats: {
       gepland: trips.filter((trip: any) => trip.status === 'gepland').length,
       ingedeeld: trips.filter((trip: any) => trip.status === 'ingedeeld').length,
