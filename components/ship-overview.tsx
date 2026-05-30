@@ -8,6 +8,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus, AlertCircle } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
+import {
+  getActiveOverwerkTripOnShip,
+  getOverwerkCardLabel,
+  shouldShowMemberOnShipOverview,
+} from "@/utils/overwerker-availability"
 import { format } from "date-fns"
 import React, { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
@@ -190,6 +195,14 @@ export function ShipOverview() {
   const restoreTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Prevent hydration errors
+  useEffect(() => {
+    const onCrewDataChanged = () => {
+      loadData()
+    }
+    window.addEventListener("bamalite-crew-data-changed", onCrewDataChanged)
+    return () => window.removeEventListener("bamalite-crew-data-changed", onCrewDataChanged)
+  }, [loadData])
+
   useEffect(() => {
     setMounted(true);
 
@@ -542,6 +555,7 @@ export function ShipOverview() {
     sickLeave, 
     borderColor, 
     tasks,
+    overwerkLabel,
     draggedDummyId,
     onDragStart,
     onDragEnd
@@ -551,6 +565,7 @@ export function ShipOverview() {
     sickLeave: any[]; 
     borderColor?: string; 
     tasks: any[];
+    overwerkLabel?: string | null;
     draggedDummyId?: string | null;
     onDragStart?: (e: React.DragEvent, id: string) => void;
     onDragEnd?: () => void;
@@ -613,6 +628,10 @@ export function ShipOverview() {
     const isMovableLikeDummy = isDummy || isCopied
     const isAflosser = member.position === "Aflosser" || member.is_aflosser === true
     const isOverigPersoneel = member.ship_id?.toString().toLowerCase().trim() === 'overig'
+    /** Gast op dit schip via overwerk-reis: geen vast regime / "naar huis op" tonen */
+    const isGuestOverwerker = Boolean(
+      overwerkLabel && overwerkLabel.startsWith("Aflosser / overwerker")
+    )
     
     // Get A/B designation (niet voor aflossers of overig personeel)
     const abDesignation = !isAflosser && !isOverigPersoneel ? getCrewABDesignation(member) : null
@@ -837,6 +856,11 @@ export function ShipOverview() {
                   <span className="text-sm">{getNationalityFlag(member.nationality)}</span>
                 </>
               )}
+              {overwerkLabel && (
+                <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-normal whitespace-normal text-left max-w-[200px]">
+                  {overwerkLabel}
+                </Badge>
+              )}
               {(() => {
                 const crewTasks = tasks.filter((t: any) => !t.completed && t.related_crew_id === member.id)
                 if (crewTasks.length === 0) return null
@@ -935,8 +959,8 @@ export function ShipOverview() {
               </div>
             )}
 
-            {/* Regime en Next Rotation (alleen voor niet-zieke bemanningsleden, geen aflossers en geen pure placeholder dummy's) */}
-            {!sickInfo && !isPurePlaceholderDummy && member.position !== "Aflosser" && (
+            {/* Regime en Next Rotation — niet voor gast-overwerkers (alleen overwerk-badge t/m datum) */}
+            {!sickInfo && !isPurePlaceholderDummy && member.position !== "Aflosser" && !isGuestOverwerker && (
               <>
                 <div className="text-xs text-gray-500 mb-1">
                   Regime: {member.regime || "Geen"}
@@ -1749,63 +1773,13 @@ export function ShipOverview() {
                     {/* Ships for this company */}
                     <div className="space-y-6 company-ships">
                       {companyShips.map((ship: any) => {
-                        const shipCrew = crew.filter((member: any) => {
-                          // Toon dummy's alleen als ze bij dit schip horen
-                          if (member.is_dummy === true) {
-                            return member.ship_id === ship.id
-                          }
-                          
-                          // Verberg leden die uit dienst zijn
-                          if (member.status === "uit-dienst") return false
-                          // Verberg leden die nog niet gestart zijn (behalve dummy's)
-                          if (member.status === "nog-in-te-delen" && !member.is_dummy) return false
-                          
-                          // For aflossers, check if they have an active trip for this ship FIRST
-                          if (member.position === "Aflosser") {
-                            // Check for active trips for this aflosser and ship
-                            const activeTrips = trips?.filter((trip: any) => {
-                              if (trip.aflosser_id !== member.id || trip.status !== 'actief' || trip.ship_id !== ship.id) {
-                                return false
-                              }
-                              
-                              // Check if start date/time has been reached
-                              if (!trip.start_datum || !trip.start_tijd) {
-                                return false
-                              }
-                              
-                              // Parse start date and time (lokaal, geen UTC)
-                              const startDateTime = parseLocalDateTime(trip.start_datum, trip.start_tijd)
-                              
-                              const now = new Date()
-                              
-                              // Alleen tonen als start datum/tijd is aangebroken (vandaag of verleden)
-                              return startDateTime <= now
-                            }) || []
-                            
-                            // Als er een actieve reis is voor dit schip EN de start tijd is aangebroken, toon de aflosser
-                            if (activeTrips.length > 0) {
-                              return true
-                            }
-                            
-                            // Als er geen actieve reis is, check of crew member is assigned to this ship
-                            if (member.ship_id !== ship.id) {
-                              return false
-                            }
-                            
-                            // Als er geen actieve reis is, check de status
-                            // Alleen tonen als status "aan-boord" is (niet "thuis")
-                            if (member.status !== "aan-boord") {
-                              return false
-                            }
-                            
-                            return true
-                          }
-                          
-                          // For non-aflossers: Only show crew members assigned to this ship
-                          if (member.ship_id !== ship.id) return false
-                          
-                          return true
-                        })
+                        const shipCrew = crew.filter((member: any) =>
+                          shouldShowMemberOnShipOverview(member, ship.id, trips || [])
+                        )
+                        const getShipNameById = (shipId: string) =>
+                          ships.find((s: any) => s.id === shipId)?.name || "Onbekend schip"
+                        const overwerkLabelFor = (member: any) =>
+                          getOverwerkCardLabel(member, ship.id, trips || [], getShipNameById)
                         const crewDetails = getCrewDetails(shipCrew)
 
                         return (
@@ -1941,6 +1915,7 @@ export function ShipOverview() {
                                             return dummyLocations[member.id] === 'aan-boord'
                                           }
                                           if (isUnavailableCrewMember(member)) return false
+                                          if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
                                             const startDate = new Date(member.expected_start_date)
@@ -1966,6 +1941,7 @@ export function ShipOverview() {
                                         // Geen dummy's/kopieen hier (die worden apart getoond)
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
                                         if (isUnavailableCrewMember(member)) return false
+                                        if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
                                         if (member.expected_start_date) {
                                           const startDate = new Date(member.expected_start_date)
@@ -1989,6 +1965,7 @@ export function ShipOverview() {
                                           sickLeave={sickLeave}
                                           borderColor="#22c55e" /* Aan boord = groen */
                                           tasks={tasks}
+                                          overwerkLabel={overwerkLabelFor(member)}
                                         />
                                       ))}
                                       {/* Dummy's/kopieen in "aan-boord" kolom */}
@@ -2048,6 +2025,7 @@ export function ShipOverview() {
                                         // Geen dummy's/kopieen hier (die worden apart getoond)
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
                                         if (isUnavailableCrewMember(member)) return false
+                                        if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                         if (member.expected_start_date) {
                                           const startDate = new Date(member.expected_start_date)
@@ -2068,6 +2046,7 @@ export function ShipOverview() {
                                           sickLeave={sickLeave}
                                           borderColor="#3b82f6" /* Thuis = blauw */
                                           tasks={tasks}
+                                          overwerkLabel={overwerkLabelFor(member)}
                                         />
                                       ))}
                                       {/* Dummy's/kopieen in "thuis" kolom */}

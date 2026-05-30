@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import {
+  findExpiredActiveOverwerkTrips,
+  getTripEndDateString,
+} from '@/utils/overwerker-availability'
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
 export function calculateWorkDaysVasteDienst(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -1045,8 +1049,36 @@ export function useSupabaseData() {
               console.error('Error loading trips:', tripsError)
               setTrips([])
             } else {
-              console.log('Trips loaded:', tripsData?.length || 0)
-              setTrips(tripsData || [])
+              let loadedTrips = tripsData || []
+              const expiredOverwerk = findExpiredActiveOverwerkTrips(loadedTrips)
+              if (expiredOverwerk.length > 0) {
+                console.log(`Auto-closing ${expiredOverwerk.length} expired overwerk trip(s)`)
+                const today = new Date().toISOString().split('T')[0]
+                for (const trip of expiredOverwerk) {
+                  const endStr = getTripEndDateString(trip) || today
+                  const { error: closeError } = await supabase
+                    .from('trips')
+                    .update({
+                      status: 'voltooid',
+                      eind_datum: endStr,
+                      eind_tijd: (trip as { eind_tijd?: string }).eind_tijd || '17:00',
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', trip.id)
+                  if (closeError) {
+                    console.error('Error auto-closing overwerk trip:', trip.id, closeError)
+                  }
+                }
+                const { data: refreshedTrips, error: refreshError } = await supabase
+                  .from('trips')
+                  .select('*')
+                  .order('created_at', { ascending: false })
+                if (!refreshError && refreshedTrips) {
+                  loadedTrips = refreshedTrips
+                }
+              }
+              console.log('Trips loaded:', loadedTrips.length)
+              setTrips(loadedTrips)
             }
 
             // Load vaste dienst records

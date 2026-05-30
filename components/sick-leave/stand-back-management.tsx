@@ -317,12 +317,20 @@ export function StandBackManagement() {
         totalRequired: 0,
         totalReturned: 0,
         totalOutstanding: 0,
+        totalCredit: 0,
       }
     }
     acc[memberId].records.push(record)
     acc[memberId].totalRequired += record.standBackDaysRequired
     acc[memberId].totalReturned += getRecordReturnedDays(record)
-    acc[memberId].totalOutstanding = Math.max(0, acc[memberId].totalRequired - acc[memberId].totalReturned)
+    acc[memberId].totalOutstanding = acc[memberId].records.reduce(
+      (sum: number, rec: any) => sum + Math.max(0, Number(rec.standBackDaysRemaining || 0)),
+      0
+    )
+    acc[memberId].totalCredit = acc[memberId].records.reduce(
+      (sum: number, rec: any) => sum + Math.max(0, -Number(rec.standBackDaysRemaining || 0)),
+      0
+    )
     return acc
   }, {})
 
@@ -337,8 +345,15 @@ export function StandBackManagement() {
       standBackDaysRemaining: group.totalOutstanding,
       standBackDaysRequired: group.totalRequired,
       standBackDaysCompleted: group.totalReturned,
+      standBackCredit: group.totalCredit || 0,
     }))
-    .sort((a: any, b: any) => b.totalOutstanding - a.totalOutstanding)
+    .filter(
+      (g: any) => (g.totalOutstanding || 0) > 0 || (g.standBackCredit || 0) > 0
+    )
+    .sort(
+      (a: any, b: any) =>
+        b.totalOutstanding - a.totalOutstanding || b.standBackCredit - a.standBackCredit
+    )
 
   // Archive records (completed and terminated)
   const archiveRecords = standBackRecords
@@ -903,10 +918,15 @@ export function StandBackManagement() {
                         </div>
                       </div>
 
-                      <div className="flex items-center">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className="text-sm bg-orange-50 text-orange-800 border-orange-200">
-                          Saldo: {group.totalOutstanding} dagen
+                          Open: {group.totalOutstanding} dagen
                         </Badge>
+                        {(group.totalCredit || 0) > 0 && (
+                          <Badge variant="outline" className="text-sm bg-emerald-50 text-emerald-800 border-emerald-200">
+                            Tegoed: +{group.totalCredit} dagen
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-2">
@@ -948,8 +968,13 @@ export function StandBackManagement() {
                                   <strong>Totaal terug gestaan:</strong> {group.totalReturned} dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
-                                  <strong>Huidig saldo:</strong> {group.totalOutstanding} dagen
+                                  <strong>Openstaand:</strong> {group.totalOutstanding} dagen
                                 </p>
+                                {(group.totalCredit || 0) > 0 && (
+                                  <p className="text-sm text-emerald-700">
+                                    <strong>Tegoed (vooruit):</strong> +{group.totalCredit} dagen
+                                  </p>
+                                )}
                               </div>
 
                               <div>

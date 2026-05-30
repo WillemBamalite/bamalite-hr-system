@@ -47,13 +47,14 @@ export function calculateCurrentStatus(
   onBoardSince: string | null,
   isSick: boolean = false,
   expectedStartDate?: string | null,
+  referenceDate?: string | null,
 ): {
   currentStatus: "aan-boord" | "thuis"
   nextRotationDate: string | null
   daysUntilRotation: number
   isOnBoard: boolean
 } {
-  const today = new Date()
+  const today = referenceDate ? parseLocalDate(referenceDate) : new Date()
   today.setHours(0, 0, 0, 0)
   
   // Als expected_start_date vandaag is of geweest is, behandel alsof ze vandaag aan boord zijn gekomen

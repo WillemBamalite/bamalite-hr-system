@@ -181,7 +181,13 @@ export function NewCrewForm() {
     if (!formData.in_dienst_vanaf) errors.push(t('inServiceFromRequired'))
 
     // Validatie voor startdatum als er een schip is geselecteerd (niet voor 'Geen schip' of 'Nog in te delen')
-    if (formData.shipId && formData.shipId !== "none" && formData.shipId !== "unassigned" && !formData.startDate) {
+    if (
+      formData.shipId &&
+      formData.shipId !== "none" &&
+      formData.shipId !== "unassigned" &&
+      formData.shipId !== "overig" &&
+      !formData.startDate
+    ) {
       errors.push("Startdatum is verplicht als er een schip is geselecteerd")
     }
 
@@ -222,7 +228,14 @@ export function NewCrewForm() {
       let onBoardSince = null
       let thuisSinds = null
 
-      if (formData.shipId && formData.shipId !== "none" && formData.shipId !== "unassigned" && formData.startDate) {
+      if (formData.shipId === "overig") {
+        status = "thuis"
+      } else if (
+        formData.shipId &&
+        formData.shipId !== "none" &&
+        formData.shipId !== "unassigned" &&
+        formData.startDate
+      ) {
         const calculatedStatus = calculateCurrentStatus(formData.startDate, formData.regime)
         status = calculatedStatus.status
         onBoardSince = calculatedStatus.onBoardSince
@@ -679,9 +692,12 @@ export function NewCrewForm() {
                   <SelectContent>
                     <SelectItem value="none">Geen schip</SelectItem>
                     <SelectItem value="unassigned">Nog in te delen</SelectItem>
-                    {ships.map((ship) => (
-                      <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
-                    ))}
+                    <SelectItem value="overig">Overig personeel</SelectItem>
+                    {ships
+                      .filter((ship) => ship.id?.toString().toLowerCase().trim() !== "overig")
+                      .map((ship) => (
+                        <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -705,9 +721,9 @@ export function NewCrewForm() {
                   type="date"
                   value={formData.startDate}
                   onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
-                  required={!!(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none')}
+                  required={!!(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none' && formData.shipId !== 'overig')}
                 />
-                {(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none') && (
+                {(formData.shipId && formData.shipId !== 'unassigned' && formData.shipId !== 'none' && formData.shipId !== 'overig') && (
                   <p className='text-xs text-gray-500'>{t('requiredWhenShipSelected')}</p>
                 )}
               </div>

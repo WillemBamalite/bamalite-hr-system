@@ -38,12 +38,44 @@ import {
 import { useSupabaseData, calculateWorkDaysVasteDienst } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAllAflosserAvailability } from '@/hooks/use-aflosser-availability'
+import { useSearchParams } from "next/navigation"
+import { OverwerkersPlanning } from "@/components/overwerkers/OverwerkersPlanning"
+import { isActiveTripStillOpen, isOverwerkTrip } from "@/utils/overwerker-availability"
+import {
+  buildOverwerkTripName,
+  buildOverwerkTripNotes,
+  fetchTripForSettlement,
+  markSettlementProcessed,
+  parseOverwerkSettlement,
+  processOverwerkSettlement,
+  type OverwerkSettlementType,
+} from "@/utils/overwerk-settlement"
 
 export default function ReizenAflossersPage() {
-  const { crew, ships, trips, vasteDienstRecords, loading, updateCrew, addTrip, updateTrip, deleteTrip, addVasteDienstRecord } = useSupabaseData()
+  const searchParams = useSearchParams()
+  const {
+    crew,
+    ships,
+    trips,
+    vasteDienstRecords,
+    standBackRecords,
+    loading,
+    updateCrew,
+    addTrip,
+    updateTrip,
+    deleteTrip,
+    addVasteDienstRecord,
+    addStandBackRecord,
+    updateStandBackRecord,
+    loadData,
+  } = useSupabaseData()
   const { t } = useLanguage()
   const { getAvailabilityStatus, allPeriods } = useAllAflosserAvailability()
-  const [activeTab, setActiveTab] = useState('reizen')
+  const validTabs = ["reizen", "aflossers", "overwerkers"] as const
+  const tabFromQuery = String(searchParams.get("tab") || "")
+  const initialTab = (validTabs as readonly string[]).includes(tabFromQuery) ? tabFromQuery : "reizen"
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const isStandaloneOverwerkers = activeTab === "overwerkers"
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const DIPLOMA_OPTIONS = [
     "Vaarbewijs",
@@ -62,6 +94,13 @@ export default function ReizenAflossersPage() {
     "EHBO/BHV",
     "VCA",
   ]
+
+  useEffect(() => {
+    const next = String(searchParams.get("tab") || "")
+    if ((validTabs as readonly string[]).includes(next) && next !== activeTab) {
+      setActiveTab(next)
+    }
+  }, [searchParams, activeTab])
   
   // Dialogs
   const [newTripDialog, setNewTripDialog] = useState(false)
@@ -643,6 +682,46 @@ export default function ReizenAflossersPage() {
     }
   }
 
+  const handleAssignOverwerkerToShip = async (
+    memberId: string,
+    shipId: string,
+    startDate: string,
+    endDate?: string,
+    settlement: OverwerkSettlementType = "none"
+  ) => {
+    const ship = ships.find((s: any) => s.id === shipId)
+    const shipLabel = ship?.name || "Overwerk"
+
+    try {
+      // Alleen reis aanmaken: vaste schip (ship_id) blijft ongewijzigd — zichtbaar op beide schepen via trip
+      if (endDate && endDate < startDate) {
+        alert("Einddatum moet op of na de startdatum liggen.")
+        return
+      }
+
+      await addTrip({
+        trip_name: buildOverwerkTripName(shipLabel, settlement),
+        ship_id: shipId,
+        start_date: startDate,
+        end_date: endDate || null,
+        trip_from: shipLabel,
+        trip_to: shipLabel,
+        notes: "Overwerker-toewijzing",
+        status: "actief",
+        aflosser_id: memberId,
+        start_datum: startDate,
+        start_tijd: "08:00",
+      })
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bamalite-crew-data-changed"))
+      }
+    } catch (error) {
+      console.error("Error assigning overwerker:", error)
+      throw error
+    }
+  }
+
   // Remove overwerker (remove all periods)
   const handleRemoveOverwerker = async (memberId: string) => {
     if (!confirm("Weet je zeker dat je alle periodes van deze overwerker wilt verwijderen?")) return
@@ -710,7 +789,7 @@ export default function ReizenAflossersPage() {
       return new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
     })
   const ingedeeldeTrips = trips.filter((trip: any) => trip.status === 'ingedeeld')
-  const actieveTrips = trips.filter((trip: any) => trip.status === 'actief')
+  const actieveTrips = trips.filter((trip: any) => isActiveTripStillOpen(trip))
   const voltooideTrips = trips.filter((trip: any) => trip.status === 'voltooid')
 
   // Create new trip
@@ -834,37 +913,116 @@ export default function ReizenAflossersPage() {
     }
   }
 
+  const completeTripAndSendCrewHome = async (
+    tripId: string,
+    eindDatum: string,
+    eindTijd: string,
+    aflosserOpmerkingen?: string
+  ) => {
+    const trip = trips.find((t: any) => t.id === tripId)
+    if (!trip) return
+
+    await updateTrip(tripId, {
+      status: "voltooid",
+      eind_datum: eindDatum,
+      eind_tijd: eindTijd,
+      aflosser_opmerkingen: aflosserOpmerkingen || null,
+    })
+
+    if (trip.aflosser_id && !isOverwerkTrip(trip)) {
+      await updateCrew(trip.aflosser_id, {
+        status: "thuis",
+        ship_id: null,
+        on_board_since: null,
+        thuis_sinds: eindDatum,
+        expected_start_date: null,
+      })
+    }
+  }
+
   // Complete trip (actief → voltooid)
   const handleCompleteTrip = async () => {
     if (!completeTripDialog) return
 
     try {
-      const trip = trips.find((t: any) => t.id === completeTripDialog)
-      if (!trip) return
-
-      // Update trip status to 'voltooid' with completion time and notes
-      await updateTrip(completeTripDialog, {
-        status: 'voltooid',
-        eind_datum: completeData.eind_datum,
-        eind_tijd: completeData.eind_tijd,
-        aflosser_opmerkingen: completeData.aflosser_opmerkingen || null
-      })
-
-      // Update aflosser status back to 'thuis'
-      if (trip.aflosser_id) {
-    await updateCrew(trip.aflosser_id, {
-      status: "thuis",
-          ship_id: null
-        })
-      }
-
+      await completeTripAndSendCrewHome(
+        completeTripDialog,
+        completeData.eind_datum,
+        completeData.eind_tijd,
+        completeData.aflosser_opmerkingen
+      )
       setCompleteTripDialog(null)
       setCompleteData({ eind_datum: "", eind_tijd: "", aflosser_opmerkingen: "" })
-      // Trip completed - no alert needed
-      
     } catch (error) {
       console.error("Error completing trip:", error)
       alert("Fout bij afsluiten reis")
+    }
+  }
+
+  const handleEndOverwerkerAssignment = async (
+    tripId: string,
+    eindDatum: string,
+    eindTijd: string,
+    opmerking?: string
+  ) => {
+    const tripFromState = trips.find((t: any) => t.id === tripId)
+    if (!tripFromState) return
+
+    try {
+      await completeTripAndSendCrewHome(tripId, eindDatum, eindTijd, opmerking)
+
+      const freshTrip = (await fetchTripForSettlement(tripId)) || tripFromState
+      const trip = {
+        ...tripFromState,
+        ...freshTrip,
+        eind_datum: eindDatum,
+        eind_tijd: eindTijd,
+      }
+
+      const member = crew.find((c: any) => c.id === trip.aflosser_id)
+      const settlementPreview = parseOverwerkSettlement(trip)
+
+      if (member) {
+        const ship = ships.find((s: any) => s.id === trip.ship_id)
+        const result = await processOverwerkSettlement({
+          trip,
+          crewMember: member,
+          eindDatum,
+          eindTijd,
+          shipName: ship?.name,
+          standBackRecords: standBackRecords || [],
+          addStandBackRecord,
+          updateStandBackRecord,
+        })
+
+        if (result.applied) {
+          await updateTrip(tripId, {
+            notes: markSettlementProcessed(trip.notes, trip),
+          })
+        }
+
+        if (settlementPreview.type !== "none" || result.messages.length > 0) {
+          alert(
+            [
+              `Overwerk afgesloten (${result.workDays} gewerkte dag(en)).`,
+              ...result.messages,
+            ].join("\n\n")
+          )
+        }
+      } else {
+        alert("Kon bemanningslid niet vinden voor verrekening.")
+      }
+
+      await loadData()
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bamalite-crew-data-changed"))
+      }
+    } catch (error) {
+      console.error("Error ending overwerker assignment:", error)
+      const msg = error instanceof Error ? error.message : String(error)
+      alert(`Fout bij afsluiten overwerk: ${msg}`)
+      throw error
     }
   }
 
@@ -940,95 +1098,68 @@ export default function ReizenAflossersPage() {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-3xl font-bold text-gray-900">{t('tripsAndReliefCrewManagement')}</h1>
-          <div className="flex flex-col items-center gap-1">
-            <a 
-              href="https://fleet.tresco.eu/map" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="cursor-pointer hover:opacity-80 transition-opacity border-2 border-gray-300 rounded-lg p-2 hover:border-blue-500 hover:bg-blue-50"
-              title="Bekijk live scheeps locaties op Tresco Fleet"
-            >
-              <svg 
-                width="48" 
-                height="64" 
-                viewBox="0 0 48 64" 
-                fill="none" 
-                xmlns="http://www.w3.org/2000/svg"
+          <h1 className="text-3xl font-bold text-gray-900">
+            {isStandaloneOverwerkers ? "Overwerkers" : t('tripsAndReliefCrewManagement')}
+          </h1>
+          {!isStandaloneOverwerkers && (
+            <div className="flex flex-col items-center gap-1">
+              <a 
+                href="https://fleet.tresco.eu/map" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="cursor-pointer hover:opacity-80 transition-opacity border-2 border-gray-300 rounded-lg p-2 hover:border-blue-500 hover:bg-blue-50"
+                title="Bekijk live scheeps locaties op Tresco Fleet"
               >
-                {/* Schaduw onder de pin - elliptisch */}
-                <ellipse cx="24" cy="60" rx="10" ry="3" fill="#D1D5DB" opacity="0.5"/>
-                
-                {/* Locatiepin - hoofdvorm */}
-                <path 
-                  d="M24 4C16.268 4 10 10.268 10 18C10 24 24 46 24 46C24 46 38 24 38 18C38 10.268 31.732 4 24 4Z" 
-                  fill="#DC2626"
-                />
-                
-                {/* Schaduw op pin (donkerder rechts en onder) */}
-                <path 
-                  d="M24 4C16.268 4 10 10.268 10 18C10 22.5 17 38 24 46C31 38 38 22.5 38 18C38 10.268 31.732 4 24 4Z" 
-                  fill="#991B1B"
-                  opacity="0.4"
-                />
-                
-                {/* Witte cirkel voor kompas */}
-                <circle cx="24" cy="20" r="12" fill="white"/>
-                
-                {/* Kompasroos - 8 punten */}
-                <g stroke="#6B7280" strokeWidth="1.2" fill="none" opacity="0.8">
-                  {/* Hoofdrichtingen (N, S, E, W) */}
-                  <line x1="24" y1="8" x2="24" y2="12"/>
-                  <line x1="24" y1="28" x2="24" y2="32"/>
-                  <line x1="12" y1="20" x2="16" y2="20"/>
-                  <line x1="32" y1="20" x2="36" y2="20"/>
-                  {/* Tussenrichtingen */}
-                  <line x1="16.83" y1="15.17" x2="18.71" y2="17.05"/>
-                  <line x1="31.17" y1="15.17" x2="29.29" y2="17.05"/>
-                  <line x1="16.83" y1="24.83" x2="18.71" y2="22.95"/>
-                  <line x1="31.17" y1="24.83" x2="29.29" y2="22.95"/>
-                </g>
-                
-                {/* Kompasnaald - rood deel (wijst rechtsonder) */}
-                <path 
-                  d="M24 12L18 20L24 28L30 20Z" 
-                  fill="#DC2626"
-                />
-                {/* Kompasnaald - blauw deel (wijst linksboven) */}
-                <path 
-                  d="M24 12L30 20L24 28L18 20Z" 
-                  fill="#2563EB"
-                />
-                
-                {/* Draaipunt van kompasnaald */}
-                <circle cx="24" cy="20" r="2.5" fill="#374151"/>
-                
-                {/* Subtiele highlight op pin */}
-                <ellipse cx="20" cy="14" rx="4" ry="6" fill="white" opacity="0.2"/>
-              </svg>
-            </a>
-            <span className="text-xs text-gray-600 font-medium">Live locatie</span>
-          </div>
+                <svg 
+                  width="48" 
+                  height="64" 
+                  viewBox="0 0 48 64" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <ellipse cx="24" cy="60" rx="10" ry="3" fill="#D1D5DB" opacity="0.5"/>
+                  <path d="M24 4C16.268 4 10 10.268 10 18C10 24 24 46 24 46C24 46 38 24 38 18C38 10.268 31.732 4 24 4Z" fill="#DC2626"/>
+                  <path d="M24 4C16.268 4 10 10.268 10 18C10 22.5 17 38 24 46C31 38 38 22.5 38 18C38 10.268 31.732 4 24 4Z" fill="#991B1B" opacity="0.4"/>
+                  <circle cx="24" cy="20" r="12" fill="white"/>
+                  <g stroke="#6B7280" strokeWidth="1.2" fill="none" opacity="0.8">
+                    <line x1="24" y1="8" x2="24" y2="12"/>
+                    <line x1="24" y1="28" x2="24" y2="32"/>
+                    <line x1="12" y1="20" x2="16" y2="20"/>
+                    <line x1="32" y1="20" x2="36" y2="20"/>
+                    <line x1="16.83" y1="15.17" x2="18.71" y2="17.05"/>
+                    <line x1="31.17" y1="15.17" x2="29.29" y2="17.05"/>
+                    <line x1="16.83" y1="24.83" x2="18.71" y2="22.95"/>
+                    <line x1="31.17" y1="24.83" x2="29.29" y2="22.95"/>
+                  </g>
+                  <path d="M24 12L18 20L24 28L30 20Z" fill="#DC2626"/>
+                  <path d="M24 12L30 20L24 28L18 20Z" fill="#2563EB"/>
+                  <circle cx="24" cy="20" r="2.5" fill="#374151"/>
+                  <ellipse cx="20" cy="14" rx="4" ry="6" fill="white" opacity="0.2"/>
+                </svg>
+              </a>
+              <span className="text-xs text-gray-600 font-medium">Live locatie</span>
+            </div>
+          )}
         </div>
-        <p className="text-gray-600">{t('fourStepWorkflow')}</p>
+        <p className="text-gray-600">
+          {isStandaloneOverwerkers ? "Beheer beschikbaarheid voor overwerk per periode of vrije weken." : t('fourStepWorkflow')}
+        </p>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-3xl grid-cols-3 mb-8">
-          <TabsTrigger value="reizen" className="text-base">
-            <Ship className="w-4 h-4 mr-2" />
-            {t('trips')}
-          </TabsTrigger>
-          <TabsTrigger value="aflossers" className="text-base">
-            <Users className="w-4 h-4 mr-2" />
-            {t('reliefCrew')}
-          </TabsTrigger>
-          <TabsTrigger value="overwerkers" className="text-base">
-            <UserCheck className="w-4 h-4 mr-2" />
-            Overwerkers
-          </TabsTrigger>
-        </TabsList>
+        {!isStandaloneOverwerkers && (
+          <TabsList className="grid w-full max-w-3xl grid-cols-2 mb-8">
+            <TabsTrigger value="reizen" className="text-base">
+              <Ship className="w-4 h-4 mr-2" />
+              {t('trips')}
+            </TabsTrigger>
+            <TabsTrigger value="aflossers" className="text-base">
+              <Users className="w-4 h-4 mr-2" />
+              {t('reliefCrew')}
+            </TabsTrigger>
+          </TabsList>
+        )}
 
         {/* Reizen Tab */}
         <TabsContent value="reizen" className="space-y-6">
@@ -1713,135 +1844,47 @@ export default function ReizenAflossersPage() {
 
         {/* Overwerkers Tab */}
         <TabsContent value="overwerkers" className="space-y-6">
-          {/* Header with Add Button */}
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Overwerkers</h2>
-            <Button onClick={() => setAddOverwerkerDialog(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Overwerker toevoegen
-            </Button>
-          </div>
-
-          {/* Overwerkers List */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <CheckCircle className="w-5 h-5 text-green-600" />
-                <span>Beschikbare Overwerkers</span>
-                <Badge variant="outline" className="ml-auto">
-                  {overwerkers.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {crew
-                  .filter((m: any) => overwerkers.includes(m.id))
-                  .map((member: any) => {
-                    const periods = getOverwerkerPeriods(member)
-                    return (
-                      <Card key={member.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-3">
-                          <div className="space-y-2">
-                            {/* Header */}
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center space-x-2 flex-1 min-w-0">
-                                <Avatar className="h-10 w-10 flex-shrink-0">
-                                  <AvatarFallback>
-                                    {member.first_name?.[0]}{member.last_name?.[0]}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-sm truncate">
-                                    {member.first_name} {member.last_name}
-                                  </p>
-                                  <p className="text-xs text-gray-500">{member.position}</p>
-                                  {member.ship_id && (
-                                    <p className="text-xs text-gray-400 truncate">
-                                      {ships.find((s: any) => s.id === member.ship_id)?.name || 'Onbekend'}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveOverwerker(member.id)}
-                                className="h-6 w-6 p-0 flex-shrink-0"
-                              >
-                                <X className="w-3 h-3" />
-                              </Button>
-                            </div>
-                            
-                            {/* Periodes */}
-                            <div className="space-y-1.5">
-                              {periods.map((period) => (
-                                <div key={period.id} className="bg-gray-50 p-1.5 rounded text-xs">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="text-gray-700 flex-1 min-w-0">
-                                      {formatDateDDMMYYYY(period.from)} - {formatDateDDMMYYYY(period.to)}
-                                    </span>
-                                    <div className="flex gap-1 flex-shrink-0">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-5 w-5 p-0"
-                                        onClick={() => {
-                                          setEditingPeriod({ memberId: member.id, periodId: period.id })
-                                          setSelectedOverwerkerId(member.id)
-                                          setOverwerkerDateFrom(period.from)
-                                          setOverwerkerDateTo(period.to)
-                                          setOverwerkerNote(period.note || "")
-                                          setAddOverwerkerDialog(true)
-                                        }}
-                                      >
-                                        <Edit className="w-3 h-3" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-5 w-5 p-0 text-red-600"
-                                        onClick={() => handleDeletePeriod(member.id, period.id)}
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                  {period.note && (
-                                    <p className="text-gray-600 text-xs italic mt-1">
-                                      {period.note}
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedOverwerkerId(member.id)
-                                  setOverwerkerDateFrom("")
-                                  setOverwerkerDateTo("")
-                                  setOverwerkerNote("")
-                                  setEditingPeriod(null)
-                                  setAddOverwerkerDialog(true)
-                                }}
-                                className="w-full text-xs h-7"
-                              >
-                                <Plus className="w-3 h-3 mr-1" />
-                                Periode toevoegen
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-              </div>
-              {overwerkers.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-8">Geen overwerkers</p>
-              )}
-                </CardContent>
-              </Card>
+          <OverwerkersPlanning
+            crew={crew}
+            ships={ships}
+            trips={trips}
+            overwerkerIds={overwerkers}
+            getOverwerkerPeriods={getOverwerkerPeriods}
+            formatDateDDMMYYYY={formatDateDDMMYYYY}
+            getShipName={getShipName}
+            onAddOverwerker={() => {
+              setSelectedOverwerkerId("")
+              setOverwerkerDateFrom("")
+              setOverwerkerDateTo("")
+              setOverwerkerNote("")
+              setEditingPeriod(null)
+              setOverwerkerMode("periode")
+              setAddOverwerkerDialog(true)
+            }}
+            onAddPeriod={(memberId) => {
+              setSelectedOverwerkerId(memberId)
+              setOverwerkerDateFrom("")
+              setOverwerkerDateTo("")
+              setOverwerkerNote("")
+              setEditingPeriod(null)
+              setOverwerkerMode("periode")
+              setAddOverwerkerDialog(true)
+            }}
+            onEditPeriod={(memberId, period) => {
+              setEditingPeriod({ memberId, periodId: period.id })
+              setSelectedOverwerkerId(memberId)
+              setOverwerkerDateFrom(period.from)
+              setOverwerkerDateTo(period.to)
+              setOverwerkerNote(period.note || "")
+              setOverwerkerMode(period.type === "vrije_weken" ? "vrije_weken" : "periode")
+              setAddOverwerkerDialog(true)
+            }}
+            onDeletePeriod={handleDeletePeriod}
+            onRemoveOverwerker={handleRemoveOverwerker}
+            standBackRecords={standBackRecords}
+            onAssignToShip={handleAssignOverwerkerToShip}
+            onEndAssignment={handleEndOverwerkerAssignment}
+          />
         </TabsContent>
       </Tabs>
 

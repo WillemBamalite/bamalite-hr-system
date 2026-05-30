@@ -10,6 +10,12 @@ import { User, Phone, Mail, Calendar, MapPin, GraduationCap, Cigarette, AlertCir
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
+import {
+  normalizeShipIdForSelect,
+  OVERIG_PERSONEEL_LABEL,
+  OVERIG_PERSONEEL_SHIP_ID,
+  resolveShipDisplayName,
+} from "@/utils/ship-constants"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
@@ -288,7 +294,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         last_name: crewMember.last_name || "",
         nationality: crewMember.nationality || "NL",
         position: crewMember.position || "Kapitein",
-        ship_id: crewMember.ship_id || "none",
+        ship_id: normalizeShipIdForSelect(crewMember.ship_id),
         regime: crewMember.regime || "2/2",
         status: crewMember.status || "nog-in-te-delen",
         phone: crewMember.phone || "",
@@ -363,11 +369,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     )
   }
 
-  const getShipName = (shipId: string) => {
-    if (!shipId || shipId === "none") return "Geen schip"
-    const ship = ships.find(s => s.id === shipId)
-    return ship ? ship.name : "Geen schip"
-  }
+  const getShipName = (shipId: string) => resolveShipDisplayName(shipId, ships)
 
   const getNationalityFlag = (nationality: string) => {
     const flags: { [key: string]: string } = {
@@ -587,7 +589,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         last_name: crewMember.last_name || "",
         nationality: crewMember.nationality || "NL",
         position: crewMember.position || "Kapitein",
-        ship_id: crewMember.ship_id || "none",
+        ship_id: normalizeShipIdForSelect(crewMember.ship_id),
         regime: crewMember.regime || "2/2",
         status: crewMember.status || "nog-in-te-delen",
         phone: crewMember.phone || "",
@@ -765,9 +767,16 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
                 {field === "ship_id" && (
                   <>
                     <SelectItem value="none">Geen schip</SelectItem>
-                    {ships.map((ship) => (
-                      <SelectItem key={ship.id} value={ship.id}>{ship.name}</SelectItem>
-                    ))}
+                    <SelectItem value={OVERIG_PERSONEEL_SHIP_ID}>
+                      {OVERIG_PERSONEEL_LABEL}
+                    </SelectItem>
+                    {ships
+                      .filter((ship) => ship.id?.toString().toLowerCase().trim() !== OVERIG_PERSONEEL_SHIP_ID)
+                      .map((ship) => (
+                        <SelectItem key={ship.id} value={ship.id}>
+                          {ship.name}
+                        </SelectItem>
+                      ))}
                   </>
                 )}
               </SelectContent>
@@ -800,6 +809,9 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         } catch {
           return <p className="mt-1">{value}</p>
         }
+      }
+      if (field === "ship_id") {
+        return <p className="mt-1">{getShipName(value)}</p>
       }
       return <p className="mt-1">{value ?? "Niet ingevuld"}</p>
     }
