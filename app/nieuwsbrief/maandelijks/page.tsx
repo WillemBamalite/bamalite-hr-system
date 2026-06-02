@@ -19,6 +19,7 @@ type CrewEvent = {
   id: string
   fullName: string
   detail?: string
+  sortDateValue?: number
 }
 
 type SharedPhotoItem = {
@@ -310,6 +311,7 @@ export default function MonthlyNewsletterPage() {
             id: `bd-${member.id}`,
             fullName,
             detail: format(birthdayThisYear, "dd-MM"),
+            sortDateValue: birthdayThisYear.getTime(),
           })
         }
       }
@@ -319,7 +321,11 @@ export default function MonthlyNewsletterPage() {
     leaving.sort(byName)
     joining.sort(byName)
     anniversaries.sort(byName)
-    birthdays.sort(byName)
+    birthdays.sort((a, b) => {
+      const d = (a.sortDateValue || 0) - (b.sortDateValue || 0)
+      if (d !== 0) return d
+      return byName(a, b)
+    })
 
     return { leaving, joining, anniversaries, birthdays }
   }, [crew, selectedMonth, shipNameById])
@@ -400,7 +406,7 @@ export default function MonthlyNewsletterPage() {
     title: string,
     items: CrewEvent[],
     emptyText: string,
-    options?: { printClass?: string; introText?: string }
+    options?: { printClass?: string; introText?: string; inlineDate?: boolean }
   ) => (
     <Card className={`print:shadow-none print:border-gray-300 ${options?.printClass || ""}`}>
       <CardHeader className="pb-3 print:pb-2">
@@ -419,8 +425,17 @@ export default function MonthlyNewsletterPage() {
           <div className="space-y-1.5 print:space-y-1.5">
             {items.map((item) => (
               <div key={item.id} className="py-1.5 border-b border-gray-100 last:border-b-0 print:py-1">
-                <div className="font-medium text-gray-900 print:text-sm">{item.fullName}</div>
-                {item.detail ? <div className="text-sm text-gray-600 print:text-xs">{item.detail}</div> : null}
+                {options?.inlineDate && item.detail ? (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="font-medium text-gray-900 print:text-sm">{item.fullName}</div>
+                    <div className="text-sm text-gray-600 print:text-xs shrink-0">{item.detail}</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="font-medium text-gray-900 print:text-sm">{item.fullName}</div>
+                    {item.detail ? <div className="text-sm text-gray-600 print:text-xs">{item.detail}</div> : null}
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -505,6 +520,7 @@ export default function MonthlyNewsletterPage() {
           {renderEventSection("Verjaardagen deze maand", events.birthdays, "Geen verjaardagen in deze maand.", {
             printClass: "print:break-inside-avoid",
             introText: blockText.birthday,
+            inlineDate: true,
           })}
           {renderEventSection("Deze maand uit dienst", events.leaving, "Niemand heeft ons deze maand verlaten.", {
             printClass: "print:break-inside-avoid",
