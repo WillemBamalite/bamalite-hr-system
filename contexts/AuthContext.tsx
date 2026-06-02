@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 
 interface AuthContextType {
   user: User | null
-  role: "admin_full" | "limited_edit"
+  role: "admin_full" | "limited_edit" | "newsletter_readonly"
   mfaRequired: boolean
   loading: boolean
   canAccessPath: (path: string) => boolean
@@ -29,6 +29,10 @@ const LIMITED_EMAILS = new Set([
   "tanja@bamalite.com",
   "karina@bamalite.com",
   "lucie@bamalite.com",
+])
+
+const NEWSLETTER_READONLY_EMAILS = new Set([
+  "dunja@bamalite.com",
 ])
 
 const LIMITED_ALLOWED_EXACT = new Set([
@@ -70,14 +74,19 @@ const FIRMA_READONLY_EMAILS = new Set([
   "lucie@bamalite.com",
 ])
 
-function resolveRole(email?: string | null): "admin_full" | "limited_edit" {
+function resolveRole(email?: string | null): "admin_full" | "limited_edit" | "newsletter_readonly" {
   const e = (email || "").trim().toLowerCase()
   if (ADMIN_EMAILS.has(e)) return "admin_full"
+  if (NEWSLETTER_READONLY_EMAILS.has(e)) return "newsletter_readonly"
   if (LIMITED_EMAILS.has(e)) return "limited_edit"
   return "limited_edit"
 }
 
-function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string, email?: string | null): boolean {
+function canAccessPathForRole(
+  role: "admin_full" | "limited_edit" | "newsletter_readonly",
+  path: string,
+  email?: string | null
+): boolean {
   const normalized = path.split("?")[0]
   const emailLower = (email || "").trim().toLowerCase()
   if (normalized === "/login" || normalized === "/login/email-verify") return true
@@ -88,6 +97,12 @@ function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string,
     return false
   }
   if (role === "admin_full") return true
+  if (role === "newsletter_readonly") {
+    if (normalized === "/" || normalized === "/schepen/overzicht" || normalized === "/nieuwsbrief/maandelijks") {
+      return true
+    }
+    return false
+  }
   if (emailLower === "lucie@bamalite.com") {
     if (
       normalized === "/ziekte" ||
@@ -122,7 +137,7 @@ function canAccessPathForRole(role: "admin_full" | "limited_edit", path: string,
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [role, setRole] = useState<"admin_full" | "limited_edit">("limited_edit")
+  const [role, setRole] = useState<"admin_full" | "limited_edit" | "newsletter_readonly">("limited_edit")
   const [mfaRequired, setMfaRequired] = useState(false)
   const [loading, setLoading] = useState(true)
   const router = useRouter()

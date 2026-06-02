@@ -178,7 +178,7 @@ export default function Dashboard() {
 function DashboardContent() {
   const [mounted, setMounted] = useState(false);
   const [expandedShortageShipId, setExpandedShortageShipId] = useState<string | null>(null)
-  const { role } = useAuth()
+  const { role, user } = useAuth()
   const { t } = useLanguage();
   const { toast } = useToast();
   
@@ -560,16 +560,18 @@ function DashboardContent() {
     );
   }
 
+  const isNewsletterReadonlyUser = String(user?.email || "").toLowerCase() === "dunja@bamalite.com"
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full py-8 px-4">
         {/* Single column flow: stats → quick actions → ships */}
         <div className="grid grid-cols-1 gap-6">
-          {/* Stats */}
-          <DashboardStats />
+          {/* Stats (verbergen voor nieuwsbrief-readonly gebruiker) */}
+          {!isNewsletterReadonlyUser && <DashboardStats />}
 
-          {/* Snelle acties alleen voor full admins */}
-          {role === "admin_full" && <CrewQuickActions />}
+          {/* Snelle acties: full admins + nieuwsbrief-readonly gebruiker */}
+          {(role === "admin_full" || isNewsletterReadonlyUser) && <CrewQuickActions />}
 
           {/* Uitgelicht: schepen met toekomstig tekort (alleen full admins) */}
           {role === "admin_full" && <div>

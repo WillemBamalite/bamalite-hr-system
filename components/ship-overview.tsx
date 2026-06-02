@@ -102,10 +102,12 @@ export function ShipOverview() {
   }
   const ABSENT_MARKER = "[AFWEZIG]"
   const userEmailLower = String(user?.email || "").toLowerCase()
+  const isNewsletterReadonlyUser = userEmailLower === "dunja@bamalite.com"
   const hideABAndColorControls =
     userEmailLower === "tanja@bamalite.com" ||
     userEmailLower === "karina@bamalite.com" ||
-    userEmailLower === "lucie@bamalite.com"
+    userEmailLower === "lucie@bamalite.com" ||
+    userEmailLower === "dunja@bamalite.com"
 
   const isAbsentLeaveRecord = (record: any) =>
     String(record?.notes || "").toUpperCase().includes(ABSENT_MARKER)
@@ -496,7 +498,13 @@ export function ShipOverview() {
         <CardHeader>
           <CardTitle>Schepen {t('overview')}</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent
+          className={
+            isNewsletterReadonlyUser
+              ? "[&_a]:pointer-events-none [&_button]:pointer-events-none [&_input]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=button]]:pointer-events-none"
+              : undefined
+          }
+        >
           <div className="text-center py-8 text-gray-500">{t('loading')}...</div>
         </CardContent>
       </Card>
@@ -841,18 +849,24 @@ export function ShipOverview() {
                 </span>
               ) : (
                 <>
-                  <Link 
-                    href={`/bemanning/${member.id}`}
-                    className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
-                    onClick={() => {
-                      const currentScroll = window.scrollY
-                      sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString())
-                      sessionStorage.setItem('shipOverviewScrollToCrewId', member.id)
-                      scrollPositionRef.current = currentScroll
-                    }}
-                  >
-                    {member.first_name} {member.last_name}
-                  </Link>
+                  {isNewsletterReadonlyUser ? (
+                    <span className="font-medium text-gray-900 truncate text-sm">
+                      {member.first_name} {member.last_name}
+                    </span>
+                  ) : (
+                    <Link 
+                      href={`/bemanning/${member.id}`}
+                      className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
+                      onClick={() => {
+                        const currentScroll = window.scrollY
+                        sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString())
+                        sessionStorage.setItem('shipOverviewScrollToCrewId', member.id)
+                        scrollPositionRef.current = currentScroll
+                      }}
+                    >
+                      {member.first_name} {member.last_name}
+                    </Link>
+                  )}
                   <span className="text-sm">{getNationalityFlag(member.nationality)}</span>
                 </>
               )}
@@ -861,7 +875,7 @@ export function ShipOverview() {
                   {overwerkLabel}
                 </Badge>
               )}
-              {(() => {
+              {!isNewsletterReadonlyUser && (() => {
                 const crewTasks = tasks.filter((t: any) => !t.completed && t.related_crew_id === member.id)
                 if (crewTasks.length === 0) return null
                 return (
@@ -922,7 +936,7 @@ export function ShipOverview() {
                   </div>
                 )}
                 {/* Dummy opmerking */}
-                {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
+                {!isNewsletterReadonlyUser && member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
                   <div className="mt-2 space-y-1 border-t pt-2">
                     <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
@@ -1083,7 +1097,7 @@ export function ShipOverview() {
             })()}
 
             {/* Active Notes */}
-            {member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
+            {!isNewsletterReadonlyUser && member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
               <div className="mt-2 space-y-1 border-t pt-2">
                 <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />
@@ -1798,7 +1812,7 @@ export function ShipOverview() {
                                   >
                                     {ship.name}
                                   </Link>
-                                  {(() => {
+              {!isNewsletterReadonlyUser && (() => {
                                     const shipTasks = tasks.filter((t: any) => !t.completed && t.related_ship_id === ship.id)
                                     if (shipTasks.length === 0) return null
                                     return (

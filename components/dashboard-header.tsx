@@ -118,6 +118,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     userEmailLower === "tanja@bamalite.com" ||
     userEmailLower === "karina@bamalite.com" ||
     userEmailLower === "lucie@bamalite.com"
+  const hideHeaderCalendarForUser = userEmailLower === "dunja@bamalite.com"
 
   return (
     <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm dashboard-header">
@@ -186,27 +187,29 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         </div>
 
         {/* Live Datum & Tijd - Midden */}
-        <button
-          onClick={() => {
-            if (disableHeaderCalendarClick) return
-            setAgendaOpen(true)
-          }}
-          disabled={disableHeaderCalendarClick}
-          className={`flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200 transition-colors ${
-            disableHeaderCalendarClick ? "cursor-default" : "hover:bg-blue-100 cursor-pointer"
-          }`}
-          title={disableHeaderCalendarClick ? "Alleen zichtbaar, niet bewerkbaar" : ""}
-        >
-          <Calendar className="w-5 h-5 text-blue-600" />
-          <div className="text-center">
-            <div className="text-sm font-semibold text-gray-900">
-              {mounted ? format(currentTime, 'EEEE d MMMM yyyy', { locale: getDateLocale() }) : uiText.loading}
+        {!hideHeaderCalendarForUser && (
+          <button
+            onClick={() => {
+              if (disableHeaderCalendarClick) return
+              setAgendaOpen(true)
+            }}
+            disabled={disableHeaderCalendarClick}
+            className={`flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200 transition-colors ${
+              disableHeaderCalendarClick ? "cursor-default" : "hover:bg-blue-100 cursor-pointer"
+            }`}
+            title={disableHeaderCalendarClick ? "Alleen zichtbaar, niet bewerkbaar" : ""}
+          >
+            <Calendar className="w-5 h-5 text-blue-600" />
+            <div className="text-center">
+              <div className="text-sm font-semibold text-gray-900">
+                {mounted ? format(currentTime, 'EEEE d MMMM yyyy', { locale: getDateLocale() }) : uiText.loading}
+              </div>
+              <div className="text-xs text-gray-600">
+                {mounted ? format(currentTime, 'HH:mm:ss') : '--:--:--'}
+              </div>
             </div>
-            <div className="text-xs text-gray-600">
-              {mounted ? format(currentTime, 'HH:mm:ss') : '--:--:--'}
-            </div>
-          </div>
-        </button>
+          </button>
+        )}
         
         <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
