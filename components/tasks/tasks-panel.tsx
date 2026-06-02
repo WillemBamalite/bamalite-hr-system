@@ -32,7 +32,40 @@ export function TasksPanel() {
   const { user } = useAuth()
   const viewerEmailLower = (user?.email || "").trim().toLowerCase()
   const [showDialog, setShowDialog] = useState(false)
-  
+  const [filter, setFilter] = useState<"open" | "completed">("open")
+  const [pendingScrollTaskId, setPendingScrollTaskId] = useState<string | null>(null)
+
+  const scheduleScrollToTask = (taskId: string) => {
+    setPendingScrollTaskId(taskId)
+  }
+
+  // Scroll terug naar taak na wijziging (loadData herrendert de lijst)
+  useEffect(() => {
+    if (!pendingScrollTaskId || tasks.length === 0) return
+
+    const task = tasks.find((t: any) => t.id === pendingScrollTaskId)
+    if (!task) {
+      setPendingScrollTaskId(null)
+      return
+    }
+
+    const targetFilter = task.completed || task.status === "completed" ? "completed" : "open"
+    if (filter !== targetFilter) {
+      setFilter(targetFilter)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      const taskElement = document.querySelector(`[data-task-id="${pendingScrollTaskId}"]`)
+      if (taskElement) {
+        taskElement.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+      setPendingScrollTaskId(null)
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [pendingScrollTaskId, tasks, filter])
+
   // Scroll naar gehighlighte taak wanneer deze beschikbaar is en selecteer juiste assignee
   useEffect(() => {
     if (highlightedTaskId && tasks.length > 0) {
@@ -88,7 +121,6 @@ export function TasksPanel() {
   const [deadline, setDeadline] = useState("")
   const [addToAgenda, setAddToAgenda] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [filter, setFilter] = useState<"open" | "completed">("open")
   const [isEditing, setIsEditing] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string>("")
   const [statusUpdates, setStatusUpdates] = useState<Record<string, string>>({})
@@ -593,6 +625,9 @@ export function TasksPanel() {
       
       resetForm()
       setShowDialog(false)
+      if (createdTaskId) {
+        scheduleScrollToTask(createdTaskId)
+      }
     } catch (error: any) {
       console.error(`Error ${isEditing ? "updating" : "creating"} task:`, error)
       console.error('Error code:', error?.code)
@@ -614,6 +649,7 @@ export function TasksPanel() {
         completed: true,
         completed_at: new Date().toISOString()
       })
+      scheduleScrollToTask(taskId)
     } catch (error) {
       console.error("Error completing task:", error)
       alert("Fout bij voltooien taak")
@@ -630,6 +666,7 @@ export function TasksPanel() {
         taken_by: currentUser,
         taken_at: new Date().toISOString()
       })
+      scheduleScrollToTask(taskId)
     } catch (error) {
       console.error("Error taking task:", error)
       alert("Fout bij oppakken taak")
@@ -643,6 +680,7 @@ export function TasksPanel() {
         taken_by: null,
         taken_at: null
       })
+      scheduleScrollToTask(taskId)
     } catch (error) {
       console.error("Error releasing task:", error)
       alert("Fout bij vrijgeven taak")
@@ -669,6 +707,7 @@ export function TasksPanel() {
         status_updates: [...existing, newEntry]
       })
       setStatusUpdates((prev) => ({ ...prev, [taskId]: "" }))
+      scheduleScrollToTask(taskId)
     } catch (error) {
       console.error("Error saving status update:", error)
       alert("Fout bij opslaan statusupdate")
@@ -680,6 +719,7 @@ export function TasksPanel() {
     try {
       const next = buildNextStatusReads(task, viewerEmailLower)
       await updateTask(task.id, { status_reads: next })
+      scheduleScrollToTask(task.id)
     } catch (error) {
       console.error("Error marking status read:", error)
       alert("Kon niet opslaan als gelezen. Probeer opnieuw.")
