@@ -25,6 +25,13 @@ import {
 import { PDFDocument, StandardFonts } from "pdf-lib"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { supabase } from "@/lib/supabase"
+import {
+  computeMemberStandBackTotals,
+  formatStandBackSaldo,
+  getRecordCreditDays,
+  getRecordReturnedDays,
+  isTegoedStandBackRecord,
+} from "@/utils/stand-back-balance"
 
 export function StandBackManagement() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
@@ -146,7 +153,7 @@ export function StandBackManagement() {
     drawRule()
     drawText(`Totaal mindagen: ${group.totalRequired} dagen`, { bold: true })
     drawText(`Totaal terug gestaan: ${group.totalReturned} dagen`, { bold: true })
-    drawText(`Saldo: ${group.totalOutstanding} dagen`, { bold: true })
+    drawText(`Saldo: ${formatStandBackSaldo(group.netSaldo ?? 0)} dagen`, { bold: true })
 
     y -= 4
     drawText("Opgebouwde mindagen", { bold: true, size: 11 })
@@ -250,20 +257,6 @@ export function StandBackManagement() {
     URL.revokeObjectURL(url)
   }
 
-  const getRecordReturnedDays = (record: any) => {
-    const history = Array.isArray(record?.standBackHistory) ? record.standBackHistory : []
-    const historyTotal = history.reduce((sum: number, entry: any) => {
-      const raw = entry?.daysCompleted
-      const value = typeof raw === "number" ? raw : Number(raw || 0)
-      return sum + (Number.isFinite(value) ? value : 0)
-    }, 0)
-    const completed = Number(record?.standBackDaysCompleted || 0)
-    // Nieuw model: terugstaan telt vanuit history (niet per registratie afboeken).
-    // Fallback op completed alleen voor oude data zonder history.
-    if (history.length > 0) return historyTotal
-    return Number.isFinite(completed) ? completed : 0
-  }
-
   // Alleen openstaande registraties in openstaand-tab; gearchiveerd hoort in archief-tab
   const openStandBackRecordsRaw = standBackRecords
     .filter((record: any) => record.stand_back_status === "openstaand")
@@ -321,38 +314,31 @@ export function StandBackManagement() {
       }
     }
     acc[memberId].records.push(record)
-    acc[memberId].totalRequired += record.standBackDaysRequired
-    acc[memberId].totalReturned += getRecordReturnedDays(record)
-    acc[memberId].totalOutstanding = acc[memberId].records.reduce(
-      (sum: number, rec: any) => sum + Math.max(0, Number(rec.standBackDaysRemaining || 0)),
-      0
-    )
-    acc[memberId].totalCredit = acc[memberId].records.reduce(
-      (sum: number, rec: any) => sum + Math.max(0, -Number(rec.standBackDaysRemaining || 0)),
-      0
-    )
     return acc
   }, {})
 
   // Convert grouped object to array and sort by total remaining days
   const openStandBackRecords = Object.values(groupedByMember)
-    .map((group: any) => ({
+    .map((group: any) => {
+      const totals = computeMemberStandBackTotals(group.records)
+      return {
       ...group,
+      ...totals,
       // Use the most recent record for display purposes
       id: group.records[0].id,
       startDate: group.records[0].startDate,
       endDate: group.records[group.records.length - 1].endDate,
-      standBackDaysRemaining: group.totalOutstanding,
-      standBackDaysRequired: group.totalRequired,
-      standBackDaysCompleted: group.totalReturned,
-      standBackCredit: group.totalCredit || 0,
-    }))
-    .filter(
-      (g: any) => (g.totalOutstanding || 0) > 0 || (g.standBackCredit || 0) > 0
-    )
+      netSaldo: totals.netSaldo,
+      standBackDaysRemaining: totals.totalOutstanding,
+      standBackDaysRequired: totals.totalRequired,
+      standBackDaysCompleted: totals.totalReturned,
+      standBackCredit: totals.totalCredit || 0,
+    }
+    })
+    .filter((g: any) => (g.netSaldo ?? 0) !== 0)
     .sort(
       (a: any, b: any) =>
-        b.totalOutstanding - a.totalOutstanding || b.standBackCredit - a.standBackCredit
+        Math.abs(b.netSaldo ?? 0) - Math.abs(a.netSaldo ?? 0)
     )
 
   // Archive records (completed and terminated)
@@ -398,7 +384,10 @@ export function StandBackManagement() {
     .filter((record) => record.crewMember)
     .sort((a, b) => new Date(b.archivedAt || b.updatedAt).getTime() - new Date(a.archivedAt || a.updatedAt).getTime())
 
-  const totalOpenDays = openStandBackRecords.reduce((sum, record) => sum + record.standBackDaysRemaining, 0)
+  const totalOpenDays = openStandBackRecords.reduce(
+    (sum, record) => sum + Math.max(0, -(record.netSaldo ?? 0)),
+    0
+  )
 
   // Archive statistics
   const archiveStats = {
@@ -495,8 +484,16 @@ export function StandBackManagement() {
         completedBy: "User",
       }
 
+      const previousReturned = getRecordReturnedDays(targetRecord)
+      const newReturned = previousReturned + daysReturned
+      const required = Number(targetRecord.standBackDaysRequired || 0)
+      const newRemaining = required - newReturned
+
       await updateStandBackRecord(targetRecord.id, {
-        // Niet meer per registratie afboeken; alleen registreren in history
+        stand_back_days_completed: newReturned,
+        stand_back_days_remaining: newRemaining,
+        stand_back_status:
+          required > 0 && newRemaining <= 0 ? "voltooid" : "openstaand",
         stand_back_history: [...(targetRecord.standBackHistory || []), historyEntry],
       })
 
@@ -919,14 +916,16 @@ export function StandBackManagement() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-sm bg-orange-50 text-orange-800 border-orange-200">
-                          Open: {group.totalOutstanding} dagen
+                        <Badge
+                          variant="outline"
+                          className={`text-sm border ${
+                            (group.netSaldo ?? 0) > 0
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                              : "bg-orange-50 text-orange-800 border-orange-200"
+                          }`}
+                        >
+                          Saldo: {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
                         </Badge>
-                        {(group.totalCredit || 0) > 0 && (
-                          <Badge variant="outline" className="text-sm bg-emerald-50 text-emerald-800 border-emerald-200">
-                            Tegoed: +{group.totalCredit} dagen
-                          </Badge>
-                        )}
                       </div>
 
                       <div className="flex items-center space-x-2">
@@ -968,13 +967,8 @@ export function StandBackManagement() {
                                   <strong>Totaal terug gestaan:</strong> {group.totalReturned} dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
-                                  <strong>Openstaand:</strong> {group.totalOutstanding} dagen
+                                  <strong>Saldo:</strong> {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
                                 </p>
-                                {(group.totalCredit || 0) > 0 && (
-                                  <p className="text-sm text-emerald-700">
-                                    <strong>Tegoed (vooruit):</strong> +{group.totalCredit} dagen
-                                  </p>
-                                )}
                               </div>
 
                               <div>
@@ -1157,11 +1151,51 @@ export function StandBackManagement() {
                           <span className="text-gray-600">Totaal terug gestaan</span>
                           <div className="font-semibold text-green-800">{group.totalReturned} dagen</div>
                         </button>
-                        <div className="bg-orange-50 border border-orange-100 rounded px-3 py-2">
+                        <div
+                          className={`rounded px-3 py-2 border ${
+                            (group.netSaldo ?? 0) > 0
+                              ? "bg-emerald-50 border-emerald-100"
+                              : "bg-orange-50 border-orange-100"
+                          }`}
+                        >
                           <span className="text-gray-600">Saldo</span>
-                          <div className="font-semibold text-orange-800">{group.totalOutstanding} dagen</div>
+                          <div
+                            className={`font-semibold ${
+                              (group.netSaldo ?? 0) > 0 ? "text-emerald-800" : "text-orange-800"
+                            }`}
+                          >
+                            {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                          </div>
+                          {(group.grossCredit ?? 0) > 0 && (
+                            <p className="text-xs text-gray-500 mt-1 leading-snug">
+                              {(group.grossOutstanding ?? 0) > 0
+                                ? `${group.grossOutstanding} open − ${group.grossCredit} tegoed`
+                                : `${group.grossCredit} tegoed`}
+                            </p>
+                          )}
                         </div>
                       </div>
+                      {(group.grossCredit ?? 0) > 0 && (
+                        <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-3 py-2 -mt-1 space-y-1">
+                          <p>
+                            Overwerk-tegoed: {group.grossCredit} dag(en) (verrekend met openstaand saldo).
+                          </p>
+                          {group.records
+                            .filter((rec: any) => isTegoedStandBackRecord(rec))
+                            .map((rec: any) => (
+                              <p key={rec.id} className="text-gray-600">
+                                — {rec.description || rec.reason || "Tegoed"} (
+                                {getRecordCreditDays(rec)} dag(en))
+                              </p>
+                            ))}
+                        </div>
+                      )}
+                      {(group.grossCredit ?? 0) === 0 && (group.grossOutstanding ?? 0) > 0 && (
+                        <p className="text-xs text-gray-500 -mt-1">
+                          Saldo = {group.totalRequired} mindagen − {group.totalReturned} terug gestaan ={" "}
+                          {formatStandBackSaldo(group.netSaldo ?? 0)}
+                        </p>
+                      )}
 
                       {expandedDetailByMember[group.crewMemberId] === "mindagen" && (
                         <div className="overflow-x-auto">

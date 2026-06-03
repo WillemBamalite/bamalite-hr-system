@@ -1,13 +1,20 @@
 import { format, parseISO } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { calculateWorkDays } from "@/hooks/use-supabase-data"
+import {
+  getRecordOutstandingDays,
+  getStandBackBalanceSummary,
+  isTegoedStandBackRecord,
+  OVERWERK_TEGOED_REASON,
+} from "@/utils/stand-back-balance"
+
+export { getStandBackBalanceSummary, OVERWERK_TEGOED_REASON }
 
 export type OverwerkSettlementType = "none" | "pay" | "inhale"
 
 const SETTLEMENT_LINE = /OVERWERK_SETTLEMENT:(none|pay|inhale)(?:\|processed)?/
 const TRIP_NAME_SETTLEMENT = /\[(pay|inhale)\]/i
 
-export const OVERWERK_TEGOED_REASON = "overwerk_tegoed"
 const SALARY_META_PREFIX = "__SALARY_META__:"
 
 export function buildOverwerkTripNotes(settlement: OverwerkSettlementType): string {
@@ -125,31 +132,6 @@ function stripSalaryMeta(reason: string | null | undefined): string {
   const idx = text.lastIndexOf(SALARY_META_PREFIX)
   if (idx < 0) return text.trim() || "Salarisadministratie"
   return text.slice(0, idx).trim() || "Salarisadministratie"
-}
-
-export function getStandBackBalanceSummary(
-  records: Array<{
-    crew_member_id?: string
-    stand_back_status?: string
-    stand_back_days_remaining?: number
-    reason?: string
-  }>,
-  crewMemberId: string
-) {
-  const open = records.filter(
-    (r) =>
-      String(r.crew_member_id) === String(crewMemberId) &&
-      r.stand_back_status === "openstaand"
-  )
-  const outstanding = open.reduce(
-    (s, r) => s + Math.max(0, Number(r.stand_back_days_remaining || 0)),
-    0
-  )
-  const credit = open.reduce(
-    (s, r) => s + Math.max(0, -Number(r.stand_back_days_remaining || 0)),
-    0
-  )
-  return { outstanding, credit, net: outstanding - credit }
 }
 
 export function computeOverwerkWorkDays(
@@ -412,23 +394,16 @@ export async function processOverwerkSettlement(params: {
       (r) => String(r.crew_member_id) === String(crewId) && r.stand_back_status === "openstaand"
     )
     const debtRecords = open
-      .filter(
-        (r) =>
-          r.reason !== OVERWERK_TEGOED_REASON &&
-          !String(r.description || "").includes("Tegoed overwerk") &&
-          Number(r.stand_back_days_remaining || 0) > 0
-      )
+      .filter((r) => !isTegoedStandBackRecord(r) && getRecordOutstandingDays(r) > 0)
       .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
 
-    let tegoedRecord = open.find(
-      (r) => r.reason === OVERWERK_TEGOED_REASON || String(r.description || "").includes("Tegoed overwerk")
-    )
+    let tegoedRecord = open.find((r) => isTegoedStandBackRecord(r))
     let remainingWork = workDays
     let paidDebt = 0
 
     for (const rec of debtRecords) {
       if (remainingWork <= 0) break
-      const debt = Number(rec.stand_back_days_remaining || 0)
+      const debt = getRecordOutstandingDays(rec)
       if (debt <= 0) continue
       const deduct = Math.min(remainingWork, debt)
       const newCompleted = Number(rec.stand_back_days_completed || 0) + deduct

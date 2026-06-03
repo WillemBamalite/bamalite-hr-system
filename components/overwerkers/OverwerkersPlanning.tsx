@@ -722,14 +722,16 @@ export function OverwerkersPlanning({
                 const bal = getStandBackBalanceSummary(standBackRecords, assignDialog.memberId)
                 return (
                   <p className="text-xs text-gray-600 mt-2 rounded border bg-slate-50 p-2">
-                    {bal.outstanding > 0 && (
-                      <span>{bal.outstanding} dag(en) nog in te halen. </span>
+                    {bal.net > 0 && (
+                      <span className="text-emerald-700">
+                        Huidig saldo: +{bal.net} dag(en) tegoed. Overwerk telt hierbij op of verrekent mindagen.
+                      </span>
                     )}
-                    {bal.credit > 0 && (
-                      <span className="text-emerald-700">{bal.credit} dag(en) tegoed. </span>
+                    {bal.net < 0 && (
+                      <span>{Math.abs(bal.net)} dag(en) nog in te halen. Overwerk verrekent eerst met dit saldo.</span>
                     )}
-                    {bal.outstanding === 0 && bal.credit === 0 && (
-                      <span>Geen openstaand saldo — overwerk wordt na afloop als tegoed geregistreerd.</span>
+                    {bal.net === 0 && (
+                      <span>Saldo 0 — overwerk wordt na afloop als +tegoed geregistreerd.</span>
                     )}
                   </p>
                 )
