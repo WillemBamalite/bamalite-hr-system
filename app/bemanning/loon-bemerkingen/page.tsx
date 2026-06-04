@@ -163,6 +163,24 @@ const formatCurrency = (value: number) => formatEuro(Number(value || 0))
 const SEPA_CCY = "EUR"
 const DEFAULT_SEPA_MESSAGE_PREFIX = "Salaris"
 const CLOTHING_ALLOWANCE_FIXED = 25
+const OVERWORK_CAPTAIN_RATE_EUR = 400
+
+/** Kapitein, schipper en 2e kapitein: vast €400 per overwerkdag (salarislijst). */
+function isFixedRateOverworkPosition(position: string | null | undefined): boolean {
+  const normalized = String(position || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[_-]/g, " ")
+  if (!normalized) return false
+  return (
+    normalized.includes("kapitein") ||
+    normalized.includes("captain") ||
+    normalized.includes("schipper") ||
+    normalized.includes("skipper") ||
+    /\b2e\s*kapit/.test(normalized) ||
+    normalized.includes("tweede kapitein")
+  )
+}
 
 const parseMoney = (value: any): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
@@ -1201,29 +1219,19 @@ export default function LoonBemerkingenPage() {
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
     if (overtimeDays <= 0) return 0
     const crewMember = crewById.get(String(row.crew_id))
-    const position = String(crewMember?.position || "").toLowerCase()
-    const isCaptainOrSkipper =
-      position.includes("kapitein") ||
-      position.includes("captain") ||
-      position.includes("schipper") ||
-      position.includes("skipper")
-    if (!isCaptainOrSkipper && baseSalaryExcl <= 0) return 0
-    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalaryExcl / 15)
+    const isFixedRate = isFixedRateOverworkPosition(crewMember?.position)
+    if (!isFixedRate && baseSalaryExcl <= 0) return 0
+    const perDayOverwork = isFixedRate ? OVERWORK_CAPTAIN_RATE_EUR : baseSalaryExcl / 15
     return perDayOverwork * overtimeDays
   }
 
   const getOverworkAmountForCrew = (crewId: string, baseSalary: number, overtimeDays: number) => {
     if (overtimeDays <= 0) return 0
     const crewMember = crewById.get(String(crewId))
-    const position = String(crewMember?.position || "").toLowerCase()
-    const isCaptainOrSkipper =
-      position.includes("kapitein") ||
-      position.includes("captain") ||
-      position.includes("schipper") ||
-      position.includes("skipper")
+    const isFixedRate = isFixedRateOverworkPosition(crewMember?.position)
     const baseSalaryExcl = Math.max(0, baseSalary - CLOTHING_ALLOWANCE_FIXED)
-    if (!isCaptainOrSkipper && baseSalaryExcl <= 0) return 0
-    const perDayOverwork = isCaptainOrSkipper ? 400 : (baseSalaryExcl / 15)
+    if (!isFixedRate && baseSalaryExcl <= 0) return 0
+    const perDayOverwork = isFixedRate ? OVERWORK_CAPTAIN_RATE_EUR : baseSalaryExcl / 15
     return perDayOverwork * overtimeDays
   }
 

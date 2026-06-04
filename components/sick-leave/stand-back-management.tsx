@@ -37,7 +37,27 @@ import {
   isTegoedHistoryEntry,
   isTegoedStandBackRecord,
   OVERWERK_TEGOED_REASON,
+  sumCreditDaysFromHistory,
+  sumReturnedDaysFromHistory,
 } from "@/utils/stand-back-balance"
+
+function reconcileRecordFieldsFromHistory(record: any) {
+  if (isTegoedStandBackRecord(record)) {
+    const credit = sumCreditDaysFromHistory(record)
+    return {
+      ...record,
+      standBackDaysCompleted: 0,
+      standBackDaysRemaining: credit > 0 ? -credit : 0,
+    }
+  }
+  const required = Number(record.standBackDaysRequired ?? 0)
+  const returned = sumReturnedDaysFromHistory(record)
+  return {
+    ...record,
+    standBackDaysCompleted: returned,
+    standBackDaysRemaining: Math.max(0, required - returned),
+  }
+}
 
 export function StandBackManagement() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
@@ -52,6 +72,7 @@ export function StandBackManagement() {
   const [expandedDetailByMember, setExpandedDetailByMember] = useState<
     Record<string, "open" | "ingehaald" | null>
   >({})
+  const [deletingHistoryKey, setDeletingHistoryKey] = useState<string | null>(null)
   
   // New record form state
   const [newRecord, setNewRecord] = useState({
@@ -348,9 +369,11 @@ export function StandBackManagement() {
   // Convert grouped object to array and sort by total remaining days
   const openStandBackRecords = Object.values(groupedByMember)
     .map((group: any) => {
-      const totals = computeMemberStandBackTotals(group.records)
+      const reconciledRecords = group.records.map(reconcileRecordFieldsFromHistory)
+      const totals = computeMemberStandBackTotals(reconciledRecords)
       return {
       ...group,
+      records: reconciledRecords,
       ...totals,
       // Use the most recent record for display purposes
       id: group.records[0].id,
@@ -742,9 +765,11 @@ export function StandBackManagement() {
     const allEntries = debtRecords.flatMap((rec: any) => {
       const history = Array.isArray(rec.standBackHistory) ? rec.standBackHistory : []
       return history
-        .filter(isReturnedHistoryEntry)
-        .map((entry: any) => ({
+        .map((entry: any, historyIndex: number) => ({ entry, historyIndex }))
+        .filter(({ entry }) => isReturnedHistoryEntry(entry))
+        .map(({ entry, historyIndex }) => ({
           recordId: rec.id,
+          historyIndex,
           recordReason: rec.reason || "onbekend",
           date: entry?.date,
           daysCompleted:
@@ -753,6 +778,7 @@ export function StandBackManagement() {
               : Number(entry?.daysCompleted || 0),
           note: formatHistoryNoteLabel(entry),
           returnedPeriod: formatHistoryPeriodLabel(entry, rec),
+          completedBy: entry?.completedBy,
         }))
     })
 
@@ -774,15 +800,17 @@ export function StandBackManagement() {
       .flatMap((rec: any) => {
         const history = Array.isArray(rec.standBackHistory) ? rec.standBackHistory : []
         return history
-          .filter((entry: any) => {
+          .map((entry: any, historyIndex: number) => ({ entry, historyIndex }))
+          .filter(({ entry }) => {
             const days =
               typeof entry?.daysCompleted === "number"
                 ? entry.daysCompleted
                 : Number(entry?.daysCompleted || 0)
             return days > 0
           })
-          .map((entry: any) => ({
+          .map(({ entry, historyIndex }) => ({
             recordId: rec.id,
+            historyIndex,
             date: entry?.date,
             daysCompleted:
               typeof entry?.daysCompleted === "number"
@@ -790,6 +818,7 @@ export function StandBackManagement() {
                 : Number(entry?.daysCompleted || 0),
             note: formatHistoryNoteLabel(entry),
             returnedPeriod: formatHistoryPeriodLabel(entry, rec),
+            completedBy: entry?.completedBy,
             type: "overwerk" as const,
           }))
       })
@@ -798,6 +827,79 @@ export function StandBackManagement() {
     return [...debtEntries, ...tegoedEntries].sort(
       (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
     )
+  }
+
+  const handleDeleteIngehaaldHistoryEntry = async (
+    group: any,
+    entry: {
+      recordId: string
+      historyIndex: number
+      daysCompleted: number
+      type: string
+      returnedPeriod: string
+      note: string
+    }
+  ) => {
+    const record = (group.records || []).find((r: any) => r.id === entry.recordId)
+    if (!record) {
+      alert("Registratie niet gevonden.")
+      return
+    }
+
+    const typeLabel = entry.type === "overwerk" ? "Overwerk" : "Teruggestaan"
+    const confirmMsg =
+      `Weet je zeker dat je deze regel wilt verwijderen?\n\n` +
+      `${entry.daysCompleted} dag(en) (${typeLabel})\n` +
+      `Periode: ${entry.returnedPeriod}\n` +
+      `${entry.note}\n\n` +
+      `Alleen deze regel verdwijnt; de telling (saldo) wordt opnieuw berekend.`
+
+    if (!confirm(confirmMsg)) return
+
+    const key = `${entry.recordId}-${entry.historyIndex}`
+    setDeletingHistoryKey(key)
+
+    try {
+      const history = Array.isArray(record.standBackHistory)
+        ? [...record.standBackHistory]
+        : []
+      if (entry.historyIndex < 0 || entry.historyIndex >= history.length) {
+        alert("Registratie niet meer gevonden. Vernieuw de pagina.")
+        return
+      }
+
+      const filtered = history.filter((_, i) => i !== entry.historyIndex)
+
+      const recordWithHistory = { ...record, standBackHistory: filtered }
+      if (isTegoedStandBackRecord(record)) {
+        const creditSum = sumCreditDaysFromHistory(recordWithHistory)
+        await updateStandBackRecord(record.id, {
+          stand_back_days_remaining: creditSum > 0 ? -creditSum : 0,
+          stand_back_days_completed: 0,
+          stand_back_history: filtered,
+          stand_back_status: creditSum > 0 ? "openstaand" : "voltooid",
+        })
+      } else {
+        const required = Number(record.standBackDaysRequired || 0)
+        const returned = sumReturnedDaysFromHistory(recordWithHistory)
+        const remaining = Math.max(0, required - returned)
+        await updateStandBackRecord(record.id, {
+          stand_back_days_completed: returned,
+          stand_back_days_remaining: remaining,
+          stand_back_status: remaining <= 0 ? "voltooid" : "openstaand",
+          stand_back_history: filtered,
+        })
+      }
+
+      await loadData()
+    } catch (error) {
+      console.error("Error deleting history entry:", error)
+      alert(
+        `Fout bij verwijderen: ${error instanceof Error ? error.message : String(error)}`
+      )
+    } finally {
+      setDeletingHistoryKey(null)
+    }
   }
 
   const toggleMemberDetail = (memberId: string, section: "open" | "ingehaald") => {
@@ -1397,12 +1499,17 @@ export function StandBackManagement() {
                                   <th className="border px-2 py-2 text-right">Dagen</th>
                                   <th className="border px-2 py-2 text-left">Periode</th>
                                   <th className="border px-2 py-2 text-left">Notitie</th>
+                                  <th className="border px-2 py-2 text-center w-12">
+                                    <span className="sr-only">Actie</span>
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {getGroupIngehaaldHistory(group).map((entry: any, index: number) => (
+                                {getGroupIngehaaldHistory(group).map((entry: any, index: number) => {
+                                  const deleteKey = `${entry.recordId}-${entry.historyIndex}`
+                                  return (
                                   <tr
-                                    key={`${entry.recordId}-${entry.type}-${index}`}
+                                    key={`${entry.recordId}-${entry.historyIndex}-${entry.type}-${index}`}
                                     className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
                                   >
                                     <td className="border px-2 py-1">
@@ -1418,10 +1525,27 @@ export function StandBackManagement() {
                                     </td>
                                     <td className="border px-2 py-1">{entry.returnedPeriod}</td>
                                     <td className="border px-2 py-1">
-                                      {formatHistoryNoteLabel(entry)}
+                                      {entry.note}
+                                    </td>
+                                    <td className="border px-2 py-1 text-center">
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        title="Regel verwijderen"
+                                        aria-label="Regel verwijderen"
+                                        disabled={deletingHistoryKey === deleteKey}
+                                        onClick={() =>
+                                          handleDeleteIngehaaldHistoryEntry(group, entry)
+                                        }
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
                                     </td>
                                   </tr>
-                                ))}
+                                  )
+                                })}
                               </tbody>
                             </table>
                           </div>

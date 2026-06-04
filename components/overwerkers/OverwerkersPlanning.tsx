@@ -493,12 +493,30 @@ export function OverwerkersPlanning({
     return (
       <Card
         key={member.id}
-        className="shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+        className="shadow-sm cursor-pointer hover:shadow-md transition-shadow relative"
         onDoubleClick={() => openOpmerkingDialog(member)}
         title="Dubbelklik voor opmerking"
       >
+        {hasActiveTrip && activeTripRow && (
+          <div
+            className="absolute top-2 right-2 z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-7 w-7 bg-white shadow-sm"
+              title="Reis bewerken"
+              aria-label="Reis bewerken"
+              onClick={() => openEditTripDialog(activeTripRow, name)}
+            >
+              <Edit className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        )}
         <CardContent className="p-3 space-y-2">
-          <div className="flex items-start gap-2">
+          <div className={`flex items-start gap-2 ${hasActiveTrip ? "pr-8" : ""}`}>
             <Avatar className="h-9 w-9 shrink-0">
               <AvatarFallback className="text-xs">
                 {member.first_name?.[0]}
@@ -577,15 +595,6 @@ export function OverwerkersPlanning({
             )}
             {hasActiveTrip && activeTripRow && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => openEditTripDialog(activeTripRow, name)}
-                >
-                  <Edit className="w-3 h-3 mr-1" />
-                  Bewerken
-                </Button>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -742,13 +751,33 @@ export function OverwerkersPlanning({
               return (
                 <Card
                   key={member.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  className="cursor-pointer hover:shadow-md transition-shadow relative"
                   onDoubleClick={() => openOpmerkingDialog(member)}
                   title="Dubbelklik voor opmerking"
                 >
+                  {activeTripRow && (
+                    <div
+                      className="absolute top-3 right-3 z-10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-8 w-8 bg-white shadow-sm"
+                        title="Reis bewerken"
+                        aria-label="Reis bewerken"
+                        onClick={() => openEditTripDialog(activeTripRow, name)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                   <CardContent className="p-4">
                     <div className="flex flex-col lg:flex-row gap-4">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div
+                        className={`flex items-start gap-3 flex-1 min-w-0 ${activeTripRow ? "pr-10" : ""}`}
+                      >
                         <Avatar className="h-10 w-10 shrink-0">
                           <AvatarFallback>
                             {member.first_name?.[0]}
@@ -799,14 +828,6 @@ export function OverwerkersPlanning({
                       >
                         {activeTripRow && (
                           <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEditTripDialog(activeTripRow, name)}
-                            >
-                              <Edit className="w-4 h-4 mr-1" />
-                              Reis bewerken
-                            </Button>
                             <Button
                               size="sm"
                               variant="secondary"
@@ -916,12 +937,14 @@ export function OverwerkersPlanning({
                       <div className="flex flex-wrap gap-2 shrink-0">
                         {canEdit && member && (
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="outline"
+                            className="h-8 w-8 shrink-0"
+                            title="Reis bewerken"
+                            aria-label="Reis bewerken"
                             onClick={() => openEditTripDialog(trip, name)}
                           >
-                            <Edit className="w-4 h-4 mr-1" />
-                            Bewerken
+                            <Edit className="w-4 h-4" />
                           </Button>
                         )}
                         {canEnd && (

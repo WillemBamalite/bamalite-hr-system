@@ -96,7 +96,59 @@ export function isReturnedHistoryEntry(entry: any): boolean {
   return !isTegoedHistoryEntry(entry)
 }
 
-/** Teruggestane dagen (geen tegoed/overwerk-vooruit). */
+function getStandBackHistoryArray(record: {
+  stand_back_history?: unknown
+  standBackHistory?: unknown
+}): unknown[] | null {
+  if (Array.isArray(record.stand_back_history)) return record.stand_back_history
+  if (Array.isArray(record.standBackHistory)) return record.standBackHistory
+  return null
+}
+
+/** Som uit history — zelfde regels als tabel "Overwerk of teruggestaan". */
+export function sumReturnedDaysFromHistory(record: {
+  stand_back_history?: unknown
+  standBackHistory?: unknown
+  stand_back_days_completed?: number
+  standBackDaysCompleted?: number
+}): number {
+  const history = getStandBackHistoryArray(record)
+  if (history === null) {
+    const completed = Number(
+      record.stand_back_days_completed ?? record.standBackDaysCompleted ?? 0
+    )
+    return Number.isFinite(completed) ? completed : 0
+  }
+  return history.reduce((sum: number, entry: any) => {
+    if (!isReturnedHistoryEntry(entry)) return sum
+    const raw = entry?.daysCompleted
+    const value = typeof raw === "number" ? raw : Number(raw || 0)
+    return sum + (Number.isFinite(value) ? value : 0)
+  }, 0)
+}
+
+/** Tegoed-dagen uit history (positieve regels). */
+export function sumCreditDaysFromHistory(record: {
+  stand_back_history?: unknown
+  standBackHistory?: unknown
+  stand_back_days_remaining?: number
+  standBackDaysRemaining?: number
+}): number {
+  const history = getStandBackHistoryArray(record)
+  if (history === null) {
+    const rem = Number(
+      record.stand_back_days_remaining ?? record.standBackDaysRemaining ?? 0
+    )
+    return Math.max(0, -rem)
+  }
+  return history.reduce((sum: number, entry: any) => {
+    const raw = entry?.daysCompleted
+    const value = typeof raw === "number" ? raw : Number(raw || 0)
+    return value > 0 ? sum + value : sum
+  }, 0)
+}
+
+/** Teruggestane dagen op schuld-registraties (sync met history-tabel). */
 export function getRecordReturnedDays(record: {
   stand_back_history?: unknown
   standBackHistory?: unknown
@@ -110,23 +162,7 @@ export function getRecordReturnedDays(record: {
   standBackDaysRemaining?: number
 }): number {
   if (isTegoedStandBackRecord(record)) return 0
-
-  const history = Array.isArray(record.stand_back_history)
-    ? record.stand_back_history
-    : Array.isArray(record.standBackHistory)
-      ? record.standBackHistory
-      : []
-  const historyTotal = history.reduce((sum: number, entry: any) => {
-    if (isTegoedHistoryEntry(entry)) return sum
-    const raw = entry?.daysCompleted
-    const value = typeof raw === "number" ? raw : Number(raw || 0)
-    return sum + (Number.isFinite(value) ? value : 0)
-  }, 0)
-  if (history.length > 0) return historyTotal
-  const completed = Number(
-    record.stand_back_days_completed ?? record.standBackDaysCompleted ?? 0
-  )
-  return Number.isFinite(completed) ? completed : 0
+  return sumReturnedDaysFromHistory(record)
 }
 
 /** Openstaande mindagen (positief saldo) voor één registratie. */
@@ -194,25 +230,8 @@ export function getRecordCreditDays(record: {
   reason?: string | null
   description?: string | null
 }): number {
-  if (isTegoedStandBackRecord(record)) {
-    const history = Array.isArray(record.stand_back_history)
-      ? record.stand_back_history
-      : Array.isArray(record.standBackHistory)
-        ? record.standBackHistory
-        : []
-    const fromHistory = history.reduce((sum: number, entry: any) => {
-      const raw = entry?.daysCompleted
-      const value = typeof raw === "number" ? raw : Number(raw || 0)
-      return sum + (Number.isFinite(value) && value > 0 ? value : 0)
-    }, 0)
-    if (fromHistory > 0) return fromHistory
-    const rem = Number(
-      record.stand_back_days_remaining ?? record.standBackDaysRemaining ?? 0
-    )
-    return Math.max(0, -rem)
-  }
-
-  return 0
+  if (!isTegoedStandBackRecord(record)) return 0
+  return sumCreditDaysFromHistory(record)
 }
 
 /**
