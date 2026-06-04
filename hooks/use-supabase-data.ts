@@ -915,6 +915,18 @@ export function useSupabaseData() {
   const [error, setError] = useState<string | null>(null)
   const [crewColorTags, setCrewColorTags] = useState<Record<string, string>>({})  // Load all data from Supabase
   const applyingLoanInstallmentsRef = useRef(false)
+  const lastStandBackInsertRef = useRef<{ key: string; at: number } | null>(null)
+  const loadDataDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const dedupeStandBackRecords = (rows: any[]) => {
+    const seen = new Set<string>()
+    return (rows || []).filter((row) => {
+      const id = String(row?.id || "")
+      if (!id || seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+  }
   const loadData = async () => {
     try {
       setLoading(true)
@@ -1019,8 +1031,9 @@ export function useSupabaseData() {
         console.error('Error loading stand back records:', standBackError)
         setStandBackRecords([])
       } else {
-        console.log('Stand back records loaded:', standBackData?.length || 0)
-        setStandBackRecords(standBackData || [])
+        const dedupedStandBack = dedupeStandBackRecords(standBackData || [])
+        console.log('Stand back records loaded:', dedupedStandBack.length)
+        setStandBackRecords(dedupedStandBack)
       }
 
       // Load loans
@@ -1240,7 +1253,11 @@ export function useSupabaseData() {
     const standBackSubscription = supabase
       .channel('stand-back-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stand_back_records' }, () => {
-        loadData()
+        if (loadDataDebounceRef.current) clearTimeout(loadDataDebounceRef.current)
+        loadDataDebounceRef.current = setTimeout(() => {
+          loadDataDebounceRef.current = null
+          loadData()
+        }, 400)
       })
       .subscribe()
 
@@ -1582,13 +1599,28 @@ export function useSupabaseData() {
     try {
       console.log('=== ADDING STAND BACK RECORD ===')
       console.log('Original record data:', recordData)
-      
-      // Generate a UUID for the id field
-      const uuid = crypto.randomUUID()
-      console.log('Generated UUID:', uuid)
-      
-      // Remove id if it exists and add our generated UUID
-      const { id, ...dataWithoutId } = recordData
+
+      const { id: clientId, ...dataWithoutId } = recordData
+      const insertKey = [
+        dataWithoutId.crew_member_id,
+        dataWithoutId.start_date,
+        dataWithoutId.end_date,
+        dataWithoutId.stand_back_days_required,
+        dataWithoutId.reason,
+      ].join('|')
+      const now = Date.now()
+      if (
+        lastStandBackInsertRef.current?.key === insertKey &&
+        now - lastStandBackInsertRef.current.at < 4000
+      ) {
+        console.warn('Dubbele stand_back insert geblokkeerd (zelfde registratie)')
+        return null
+      }
+      lastStandBackInsertRef.current = { key: insertKey, at: now }
+
+      const uuid =
+        typeof clientId === 'string' && clientId.length >= 32 ? clientId : crypto.randomUUID()
+      console.log('Record UUID:', uuid)
       
       // Create a safe data object with only known database columns
       const dataToInsert = {

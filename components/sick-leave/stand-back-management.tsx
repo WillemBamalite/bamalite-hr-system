@@ -28,21 +28,30 @@ import { supabase } from "@/lib/supabase"
 import {
   computeMemberStandBackTotals,
   formatStandBackSaldo,
-  getRecordCreditDays,
+  formatStandBackSaldoHint,
+  formatHistoryNoteLabel,
+  formatHistoryPeriodLabel,
+  getRecordOutstandingDays,
   getRecordReturnedDays,
+  isReturnedHistoryEntry,
+  isTegoedHistoryEntry,
   isTegoedStandBackRecord,
+  OVERWERK_TEGOED_REASON,
 } from "@/utils/stand-back-balance"
 
 export function StandBackManagement() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
   const [isAddDaysOpen, setIsAddDaysOpen] = useState(false)
   const [isNewRecordOpen, setIsNewRecordOpen] = useState(false)
+  const [isCreatingRecord, setIsCreatingRecord] = useState(false)
   const [isArchiveOpen, setIsArchiveOpen] = useState(false)
   const [daysToAdd, setDaysToAdd] = useState("")
   const [note, setNote] = useState("")
   const [returnedStartDate, setReturnedStartDate] = useState("")
   const [returnedEndDate, setReturnedEndDate] = useState("")
-  const [expandedDetailByMember, setExpandedDetailByMember] = useState<Record<string, "mindagen" | "returned" | null>>({})
+  const [expandedDetailByMember, setExpandedDetailByMember] = useState<
+    Record<string, "open" | "ingehaald" | null>
+  >({})
   
   // New record form state
   const [newRecord, setNewRecord] = useState({
@@ -151,8 +160,11 @@ export function StandBackManagement() {
     drawText(`Naam: ${name}`)
     drawText(`Geprint op: ${new Date().toLocaleString("nl-NL")}`)
     drawRule()
-    drawText(`Totaal mindagen: ${group.totalRequired} dagen`, { bold: true })
-    drawText(`Totaal terug gestaan: ${group.totalReturned} dagen`, { bold: true })
+    drawText(`Terug te staan: ${group.totalRequired ?? 0} dagen`, { bold: true })
+    drawText(
+      `Overwerk of teruggestaan: ${group.totalIngehaald ?? group.totalReturned + (group.grossCredit ?? 0)} dagen`,
+      { bold: true }
+    )
     drawText(`Saldo: ${formatStandBackSaldo(group.netSaldo ?? 0)} dagen`, { bold: true })
 
     y -= 4
@@ -164,11 +176,13 @@ export function StandBackManagement() {
       { x: margin + 320, label: "Omschrijving" },
     ])
 
-    const records = [...(group.records || [])].sort(
-      (a: any, b: any) =>
-        new Date(b.createdAt || b.startDate || 0).getTime() -
-        new Date(a.createdAt || a.startDate || 0).getTime()
-    )
+    const records = [...(group.records || [])]
+      .filter((rec: any) => !isTegoedStandBackRecord(rec))
+      .sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt || b.startDate || 0).getTime() -
+          new Date(a.createdAt || a.startDate || 0).getTime()
+      )
     if (records.length === 0) {
       drawText("Geen registraties gevonden.")
     } else {
@@ -190,7 +204,7 @@ export function StandBackManagement() {
     }
 
     y -= 8
-    drawText("Terug gestaan", { bold: true, size: 11 })
+    drawText("Overwerk of teruggestaan", { bold: true, size: 11 })
     drawTableHeader([
       { x: margin, label: "Datum" },
       { x: margin + 70, label: "Periode terug gestaan" },
@@ -199,21 +213,33 @@ export function StandBackManagement() {
     ])
 
     const allHistory: Array<{ date: string; period: string; days: string; note: string }> = []
-    records.forEach((record: any) => {
+    const tegoedRecords = (group.records || []).filter((r: any) => isTegoedStandBackRecord(r))
+    tegoedRecords.forEach((record: any) => {
       const history = Array.isArray(record.standBackHistory) ? record.standBackHistory : []
-      history.forEach((h: any) => {
+      history
+        .filter((h: any) => {
+          const d = typeof h.daysCompleted === "number" ? h.daysCompleted : Number(h.daysCompleted || 0)
+          return d > 0
+        })
+        .forEach((h: any) => {
         const daysNum = typeof h.daysCompleted === "number" ? h.daysCompleted : Number(h.daysCompleted || 0)
-        const period =
-          h?.periodStart && h?.periodEnd
-            ? `${formatDateShort(h.periodStart)} t/m ${formatDateShort(h.periodEnd)}`
-            : h?.periodStart
-              ? formatDateShort(h.periodStart)
-              : "-"
         allHistory.push({
           date: formatDateShort(h.date),
-          period,
+          period: formatHistoryPeriodLabel(h, record),
           days: Number.isFinite(daysNum) ? String(daysNum) : "-",
-          note: String(h.note || "-").replace(/[\r\n]+/g, " "),
+          note: formatHistoryNoteLabel(h).replace(/[\r\n]+/g, " "),
+        })
+      })
+    })
+    records.forEach((record: any) => {
+      const history = Array.isArray(record.standBackHistory) ? record.standBackHistory : []
+      history.filter(isReturnedHistoryEntry).forEach((h: any) => {
+        const daysNum = typeof h.daysCompleted === "number" ? h.daysCompleted : Number(h.daysCompleted || 0)
+        allHistory.push({
+          date: formatDateShort(h.date),
+          period: formatHistoryPeriodLabel(h, record),
+          days: Number.isFinite(daysNum) ? String(daysNum) : "-",
+          note: formatHistoryNoteLabel(h).replace(/[\r\n]+/g, " "),
         })
       })
     })
@@ -313,7 +339,9 @@ export function StandBackManagement() {
         totalCredit: 0,
       }
     }
-    acc[memberId].records.push(record)
+    if (!acc[memberId].records.some((r: any) => r.id === record.id)) {
+      acc[memberId].records.push(record)
+    }
     return acc
   }, {})
 
@@ -335,7 +363,12 @@ export function StandBackManagement() {
       standBackCredit: totals.totalCredit || 0,
     }
     })
-    .filter((g: any) => (g.netSaldo ?? 0) !== 0)
+    .filter(
+      (g: any) =>
+        (g.totalRequired ?? 0) > 0 ||
+        (g.totalIngehaald ?? 0) > 0 ||
+        (g.netSaldo ?? 0) !== 0
+    )
     .sort(
       (a: any, b: any) =>
         Math.abs(b.netSaldo ?? 0) - Math.abs(a.netSaldo ?? 0)
@@ -459,6 +492,28 @@ export function StandBackManagement() {
     }
   }
 
+  const applyCreditToTegoedRecord = async (
+    tegoedRecord: any,
+    creditDays: number,
+    historyNote: string,
+    period?: { start: string | null; end: string | null }
+  ) => {
+    const currentRem = Number(tegoedRecord.standBackDaysRemaining ?? 0)
+    const newRem = currentRem - creditDays
+    const historyEntry = {
+      date: new Date().toISOString(),
+      daysCompleted: creditDays,
+      note: historyNote,
+      periodStart: period?.start || null,
+      periodEnd: period?.end || null,
+      completedBy: "User",
+    }
+    await updateStandBackRecord(tegoedRecord.id, {
+      stand_back_days_remaining: newRem,
+      stand_back_history: [...(tegoedRecord.standBackHistory || []), historyEntry],
+    })
+  }
+
   const handleAddStandBackDays = async () => {
     if (!selectedRecord || !daysToAdd || Number.parseInt(daysToAdd) <= 0) {
       alert("Vul een geldig aantal dagen in")
@@ -467,38 +522,82 @@ export function StandBackManagement() {
 
     try {
       const daysReturned = Number.parseInt(daysToAdd, 10)
-      const targetRecord =
-        [...(selectedRecord.records || [selectedRecord])]
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.createdAt || b.startDate || 0).getTime() -
-              new Date(a.createdAt || a.startDate || 0).getTime()
-          )[0] || selectedRecord
+      const allRecords: any[] = selectedRecord.records || [selectedRecord]
+      const baseNote = note || "Teruggestaan dagen geregistreerd"
+      let left = daysReturned
 
-      const historyEntry = {
-        date: new Date().toISOString(),
-        daysCompleted: daysReturned,
-        note: note || "Teruggestaan dagen geregistreerd",
-        periodStart: returnedStartDate || null,
-        periodEnd: returnedEndDate || null,
-        completedBy: "User",
+      const debtRecords = allRecords
+        .filter((r: any) => !isTegoedStandBackRecord(r))
+        .sort(
+          (a: any, b: any) =>
+            new Date(a.createdAt || a.startDate || 0).getTime() -
+            new Date(b.createdAt || b.startDate || 0).getTime()
+        )
+
+      for (const rec of debtRecords) {
+        if (left <= 0) break
+        const outstanding = getRecordOutstandingDays(rec)
+        if (outstanding <= 0) continue
+
+        const apply = Math.min(left, outstanding)
+        const historyEntry = {
+          date: new Date().toISOString(),
+          daysCompleted: apply,
+          note: baseNote,
+          periodStart: returnedStartDate || null,
+          periodEnd: returnedEndDate || null,
+          completedBy: "User",
+        }
+        const previousReturned = getRecordReturnedDays(rec)
+        const newReturned = previousReturned + apply
+        const required = Number(rec.standBackDaysRequired || 0)
+        const newRemaining = Math.max(0, required - newReturned)
+
+        await updateStandBackRecord(rec.id, {
+          stand_back_days_completed: newReturned,
+          stand_back_days_remaining: newRemaining,
+          stand_back_status: newRemaining <= 0 ? "voltooid" : "openstaand",
+          stand_back_history: [...(rec.standBackHistory || []), historyEntry],
+        })
+        left -= apply
       }
 
-      const previousReturned = getRecordReturnedDays(targetRecord)
-      const newReturned = previousReturned + daysReturned
-      const required = Number(targetRecord.standBackDaysRequired || 0)
-      const newRemaining = required - newReturned
+      if (left > 0) {
+        let tegoedRecord = allRecords.find((r: any) => isTegoedStandBackRecord(r))
+        const tegoedNote = `${baseNote} (${left} dag(en) tegoed)`
 
-      await updateStandBackRecord(targetRecord.id, {
-        stand_back_days_completed: newReturned,
-        stand_back_days_remaining: newRemaining,
-        stand_back_status:
-          required > 0 && newRemaining <= 0 ? "voltooid" : "openstaand",
-        stand_back_history: [...(targetRecord.standBackHistory || []), historyEntry],
-      })
+        if (tegoedRecord) {
+          await applyCreditToTegoedRecord(tegoedRecord, left, tegoedNote, {
+            start: returnedStartDate || null,
+            end: returnedEndDate || null,
+          })
+        } else {
+          const today = new Date().toISOString().slice(0, 10)
+          await addStandBackRecord({
+            crew_member_id: selectedRecord.crewMemberId,
+            start_date: today,
+            end_date: today,
+            days_count: 0,
+            description: "Tegoed overwerk (vooruit ingehaald)",
+            reason: OVERWERK_TEGOED_REASON,
+            stand_back_days_required: 0,
+            stand_back_days_completed: 0,
+            stand_back_days_remaining: -left,
+            stand_back_status: "openstaand",
+            stand_back_history: [
+              {
+                date: new Date().toISOString(),
+                daysCompleted: left,
+                note: tegoedNote,
+                completedBy: "User",
+              },
+            ],
+          })
+        }
+      }
 
       alert(
-        `Succesvol ${daysReturned} dag(en) teruggestaan geregistreerd voor ${selectedRecord.crewMember?.firstName} ${selectedRecord.crewMember?.lastName}`
+        `Succesvol ${daysReturned} dag(en) geregistreerd voor ${selectedRecord.crewMember?.firstName} ${selectedRecord.crewMember?.lastName}`
       )
       
       // Reset form
@@ -518,11 +617,13 @@ export function StandBackManagement() {
   }
 
   const handleCreateNewRecord = async () => {
+    if (isCreatingRecord) return
     if (!newRecord.crewMemberId || !newRecord.startDate || !newRecord.endDate || !newRecord.daysCount) {
       alert("Vul alle verplichte velden in")
       return
     }
 
+    setIsCreatingRecord(true)
     try {
       const startDate = new Date(newRecord.startDate)
       const endDate = new Date(newRecord.endDate)
@@ -635,31 +736,71 @@ export function StandBackManagement() {
   }
 
   const getGroupStandBackHistory = (group: any) => {
-    const allEntries = (group.records || []).flatMap((rec: any) => {
+    const debtRecords = (group.records || []).filter(
+      (rec: any) => !isTegoedStandBackRecord(rec)
+    )
+    const allEntries = debtRecords.flatMap((rec: any) => {
       const history = Array.isArray(rec.standBackHistory) ? rec.standBackHistory : []
-      return history.map((entry: any) => ({
-        recordId: rec.id,
-        recordReason: rec.reason || "onbekend",
-        date: entry?.date,
-        daysCompleted: typeof entry?.daysCompleted === "number" ? entry.daysCompleted : Number(entry?.daysCompleted || 0),
-        note: entry?.note || "",
-        returnedPeriod:
-          entry?.periodStart && entry?.periodEnd
-            ? `${new Date(entry.periodStart).toLocaleDateString("nl-NL")} - ${new Date(entry.periodEnd).toLocaleDateString("nl-NL")}`
-            : entry?.periodStart
-              ? new Date(entry.periodStart).toLocaleDateString("nl-NL")
-              : entry?.date
-                ? new Date(entry.date).toLocaleDateString("nl-NL")
-                : "-",
-      }))
+      return history
+        .filter(isReturnedHistoryEntry)
+        .map((entry: any) => ({
+          recordId: rec.id,
+          recordReason: rec.reason || "onbekend",
+          date: entry?.date,
+          daysCompleted:
+            typeof entry?.daysCompleted === "number"
+              ? entry.daysCompleted
+              : Number(entry?.daysCompleted || 0),
+          note: formatHistoryNoteLabel(entry),
+          returnedPeriod: formatHistoryPeriodLabel(entry, rec),
+        }))
     })
 
-    return allEntries
-      .filter((entry: any) => Number.isFinite(entry.daysCompleted) && entry.daysCompleted > 0)
-      .sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+    return allEntries.sort(
+      (a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+    )
   }
 
-  const toggleMemberDetail = (memberId: string, section: "mindagen" | "returned") => {
+  const getGroupIngehaaldHistory = (group: any) => {
+    const debtEntries = getGroupStandBackHistory(group).map((entry: any) => ({
+      ...entry,
+      type:
+        entry?.completedBy === "Overwerker-systeem"
+          ? ("overwerk" as const)
+          : ("teruggestaan" as const),
+    }))
+    const tegoedEntries = (group.records || [])
+      .filter((rec: any) => isTegoedStandBackRecord(rec))
+      .flatMap((rec: any) => {
+        const history = Array.isArray(rec.standBackHistory) ? rec.standBackHistory : []
+        return history
+          .filter((entry: any) => {
+            const days =
+              typeof entry?.daysCompleted === "number"
+                ? entry.daysCompleted
+                : Number(entry?.daysCompleted || 0)
+            return days > 0
+          })
+          .map((entry: any) => ({
+            recordId: rec.id,
+            date: entry?.date,
+            daysCompleted:
+              typeof entry?.daysCompleted === "number"
+                ? entry.daysCompleted
+                : Number(entry?.daysCompleted || 0),
+            note: formatHistoryNoteLabel(entry),
+            returnedPeriod: formatHistoryPeriodLabel(entry, rec),
+            type: "overwerk" as const,
+          }))
+      })
+      .filter((e) => e.daysCompleted > 0)
+
+    return [...debtEntries, ...tegoedEntries].sort(
+      (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+    )
+  }
+
+  const toggleMemberDetail = (memberId: string, section: "open" | "ingehaald") => {
     setExpandedDetailByMember((prev) => ({
       ...prev,
       [memberId]: prev[memberId] === section ? null : section,
@@ -853,7 +994,9 @@ export function StandBackManagement() {
                       <Button variant="outline" onClick={() => setIsNewRecordOpen(false)}>
                         Annuleren
                       </Button>
-                      <Button onClick={handleCreateNewRecord}>Registratie Aanmaken</Button>
+                      <Button onClick={handleCreateNewRecord} disabled={isCreatingRecord}>
+                        {isCreatingRecord ? "Bezig..." : "Registratie Aanmaken"}
+                      </Button>
                     </div>
                   </div>
                 </DialogContent>
@@ -961,10 +1104,13 @@ export function StandBackManagement() {
                             <div className="space-y-4">
                               <div className="bg-gray-50 p-3 rounded-lg">
                                 <p className="text-sm text-gray-600">
-                                  <strong>Totaal mindagen:</strong> {group.totalRequired} dagen
+                                  <strong>Terug te staan:</strong> {group.totalRequired ?? 0} dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
-                                  <strong>Totaal terug gestaan:</strong> {group.totalReturned} dagen
+                                  <strong>Overwerk of teruggestaan:</strong>{" "}
+                                  {group.totalIngehaald ??
+                                    (group.totalReturned ?? 0) + (group.grossCredit ?? 0)}{" "}
+                                  dagen
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   <strong>Saldo:</strong> {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
@@ -1129,75 +1275,65 @@ export function StandBackManagement() {
                       <div className="mb-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
                         <button
                           type="button"
-                          onClick={() => toggleMemberDetail(group.crewMemberId, "mindagen")}
+                          onClick={() => toggleMemberDetail(group.crewMemberId, "open")}
                           className={`text-left rounded px-3 py-2 border transition ${
-                            expandedDetailByMember[group.crewMemberId] === "mindagen"
-                              ? "bg-blue-100 border-blue-300"
-                              : "bg-blue-50 border-blue-100 hover:bg-blue-100"
+                            expandedDetailByMember[group.crewMemberId] === "open"
+                              ? "bg-orange-100 border-orange-300"
+                              : "bg-orange-50 border-orange-100 hover:bg-orange-100"
                           }`}
                         >
-                          <span className="text-gray-600">Totaal mindagen</span>
-                          <div className="font-semibold text-blue-800">{group.totalRequired} dagen</div>
+                          <span className="text-gray-600">Terug te staan</span>
+                          <div className="font-semibold text-orange-800">
+                            {group.totalRequired ?? 0} dagen
+                          </div>
                         </button>
                         <button
                           type="button"
-                          onClick={() => toggleMemberDetail(group.crewMemberId, "returned")}
+                          onClick={() => toggleMemberDetail(group.crewMemberId, "ingehaald")}
                           className={`text-left rounded px-3 py-2 border transition ${
-                            expandedDetailByMember[group.crewMemberId] === "returned"
+                            expandedDetailByMember[group.crewMemberId] === "ingehaald"
                               ? "bg-green-100 border-green-300"
                               : "bg-green-50 border-green-100 hover:bg-green-100"
                           }`}
                         >
-                          <span className="text-gray-600">Totaal terug gestaan</span>
-                          <div className="font-semibold text-green-800">{group.totalReturned} dagen</div>
+                          <span className="text-gray-600">Overwerk of teruggestaan</span>
+                          <div className="font-semibold text-green-800">
+                            {group.totalIngehaald ??
+                              (group.totalReturned ?? 0) + (group.grossCredit ?? 0)}{" "}
+                            dagen
+                          </div>
                         </button>
                         <div
                           className={`rounded px-3 py-2 border ${
                             (group.netSaldo ?? 0) > 0
                               ? "bg-emerald-50 border-emerald-100"
-                              : "bg-orange-50 border-orange-100"
+                              : (group.netSaldo ?? 0) < 0
+                                ? "bg-orange-50 border-orange-100"
+                                : "bg-gray-50 border-gray-100"
                           }`}
                         >
                           <span className="text-gray-600">Saldo</span>
                           <div
                             className={`font-semibold ${
-                              (group.netSaldo ?? 0) > 0 ? "text-emerald-800" : "text-orange-800"
+                              (group.netSaldo ?? 0) > 0
+                                ? "text-emerald-800"
+                                : (group.netSaldo ?? 0) < 0
+                                  ? "text-orange-800"
+                                  : "text-gray-800"
                             }`}
                           >
                             {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
                           </div>
-                          {(group.grossCredit ?? 0) > 0 && (
-                            <p className="text-xs text-gray-500 mt-1 leading-snug">
-                              {(group.grossOutstanding ?? 0) > 0
-                                ? `${group.grossOutstanding} open − ${group.grossCredit} tegoed`
-                                : `${group.grossCredit} tegoed`}
-                            </p>
-                          )}
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {formatStandBackSaldoHint(group.netSaldo ?? 0)}
+                          </p>
                         </div>
                       </div>
-                      {(group.grossCredit ?? 0) > 0 && (
-                        <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-3 py-2 -mt-1 space-y-1">
-                          <p>
-                            Overwerk-tegoed: {group.grossCredit} dag(en) (verrekend met openstaand saldo).
-                          </p>
-                          {group.records
-                            .filter((rec: any) => isTegoedStandBackRecord(rec))
-                            .map((rec: any) => (
-                              <p key={rec.id} className="text-gray-600">
-                                — {rec.description || rec.reason || "Tegoed"} (
-                                {getRecordCreditDays(rec)} dag(en))
-                              </p>
-                            ))}
-                        </div>
-                      )}
-                      {(group.grossCredit ?? 0) === 0 && (group.grossOutstanding ?? 0) > 0 && (
-                        <p className="text-xs text-gray-500 -mt-1">
-                          Saldo = {group.totalRequired} mindagen − {group.totalReturned} terug gestaan ={" "}
-                          {formatStandBackSaldo(group.netSaldo ?? 0)}
-                        </p>
-                      )}
 
-                      {expandedDetailByMember[group.crewMemberId] === "mindagen" && (
+                      {expandedDetailByMember[group.crewMemberId] === "open" &&
+                        (group.totalRequired ?? 0) === 0 ? (
+                          <p className="text-sm text-gray-500">Geen opgebouwde mindagen.</p>
+                        ) : expandedDetailByMember[group.crewMemberId] === "open" ? (
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm border-collapse">
                             <thead>
@@ -1211,48 +1347,79 @@ export function StandBackManagement() {
                             </thead>
                             <tbody>
                               {[...group.records]
+                                .filter((rec: any) => !isTegoedStandBackRecord(rec))
                                 .sort(
                                   (a: any, b: any) =>
                                     new Date(b.createdAt || b.startDate || 0).getTime() -
                                     new Date(a.createdAt || a.startDate || 0).getTime()
                                 )
                                 .map((rec: any, index: number) => (
-                                <tr key={rec.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                  <td className="border px-2 py-1">
-                                    {new Date(rec.startDate).toLocaleDateString("nl-NL")} - {new Date(rec.endDate).toLocaleDateString("nl-NL")}
-                                  </td>
-                                  <td className="border px-2 py-1 text-right font-medium">{rec.standBackDaysRequired}</td>
-                                  <td className="border px-2 py-1">{rec.reason}</td>
-                                  <td className="border px-2 py-1">{rec.description || "-"}</td>
-                                  <td className="border px-2 py-1">{rec.notes || "-"}</td>
-                                </tr>
-                              ))}
+                                  <tr
+                                    key={rec.id}
+                                    className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                                  >
+                                    <td className="border px-2 py-1">
+                                      {new Date(rec.startDate).toLocaleDateString("nl-NL")} -{" "}
+                                      {new Date(rec.endDate).toLocaleDateString("nl-NL")}
+                                    </td>
+                                    <td className="border px-2 py-1 text-right font-medium">
+                                      {rec.standBackDaysRequired}
+                                    </td>
+                                    <td className="border px-2 py-1">{rec.reason}</td>
+                                    <td className="border px-2 py-1">{rec.description || "-"}</td>
+                                    <td className="border px-2 py-1">{rec.notes || "-"}</td>
+                                  </tr>
+                                ))}
+                              <tr className="bg-orange-50 font-semibold">
+                                <td className="border px-2 py-1">Totaal opgebouwd</td>
+                                <td className="border px-2 py-1 text-right text-orange-800">
+                                  {group.totalRequired ?? 0}
+                                </td>
+                                <td className="border px-2 py-1" colSpan={3} />
+                              </tr>
                             </tbody>
                           </table>
                         </div>
-                      )}
+                      ) : null}
 
-                      {expandedDetailByMember[group.crewMemberId] === "returned" && (
-                        getGroupStandBackHistory(group).length === 0 ? (
-                          <p className="text-sm text-gray-500">Nog geen teruggestane dagen geregistreerd.</p>
+                      {expandedDetailByMember[group.crewMemberId] === "ingehaald" && (
+                        getGroupIngehaaldHistory(group).length === 0 ? (
+                          <p className="text-sm text-gray-500">
+                            Nog geen overwerk of teruggestaan geregistreerd.
+                          </p>
                         ) : (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm border-collapse">
                               <thead>
                                 <tr className="bg-gray-100">
                                   <th className="border px-2 py-2 text-left">Datum</th>
+                                  <th className="border px-2 py-2 text-left">Type</th>
                                   <th className="border px-2 py-2 text-right">Dagen</th>
-                                  <th className="border px-2 py-2 text-left">Periode terug gestaan</th>
-                                  <th className="border px-2 py-2 text-left">Waar / notitie</th>
+                                  <th className="border px-2 py-2 text-left">Periode</th>
+                                  <th className="border px-2 py-2 text-left">Notitie</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {getGroupStandBackHistory(group).map((entry: any, index: number) => (
-                                  <tr key={`${entry.recordId}-${index}`} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                    <td className="border px-2 py-1">{new Date(entry.date).toLocaleDateString("nl-NL")}</td>
-                                    <td className="border px-2 py-1 text-right font-medium">{entry.daysCompleted}</td>
+                                {getGroupIngehaaldHistory(group).map((entry: any, index: number) => (
+                                  <tr
+                                    key={`${entry.recordId}-${entry.type}-${index}`}
+                                    className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                                  >
+                                    <td className="border px-2 py-1">
+                                      {entry.date
+                                        ? new Date(entry.date).toLocaleDateString("nl-NL")
+                                        : "-"}
+                                    </td>
+                                    <td className="border px-2 py-1">
+                                      {entry.type === "overwerk" ? "Overwerk" : "Teruggestaan"}
+                                    </td>
+                                    <td className="border px-2 py-1 text-right font-medium">
+                                      {entry.daysCompleted}
+                                    </td>
                                     <td className="border px-2 py-1">{entry.returnedPeriod}</td>
-                                    <td className="border px-2 py-1">{entry.note || "-"}</td>
+                                    <td className="border px-2 py-1">
+                                      {formatHistoryNoteLabel(entry)}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>

@@ -3,7 +3,9 @@ import { supabase } from "@/lib/supabase"
 import { calculateWorkDays } from "@/hooks/use-supabase-data"
 import {
   getRecordOutstandingDays,
+  getRecordReturnedDays,
   getStandBackBalanceSummary,
+  isTegoedHistoryEntry,
   isTegoedStandBackRecord,
   OVERWERK_TEGOED_REASON,
 } from "@/utils/stand-back-balance"
@@ -109,6 +111,12 @@ function formatNlDate(isoDate: string): string {
   } catch {
     return isoDate
   }
+}
+
+/** Vaste notitie in terug-te-staan overzicht (kolom Waar / notitie). */
+export function buildOverwerkHistoryNote(shipName?: string | null): string {
+  const ship = String(shipName || "").trim() || "onbekend schip"
+  return `Overgewerkt op de ${ship}`
 }
 
 function buildOvertimeNote(from: string, to: string, shipName?: string): string {
@@ -311,7 +319,7 @@ export async function processOverwerkSettlement(params: {
     return {
       workDays: 0,
       messages: [
-        "Geen verrekening gekozen op deze reis (of keuze niet opgeslagen). Kies bij toewijzen: uitbetalen of dagen inhalen.",
+        "Geen verrekening gekozen op deze reis. Kies bij toewijzen: uitbetalen of dagen inhalen.",
       ],
       applied: false,
       settlementType: type,
@@ -390,9 +398,24 @@ export async function processOverwerkSettlement(params: {
 
   if (type === "inhale") {
     const crewId = crewMember.id
-    const open = standBackRecords.filter(
-      (r) => String(r.crew_member_id) === String(crewId) && r.stand_back_status === "openstaand"
-    )
+    const { data: freshRecords, error: fetchSbError } = await supabase
+      .from("stand_back_records")
+      .select("*")
+      .eq("crew_member_id", crewId)
+      .eq("stand_back_status", "openstaand")
+
+    if (fetchSbError) {
+      console.error("Error fetching stand_back_records for inhale:", fetchSbError)
+    }
+
+    const open =
+      freshRecords && freshRecords.length > 0
+        ? freshRecords
+        : standBackRecords.filter(
+            (r) =>
+              String(r.crew_member_id) === String(crewId) &&
+              r.stand_back_status === "openstaand"
+          )
     const debtRecords = open
       .filter((r) => !isTegoedStandBackRecord(r) && getRecordOutstandingDays(r) > 0)
       .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
@@ -406,17 +429,21 @@ export async function processOverwerkSettlement(params: {
       const debt = getRecordOutstandingDays(rec)
       if (debt <= 0) continue
       const deduct = Math.min(remainingWork, debt)
-      const newCompleted = Number(rec.stand_back_days_completed || 0) + deduct
-      const newRemaining = debt - deduct
+      const required = Number(rec.stand_back_days_required || 0)
+      const previousReturned = getRecordReturnedDays(rec)
+      const newReturned = previousReturned + deduct
+      const newRemaining = Math.max(0, required - newReturned)
       const newStatus = newRemaining <= 0 ? "voltooid" : "openstaand"
       const historyEntry = {
         date: new Date().toISOString(),
         daysCompleted: deduct,
-        note: `Overwerk ingehaald (${formatNlDate(endOnly)}, reis ${trip.id})`,
+        note: buildOverwerkHistoryNote(shipName),
+        periodStart: startOnly,
+        periodEnd: endOnly,
         completedBy: "Overwerker-systeem",
       }
       await updateStandBackRecord(rec.id, {
-        stand_back_days_completed: newCompleted,
+        stand_back_days_completed: newReturned,
         stand_back_days_remaining: newRemaining,
         stand_back_status: newStatus,
         stand_back_history: [...(Array.isArray(rec.stand_back_history) ? rec.stand_back_history : []), historyEntry],
@@ -433,7 +460,9 @@ export async function processOverwerkSettlement(params: {
         const historyEntry = {
           date: new Date().toISOString(),
           daysCompleted: creditDays,
-          note: `Tegoed +${creditDays} dagen via overwerk (${formatNlDate(endOnly)})`,
+          note: buildOverwerkHistoryNote(shipName),
+          periodStart: startOnly,
+          periodEnd: endOnly,
           completedBy: "Overwerker-systeem",
         }
         await updateStandBackRecord(tegoedRecord.id, {
@@ -449,7 +478,7 @@ export async function processOverwerkSettlement(params: {
       } else {
         await addStandBackRecord({
           crew_member_id: crewId,
-          start_date: endOnly,
+          start_date: startOnly,
           end_date: endOnly,
           days_count: 0,
           description: "Tegoed overwerk (vooruit ingehaald)",
@@ -462,7 +491,9 @@ export async function processOverwerkSettlement(params: {
             {
               date: new Date().toISOString(),
               daysCompleted: creditDays,
-              note: `Tegoed aangemaakt via overwerk (${formatNlDate(endOnly)})`,
+              note: buildOverwerkHistoryNote(shipName),
+              periodStart: startOnly,
+              periodEnd: endOnly,
               completedBy: "Overwerker-systeem",
             },
           ],
@@ -488,4 +519,158 @@ export async function fetchTripForSettlement(tripId: string) {
   const { data, error } = await supabase.from("trips").select("*").eq("id", tripId).maybeSingle()
   if (error) throw error
   return data
+}
+
+function isOverwerkerSettlementHistoryEntry(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") return false
+  return (entry as { completedBy?: string }).completedBy === "Overwerker-systeem"
+}
+
+function historyEntryMatchesTrip(
+  entry: unknown,
+  trip: {
+    start_datum?: string | null
+    start_date?: string | null
+    eind_datum?: string | null
+    end_date?: string | null
+  }
+): boolean {
+  if (!isOverwerkerSettlementHistoryEntry(entry)) return false
+  const startOnly = normalizeTripDate(trip.start_datum || trip.start_date)
+  const endOnly = normalizeTripDate(trip.eind_datum || trip.end_date)
+  if (!startOnly || !endOnly) return false
+  const e = entry as { periodStart?: string; periodEnd?: string }
+  return e.periodStart === startOnly && e.periodEnd === endOnly
+}
+
+/** Draai salaris- of terug-te-staan-verrekening terug vóór verwijderen van de reis. */
+export async function revertOverwerkSettlementForDeletedTrip(params: {
+  trip: {
+    id: string
+    notes?: string | null
+    trip_name?: string | null
+    aflosser_id?: string | null
+    start_datum?: string | null
+    start_date?: string | null
+    start_tijd?: string | null
+    eind_datum?: string | null
+    end_date?: string | null
+    eind_tijd?: string | null
+  }
+  crewMember: { id: string; company?: string | null }
+  updateStandBackRecord: (id: string, updates: Record<string, unknown>) => Promise<unknown>
+}): Promise<string[]> {
+  const { trip, crewMember, updateStandBackRecord } = params
+  const messages: string[] = []
+  const { type, processed } = parseOverwerkSettlement(trip)
+  if (!processed || type === "none") return messages
+
+  const endOnly =
+    normalizeTripDate(trip.eind_datum || trip.end_date) || format(new Date(), "yyyy-MM-dd")
+  const endTijd = trip.eind_tijd || "17:00"
+  const workDays = computeOverwerkWorkDays(trip, endOnly, endTijd)
+
+  if (type === "pay" && workDays > 0) {
+    const monthKey = isoToMonthKey(endOnly)
+    const { data: existing, error } = await supabase
+      .from("loon_bemerkingen")
+      .select("*")
+      .eq("crew_id", crewMember.id)
+      .eq("month_key", monthKey)
+      .maybeSingle()
+
+    if (error) {
+      messages.push("Salaris kon niet worden teruggedraaid (databasefout).")
+    } else if (existing) {
+      const notesText = String(existing.notes || "")
+      if (notesText.includes(trip.id)) {
+        const meta = parseSalaryMeta(existing.reason)
+        const prevDays = Number(existing.overtime_days ?? meta?.overtime_days ?? 0)
+        const newDays = Math.max(0, Math.round((prevDays - workDays) * 10) / 10)
+        const reasonBase = stripSalaryMeta(existing.reason)
+        const mergedMeta = {
+          ...(meta || {}),
+          overtime_enabled: newDays > 0,
+          overtime_days: newDays,
+          overtime_note: String(existing.overtime_note ?? meta?.overtime_note ?? ""),
+        }
+        const reasonWithMeta =
+          newDays > 0
+            ? `${reasonBase}\n${SALARY_META_PREFIX}${JSON.stringify(mergedMeta)}`
+            : reasonBase
+        const { error: updErr } = await supabase
+          .from("loon_bemerkingen")
+          .update({
+            overtime_days: newDays,
+            overtime_enabled: newDays > 0,
+            reason: reasonWithMeta,
+            notes: notesText.replace(trip.id, "").trim() || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id)
+        if (updErr) {
+          messages.push("Salaris-overwerk kon niet automatisch worden teruggedraaid — controleer de salarislijst.")
+        } else {
+          messages.push(`Salaris ${monthKey}: ${workDays} overwerkdag(en) verwijderd uit de telling.`)
+        }
+      } else {
+        messages.push(
+          "Salaris-verrekening niet automatisch teruggedraaid — controleer de salarislijst handmatig."
+        )
+      }
+    }
+  }
+
+  if (type === "inhale") {
+    const { data: records, error } = await supabase
+      .from("stand_back_records")
+      .select("*")
+      .eq("crew_member_id", crewMember.id)
+
+    if (error) {
+      messages.push("Terug-te-staan kon niet worden teruggedraaid (databasefout).")
+      return messages
+    }
+
+    let reverted = false
+    for (const rec of records || []) {
+      const history = Array.isArray(rec.stand_back_history) ? rec.stand_back_history : []
+      const filtered = history.filter((entry) => !historyEntryMatchesTrip(entry, trip))
+      if (filtered.length === history.length) continue
+
+      reverted = true
+      if (isTegoedStandBackRecord(rec)) {
+        const creditSum = filtered.reduce((sum: number, entry: unknown) => {
+          if (!isTegoedHistoryEntry(entry)) return sum
+          const raw = (entry as { daysCompleted?: number }).daysCompleted
+          const v = typeof raw === "number" ? raw : Number(raw || 0)
+          return sum + (Number.isFinite(v) ? v : 0)
+        }, 0)
+        // Alleen telling/history van deze reis aanpassen — registratie blijft bestaan
+        await updateStandBackRecord(rec.id, {
+          stand_back_days_remaining: creditSum > 0 ? -creditSum : 0,
+          stand_back_history: filtered,
+          stand_back_status: creditSum > 0 ? "openstaand" : "voltooid",
+        })
+      } else {
+        const required = Number(rec.stand_back_days_required || 0)
+        const returned = getRecordReturnedDays({ ...rec, stand_back_history: filtered })
+        const remaining = Math.max(0, required - returned)
+        await updateStandBackRecord(rec.id, {
+          stand_back_days_completed: returned,
+          stand_back_days_remaining: remaining,
+          stand_back_status: remaining <= 0 ? "voltooid" : "openstaand",
+          stand_back_history: filtered,
+        })
+      }
+    }
+
+    if (reverted) {
+      messages.push(
+        "Terug-te-staan: alleen de regels van deze overwerk-reis zijn verwijderd; overige registraties blijven."
+      )
+    }
+  }
+
+  return messages
 }

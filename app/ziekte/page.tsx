@@ -19,7 +19,6 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { StandBackManagement } from "@/components/sick-leave/stand-back-management"
 import { supabase } from "@/lib/supabase"
 
 const ABSENT_MARKER = "[AFWEZIG]"
@@ -45,7 +44,6 @@ export default function ZiektePage() {
     newSickLeave: locale === "de" ? "Neue Krankmeldung" : "Nieuwe ziekmelding",
     tabSick: locale === "de" ? "Krankheit" : "Ziekte",
     tabAbsent: locale === "de" ? "Abwesend" : "Afwezig",
-    tabStandBack: locale === "de" ? "Zuruckstehen" : "Terug te staan",
     sectionNoOrExpired: locale === "de" ? "Kein Attest und abgelaufene Atteste" : "Geen ziektebriefje en verlopen ziektebriefjes",
     sectionWaitingOrSoon: locale === "de" ? "Warten auf Attest und bald ablaufende Atteste" : "Wacht op briefje en bijna verlopen briefjes",
     sectionValid: locale === "de" ? "Gultige Atteste" : "Geldige ziektebriefjes",
@@ -816,7 +814,7 @@ export default function ZiektePage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-8">
+        <TabsList className="grid w-full max-w-2xl grid-cols-2 mb-8">
           <TabsTrigger value="ziekte" className="text-base">
             <UserX className="w-4 h-4 mr-2" />
             {uiText.tabSick}
@@ -824,10 +822,6 @@ export default function ZiektePage() {
           <TabsTrigger value="afwezig" className="text-base">
             <Calendar className="w-4 h-4 mr-2" />
             {uiText.tabAbsent}
-          </TabsTrigger>
-          <TabsTrigger value="terug-te-staan" className="text-base">
-            <Heart className="w-4 h-4 mr-2" />
-            {uiText.tabStandBack}
           </TabsTrigger>
         </TabsList>
 
@@ -1069,11 +1063,6 @@ export default function ZiektePage() {
               </div>
             )}
           </div>
-        </TabsContent>
-
-        {/* Terug te staan Tab */}
-        <TabsContent value="terug-te-staan" className="space-y-6">
-          <StandBackManagement />
         </TabsContent>
       </Tabs>
 

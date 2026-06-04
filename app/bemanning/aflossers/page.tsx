@@ -39,7 +39,10 @@ import { useSupabaseData, calculateWorkDaysVasteDienst } from '@/hooks/use-supab
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAllAflosserAvailability } from '@/hooks/use-aflosser-availability'
 import { useSearchParams } from "next/navigation"
-import { OverwerkersPlanning } from "@/components/overwerkers/OverwerkersPlanning"
+import {
+  OverwerkersPlanning,
+  type OverwerkersPageTab,
+} from "@/components/overwerkers/OverwerkersPlanning"
 import { isActiveTripStillOpen, isOverwerkTrip } from "@/utils/overwerker-availability"
 import {
   buildOverwerkTripName,
@@ -48,6 +51,8 @@ import {
   fetchTripForSettlement,
   markSettlementProcessed,
   processOverwerkSettlement,
+  revertOverwerkSettlementForDeletedTrip,
+  settlementTypeLabel,
   type OverwerkSettlementType,
 } from "@/utils/overwerk-settlement"
 
@@ -72,8 +77,20 @@ export default function ReizenAflossersPage() {
   const { t } = useLanguage()
   const { getAvailabilityStatus, allPeriods } = useAllAflosserAvailability()
   const validTabs = ["reizen", "aflossers", "overwerkers"] as const
+  const validOverwerkerSubtabs: OverwerkersPageTab[] = [
+    "planning",
+    "alle",
+    "terug-te-staan",
+    "reizen",
+  ]
   const tabFromQuery = String(searchParams.get("tab") || "")
   const initialTab = (validTabs as readonly string[]).includes(tabFromQuery) ? tabFromQuery : "reizen"
+  const subtabFromQuery = String(searchParams.get("subtab") || "")
+  const initialOverwerkerSubtab = validOverwerkerSubtabs.includes(
+    subtabFromQuery as OverwerkersPageTab
+  )
+    ? (subtabFromQuery as OverwerkersPageTab)
+    : "planning"
   const [activeTab, setActiveTab] = useState(initialTab)
   const isStandaloneOverwerkers = activeTab === "overwerkers"
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
@@ -706,7 +723,7 @@ export default function ReizenAflossersPage() {
         end_date: endDate || null,
         trip_from: shipLabel,
         trip_to: shipLabel,
-        notes: "Overwerker-toewijzing",
+        notes: buildOverwerkTripNotes(settlement),
         status: "actief",
         aflosser_id: memberId,
         start_datum: startDate,
@@ -789,7 +806,9 @@ export default function ReizenAflossersPage() {
       return new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
     })
   const ingedeeldeTrips = trips.filter((trip: any) => trip.status === 'ingedeeld')
-  const actieveTrips = trips.filter((trip: any) => isActiveTripStillOpen(trip))
+  const actieveTrips = trips.filter(
+    (trip: any) => isActiveTripStillOpen(trip) && !isOverwerkTrip(trip)
+  )
   const voltooideTrips = trips.filter((trip: any) => trip.status === 'voltooid')
 
   // Create new trip
@@ -996,6 +1015,7 @@ export default function ReizenAflossersPage() {
         trip_from: shipLabel,
         trip_to: shipLabel,
         trip_name: buildOverwerkTripName(shipLabel, settlement),
+        notes: buildOverwerkTripNotes(settlement),
       })
 
       await loadData()
@@ -1050,7 +1070,7 @@ export default function ReizenAflossersPage() {
           })
         }
 
-        if (settlementPreview.type !== "none" || result.messages.length > 0) {
+        if (settlementPreview.type !== "none" || result.applied) {
           alert(
             [
               `Overwerk afgesloten (${result.workDays} gewerkte dag(en)).`,
@@ -1085,6 +1105,56 @@ export default function ReizenAflossersPage() {
     } catch (error) {
       console.error("Error canceling trip:", error)
       alert("Fout bij annuleren reis")
+    }
+  }
+
+  const handleDeleteOverwerkTrip = async (tripId: string) => {
+    const trip = trips.find((t: { id: string }) => t.id === tripId)
+    if (!trip || !isOverwerkTrip(trip)) {
+      alert("Dit is geen overwerk-reis.")
+      return
+    }
+
+    const member = crew.find((c: { id: string }) => c.id === trip.aflosser_id)
+    const shipLabel = trip.ship_id ? getShipName(trip.ship_id) : "onbekend schip"
+    const settlement = parseOverwerkSettlement(trip)
+    let confirmMsg =
+      `Weet je zeker dat je de overwerk-reis op ${shipLabel} permanent wilt verwijderen?\n\n` +
+      "De reis verdwijnt overal (planning, schepen-overzicht, tellingen)."
+
+    if (settlement.processed && settlement.type !== "none") {
+      confirmMsg +=
+        `\n\nVerrekening (${settlementTypeLabel(settlement.type)}) van alleen deze reis wordt waar mogelijk teruggedraaid. ` +
+        "Overige terug-te-staan registraties van deze persoon blijven staan."
+    } else if (settlement.type !== "none" && !settlement.processed) {
+      confirmMsg += "\n\nEr was nog geen verrekening uitgevoerd (alleen de reis wordt verwijderd)."
+    }
+
+    if (!confirm(confirmMsg)) return
+
+    try {
+      if (member && settlement.processed && settlement.type !== "none") {
+        const revertMsgs = await revertOverwerkSettlementForDeletedTrip({
+          trip,
+          crewMember: member,
+          updateStandBackRecord,
+        })
+        if (revertMsgs.length > 0) {
+          console.info("Overwerk revert:", revertMsgs.join(" "))
+        }
+      }
+
+      await deleteTrip(tripId)
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bamalite-crew-data-changed"))
+      }
+
+      alert("Overwerk-reis verwijderd.")
+    } catch (error) {
+      console.error("Error deleting overwerk trip:", error)
+      const msg = error instanceof Error ? error.message : String(error)
+      alert(`Fout bij verwijderen reis: ${msg}`)
     }
   }
 
@@ -1526,7 +1596,13 @@ export default function ReizenAflossersPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {actieveTrips.map((trip: any) => {
+                {actieveTrips.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-6">
+                    Geen actieve aflosser-reizen. Overwerkers sluit je af via Overwerkers
+                    (Naar huis of op einddatum).
+                  </p>
+                ) : (
+                actieveTrips.map((trip: any) => {
                   const assignedAflosser = crew.find((c: any) => c.id === trip.aflosser_id)
                       return (
                     <div key={trip.id} className="border rounded-lg p-4">
@@ -1605,7 +1681,8 @@ export default function ReizenAflossersPage() {
             </div>
           </div>
                       )
-                    })}
+                    })
+                )}
               </CardContent>
             </Card>
           </div>
@@ -1935,6 +2012,8 @@ export default function ReizenAflossersPage() {
             onEndAssignment={handleEndOverwerkerAssignment}
             onSaveMemberOpmerking={handleSaveOverwerkerOpmerking}
             onUpdateActiveTrip={handleUpdateOverwerkerTrip}
+            onDeleteTrip={handleDeleteOverwerkTrip}
+            initialPageTab={initialOverwerkerSubtab}
           />
         </TabsContent>
       </Tabs>

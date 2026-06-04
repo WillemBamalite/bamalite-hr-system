@@ -555,6 +555,29 @@ export function isActiveTripStillOpen(
   return true
 }
 
+function isActiveAflosserPlacementOnShip(
+  trip: {
+    aflosser_id?: string | null
+    ship_id?: string | null
+    status?: string
+    start_datum?: string | null
+    start_tijd?: string | null
+    end_date?: string | null
+    eind_datum?: string | null
+    notes?: string | null
+    trip_name?: string | null
+  },
+  memberId: string,
+  shipId: string
+): boolean {
+  if (String(trip.aflosser_id) !== String(memberId)) return false
+  if (String(trip.ship_id) !== String(shipId)) return false
+  if (!isActiveTripStillOpen(trip)) return false
+  if (isOverwerkTrip(trip)) return false
+  if (!trip.start_datum || !trip.start_tijd) return false
+  return parseLocalDateTime(trip.start_datum, trip.start_tijd) <= new Date()
+}
+
 export function shouldShowMemberOnShipOverview(
   member: {
     id: string
@@ -574,31 +597,22 @@ export function shouldShowMemberOnShipOverview(
 
   if (member.ship_id !== shipId) {
     if (member.position === "Aflosser") {
-      const activeTrips =
-        trips?.filter((trip) => {
-          if (trip.aflosser_id !== member.id || trip.status !== "actief" || trip.ship_id !== shipId) {
-            return false
-          }
-          if (!trip.start_datum || !trip.start_tijd) return false
-          return parseLocalDateTime(trip.start_datum, trip.start_tijd) <= new Date()
-        }) || []
-      return activeTrips.length > 0
+      return (
+        trips?.some((trip) => isActiveAflosserPlacementOnShip(trip, member.id, shipId)) ?? false
+      )
     }
     return false
   }
 
   if (member.position === "Aflosser") {
-    const activeTrips =
-      trips?.filter((trip) => {
-        if (trip.aflosser_id !== member.id || trip.status !== "actief" || trip.ship_id !== shipId) {
-          return false
-        }
-        if (!trip.start_datum || !trip.start_tijd) return false
-        return parseLocalDateTime(trip.start_datum, trip.start_tijd) <= new Date()
-      }) || []
-    if (activeTrips.length > 0) return true
-    if (member.status !== "aan-boord") return false
-    return true
+    if (trips?.some((trip) => isActiveAflosserPlacementOnShip(trip, member.id, shipId))) {
+      return true
+    }
+    // Alleen op vast schip: aan-boord zonder reis op dit schip; gast-schip alleen via actieve reis
+    if (member.ship_id === shipId) {
+      return member.status === "aan-boord"
+    }
+    return false
   }
 
   return true

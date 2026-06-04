@@ -23,11 +23,13 @@ import {
   Plus,
   Ship,
   UserCheck,
+  Trash2,
   UserX,
   X,
 } from "lucide-react"
 import {
   evaluateOverwerkerOnDate,
+  isOverwerkTrip,
   levelBadgeClass,
   levelLabel,
   type OverwerkerPeriod,
@@ -39,8 +41,11 @@ import {
   settlementTypeLabel,
   type OverwerkSettlementType,
 } from "@/utils/overwerk-settlement"
+import { StandBackManagement } from "@/components/sick-leave/stand-back-management"
 
-type PageTab = "planning" | "alle"
+export type OverwerkersPageTab = "planning" | "alle" | "terug-te-staan" | "reizen"
+
+type PageTab = OverwerkersPageTab
 
 const COLUMN_META: Record<
   Exclude<OverwerkerPlanningColumn, null>,
@@ -124,6 +129,9 @@ export interface OverwerkersPlanningProps {
     tripId: string,
     data: { shipId: string; startDate: string; endDate?: string; startTijd?: string }
   ) => Promise<void>
+  onDeleteTrip: (tripId: string) => Promise<void>
+  /** Subtab uit URL (?subtab=terug-te-staan) */
+  initialPageTab?: OverwerkersPageTab
 }
 
 function memberName(member: { first_name?: string; last_name?: string }) {
@@ -157,12 +165,19 @@ export function OverwerkersPlanning({
   onEndAssignment,
   onSaveMemberOpmerking,
   onUpdateActiveTrip,
+  onDeleteTrip,
+  initialPageTab = "planning",
 }: OverwerkersPlanningProps) {
   const today = format(new Date(), "yyyy-MM-dd")
   const nowTime = format(new Date(), "HH:mm")
-  const [pageTab, setPageTab] = useState<PageTab>("planning")
+  const [pageTab, setPageTab] = useState<PageTab>(initialPageTab)
   const [planningDate, setPlanningDate] = useState(today)
   const [search, setSearch] = useState("")
+  const [deletingTripId, setDeletingTripId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPageTab(initialPageTab)
+  }, [initialPageTab])
   const [assignDialog, setAssignDialog] = useState<{ memberId: string; name: string } | null>(null)
   const [assignShipId, setAssignShipId] = useState("")
   const [assignEndDate, setAssignEndDate] = useState("")
@@ -260,6 +275,48 @@ export function OverwerkersPlanning({
     }),
     [planningByColumn]
   )
+
+  const overwerkTripsList = useMemo(() => {
+    const idSet = new Set(overwerkerIds.map(String))
+    return trips
+      .filter(
+        (t) =>
+          isOverwerkTrip(t) &&
+          t.aflosser_id &&
+          idSet.has(String(t.aflosser_id))
+      )
+      .sort((a, b) => {
+        const da = a.start_datum || a.start_date || ""
+        const db = b.start_datum || b.start_date || ""
+        return db.localeCompare(da)
+      })
+  }, [trips, overwerkerIds])
+
+  const handleDeleteTripClick = async (tripId: string) => {
+    setDeletingTripId(tripId)
+    try {
+      await onDeleteTrip(tripId)
+    } finally {
+      setDeletingTripId(null)
+    }
+  }
+
+  const tripStatusLabel = (status?: string) => {
+    switch (status) {
+      case "actief":
+        return "Actief"
+      case "gepland":
+        return "Gepland"
+      case "ingedeeld":
+        return "Ingedeeld"
+      case "voltooid":
+        return "Voltooid"
+      case "geannuleerd":
+        return "Geannuleerd"
+      default:
+        return status || "Onbekend"
+    }
+  }
 
   const openEndDialog = (tripId: string, name: string, shipName?: string) => {
     setEndDialog({ tripId, name, shipName })
@@ -544,6 +601,16 @@ export function OverwerkersPlanning({
                   <Home className="w-3 h-3 mr-1" />
                   Naar huis
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                  disabled={deletingTripId === activeTripRow.id}
+                  onClick={() => handleDeleteTripClick(activeTripRow.id)}
+                >
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  {deletingTripId === activeTripRow.id ? "..." : "Verwijderen"}
+                </Button>
               </>
             )}
             <Button
@@ -644,6 +711,8 @@ export function OverwerkersPlanning({
         <TabsList>
           <TabsTrigger value="planning">Planning</TabsTrigger>
           <TabsTrigger value="alle">Alle overwerkers ({rows.length})</TabsTrigger>
+          <TabsTrigger value="terug-te-staan">Terug te staan</TabsTrigger>
+          <TabsTrigger value="reizen">Reizen ({overwerkTripsList.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="planning" className="space-y-4 mt-4">
@@ -752,6 +821,16 @@ export function OverwerkersPlanning({
                               <Home className="w-4 h-4 mr-1" />
                               Naar huis
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              disabled={deletingTripId === activeTripRow.id}
+                              onClick={() => handleDeleteTripClick(activeTripRow.id)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Verwijderen
+                            </Button>
                           </>
                         )}
                         <Button size="sm" variant="outline" onClick={() => onAddPeriod(member.id)}>
@@ -772,6 +851,98 @@ export function OverwerkersPlanning({
                         >
                           <UserX className="w-4 h-4 mr-1" />
                           Verwijderen
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })
+          )}
+        </TabsContent>
+
+        <TabsContent value="terug-te-staan" className="mt-4">
+          <StandBackManagement />
+        </TabsContent>
+
+        <TabsContent value="reizen" className="mt-4 space-y-3">
+          <p className="text-sm text-gray-600">
+            Alle overwerk-reizen van overwerkers in het systeem. Verwijderen haalt de reis overal weg
+            (planning, schepen-overzicht, tellingen). Bij afgeronde verrekening wordt alleen het deel van
+            deze reis uit terug-te-staan of salaris gehaald — andere registraties van dezelfde persoon blijven.
+          </p>
+          {overwerkTripsList.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-gray-500">
+                Geen overwerk-reizen gevonden.
+              </CardContent>
+            </Card>
+          ) : (
+            overwerkTripsList.map((trip) => {
+              const member = crew.find((c) => c.id === trip.aflosser_id)
+              const name = member ? memberName(member) : "Onbekend"
+              const shipName = trip.ship_id ? getShipName(trip.ship_id) : "—"
+              const settlement = parseOverwerkSettlement(trip)
+              const from = formatDateDDMMYYYY(trip.start_datum || trip.start_date || null)
+              const to = formatDateDDMMYYYY(trip.end_date || trip.eind_datum || null)
+              const canEnd = trip.status === "actief"
+              const canEdit = trip.status === "actief" || trip.status === "ingedeeld" || trip.status === "gepland"
+
+              return (
+                <Card key={trip.id}>
+                  <CardContent className="p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-3 justify-between">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-gray-900">{name}</p>
+                          <Badge variant="outline">{tripStatusLabel(trip.status)}</Badge>
+                          {settlement.type !== "none" && (
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              {settlementTypeLabel(settlement.type)}
+                              {settlement.processed ? " · verwerkt" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 flex items-center gap-1">
+                          <Ship className="w-3.5 h-3.5 shrink-0" />
+                          {shipName}
+                          {from ? ` · ${from}` : ""}
+                          {to ? ` t/m ${to}` : ""}
+                        </p>
+                        {trip.trip_name && (
+                          <p className="text-xs text-gray-500">{trip.trip_name}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        {canEdit && member && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEditTripDialog(trip, name)}
+                          >
+                            <Edit className="w-4 h-4 mr-1" />
+                            Bewerken
+                          </Button>
+                        )}
+                        {canEnd && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => openEndDialog(trip.id, name, shipName)}
+                          >
+                            <Home className="w-4 h-4 mr-1" />
+                            Naar huis
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          disabled={deletingTripId === trip.id}
+                          onClick={() => handleDeleteTripClick(trip.id)}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          {deletingTripId === trip.id ? "Bezig..." : "Verwijderen"}
                         </Button>
                       </div>
                     </div>

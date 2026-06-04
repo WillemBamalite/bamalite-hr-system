@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import {
   getActiveOverwerkTripOnShip,
+  getActiveOverwerkTripAwayFromHomeShip,
   getOverwerkCardLabel,
   shouldShowMemberOnShipOverview,
 } from "@/utils/overwerker-availability"
@@ -1930,6 +1931,7 @@ export function ShipOverview() {
                                           }
                                           if (isUnavailableCrewMember(member)) return false
                                           if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
+                                          if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return false
                                           // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                           if (member.expected_start_date) {
                                             const startDate = new Date(member.expected_start_date)
@@ -1956,6 +1958,7 @@ export function ShipOverview() {
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
                                         if (isUnavailableCrewMember(member)) return false
                                         if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
+                                        if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return false
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
                                         if (member.expected_start_date) {
                                           const startDate = new Date(member.expected_start_date)
@@ -2040,6 +2043,7 @@ export function ShipOverview() {
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
                                         if (isUnavailableCrewMember(member)) return false
                                         if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
+                                        if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return true
                                         // Als expected_start_date in de toekomst is, zijn ze nog thuis
                                         if (member.expected_start_date) {
                                           const startDate = new Date(member.expected_start_date)
