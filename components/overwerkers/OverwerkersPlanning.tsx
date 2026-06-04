@@ -65,7 +65,7 @@ const COLUMN_META: Record<
   },
   mogelijk_beschikbaar: {
     title: "Mogelijk beschikbaar",
-    subtitle: "Vrije week + thuis volgens regime — eerst bellen",
+    subtitle: "3 dagen vóór vaste periode, of thuis in vrije week — eerst bellen",
     headerClass: "bg-amber-50 text-amber-950 border-amber-200",
     borderClass: "border-amber-200",
   },

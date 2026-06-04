@@ -24,6 +24,9 @@ export type OverwerkerPlanningColumn =
   | "mogelijk_beschikbaar"
   | null
 
+/** Dagen vóór start vaste periode: tonen als "mogelijk beschikbaar". */
+export const OVERWERKER_PRE_PERIOD_MOGLIJK_DAYS = 3
+
 export interface OverwerkerDayStatus {
   level: OverwerkerAvailabilityLevel
   planningColumn: OverwerkerPlanningColumn
@@ -52,6 +55,19 @@ function dayBetween(date: Date, from: string, to: string): boolean {
   const start = parseDay(from)
   const end = parseDay(to)
   return date >= start && date <= end
+}
+
+/** Vaste periode (type periode): 1–3 kalenderdagen vóór startdatum. */
+export function isInPrePeriodMogelijkWindow(
+  day: Date,
+  period: Pick<OverwerkerPeriod, "from" | "to">
+): boolean {
+  const start = parseDay(period.from)
+  if (day >= start) return false
+  const daysUntil = differenceInCalendarDays(start, day)
+  return (
+    daysUntil >= 1 && daysUntil <= OVERWERKER_PRE_PERIOD_MOGLIJK_DAYS
+  )
 }
 
 export function parseNotesArray(notes: unknown): unknown[] {
@@ -218,6 +234,25 @@ export function evaluateOverwerkerOnDate(
     }
   }
 
+  const prePeriodMatch =
+    explicitPeriods.find((p) => isInPrePeriodMogelijkWindow(day, p)) || null
+
+  if (prePeriodMatch) {
+    const daysUntil = differenceInCalendarDays(parseDay(prePeriodMatch.from), day)
+    return {
+      level: "mogelijk_beschikbaar",
+      planningColumn: "mogelijk_beschikbaar",
+      reason: `Vaste periode start op ${formatNl(prePeriodMatch.from)} (over ${daysUntil} ${
+        daysUntil === 1 ? "dag" : "dagen"
+      })`,
+      regimeStatus,
+      nextHomeDate,
+      nextOnBoardDate,
+      activeTrip: null,
+      matchingPeriod: prePeriodMatch,
+    }
+  }
+
   if (hasVrijeWeken) {
     if (regimeStatus === "thuis") {
       return {
@@ -265,26 +300,6 @@ export function evaluateOverwerkerOnDate(
       nextOnBoardDate,
       activeTrip: null,
       matchingPeriod: null,
-    }
-  }
-
-  const upcoming = explicitPeriods
-    .filter((p) => parseDay(p.from) > day)
-    .sort((a, b) => parseDay(a.from).getTime() - parseDay(b.from).getTime())[0]
-
-  if (upcoming) {
-    const daysUntil = differenceInCalendarDays(parseDay(upcoming.from), day)
-    if (daysUntil <= 14) {
-      return {
-        level: "binnenkort",
-        planningColumn: null,
-        reason: `Periode start op ${formatNl(upcoming.from)} (over ${daysUntil} dagen)`,
-        regimeStatus,
-        nextHomeDate,
-        nextOnBoardDate,
-        activeTrip: null,
-        matchingPeriod: null,
-      }
     }
   }
 
