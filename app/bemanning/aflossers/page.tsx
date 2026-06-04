@@ -44,9 +44,9 @@ import { isActiveTripStillOpen, isOverwerkTrip } from "@/utils/overwerker-availa
 import {
   buildOverwerkTripName,
   buildOverwerkTripNotes,
+  parseOverwerkSettlement,
   fetchTripForSettlement,
   markSettlementProcessed,
-  parseOverwerkSettlement,
   processOverwerkSettlement,
   type OverwerkSettlementType,
 } from "@/utils/overwerk-settlement"
@@ -956,6 +956,55 @@ export default function ReizenAflossersPage() {
     } catch (error) {
       console.error("Error completing trip:", error)
       alert("Fout bij afsluiten reis")
+    }
+  }
+
+  const handleSaveOverwerkerOpmerking = async (
+    memberId: string,
+    opmerking: string | null
+  ) => {
+    try {
+      await updateCrew(memberId, { aflosser_opmerkingen: opmerking })
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bamalite-crew-data-changed"))
+      }
+    } catch (error) {
+      console.error("Error saving overwerker opmerking:", error)
+      throw error
+    }
+  }
+
+  const handleUpdateOverwerkerTrip = async (
+    tripId: string,
+    data: { shipId: string; startDate: string; endDate?: string; startTijd?: string }
+  ) => {
+    const trip = trips.find((t: any) => t.id === tripId)
+    if (!trip) return
+
+    const ship = ships.find((s: any) => s.id === data.shipId)
+    const shipLabel = ship?.name || "Overwerk"
+    const settlement = parseOverwerkSettlement(trip).type
+
+    try {
+      await updateTrip(tripId, {
+        ship_id: data.shipId,
+        start_date: data.startDate,
+        start_datum: data.startDate,
+        start_tijd: data.startTijd || trip.start_tijd || "08:00",
+        end_date: data.endDate || null,
+        eind_datum: data.endDate || null,
+        trip_from: shipLabel,
+        trip_to: shipLabel,
+        trip_name: buildOverwerkTripName(shipLabel, settlement),
+      })
+
+      await loadData()
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bamalite-crew-data-changed"))
+      }
+    } catch (error) {
+      console.error("Error updating overwerker trip:", error)
+      throw error
     }
   }
 
@@ -1884,6 +1933,8 @@ export default function ReizenAflossersPage() {
             standBackRecords={standBackRecords}
             onAssignToShip={handleAssignOverwerkerToShip}
             onEndAssignment={handleEndOverwerkerAssignment}
+            onSaveMemberOpmerking={handleSaveOverwerkerOpmerking}
+            onUpdateActiveTrip={handleUpdateOverwerkerTrip}
           />
         </TabsContent>
       </Tabs>

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
@@ -76,6 +76,7 @@ export interface OverwerkersPlanningProps {
     regime?: string | null
     status?: string
     notes?: unknown
+    aflosser_opmerkingen?: string | null
   }>
   ships: Array<{ id: string; name: string }>
   trips: Array<{
@@ -86,6 +87,7 @@ export interface OverwerkersPlanningProps {
     start_date?: string | null
     end_date?: string | null
     start_datum?: string | null
+    start_tijd?: string | null
     eind_datum?: string | null
     notes?: string | null
     trip_name?: string | null
@@ -116,6 +118,11 @@ export interface OverwerkersPlanningProps {
     eindDatum: string,
     eindTijd: string,
     opmerking?: string
+  ) => Promise<void>
+  onSaveMemberOpmerking: (memberId: string, opmerking: string | null) => Promise<void>
+  onUpdateActiveTrip: (
+    tripId: string,
+    data: { shipId: string; startDate: string; endDate?: string; startTijd?: string }
   ) => Promise<void>
 }
 
@@ -148,6 +155,8 @@ export function OverwerkersPlanning({
   standBackRecords = [],
   onAssignToShip,
   onEndAssignment,
+  onSaveMemberOpmerking,
+  onUpdateActiveTrip,
 }: OverwerkersPlanningProps) {
   const today = format(new Date(), "yyyy-MM-dd")
   const nowTime = format(new Date(), "HH:mm")
@@ -168,6 +177,21 @@ export function OverwerkersPlanning({
   const [endTijd, setEndTijd] = useState(nowTime)
   const [endOpmerking, setEndOpmerking] = useState("")
   const [ending, setEnding] = useState(false)
+  const [opmerkingDialog, setOpmerkingDialog] = useState<{
+    memberId: string
+    name: string
+  } | null>(null)
+  const [opmerkingText, setOpmerkingText] = useState("")
+  const [savingOpmerking, setSavingOpmerking] = useState(false)
+  const [editTripDialog, setEditTripDialog] = useState<{
+    tripId: string
+    name: string
+  } | null>(null)
+  const [editShipId, setEditShipId] = useState("")
+  const [editStartDate, setEditStartDate] = useState("")
+  const [editEndDate, setEditEndDate] = useState("")
+  const [editStartTijd, setEditStartTijd] = useState("08:00")
+  const [savingTrip, setSavingTrip] = useState(false)
 
   useEffect(() => {
     const syncToday = () => setPlanningDate(format(new Date(), "yyyy-MM-dd"))
@@ -257,6 +281,75 @@ export function OverwerkersPlanning({
     }
   }
 
+  const openOpmerkingDialog = (member: (typeof crew)[0]) => {
+    setOpmerkingDialog({
+      memberId: member.id,
+      name: memberName(member),
+    })
+    setOpmerkingText(member.aflosser_opmerkingen || "")
+  }
+
+  const handleSaveOpmerking = async () => {
+    if (!opmerkingDialog) return
+    setSavingOpmerking(true)
+    try {
+      await onSaveMemberOpmerking(
+        opmerkingDialog.memberId,
+        opmerkingText.trim() || null
+      )
+      setOpmerkingDialog(null)
+      setOpmerkingText("")
+    } catch {
+      alert("Fout bij opslaan opmerking")
+    } finally {
+      setSavingOpmerking(false)
+    }
+  }
+
+  const handleRemoveOpmerking = async (memberId: string) => {
+    if (!confirm("Opmerking verwijderen?")) return
+    try {
+      await onSaveMemberOpmerking(memberId, null)
+    } catch {
+      alert("Fout bij verwijderen opmerking")
+    }
+  }
+
+  const openEditTripDialog = (trip: (typeof trips)[0], name: string) => {
+    const start =
+      trip.start_date?.slice(0, 10) ||
+      trip.start_datum?.slice(0, 10) ||
+      planningDate
+    const end = trip.end_date?.slice(0, 10) || trip.eind_datum?.slice(0, 10) || ""
+    setEditTripDialog({ tripId: trip.id, name })
+    setEditShipId(trip.ship_id || ships[0]?.id || "")
+    setEditStartDate(start)
+    setEditEndDate(end)
+    setEditStartTijd(trip.start_tijd?.slice(0, 5) || "08:00")
+  }
+
+  const handleSaveTripEdit = async () => {
+    if (!editTripDialog || !editShipId || !editStartDate) return
+    if (editEndDate && editEndDate < editStartDate) {
+      alert("Einddatum moet op of na de startdatum liggen.")
+      return
+    }
+    setSavingTrip(true)
+    try {
+      await onUpdateActiveTrip(editTripDialog.tripId, {
+        shipId: editShipId,
+        startDate: editStartDate,
+        endDate: editEndDate || undefined,
+        startTijd: editStartTijd,
+      })
+      setEditTripDialog(null)
+    } catch {
+      alert("Fout bij bewerken reis")
+    } finally {
+      setSavingTrip(false)
+    }
+  }
+
   const handleAssign = async () => {
     if (!assignDialog || !assignShipId) return
     setAssigning(true)
@@ -341,7 +434,12 @@ export function OverwerkersPlanning({
     const settlementInfo = activeTripRow ? parseOverwerkSettlement(activeTripRow) : null
 
     return (
-      <Card key={member.id} className="shadow-sm">
+      <Card
+        key={member.id}
+        className="shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+        onDoubleClick={() => openOpmerkingDialog(member)}
+        title="Dubbelklik voor opmerking"
+      >
         <CardContent className="p-3 space-y-2">
           <div className="flex items-start gap-2">
             <Avatar className="h-9 w-9 shrink-0">
@@ -388,7 +486,24 @@ export function OverwerkersPlanning({
 
           {renderPeriodChips(member.id, periods, true)}
 
-          <div className="flex flex-wrap gap-1 pt-1">
+          {member.aflosser_opmerkingen && (
+            <div
+              className="bg-amber-50 border border-amber-200 rounded p-2 relative text-xs text-amber-950"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="absolute top-1.5 right-1.5 text-amber-600 hover:text-amber-900"
+                title="Opmerking verwijderen"
+                onClick={() => handleRemoveOpmerking(member.id)}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+              <p className="pr-5 leading-snug">{member.aflosser_opmerkingen}</p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-1 pt-1" onClick={(e) => e.stopPropagation()}>
             {canAssign && (
               <Button
                 size="sm"
@@ -403,22 +518,33 @@ export function OverwerkersPlanning({
                 Toewijzen
               </Button>
             )}
-            {hasActiveTrip && status.activeTrip && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-7 text-xs"
-                onClick={() =>
-                  openEndDialog(
-                    status.activeTrip!.id,
-                    name,
-                    status.activeTrip!.shipName
-                  )
-                }
-              >
-                <Home className="w-3 h-3 mr-1" />
-                Naar huis
-              </Button>
+            {hasActiveTrip && activeTripRow && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => openEditTripDialog(activeTripRow, name)}
+                >
+                  <Edit className="w-3 h-3 mr-1" />
+                  Bewerken
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 text-xs"
+                  onClick={() =>
+                    openEndDialog(
+                      status.activeTrip!.id,
+                      name,
+                      status.activeTrip!.shipName
+                    )
+                  }
+                >
+                  <Home className="w-3 h-3 mr-1" />
+                  Naar huis
+                </Button>
+              </>
             )}
             <Button
               size="sm"
@@ -541,8 +667,16 @@ export function OverwerkersPlanning({
             alleRows.map(({ member, periods, status }) => {
               const name = memberName(member)
               const homeShip = member.ship_id ? getShipName(member.ship_id) : null
+              const activeTripRow = status.activeTrip
+                ? trips.find((t) => t.id === status.activeTrip!.id)
+                : null
               return (
-                <Card key={member.id}>
+                <Card
+                  key={member.id}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onDoubleClick={() => openOpmerkingDialog(member)}
+                  title="Dubbelklik voor opmerking"
+                >
                   <CardContent className="p-4">
                     <div className="flex flex-col lg:flex-row gap-4">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -572,9 +706,54 @@ export function OverwerkersPlanning({
                             Op {formatDateDDMMYYYY(planningDate)}: {status.reason}
                           </p>
                           {renderPeriodChips(member.id, periods)}
+                          {member.aflosser_opmerkingen && (
+                            <div
+                              className="mt-2 bg-amber-50 border border-amber-200 rounded p-2 relative text-xs text-amber-950"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="absolute top-1.5 right-1.5 text-amber-600 hover:text-amber-900"
+                                title="Opmerking verwijderen"
+                                onClick={() => handleRemoveOpmerking(member.id)}
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                              <p className="pr-5">{member.aflosser_opmerkingen}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2 shrink-0">
+                      <div
+                        className="flex flex-wrap gap-2 shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {activeTripRow && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openEditTripDialog(activeTripRow, name)}
+                            >
+                              <Edit className="w-4 h-4 mr-1" />
+                              Reis bewerken
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() =>
+                                openEndDialog(
+                                  status.activeTrip!.id,
+                                  name,
+                                  status.activeTrip!.shipName
+                                )
+                              }
+                            >
+                              <Home className="w-4 h-4 mr-1" />
+                              Naar huis
+                            </Button>
+                          </>
+                        )}
                         <Button size="sm" variant="outline" onClick={() => onAddPeriod(member.id)}>
                           <Plus className="w-4 h-4 mr-1" />
                           Periode
@@ -653,6 +832,115 @@ export function OverwerkersPlanning({
                 {ending ? "Bezig..." : "Naar huis"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!opmerkingDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOpmerkingDialog(null)
+            setOpmerkingText("")
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Opmerking: {opmerkingDialog?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500">
+              Dubbelklik op een kaart opent dit venster. Leeg laten en opslaan verwijdert de opmerking.
+            </p>
+            <div>
+              <Label htmlFor="ow-opmerking">Opmerking</Label>
+              <Textarea
+                id="ow-opmerking"
+                value={opmerkingText}
+                onChange={(e) => setOpmerkingText(e.target.value)}
+                placeholder="Bijv. bellen voor bevestiging, voorkeur schip..."
+                rows={4}
+              />
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setOpmerkingDialog(null)
+                  setOpmerkingText("")
+                }}
+              >
+                Annuleren
+              </Button>
+              <Button onClick={handleSaveOpmerking} disabled={savingOpmerking}>
+                {savingOpmerking ? "Bezig..." : "Opslaan"}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editTripDialog} onOpenChange={(open) => !open && setEditTripDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reis bewerken: {editTripDialog?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Schip *</Label>
+              <Select value={editShipId} onValueChange={setEditShipId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Kies schip" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ships.map((ship) => (
+                    <SelectItem key={ship.id} value={ship.id}>
+                      {ship.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-start">Startdatum *</Label>
+              <Input
+                id="edit-start"
+                type="date"
+                value={editStartDate}
+                onChange={(e) => setEditStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-start-tijd">Starttijd</Label>
+              <Input
+                id="edit-start-tijd"
+                type="time"
+                value={editStartTijd}
+                onChange={(e) => setEditStartTijd(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-end">Einddatum (optioneel)</Label>
+              <Input
+                id="edit-end"
+                type="date"
+                value={editEndDate}
+                min={editStartDate}
+                onChange={(e) => setEditEndDate(e.target.value)}
+              />
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setEditTripDialog(null)}>
+                Annuleren
+              </Button>
+              <Button
+                onClick={handleSaveTripEdit}
+                disabled={!editShipId || !editStartDate || savingTrip}
+              >
+                {savingTrip ? "Bezig..." : "Opslaan"}
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
