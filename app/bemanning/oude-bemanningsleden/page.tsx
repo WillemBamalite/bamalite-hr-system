@@ -11,6 +11,7 @@ import { useState, useEffect } from "react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
 import { usePathname } from "next/navigation"
+import { isFormerCrewMember } from "@/utils/crew-filters"
 
 const RANK_ORDER = [
   "Schipper",
@@ -72,7 +73,7 @@ export default function FormerCrewPage() {
   ]
   
   // Filter crew members die uit dienst zijn
-  const formerCrew = crew.filter((c: any) => c.status === 'uit-dienst')
+  const formerCrew = crew.filter((c: any) => isFormerCrewMember(c))
 
   // Group by rank whenever crew changes
   useEffect(() => {

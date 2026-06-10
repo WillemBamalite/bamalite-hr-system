@@ -123,6 +123,25 @@ export function hasOutOfServiceStatus(member: any): boolean {
   return status === "uit-dienst"
 }
 
+/** Uit dienst of ooit uit-dienst gezet (vangnet als rotatie-sync status overschreef). */
+export function isFormerCrewMember(member: any): boolean {
+  if (!member) return false
+  if (hasOutOfServiceStatus(member)) return true
+  return !!parseCrewDate(member?.out_of_service_date)
+}
+
+/** Niet tonen in wervings-/indelingpool (nog in te delen, dashboard, print). */
+export function isExcludedFromAssignmentPool(member: any): boolean {
+  if (!member) return true
+  if (member.is_dummy === true) return true
+  if (isFormerCrewMember(member)) return true
+  if (isCopiedCrewMember(member)) return true
+  // Alle aflossers (incl. vaste dienst) — die horen op /bemanning/aflossers, niet hier
+  if (isAflosserMember(member)) return true
+  if (member.is_uitzendbureau === true || member.is_zelfstandig === true) return true
+  return false
+}
+
 /**
  * Actieve vaste bemanning (+ aflossers in vaste dienst) voor dashboard-totaal en overzicht:
  * nooit uit-dienst, geen werving zonder contract, etc.

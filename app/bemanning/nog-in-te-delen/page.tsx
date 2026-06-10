@@ -19,6 +19,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { ContractDialog } from "@/components/crew/contract-dialog";
 import type { ContractData } from "@/utils/contract-generator";
 import { FileText, MessageSquare } from "lucide-react";
+import { isExcludedFromAssignmentPool } from "@/utils/crew-filters";
 
 /** Vaste id voor de opmerking uit deze pagina (dubbelklik); zichtbaar voor iedereen via Supabase active_notes. */
 const RECRUITMENT_QUICK_NOTE_ID = "recruitment-quick-note";
@@ -274,9 +275,7 @@ export default function NogInTeDelenPage() {
   // Filter bemanningsleden zonder schip (exclude aflossers, uit dienst en dummy's)
   const unassignedCrew = crew.filter((member: any) => 
     member.status === "nog-in-te-delen" && 
-    !member.is_aflosser &&
-    !member.is_dummy &&
-    member.status !== 'uit-dienst'
+    !isExcludedFromAssignmentPool(member)
   );
 
   // Helper functie om checklist status te checken
@@ -308,7 +307,6 @@ export default function NogInTeDelenPage() {
   ];
   const nogTeBenaderen = unassignedCrew.filter((m: any) => 
     contactStages.includes(m.sub_status) &&
-    m.status !== 'uit-dienst' &&
     m.recruitment_status !== "aangenomen" &&
     m.recruitment_status !== "geen-interesse" &&
     m.sub_status !== "later-terugkomen"
@@ -317,14 +315,13 @@ export default function NogInTeDelenPage() {
   // Later terugkomen: kandidaten die later terug kunnen komen
   const laterTerugkomen = unassignedCrew.filter((m: any) => 
     m.sub_status === "later-terugkomen" &&
-    m.status !== 'uit-dienst' &&
     m.recruitment_status !== "aangenomen" &&
     m.recruitment_status !== "geen-interesse"
   );
   
   // Nog Af Te Ronden: alleen mensen MET schip EN incomplete checklist
   const nogAfTeRonden = crew.filter((member: any) => {
-    if (member.is_aflosser || member.status === 'uit-dienst' || member.is_dummy) {
+    if (isExcludedFromAssignmentPool(member)) {
       return false;
     }
     
@@ -394,7 +391,7 @@ export default function NogInTeDelenPage() {
   // Nog In Te Delen: aangenomen, ZONDER schip (ongeacht checklist status)
   // Dit bevat zowel mensen met complete als incomplete checklist
   const nogInTeDelen = crew.filter((member: any) => {
-    if (member.is_aflosser || member.status === 'uit-dienst' || member.is_dummy) return false;
+    if (isExcludedFromAssignmentPool(member)) return false;
     if (member.recruitment_status !== 'aangenomen') return false;
     
     // Moet GEEN schip hebben

@@ -10,6 +10,7 @@ import {
   isLocalDateOnOrBeforeToday,
   parseLocalDate,
 } from '@/utils/regime-calculator'
+import { hasOutOfServiceStatus, parseCrewDate } from '@/utils/crew-filters'
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
 export function calculateWorkDaysVasteDienst(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -110,6 +111,7 @@ async function autoActivateCrewMembers(crewData: any[]): Promise<any[]> {
   let updatedCrew = [...crewData]
 
   for (const member of crewData) {
+    if (hasOutOfServiceStatus(member)) continue
     if (
       (member.status === 'thuis' || member.status === 'nog-in-te-delen') &&
       member.expected_start_date &&
@@ -144,11 +146,38 @@ async function autoActivateCrewMembers(crewData: any[]): Promise<any[]> {
   return updatedCrew
 }
 
+// Herstel uit-dienst status als rotatie-sync die per ongeluk overschreef.
+async function autoRepairFormerCrewStatus(crewData: any[]): Promise<any[]> {
+  let updatedCrew = [...crewData]
+
+  for (const member of crewData) {
+    if (hasOutOfServiceStatus(member)) continue
+    if (!parseCrewDate(member?.out_of_service_date)) continue
+
+    const repair = { status: 'uit-dienst', ship_id: null as string | null }
+    try {
+      const { error } = await supabase.from('crew').update(repair).eq('id', member.id)
+      if (error) {
+        console.error(`Error repairing former crew status for ${member.first_name} ${member.last_name}:`, error)
+      } else {
+        updatedCrew = updatedCrew.map((row) =>
+          row.id === member.id ? { ...row, ...repair } : row,
+        )
+      }
+    } catch (err) {
+      console.error('Error in former crew status repair:', err)
+    }
+  }
+
+  return updatedCrew
+}
+
 // Synchroniseer rotatievelden met dezelfde logica als het schepen-overzicht.
 async function autoRotateCrewMembers(crewData: any[]): Promise<any[]> {
   let updatedCrew = [...crewData]
 
   for (const member of crewData) {
+    if (hasOutOfServiceStatus(member)) continue
     const sync = getRotationSyncUpdate(member)
     if (!sync) continue
 
@@ -938,6 +967,7 @@ export function useSupabaseData() {
         console.log('Crew loaded:', crewData?.length || 0)
         
         let syncedCrew = crewData || []
+        syncedCrew = await autoRepairFormerCrewStatus(syncedCrew)
         syncedCrew = await autoActivateCrewMembers(syncedCrew)
         syncedCrew = await autoRotateCrewMembers(syncedCrew)
         setCrew(syncedCrew)

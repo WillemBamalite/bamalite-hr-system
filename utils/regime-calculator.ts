@@ -1,3 +1,5 @@
+import { hasOutOfServiceStatus } from "@/utils/crew-filters"
+
 // Automatische regime berekeningen
 export interface RegimeCalculation {
   currentStatus: "aan-boord" | "thuis" | "ziek" | "beschikbaar"
@@ -182,7 +184,13 @@ export function getRotationSyncUpdate(member: {
   thuis_sinds?: string | null
   expected_start_date?: string | null
 }): RotationSyncUpdate | null {
-  if (!member.regime || member.regime === "Altijd" || member.status === "ziek") {
+  if (
+    !member.regime ||
+    member.regime === "Altijd" ||
+    member.status === "ziek" ||
+    member.status === "nog-in-te-delen" ||
+    hasOutOfServiceStatus(member)
+  ) {
     return null
   }
 

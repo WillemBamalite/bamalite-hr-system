@@ -22,6 +22,7 @@ import {
   MapPin
 } from "lucide-react";
 import { format } from "date-fns";
+import { isExcludedFromAssignmentPool } from "@/utils/crew-filters";
 
 export default function PrintPage() {
   const { crew, ships, sickLeave, loans } = useSupabaseData();
@@ -442,12 +443,11 @@ export default function PrintPage() {
     // Filter and categorize exactly like nog-in-te-delen/page.tsx
     const unassignedCrew = crew.filter((member: any) => 
       member.status === "nog-in-te-delen" && 
-      !member.is_aflosser &&
-      member.status !== 'uit-dienst'
+      !isExcludedFromAssignmentPool(member)
     );
 
     const allCrewWithIncompleteChecklist = crew.filter((member: any) => {
-      if (member.is_aflosser || member.status === 'uit-dienst') {
+      if (isExcludedFromAssignmentPool(member)) {
         return false;
       }
       if (member.recruitment_status !== "aangenomen") {
@@ -466,14 +466,13 @@ export default function PrintPage() {
 
     const nogTeBenaderen = unassignedCrew.filter((m: any) => 
       (!m.sub_status || m.sub_status === "nog-te-benaderen") &&
-      m.status !== 'uit-dienst' &&
       m.recruitment_status !== "aangenomen"
     );
 
     const nogAfTeRonden = allCrewWithIncompleteChecklist;
 
     const nogInTeDelen = crew.filter((member: any) => {
-      if (member.is_aflosser || member.status === 'uit-dienst') return false;
+      if (isExcludedFromAssignmentPool(member)) return false;
       if (member.recruitment_status !== 'aangenomen') return false;
       const hasShip = member.ship_id && member.ship_id !== 'none' && member.ship_id !== '';
       if (hasShip) return false;
