@@ -345,6 +345,98 @@ export async function sendViaGmail(params: EmailParams): Promise<EmailResult> {
   }
 }
 
+function hasGmailCredentials(): boolean {
+  const user = String(process.env.GMAIL_USER || "").trim()
+  const pass = String(process.env.GMAIL_APP_PASSWORD || "").trim()
+  if (!user || !pass) return false
+  if (pass.toLowerCase().includes("paste_your")) return false
+  return pass.length >= 8
+}
+
+function isResendDomainError(error: unknown): boolean {
+  const msg = String(
+    typeof error === "object" && error && "message" in error
+      ? (error as { message?: string }).message
+      : error
+  ).toLowerCase()
+  return msg.includes("domain") && msg.includes("verified")
+}
+
+/** Taaknotificatie: Gmail (voorkeur) met Resend als fallback. */
+export async function sendTaskNotificationEmail(
+  params: EmailParams
+): Promise<EmailResult & { provider?: string; hint?: string }> {
+  const preferGmail = process.env.USE_GMAIL_EMAIL === "true"
+  const pass = String(process.env.GMAIL_APP_PASSWORD || "").trim()
+
+  if (preferGmail && pass.toLowerCase().includes("paste_your")) {
+    return {
+      success: false,
+      error: "Gmail niet geconfigureerd",
+      message:
+        "GMAIL_APP_PASSWORD in .env.local is nog een placeholder. Vervang deze door een echt Google App Password voor bamalite.hr@gmail.com en herstart npm run dev.",
+      hint: "Google Account → Beveiliging → App-wachtwoorden",
+    }
+  }
+
+  if (preferGmail && hasGmailCredentials()) {
+    const gmailResult = await sendViaGmail(params)
+    if (gmailResult.success) {
+      return { ...gmailResult, provider: "gmail" }
+    }
+    console.warn("📧 Gmail mislukt, probeer Resend:", gmailResult.message || gmailResult.error)
+  }
+
+  const resendApiKey = process.env.RESEND_API_KEY
+  if (resendApiKey) {
+    const resendClient = new Resend(resendApiKey)
+    const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || "onboarding@resend.dev"
+    const resendResult = await sendViaResend(params, resendClient, fromEmail)
+    if (resendResult.success) {
+      return { ...resendResult, provider: "resend" }
+    }
+
+    const domainError = resendResult.results?.some((r) => isResendDomainError(r.error))
+    let hint =
+      "Controleer GMAIL_APP_PASSWORD in .env.local of verifieer je domein in Resend."
+    if (domainError) {
+      hint =
+        "Resend-domein (auth@bamalite-login.com) is niet geverifieerd. Vul een geldig GMAIL_APP_PASSWORD in .env.local zodat Gmail wordt gebruikt."
+    }
+    if (preferGmail && !hasGmailCredentials()) {
+      hint =
+        "USE_GMAIL_EMAIL=true maar GMAIL_APP_PASSWORD ontbreekt of is ongeldig. Vul een Google App Password in voor bamalite.hr@gmail.com."
+    }
+
+    return {
+      ...resendResult,
+      provider: "resend",
+      hint,
+      message:
+        resendResult.message ||
+        (domainError
+          ? "E-mail kon niet via Resend (domein niet geverifieerd)."
+          : "Geen e-mails konden worden verstuurd."),
+    }
+  }
+
+  if (preferGmail && !hasGmailCredentials()) {
+    return {
+      success: false,
+      error: "Gmail niet geconfigureerd",
+      message:
+        "Gmail staat aan maar GMAIL_USER/GMAIL_APP_PASSWORD zijn niet correct ingesteld in .env.local.",
+      hint: "Maak een Google App Password aan voor bamalite.hr@gmail.com.",
+    }
+  }
+
+  return {
+    success: false,
+    error: "E-mail service niet geconfigureerd",
+    message: "Geen werkende e-mailprovider gevonden (Gmail of Resend).",
+  }
+}
+
 // Resend functie (voor referentie - blijft intact)
 export async function sendViaResend(params: EmailParams, resend: Resend, fromEmail: string): Promise<EmailResult> {
   const { recipientEmails, title } = params

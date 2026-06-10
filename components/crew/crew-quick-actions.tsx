@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, UserPlus, Ship, Newspaper } from "lucide-react"
+import { Plus, UserPlus, Ship, Newspaper, ListTodo } from "lucide-react"
 import Link from "next/link"
 import { crewDatabase, sickLeaveDatabase, sickLeaveHistoryDatabase } from "@/data/crew-database"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -37,6 +37,14 @@ export function CrewQuickActions() {
       icon: Newspaper,
       href: "/nieuwsbrief/maandelijks",
       color: "bg-blue-500 hover:bg-blue-600",
+      textColor: "text-white",
+    },
+    {
+      title: "Mijn taken",
+      description: "Openstaande en voltooide taken",
+      icon: ListTodo,
+      href: "/taken",
+      color: "bg-amber-500 hover:bg-amber-600",
       textColor: "text-white",
     },
     // Ziekmeldingen verwijderd: staat als kaart bovenaan

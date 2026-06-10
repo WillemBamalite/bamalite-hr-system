@@ -20,7 +20,7 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({}: DashboardHeaderProps = {}) {
-  const { user, role, signOut } = useAuth()
+  const { user, role, signOut, canAccessPath } = useAuth()
   const { locale, t } = useLanguage()
   const pathname = usePathname()
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -84,6 +84,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
     newTask: locale === "de" ? "Neue Aufgabe" : locale === "fr" ? "Nouvelle tâche" : "Nieuwe taak",
     print: locale === "de" ? "Drucken" : locale === "fr" ? "Imprimer" : "Print",
     statusUpdates: locale === "de" ? "Statusupdates" : locale === "fr" ? "Mises à jour" : "Statusupdates",
+    myTasks: locale === "de" ? "Meine Aufgaben" : locale === "fr" ? "Mes tâches" : "Mijn taken",
   }
 
   const userEmailLower = String(user?.email || "").toLowerCase()
@@ -247,6 +248,14 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
                   {uiText.newTask}
                 </Button>
               </Link>}
+              {role !== "admin_full" && canAccessPath("/taken") && (
+                <Link href="/taken">
+                  <Button variant="default" size="sm" className="flex items-center gap-2">
+                    <ListTodo className="w-4 h-4" />
+                    {uiText.myTasks}
+                  </Button>
+                </Link>
+              )}
               <Button
                 variant="outline"
                 size="sm"

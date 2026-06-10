@@ -13,6 +13,7 @@ import { BackButton } from "@/components/ui/back-button"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 import { usePathname } from "next/navigation"
+import { CrewOverviewExportButton } from "@/components/crew/crew-overview-export-dialog"
 
 const RANK_ORDER = [
   "Kapitein",
@@ -157,7 +158,8 @@ export default function CrewOverviewPage() {
           <BackButton href="/" />
           <h1 className="text-3xl font-bold text-gray-900">{t('crew')} {t('overview')}</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 justify-end">
+          <CrewOverviewExportButton crew={crew} ships={ships} />
           <Link href="/bemanning/dienstjubilea">
             <Button variant="outline">
               <span className="mr-2">⭐</span>

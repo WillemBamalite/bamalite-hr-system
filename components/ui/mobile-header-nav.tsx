@@ -21,6 +21,7 @@ export function MobileHeaderNav() {
     { href: "/bemanning/leningen", label: t('loans'), icon: "💰" },
     { href: "/documenten", label: t('documents'), icon: "📄" },
     { href: "/ziekte", label: t('sick'), icon: "🏥" },
+    { href: "/taken", label: "Taken", icon: "✅" },
   ];
   const visibleItems = navItems.filter((item) => canAccessPath(item.href));
 

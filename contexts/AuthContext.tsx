@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { canAccessTasksPage } from '@/utils/task-permissions'
 
 interface AuthContextType {
   user: User | null
@@ -101,6 +102,9 @@ function canAccessPathForRole(
     if (normalized === "/" || normalized === "/schepen/overzicht" || normalized === "/nieuwsbrief/maandelijks") {
       return true
     }
+    if (canAccessTasksPage(email) && (normalized === "/taken" || normalized.startsWith("/taken/"))) {
+      return true
+    }
     return false
   }
   if (emailLower === "lucie@bamalite.com") {
@@ -126,6 +130,9 @@ function canAccessPathForRole(
     }
   }
   if (LIMITED_ALLOWED_EXACT.has(normalized)) return true
+  if (canAccessTasksPage(email) && (normalized === "/taken" || normalized.startsWith("/taken/"))) {
+    return true
+  }
   // Allow crew profile pages like /bemanning/<id>, but keep blocked section pages closed.
   const bemanningMatch = normalized.match(/^\/bemanning\/([^/]+)$/)
   if (bemanningMatch) {

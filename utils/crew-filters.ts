@@ -115,11 +115,20 @@ export function isInRecruitmentPipeline(member: any): boolean {
   return false
 }
 
+export function hasOutOfServiceStatus(member: any): boolean {
+  const status = String(member?.status || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+  return status === "uit-dienst"
+}
+
 /**
  * Actieve vaste bemanning (+ aflossers in vaste dienst) voor dashboard-totaal en overzicht:
- * geen uit-dienst (tenzij uit-dienstdatum nog in de toekomst), geen werving zonder contract, etc.
+ * nooit uit-dienst, geen werving zonder contract, etc.
  */
 export function countsAsTotalCrewMember(member: any, asOf?: Date): boolean {
+  if (hasOutOfServiceStatus(member)) return false
   if (!isRealCrewMember(member, asOf)) return false
   if (isExcludedReliefCrew(member)) return false
   if (!isVasteAflosser(member) && isInRecruitmentPipeline(member)) return false

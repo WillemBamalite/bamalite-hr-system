@@ -25,6 +25,8 @@ function getRecipients(voorWie?: string | null): string[] {
     willem: 'willem@bamalite.com',
     jos: 'jos@bamalite.com',
     bart: 'bart@bamalite.com',
+    dunja: 'dunja@bamalite.com',
+    karina: 'karina@bamalite.com',
   }
 
   if (key === 'algemeen') {

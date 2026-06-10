@@ -19,6 +19,7 @@ import { useState, useEffect, useMemo } from "react"
 import { format, isToday, isPast, startOfDay } from "date-fns"
 import Link from "next/link"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
+import { isTaskOfficeUser } from "@/utils/task-permissions"
 
 type SailingRegime = "A1" | "A2" | "B"
 type CanonicalRole =
@@ -560,18 +561,19 @@ function DashboardContent() {
     );
   }
 
-  const isNewsletterReadonlyUser = String(user?.email || "").toLowerCase() === "dunja@bamalite.com"
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const isNewsletterReadonlyUser = userEmailLower === "dunja@bamalite.com"
+  const showQuickActions =
+    role === "admin_full" || (isTaskOfficeUser(userEmailLower) && !isNewsletterReadonlyUser)
 
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full py-8 px-4">
         {/* Single column flow: stats → quick actions → ships */}
         <div className="grid grid-cols-1 gap-6">
-          {/* Stats (verbergen voor nieuwsbrief-readonly gebruiker) */}
-          {!isNewsletterReadonlyUser && <DashboardStats />}
+          <DashboardStats />
 
-          {/* Snelle acties: full admins + nieuwsbrief-readonly gebruiker */}
-          {(role === "admin_full" || isNewsletterReadonlyUser) && <CrewQuickActions />}
+          {showQuickActions && <CrewQuickActions />}
 
           {/* Uitgelicht: schepen met toekomstig tekort (alleen full admins) */}
           {role === "admin_full" && <div>

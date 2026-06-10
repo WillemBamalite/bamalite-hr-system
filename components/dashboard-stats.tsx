@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, Bell, ScrollText, UserCheck } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, Bell, ScrollText, UserCheck, Newspaper } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -12,6 +12,11 @@ import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { countsAsTotalCrewMember } from "@/utils/crew-filters"
+import {
+  filterReceivedTasksForOfficeViewer,
+  filterTasksForViewer,
+  isTaskOfficeUser,
+} from "@/utils/task-permissions"
 
 export function DashboardStats() {
   const { crew, ships, sickLeave, loans, tasks, trips, incidents } = useSupabaseData()
@@ -49,8 +54,15 @@ export function DashboardStats() {
     }
   }, [crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays])
   
-  // Count open tasks from Supabase
-  const tasksCount = tasks.filter((t: any) => !t.completed).length
+  const viewerEmailLower = String(user?.email || "").toLowerCase()
+  const isNewsletterReadonlyUser = viewerEmailLower === "dunja@bamalite.com"
+  const visibleTasks = isTaskOfficeUser(viewerEmailLower)
+    ? filterTasksForViewer(tasks, viewerEmailLower)
+    : tasks
+  const tasksForCount = isTaskOfficeUser(viewerEmailLower)
+    ? filterReceivedTasksForOfficeViewer(visibleTasks, viewerEmailLower)
+    : visibleTasks
+  const tasksCount = tasksForCount.filter((t: any) => !t.completed && t.status !== "completed").length
   
   // Count open incidents
   const openIncidentsCount = incidents.filter((i: any) => i.status === 'open' || i.status === 'in_behandeling').length
@@ -86,7 +98,7 @@ export function DashboardStats() {
   const activeCrew = crew.filter((c) => c.status !== 'uit-dienst' && !c.is_dummy)
   
   const stats = {
-    // Totaal bemanningsleden (incl. uit-dienst met toekomstige einddatum)
+    // Totaal actieve bemanningsleden (geen uit-dienst)
     totalCrew: crew.filter((c) => !c.is_dummy && countsAsTotalCrewMember(c)).length,
     reizenStats: {
       gepland: trips.filter((trip: any) => trip.status === 'gepland').length,
@@ -336,6 +348,42 @@ export function DashboardStats() {
     })(),
   }
 
+  if (isNewsletterReadonlyUser) {
+    return (
+      <div className="space-y-4 mb-6">
+        <div className="grid grid-cols-4 md:grid-cols-6 gap-2 md:gap-4 dashboard-tiles">
+          {canAccessPath("/taken") && (
+            <div className="aspect-[3/1]">
+              <Link
+                href="/taken"
+                className="h-full flex flex-col items-center justify-center bg-amber-50 border border-amber-200 rounded-lg p-2 md:p-4 text-center hover:bg-amber-100 transition cursor-pointer"
+              >
+                <div className="text-xl md:text-2xl font-extrabold text-amber-800">{tasksCount}</div>
+                <div className="text-xl md:text-2xl font-semibold text-amber-800 mt-1 flex items-center justify-center gap-1">
+                  <ListTodo className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  <span>Taken</span>
+                </div>
+              </Link>
+            </div>
+          )}
+          {canAccessPath("/nieuwsbrief/maandelijks") && (
+            <div className="aspect-[3/1]">
+              <Link
+                href="/nieuwsbrief/maandelijks"
+                className="h-full flex flex-col items-center justify-center bg-violet-50 border border-violet-200 rounded-lg p-2 md:p-4 text-center hover:bg-violet-100 transition cursor-pointer"
+              >
+                <div className="text-xl md:text-2xl font-semibold text-violet-800 flex items-center justify-center gap-1 text-center leading-tight">
+                  <Newspaper className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />
+                  <span>Maandelijkse nieuwsbrief</span>
+                </div>
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 mb-6">
       <div className="grid grid-cols-4 md:grid-cols-6 gap-2 md:gap-4 dashboard-tiles">
@@ -539,6 +587,21 @@ export function DashboardStats() {
             </div>
           </Link>
         </div>}
+
+        {/* Maandelijkse nieuwsbrief */}
+        {canAccessPath("/nieuwsbrief/maandelijks") && !isNewsletterReadonlyUser && (
+          <div className="aspect-[3/1]">
+            <Link
+              href="/nieuwsbrief/maandelijks"
+              className="h-full flex flex-col items-center justify-center bg-violet-50 border border-violet-200 rounded-lg p-2 md:p-4 text-center hover:bg-violet-100 transition cursor-pointer"
+            >
+              <div className="text-xl md:text-2xl font-semibold text-violet-800 mt-1 flex items-center justify-center gap-1 text-center leading-tight">
+                <Newspaper className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />
+                <span>Maandelijkse nieuwsbrief</span>
+              </div>
+            </Link>
+          </div>
+        )}
 
         {/* 15. Schepen en certificaten */}
         {canAccessPath("/schepen/certificaten") && <div className="aspect-[3/1]">

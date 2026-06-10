@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +22,22 @@ import { supabase } from "@/lib/supabase"
 import { isRealCrewMember } from "@/utils/crew-filters"
 import { parseFlexibleDate } from "@/utils/dashboard-notifications"
 import { buildNextStatusReads, taskHasUnreadStatusFromOthers } from "@/utils/task-status-unread"
+import {
+  canAssignTaskTo,
+  canManageTask,
+  canViewTask,
+  filterDelegatedTasksForOfficeViewer,
+  filterReceivedTasksForOfficeViewer,
+  filterTasksForViewer,
+  getCreatableAssignees,
+  getTaskAssigneeForEmail,
+  getVisibleAssigneeTabs,
+  isTaskDelegatedByViewer,
+  isTaskManagementUser,
+  isTaskOfficeUser,
+  resolveAssigneeFromEmail,
+  type TaskAssignee,
+} from "@/utils/task-permissions"
 
 export function TasksPanel() {
   const searchParams = useSearchParams()
@@ -31,6 +47,30 @@ export function TasksPanel() {
   const { tasks, crew, ships, loading, addTask, updateTask, deleteTask, completeTask } = useSupabaseData()
   const { user } = useAuth()
   const viewerEmailLower = (user?.email || "").trim().toLowerCase()
+  const isTaskManager = isTaskManagementUser(viewerEmailLower)
+  const isTaskOffice = isTaskOfficeUser(viewerEmailLower)
+  const officeAssignee = getTaskAssigneeForEmail(viewerEmailLower)
+  const visibleAssigneeTabs = getVisibleAssigneeTabs(viewerEmailLower)
+  const creatableAssignees = getCreatableAssignees(viewerEmailLower)
+  const defaultAssignee: TaskAssignee = officeAssignee || "Nautic"
+  const visibleTasks = useMemo(
+    () => filterTasksForViewer(tasks, viewerEmailLower),
+    [tasks, viewerEmailLower]
+  )
+  const officeReceivedTasks = useMemo(
+    () => (isTaskOffice ? filterReceivedTasksForOfficeViewer(visibleTasks, viewerEmailLower) : []),
+    [visibleTasks, viewerEmailLower, isTaskOffice]
+  )
+  const officeDelegatedTasks = useMemo(
+    () => (isTaskOffice ? filterDelegatedTasksForOfficeViewer(visibleTasks, viewerEmailLower) : []),
+    [visibleTasks, viewerEmailLower, isTaskOffice]
+  )
+  const [officeTaskView, setOfficeTaskView] = useState<"received" | "delegated">("received")
+  const scopeTasks = isTaskOffice
+    ? officeTaskView === "received"
+      ? officeReceivedTasks
+      : officeDelegatedTasks
+    : visibleTasks
   const [showDialog, setShowDialog] = useState(false)
   const [filter, setFilter] = useState<"open" | "completed">("open")
   const [pendingScrollTaskId, setPendingScrollTaskId] = useState<string | null>(null)
@@ -41,9 +81,9 @@ export function TasksPanel() {
 
   // Scroll terug naar taak na wijziging (loadData herrendert de lijst)
   useEffect(() => {
-    if (!pendingScrollTaskId || tasks.length === 0) return
+    if (!pendingScrollTaskId || visibleTasks.length === 0) return
 
-    const task = tasks.find((t: any) => t.id === pendingScrollTaskId)
+    const task = visibleTasks.find((t: any) => t.id === pendingScrollTaskId)
     if (!task) {
       setPendingScrollTaskId(null)
       return
@@ -64,18 +104,24 @@ export function TasksPanel() {
     }, 100)
 
     return () => clearTimeout(timer)
-  }, [pendingScrollTaskId, tasks, filter])
+  }, [pendingScrollTaskId, visibleTasks, filter])
 
   // Scroll naar gehighlighte taak wanneer deze beschikbaar is en selecteer juiste assignee
   useEffect(() => {
-    if (highlightedTaskId && tasks.length > 0) {
+    if (highlightedTaskId && visibleTasks.length > 0) {
       // Vind de taak en selecteer de juiste assignee
-      const task = tasks.find((t: any) => t.id === highlightedTaskId)
-      if (task) {
+      const task = visibleTasks.find((t: any) => t.id === highlightedTaskId)
+      if (task && canViewTask(viewerEmailLower, task)) {
+        if (isTaskOffice && isTaskDelegatedByViewer(viewerEmailLower, task)) {
+          setOfficeTaskView("delegated")
+        } else if (isTaskOffice) {
+          setOfficeTaskView("received")
+        }
+
         // Bepaal de assignee op basis van assigned_to of taken_by
-        let assignee: (typeof assignees)[number] = "Nautic"
+        let assignee: TaskAssignee = "Nautic"
         if (task.assigned_to) {
-          assignee = task.assigned_to as (typeof assignees)[number]
+          assignee = task.assigned_to as TaskAssignee
         } else if (task.taken_by) {
           const resolved = resolveAssigneeFromEmail(task.taken_by)
           if (resolved) assignee = resolved
@@ -98,7 +144,7 @@ export function TasksPanel() {
         }, 500)
       }
     }
-  }, [highlightedTaskId, tasks])
+  }, [highlightedTaskId, visibleTasks, viewerEmailLower, isTaskOffice])
 
   // Open direct de "Nieuwe taak" dialoog als ?newTask=1 in de URL staat
   useEffect(() => {
@@ -116,7 +162,7 @@ export function TasksPanel() {
   const [selectedCrewId, setSelectedCrewId] = useState<string>("")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [assignedTo, setAssignedTo] = useState<"Nautic" | "Leo" | "Jos" | "Willem" | "Bart">("Nautic")
+  const [assignedTo, setAssignedTo] = useState<TaskAssignee>(defaultAssignee)
   const [priority, setPriority] = useState<"laag" | "normaal" | "hoog" | "urgent">("normaal")
   const [deadline, setDeadline] = useState("")
   const [addToAgenda, setAddToAgenda] = useState(false)
@@ -124,26 +170,13 @@ export function TasksPanel() {
   const [isEditing, setIsEditing] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string>("")
   const [statusUpdates, setStatusUpdates] = useState<Record<string, string>>({})
-  const assignees = ["Nautic", "Leo", "Willem", "Jos", "Bart"] as const
-  const [selectedAssignee, setSelectedAssignee] = useState<(typeof assignees)[number]>("Nautic")
+  const [selectedAssignee, setSelectedAssignee] = useState<TaskAssignee>(defaultAssignee)
 
   // Bijlagen bij taken
   const [taskAttachments, setTaskAttachments] = useState<any[]>([])
   const [loadingTaskAttachments, setLoadingTaskAttachments] = useState(false)
   const [uploadingAttachmentForTask, setUploadingAttachmentForTask] = useState<string | null>(null)
   const [newTaskAttachmentFile, setNewTaskAttachmentFile] = useState<File | null>(null)
-
-  // Hulp: bepaal assignee naam op basis van e-mail
-  const resolveAssigneeFromEmail = (email: string | null | undefined): (typeof assignees)[number] | null => {
-    if (!email) return null
-    const lower = email.toLowerCase()
-    if (lower.includes("nautic")) return "Nautic"
-    if (lower.includes("leo")) return "Leo"
-    if (lower.includes("willem")) return "Willem"
-    if (lower.includes("jos")) return "Jos"
-    if (lower.includes("bart")) return "Bart"
-    return null
-  }
 
   // Helper: verberg bepaalde automatische onboarding-taken tot de dag dat ze "actief" worden
   const isFutureAutoOnboardingTask = (task: any): boolean => {
@@ -330,7 +363,7 @@ export function TasksPanel() {
 
   // Filter tasks - standaard alleen openstaande taken (niet voltooid)
   // Open tasks include both 'open' and 'in_progress' status
-  const openTasks = tasks.filter(
+  const openTasks = scopeTasks.filter(
     (t: any) =>
       !t.completed &&
       t.status !== "completed" &&
@@ -340,13 +373,19 @@ export function TasksPanel() {
     statusUnreadOnly && viewerEmailLower
       ? openTasks.filter((t: any) => taskHasUnreadStatusFromOthers(t, viewerEmailLower))
       : openTasks
-  const completedTasks = tasks.filter((t: any) => t.completed || t.status === 'completed')
+  const completedTasks = scopeTasks.filter((t: any) => t.completed || t.status === 'completed')
+  const officeReceivedOpenCount = officeReceivedTasks.filter(
+    (t: any) => !t.completed && t.status !== "completed" && !isFutureAutoOnboardingTask(t)
+  ).length
+  const officeDelegatedOpenCount = officeDelegatedTasks.filter(
+    (t: any) => !t.completed && t.status !== "completed" && !isFutureAutoOnboardingTask(t)
+  ).length
   const filteredTasks = filter === "open" ? openTasksVisible : completedTasks
 
   // Sync lokale status-updates met bestaande data (pak laatste entry uit status_updates)
   useEffect(() => {
     const initial: Record<string, string> = {}
-    tasks.forEach((t: any) => {
+    visibleTasks.forEach((t: any) => {
       const history = Array.isArray(t.status_updates) ? t.status_updates : []
       const latest = history.length ? history[history.length - 1] : null
       if (latest?.text) {
@@ -356,7 +395,7 @@ export function TasksPanel() {
       }
     })
     setStatusUpdates(initial)
-  }, [tasks])
+  }, [visibleTasks])
 
   // Helper to check if task belongs to person (either assigned_to or taken_by)
   const taskBelongsToPerson = (task: any, person: string): boolean => {
@@ -374,13 +413,17 @@ export function TasksPanel() {
   }
 
   // Group tasks by assigned person (includes tasks taken by that person)
-  const tasksByPerson = {
-    Nautic: filteredTasks.filter((t: any) => t.assigned_to === "Nautic"),
-    Leo: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Leo")),
-    Willem: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Willem")),
-    Jos: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Jos")),
-    Bart: filteredTasks.filter((t: any) => taskBelongsToPerson(t, "Bart"))
-  }
+  const tasksByPerson = useMemo(() => {
+    const grouped: Partial<Record<TaskAssignee, any[]>> = {}
+    for (const person of visibleAssigneeTabs) {
+      if (person === "Nautic") {
+        grouped[person] = filteredTasks.filter((t: any) => t.assigned_to === "Nautic")
+      } else {
+        grouped[person] = filteredTasks.filter((t: any) => taskBelongsToPerson(t, person))
+      }
+    }
+    return grouped as Record<TaskAssignee, any[]>
+  }, [filteredTasks, visibleAssigneeTabs])
 
   const resetForm = () => {
     setSelectedTaskType("")
@@ -388,7 +431,7 @@ export function TasksPanel() {
     setSelectedCrewId("")
     setTitle("")
     setDescription("")
-    setAssignedTo("Nautic")
+    setAssignedTo(defaultAssignee)
     setPriority("normaal")
     setDeadline("")
     setAddToAgenda(false)
@@ -415,6 +458,11 @@ export function TasksPanel() {
 
     if (selectedTaskType === "crew" && !selectedCrewId) {
       alert("Selecteer een bemanningslid")
+      return
+    }
+
+    if (!canAssignTaskTo(viewerEmailLower, assignedTo)) {
+      alert("Je mag geen taken toewijzen aan deze persoon.")
       return
     }
 
@@ -494,7 +542,7 @@ export function TasksPanel() {
             : null
 
           const emailPayload = {
-            assignedTo,
+            assignedTo: assignedTo,
             title: taskData.title,
             description: taskData.description || '',
             priority: taskData.priority,
@@ -524,12 +572,10 @@ export function TasksPanel() {
             try {
               const emailResult = await emailResponse.json()
               const errorMsg = emailResult.message || emailResult.error || 'Onbekende fout'
-              console.error('❌ E-mail niet verstuurd:', errorMsg)
-              console.error('❌ Response status:', emailResponse.status)
-              console.error('❌ Full response:', JSON.stringify(emailResult, null, 2))
+              const hint = emailResult.hint ? `\n\n${emailResult.hint}` : ''
+              console.warn('E-mail niet verstuurd:', errorMsg, emailResult)
               
-              // Toon foutmelding aan gebruiker (optioneel - niet blokkerend)
-              alert(`⚠️ Taak aangemaakt, maar e-mail kon niet worden verstuurd: ${errorMsg}`)
+              alert(`Taak is opgeslagen, maar de e-mailnotificatie is niet verstuurd.\n\n${errorMsg}${hint}`)
             } catch (parseError) {
               const text = await emailResponse.text()
               console.error('❌ E-mail niet verstuurd (status:', emailResponse.status, ')')
@@ -859,33 +905,69 @@ export function TasksPanel() {
         </div>
       )}
 
-      {/* Tabs per assignee */}
-      <div className="flex items-center gap-2 mb-4">
-        {assignees.map((person) => (
+      {/* Tabs per assignee (management) of vaste titel (kantoor) */}
+      {isTaskManager ? (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {visibleAssigneeTabs.map((person) => (
+            <button
+              key={person}
+              onClick={() => setSelectedAssignee(person)}
+              className={`px-4 py-2 rounded border text-sm font-medium flex items-center gap-2 ${
+                selectedAssignee === person
+                  ? "bg-white border-gray-300 text-gray-900 shadow-sm"
+                  : "bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {person === "Nautic" ? <ListTodo className="w-4 h-4" /> : <User className="w-4 h-4" />}
+              <span>
+                {person} ({(tasksByPerson[person] || []).filter((t: any) => !t.completed).length})
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : isTaskOffice ? (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           <button
-            key={person}
-            onClick={() => setSelectedAssignee(person)}
+            type="button"
+            onClick={() => setOfficeTaskView("received")}
             className={`px-4 py-2 rounded border text-sm font-medium flex items-center gap-2 ${
-              selectedAssignee === person
+              officeTaskView === "received"
                 ? "bg-white border-gray-300 text-gray-900 shadow-sm"
                 : "bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-800"
             }`}
           >
-            {person === "Nautic" && <ListTodo className="w-4 h-4" />}
-            {person === "Leo" && <User className="w-4 h-4" />}
-            {person === "Willem" && <User className="w-4 h-4" />}
-            {person === "Jos" && <User className="w-4 h-4" />}
-            {person === "Bart" && <User className="w-4 h-4" />}
-            <span>{person} ({tasksByPerson[person].filter((t: any) => !t.completed).length})</span>
+            <User className="w-4 h-4" />
+            <span>Mijn taken ({officeReceivedOpenCount})</span>
           </button>
-        ))}
-      </div>
+          <button
+            type="button"
+            onClick={() => setOfficeTaskView("delegated")}
+            className={`px-4 py-2 rounded border text-sm font-medium flex items-center gap-2 ${
+              officeTaskView === "delegated"
+                ? "bg-white border-gray-300 text-gray-900 shadow-sm"
+                : "bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            <ListTodo className="w-4 h-4" />
+            <span>Toegewezen taken ({officeDelegatedOpenCount})</span>
+          </button>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <h2 className="text-xl font-bold">Mijn taken</h2>
+        </div>
+      )}
 
       {/* Taken lijst voor geselecteerde assignee (verdeeld in kolommen per type) */}
       {[selectedAssignee].map((person) => {
-        const personTasks = tasksByPerson[person]
+        const personTasks =
+          isTaskOffice && officeTaskView === "delegated"
+            ? filteredTasks
+            : tasksByPerson[person] || []
         const openCount = personTasks.filter((t: any) => !t.completed).length
         const completedCount = personTasks.filter((t: any) => t.completed).length
+        const listTitle =
+          isTaskOffice && officeTaskView === "delegated" ? "Toegewezen taken" : person
 
         // Verdeel taken per type
         const shipTasks = sortTasksByPriority(personTasks.filter((t: any) => t.task_type === "ship"))
@@ -896,7 +978,7 @@ export function TasksPanel() {
           <div key={`person-${person}`} className="space-y-4" id={`task-person-${person}`}>
             {/* Header met persoon naam en counts */}
             <div className="flex items-center justify-between pb-4">
-              <h2 className="text-xl font-bold">{person}</h2>
+              <h2 className="text-xl font-bold">{listTitle}</h2>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="text-sm">
                   {openCount} open
@@ -939,6 +1021,7 @@ export function TasksPanel() {
                         ? crew.find((c: any) => c.id === task.related_crew_id)
                         : null
                       const deadlineStatus = getDeadlineStatus(task.deadline)
+                      const canManage = canManageTask(viewerEmailLower, task)
 
                       const isHighlighted = highlightedTaskId === task.id
                       const statusUnreadRing =
@@ -974,8 +1057,13 @@ export function TasksPanel() {
 
                               <div className="space-y-2 text-sm">
                                 {/* Status Badge */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   {getStatusBadge(task.status, task.completed)}
+                                  {isTaskOffice && officeTaskView === "delegated" && task.assigned_to && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Toegewezen aan {task.assigned_to}
+                                    </Badge>
+                                  )}
                                 </div>
 
                                 {/* Opgepakt door */}
@@ -1103,14 +1191,16 @@ export function TasksPanel() {
                                             >
                                               Openen
                                             </Button>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="text-red-600 hover:text-red-700 border-red-200"
-                                              onClick={() => handleDeleteTaskAttachment(att)}
-                                            >
-                                              <Trash2 className="w-3 h-3" />
-                                            </Button>
+                                            {canManage && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-red-600 hover:text-red-700 border-red-200"
+                                                onClick={() => handleDeleteTaskAttachment(att)}
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </Button>
+                                            )}
                                           </div>
                                         </div>
                                       ))}
@@ -1130,6 +1220,7 @@ export function TasksPanel() {
                                 )}
                               </div>
 
+                              {canManage ? (
                               <div className="flex flex-col gap-3 pt-3 border-t">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                   <div>{getPriorityBadge(task.priority)}</div>
@@ -1268,6 +1359,13 @@ export function TasksPanel() {
                                   </div>
                                 )}
                               </div>
+                              ) : (
+                                <div className="pt-3 border-t">
+                                  <p className="text-xs text-gray-500 italic">
+                                    Alleen inzage — toegewezen aan {task.assigned_to}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -1300,6 +1398,7 @@ export function TasksPanel() {
                         ? crew.find((c: any) => c.id === task.related_crew_id)
                         : null
                       const deadlineStatus = getDeadlineStatus(task.deadline)
+                      const canManage = canManageTask(viewerEmailLower, task)
 
                       const isHighlighted = highlightedTaskId === task.id
                       const statusUnreadRing =
@@ -1335,8 +1434,13 @@ export function TasksPanel() {
 
                               <div className="space-y-2 text-sm">
                                 {/* Status Badge */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   {getStatusBadge(task.status, task.completed)}
+                                  {isTaskOffice && officeTaskView === "delegated" && task.assigned_to && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Toegewezen aan {task.assigned_to}
+                                    </Badge>
+                                  )}
                                 </div>
 
                                 {/* Opgepakt door */}
@@ -1464,14 +1568,16 @@ export function TasksPanel() {
                                             >
                                               Openen
                                             </Button>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="text-red-600 hover:text-red-700 border-red-200"
-                                              onClick={() => handleDeleteTaskAttachment(att)}
-                                            >
-                                              <Trash2 className="w-3 h-3" />
-                                            </Button>
+                                            {canManage && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-red-600 hover:text-red-700 border-red-200"
+                                                onClick={() => handleDeleteTaskAttachment(att)}
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </Button>
+                                            )}
                                           </div>
                                         </div>
                                       ))}
@@ -1491,6 +1597,7 @@ export function TasksPanel() {
                                 )}
                               </div>
 
+                              {canManage ? (
                               <div className="flex flex-col gap-3 pt-3 border-t">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                   <div>{getPriorityBadge(task.priority)}</div>
@@ -1629,6 +1736,13 @@ export function TasksPanel() {
                                   </div>
                                 )}
                               </div>
+                              ) : (
+                                <div className="pt-3 border-t">
+                                  <p className="text-xs text-gray-500 italic">
+                                    Alleen inzage — toegewezen aan {task.assigned_to}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -1661,6 +1775,7 @@ export function TasksPanel() {
                         ? crew.find((c: any) => c.id === task.related_crew_id)
                         : null
                       const deadlineStatus = getDeadlineStatus(task.deadline)
+                      const canManage = canManageTask(viewerEmailLower, task)
 
                       const isHighlighted = highlightedTaskId === task.id
                       const statusUnreadRing =
@@ -1696,8 +1811,13 @@ export function TasksPanel() {
 
                               <div className="space-y-2 text-sm">
                                 {/* Status Badge */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   {getStatusBadge(task.status, task.completed)}
+                                  {isTaskOffice && officeTaskView === "delegated" && task.assigned_to && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Toegewezen aan {task.assigned_to}
+                                    </Badge>
+                                  )}
                                 </div>
 
                                 {/* Opgepakt door */}
@@ -1825,14 +1945,16 @@ export function TasksPanel() {
                                             >
                                               Openen
                                             </Button>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="text-red-600 hover:text-red-700 border-red-200"
-                                              onClick={() => handleDeleteTaskAttachment(att)}
-                                            >
-                                              <Trash2 className="w-3 h-3" />
-                                            </Button>
+                                            {canManage && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-red-600 hover:text-red-700 border-red-200"
+                                                onClick={() => handleDeleteTaskAttachment(att)}
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </Button>
+                                            )}
                                           </div>
                                         </div>
                                       ))}
@@ -1852,6 +1974,7 @@ export function TasksPanel() {
                                 )}
                               </div>
 
+                              {canManage ? (
                               <div className="flex flex-col gap-3 pt-3 border-t">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                   <div>{getPriorityBadge(task.priority)}</div>
@@ -1990,6 +2113,13 @@ export function TasksPanel() {
                                   </div>
                                 )}
                               </div>
+                              ) : (
+                                <div className="pt-3 border-t">
+                                  <p className="text-xs text-gray-500 italic">
+                                    Alleen inzage — toegewezen aan {task.assigned_to}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -2108,17 +2238,17 @@ export function TasksPanel() {
               <Label>Toegewezen aan *</Label>
               <Select
                 value={assignedTo}
-                onValueChange={(value: "Nautic" | "Leo" | "Jos" | "Willem" | "Bart") => setAssignedTo(value)}
+                onValueChange={(value: TaskAssignee) => setAssignedTo(value)}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Nautic">Nautic</SelectItem>
-                  <SelectItem value="Leo">Leo</SelectItem>
-                  <SelectItem value="Jos">Jos</SelectItem>
-                  <SelectItem value="Willem">Willem</SelectItem>
-                  <SelectItem value="Bart">Bart</SelectItem>
+                  {creatableAssignees.map((person) => (
+                    <SelectItem key={person} value={person}>
+                      {person}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
