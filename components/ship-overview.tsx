@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Ship, Users, CheckCircle, Clock, UserX, Trash2, GraduationCap, MessageSquare, X, Plus, AlertCircle } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { calculateCurrentStatus } from "@/utils/regime-calculator"
+import {
+  calculateCurrentStatus,
+  isLocalDateAfterToday,
+  parseLocalDate,
+} from "@/utils/regime-calculator"
 import {
   getActiveOverwerkTripOnShip,
   getActiveOverwerkTripAwayFromHomeShip,
@@ -15,6 +19,25 @@ import {
   shouldShowMemberOnShipOverview,
 } from "@/utils/overwerker-availability"
 import { format } from "date-fns"
+import { nl } from "date-fns/locale"
+
+function formatCrewDate(dateString: string) {
+  return format(parseLocalDate(dateString), "dd-MM-yyyy", { locale: nl })
+}
+
+function isExpectedStartInFuture(expectedStartDate?: string | null) {
+  return Boolean(expectedStartDate && isLocalDateAfterToday(expectedStartDate))
+}
+
+function getMemberRotationStatus(member: any) {
+  return calculateCurrentStatus(
+    member.regime as "1/1" | "2/2" | "3/3" | "Altijd",
+    member.thuis_sinds || null,
+    member.on_board_since || null,
+    member.status === "ziek",
+    member.expected_start_date || null,
+  )
+}
 import React, { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -587,31 +610,14 @@ export function ShipOverview() {
       "#E0E7FF", // indigo-100
       "#F3E8FF", // purple-100
     ]
-    const getNextRotation = () => {
-      // Als er een expected_start_date is, bereken dagen tot startdatum
-      if (member.expected_start_date) {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const startDate = new Date(member.expected_start_date)
-        startDate.setHours(0, 0, 0, 0)
-        const daysUntilStart = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-        return daysUntilStart
-      }
-      
-      if (!member.regime || member.regime === "Altijd") return null
-      const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
-      return statusCalculation.daysUntilRotation
-    }
-
-    const nextRotation = getNextRotation()
-    // isWaitingForStart = true alleen als expected_start_date in de toekomst is
-    const isWaitingForStart = member.expected_start_date ? (() => {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const startDate = new Date(member.expected_start_date)
-      startDate.setHours(0, 0, 0, 0)
-      return startDate > today
-    })() : false
+    const statusCalculation = getMemberRotationStatus(member)
+    const nextRotation =
+      member.expected_start_date && isExpectedStartInFuture(member.expected_start_date)
+        ? statusCalculation.daysUntilRotation
+        : !member.regime || member.regime === "Altijd"
+          ? null
+          : statusCalculation.daysUntilRotation
+    const isWaitingForStart = isExpectedStartInFuture(member.expected_start_date)
 
     // Haal afwezig/ziek-informatie op
     const sickInfo = getActiveLeaveForMember(member.id)
@@ -969,7 +975,7 @@ export function ShipOverview() {
             {isCopied && member.expected_start_date && (
               <div className="mb-1">
                 <Badge className="bg-yellow-100 text-yellow-900 border border-yellow-400 text-[11px] font-semibold">
-                  Gaat aan boord vanaf: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
+                  Gaat aan boord vanaf: {formatCrewDate(member.expected_start_date)}
                 </Badge>
               </div>
             )}
@@ -985,21 +991,18 @@ export function ShipOverview() {
                   <div className="text-xs text-blue-600 mb-1">
                     {isWaitingForStart ? (
                       <>
-                        Gaat aan boord vanaf: {format(new Date(member.expected_start_date), 'dd-MM-yyyy')}
+                        Gaat aan boord vanaf: {formatCrewDate(member.expected_start_date)}
                       </>
                     ) : (
                       <>
                         {(() => {
                           if (!member.regime || member.regime === "Altijd") return ""
-                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
                           if (!statusCalculation.nextRotationDate) return ""
-                          const dateStr = format(new Date(statusCalculation.nextRotationDate), 'dd-MM-yyyy')
-                          // Toon juiste tekst op basis van huidige status
+                          const dateStr = formatCrewDate(statusCalculation.nextRotationDate)
                           if (statusCalculation.currentStatus === "aan-boord") {
                             return <>Naar huis op: {dateStr}</>
-                          } else {
-                            return <>Gaat aan boord vanaf: {dateStr}</>
                           }
+                          return <>Gaat aan boord vanaf: {dateStr}</>
                         })()}
                       </>
                     )}
@@ -1932,18 +1935,9 @@ export function ShipOverview() {
                                           if (isUnavailableCrewMember(member)) return false
                                           if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
                                           if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return false
-                                          // Als expected_start_date in de toekomst is, zijn ze nog thuis
-                                          if (member.expected_start_date) {
-                                            const startDate = new Date(member.expected_start_date)
-                                            startDate.setHours(0, 0, 0, 0)
-                                            const today = new Date()
-                                            today.setHours(0, 0, 0, 0)
-                                            if (startDate > today) return false // Nog niet aan boord
-                                            // Anders (vandaag of verleden) gebruik berekende status
-                                          }
+                                          if (isExpectedStartInFuture(member.expected_start_date)) return false
                                           if (!member.regime) return member.status === "aan-boord"
-                                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, false, member.expected_start_date || null)
-                                          return statusCalculation.currentStatus === "aan-boord"
+                                          return getMemberRotationStatus(member).currentStatus === "aan-boord"
                                         }).length}
                                       </Badge>
                                     </div>
@@ -1959,21 +1953,9 @@ export function ShipOverview() {
                                         if (isUnavailableCrewMember(member)) return false
                                         if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
                                         if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return false
-                                        // Als expected_start_date in de toekomst is, zijn ze nog thuis (wachten)
-                                        if (member.expected_start_date) {
-                                          const startDate = new Date(member.expected_start_date)
-                                          startDate.setHours(0, 0, 0, 0)
-                                          const today = new Date()
-                                          today.setHours(0, 0, 0, 0)
-                                          // Als startdatum nog in de toekomst is, zijn ze nog thuis
-                                          if (startDate > today) {
-                                            return false // Nog niet aan boord
-                                          }
-                                          // Anders (vandaag of verleden) gebruik berekende status
-                                        }
+                                        if (isExpectedStartInFuture(member.expected_start_date)) return false
                                         if (!member.regime) return member.status === "aan-boord"
-                                        const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
-                                        return statusCalculation.currentStatus === "aan-boord"
+                                        return getMemberRotationStatus(member).currentStatus === "aan-boord"
                                       })).map((member: any) => (
                                         <CrewCard
                                           key={member.id}
@@ -2017,18 +1999,11 @@ export function ShipOverview() {
                                             return !dummyLocations[member.id] || dummyLocations[member.id] === 'thuis'
                                           }
                                           if (isUnavailableCrewMember(member)) return false
-                                          // Als expected_start_date in de toekomst is, zijn ze nog thuis
-                                          if (member.expected_start_date) {
-                                            const startDate = new Date(member.expected_start_date)
-                                            startDate.setHours(0, 0, 0, 0)
-                                            const today = new Date()
-                                            today.setHours(0, 0, 0, 0)
-                                            if (startDate > today) return true // Nog thuis (wachten)
-                                            // Anders (vandaag of verleden) gebruik berekende status
-                                          }
+                                          if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
+                                          if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return true
+                                          if (isExpectedStartInFuture(member.expected_start_date)) return true
                                           if (!member.regime) return member.status === "thuis"
-                                          const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, false, member.expected_start_date || null)
-                                          return statusCalculation.currentStatus === "thuis"
+                                          return getMemberRotationStatus(member).currentStatus === "thuis"
                                         }).length}
                                       </Badge>
                                     </div>
@@ -2044,18 +2019,9 @@ export function ShipOverview() {
                                         if (isUnavailableCrewMember(member)) return false
                                         if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
                                         if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return true
-                                        // Als expected_start_date in de toekomst is, zijn ze nog thuis
-                                        if (member.expected_start_date) {
-                                          const startDate = new Date(member.expected_start_date)
-                                          startDate.setHours(0, 0, 0, 0)
-                                          const today = new Date()
-                                          today.setHours(0, 0, 0, 0)
-                                          if (startDate > today) return true // Nog thuis (wachten)
-                                          // Anders (vandaag of verleden) gebruik berekende status
-                                        }
+                                        if (isExpectedStartInFuture(member.expected_start_date)) return true
                                         if (!member.regime) return member.status === "thuis"
-                                        const statusCalculation = calculateCurrentStatus(member.regime as "1/1" | "2/2" | "3/3" | "Altijd", member.thuis_sinds || null, member.on_board_since || null, member.status === "ziek", member.expected_start_date || null)
-                                        return statusCalculation.currentStatus === "thuis"
+                                        return getMemberRotationStatus(member).currentStatus === "thuis"
                                       })).map((member: any) => (
                                         <CrewCard
                                           key={member.id}

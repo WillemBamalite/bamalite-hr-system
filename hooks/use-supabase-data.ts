@@ -4,6 +4,12 @@ import {
   findExpiredActiveOverwerkTrips,
   getTripEndDateString,
 } from '@/utils/overwerker-availability'
+import {
+  getLocalDateString,
+  getRotationSyncUpdate,
+  isLocalDateOnOrBeforeToday,
+  parseLocalDate,
+} from '@/utils/regime-calculator'
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
 export function calculateWorkDaysVasteDienst(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -99,135 +105,68 @@ export function calculateWorkDaysVasteDienst(startDate: string, startTime: strin
   return dayCredits
 }
 
-// Functie om automatisch crew members te activeren op hun startdatum
-async function autoActivateCrewMembers(crewData: any[]) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0) // Reset naar start van de dag
-  
+// Activeer bemanningsleden op hun startdatum (lokale datum, geen UTC-shift).
+async function autoActivateCrewMembers(crewData: any[]): Promise<any[]> {
+  let updatedCrew = [...crewData]
+
   for (const member of crewData) {
-    // Check of deze persoon moet worden geactiveerd
-    // Status kan "thuis" zijn (wachtend op startdatum) of "nog-in-te-delen"
     if (
       (member.status === 'thuis' || member.status === 'nog-in-te-delen') &&
       member.expected_start_date &&
       member.ship_id &&
-      member.regime
+      member.regime &&
+      isLocalDateOnOrBeforeToday(member.expected_start_date)
     ) {
-      const startDate = new Date(member.expected_start_date)
-      startDate.setHours(0, 0, 0, 0)
-      
-      // Is vandaag >= startdatum?
-      if (today >= startDate) {
-        console.log(`🚀 Auto-activating ${member.first_name} ${member.last_name} - Start date reached!`)
-        
-        try {
-          // Update naar "aan-boord" status
-          const { error } = await supabase
-            .from('crew')
-            .update({
-              status: 'aan-boord',
-              on_board_since: member.expected_start_date,
-              thuis_sinds: null, // Clear thuis_sinds (was thuis, nu aan boord)
-              expected_start_date: null, // Clear expected_start_date
-              sub_status: null // Clear sub_status
-            })
-            .eq('id', member.id)
-          
-          if (error) {
-            console.error('Error auto-activating crew member:', error)
-          } else {
-            console.log(`✅ ${member.first_name} ${member.last_name} is now active!`)
-          }
-        } catch (err) {
-          console.error('Error in auto-activation:', err)
+      const startDate = getLocalDateString(parseLocalDate(member.expected_start_date))
+      const activationUpdate = {
+        status: 'aan-boord',
+        on_board_since: startDate,
+        thuis_sinds: null,
+        expected_start_date: null,
+        sub_status: null,
+      }
+
+      try {
+        const { error } = await supabase.from('crew').update(activationUpdate).eq('id', member.id)
+        if (error) {
+          console.error('Error auto-activating crew member:', error)
+        } else {
+          updatedCrew = updatedCrew.map((row) =>
+            row.id === member.id ? { ...row, ...activationUpdate } : row,
+          )
         }
+      } catch (err) {
+        console.error('Error in auto-activation:', err)
       }
     }
   }
+
+  return updatedCrew
 }
 
-// Functie om automatisch rotaties uit te voeren
-async function autoRotateCrewMembers(crewData: any[]) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  
+// Synchroniseer rotatievelden met dezelfde logica als het schepen-overzicht.
+async function autoRotateCrewMembers(crewData: any[]): Promise<any[]> {
+  let updatedCrew = [...crewData]
+
   for (const member of crewData) {
-    // Skip als geen regime, ziek, of "Altijd"
-    if (!member.regime || member.status === 'ziek' || member.regime === 'Altijd') {
-      continue
-    }
-    
-    const regimeWeeks = parseInt(member.regime.split('/')[0])
-    const regimeDays = regimeWeeks * 7
-    
-    // Check of iemand van aan-boord naar thuis moet
-    if (member.status === 'aan-boord' && member.on_board_since) {
-      const onBoardDate = new Date(member.on_board_since)
-      onBoardDate.setHours(0, 0, 0, 0)
-      
-      const daysSinceOnBoard = Math.floor((today.getTime() - onBoardDate.getTime()) / (1000 * 60 * 60 * 24))
-      
-      if (daysSinceOnBoard >= regimeDays) {
-        const thuisSinds = new Date(onBoardDate)
-        thuisSinds.setDate(thuisSinds.getDate() + regimeDays)
-        
-        console.log(`🔄 Auto-rotating ${member.first_name} ${member.last_name} to THUIS`)
-        
-        try {
-          const { error } = await supabase
-            .from('crew')
-            .update({
-              status: 'thuis',
-              thuis_sinds: thuisSinds.toISOString().split('T')[0],
-              on_board_since: null
-            })
-            .eq('id', member.id)
-          
-          if (error) {
-            console.error('Error rotating to thuis:', error)
-          } else {
-            console.log(`✅ ${member.first_name} is now thuis`)
-          }
-        } catch (err) {
-          console.error('Error in rotation:', err)
-        }
+    const sync = getRotationSyncUpdate(member)
+    if (!sync) continue
+
+    try {
+      const { error } = await supabase.from('crew').update(sync).eq('id', member.id)
+      if (error) {
+        console.error(`Error rotating ${member.first_name} ${member.last_name}:`, error)
+      } else {
+        updatedCrew = updatedCrew.map((row) =>
+          row.id === member.id ? { ...row, ...sync } : row,
+        )
       }
-    }
-    
-    // Check of iemand van thuis naar aan-boord moet
-    if (member.status === 'thuis' && member.thuis_sinds) {
-      const thuisDate = new Date(member.thuis_sinds)
-      thuisDate.setHours(0, 0, 0, 0)
-      
-      const daysSinceThuis = Math.floor((today.getTime() - thuisDate.getTime()) / (1000 * 60 * 60 * 24))
-      
-      if (daysSinceThuis >= regimeDays) {
-        const onBoardSince = new Date(thuisDate)
-        onBoardSince.setDate(onBoardSince.getDate() + regimeDays)
-        
-        console.log(`🔄 Auto-rotating ${member.first_name} ${member.last_name} to AAN-BOORD`)
-        
-        try {
-          const { error } = await supabase
-            .from('crew')
-            .update({
-              status: 'aan-boord',
-              on_board_since: onBoardSince.toISOString().split('T')[0],
-              thuis_sinds: null
-            })
-            .eq('id', member.id)
-          
-          if (error) {
-            console.error('Error rotating to aan-boord:', error)
-          } else {
-            console.log(`✅ ${member.first_name} is now aan-boord`)
-          }
-        } catch (err) {
-          console.error('Error in rotation:', err)
-        }
-      }
+    } catch (err) {
+      console.error('Error in rotation sync:', err)
     }
   }
+
+  return updatedCrew
 }
 
 // Functie om automatisch vaste dienst records te beheren
@@ -998,12 +937,10 @@ export function useSupabaseData() {
       } else {
         console.log('Crew loaded:', crewData?.length || 0)
         
-        // Temporarily disable auto-activation and rotation to prevent infinite loops
-        // await autoActivateCrewMembers(crewData || [])
-        // await autoRotateCrewMembers(crewData || [])
-        
-        // Set crew data directly without reloading
-        setCrew(crewData || [])
+        let syncedCrew = crewData || []
+        syncedCrew = await autoActivateCrewMembers(syncedCrew)
+        syncedCrew = await autoRotateCrewMembers(syncedCrew)
+        setCrew(syncedCrew)
       }
 
       // Load sick leave

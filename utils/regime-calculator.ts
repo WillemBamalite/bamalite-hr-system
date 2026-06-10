@@ -10,15 +10,28 @@ export interface RegimeCalculation {
 }
 
 // Helper functie om lokale datum string te krijgen (geen UTC conversie)
-function getLocalDateString(date: Date): string {
+export function getLocalDateString(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 
+export function getTodayLocal(): Date {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return today
+}
+
+export function addLocalDays(date: Date, days: number): Date {
+  const copy = new Date(date)
+  copy.setDate(copy.getDate() + days)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
 // Helper functie om datum string te parsen als lokale datum (geen UTC conversie)
-function parseLocalDate(dateString: string): Date {
+export function parseLocalDate(dateString: string): Date {
   // Parse YYYY-MM-DD of DD-MM-YYYY format als lokale datum
   const parts = dateString.split(/[-/]/)
   let year: number, month: number, day: number
@@ -40,6 +53,168 @@ function parseLocalDate(dateString: string): Date {
   return date
 }
 
+export function isLocalDateAfterToday(dateString: string): boolean {
+  const date = parseLocalDate(dateString)
+  return date.getTime() > getTodayLocal().getTime()
+}
+
+export function isLocalDateOnOrBeforeToday(dateString: string): boolean {
+  const date = parseLocalDate(dateString)
+  return date.getTime() <= getTodayLocal().getTime()
+}
+
+type RotationComputeResult = {
+  currentStatus: "aan-boord" | "thuis"
+  nextRotationDate: string | null
+  daysUntilRotation: number
+  isOnBoard: boolean
+  phaseStartDate: string | null
+  hasFutureStartDate: boolean
+}
+
+function computeRotationPhase(
+  regime: "1/1" | "2/2" | "3/3" | "Altijd" | "" | "Onbekend",
+  thuisSinds: string | null,
+  onBoardSince: string | null,
+  isSick: boolean = false,
+  expectedStartDate?: string | null,
+  referenceDate?: string | null,
+): RotationComputeResult | null {
+  const today = referenceDate ? parseLocalDate(referenceDate) : getTodayLocal()
+
+  if (expectedStartDate && !onBoardSince) {
+    const expectedDate = parseLocalDate(expectedStartDate)
+    if (today.getTime() >= expectedDate.getTime()) {
+      onBoardSince = getLocalDateString(expectedDate)
+    }
+  }
+
+  if (!regime || regime === "" || regime === "Onbekend" || isSick) {
+    return null
+  }
+
+  if (regime === "Altijd") {
+    return {
+      currentStatus: "aan-boord",
+      nextRotationDate: null,
+      daysUntilRotation: 0,
+      isOnBoard: true,
+      phaseStartDate: onBoardSince,
+      hasFutureStartDate: false,
+    }
+  }
+
+  const regimeWeeks = Number.parseInt(regime.split("/")[0])
+  const phaseLen = regimeWeeks * 7
+
+  let anchor: Date | null = null
+  let hasFutureStartDate = false
+
+  if (onBoardSince) {
+    anchor = parseLocalDate(onBoardSince)
+  } else if (expectedStartDate) {
+    const expectedDate = parseLocalDate(expectedStartDate)
+    if (today.getTime() >= expectedDate.getTime()) {
+      anchor = expectedDate
+    } else {
+      hasFutureStartDate = true
+      anchor = expectedDate
+    }
+  } else if (thuisSinds) {
+    const thuisDate = parseLocalDate(thuisSinds)
+    anchor = addLocalDays(thuisDate, -phaseLen)
+  }
+
+  let isOnBoardPhase = false
+  let nextRotationDate: Date
+  let phaseStart: Date | null = null
+
+  if (!anchor) {
+    isOnBoardPhase = false
+    nextRotationDate = addLocalDays(today, phaseLen)
+  } else if (hasFutureStartDate) {
+    isOnBoardPhase = false
+    nextRotationDate = new Date(anchor)
+    nextRotationDate.setHours(0, 0, 0, 0)
+  } else {
+    const diff = Math.floor((today.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (diff < 0) {
+      isOnBoardPhase = false
+      nextRotationDate = new Date(anchor)
+      nextRotationDate.setHours(0, 0, 0, 0)
+    } else {
+      const k = Math.floor(diff / phaseLen)
+      const fase = k % 2
+      isOnBoardPhase = fase === 0
+
+      phaseStart = addLocalDays(anchor, k * phaseLen)
+      nextRotationDate = addLocalDays(phaseStart, phaseLen)
+    }
+  }
+
+  const daysUntilRotation = Math.max(
+    0,
+    Math.floor((nextRotationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
+  )
+
+  return {
+    currentStatus: isOnBoardPhase ? "aan-boord" : "thuis",
+    nextRotationDate: getLocalDateString(nextRotationDate),
+    daysUntilRotation,
+    isOnBoard: isOnBoardPhase,
+    phaseStartDate: phaseStart ? getLocalDateString(phaseStart) : null,
+    hasFutureStartDate,
+  }
+}
+
+export type RotationSyncUpdate = {
+  status: "aan-boord" | "thuis"
+  on_board_since: string | null
+  thuis_sinds: string | null
+}
+
+/** Bepaal DB-velden voor rotatie — zelfde bron als schermweergave, wissel op wisseldag 00:00. */
+export function getRotationSyncUpdate(member: {
+  regime?: string | null
+  status?: string | null
+  on_board_since?: string | null
+  thuis_sinds?: string | null
+  expected_start_date?: string | null
+}): RotationSyncUpdate | null {
+  if (!member.regime || member.regime === "Altijd" || member.status === "ziek") {
+    return null
+  }
+
+  const phase = computeRotationPhase(
+    member.regime as "1/1" | "2/2" | "3/3" | "Altijd" | "" | "Onbekend",
+    member.thuis_sinds || null,
+    member.on_board_since || null,
+    false,
+    member.expected_start_date || null,
+  )
+
+  if (!phase || phase.hasFutureStartDate || !phase.phaseStartDate) {
+    return null
+  }
+
+  const update: RotationSyncUpdate = {
+    status: phase.currentStatus,
+    on_board_since: phase.currentStatus === "aan-boord" ? phase.phaseStartDate : null,
+    thuis_sinds: phase.currentStatus === "thuis" ? phase.phaseStartDate : null,
+  }
+
+  const sameStatus = member.status === update.status
+  const sameOnBoard = (member.on_board_since || null) === update.on_board_since
+  const sameThuis = (member.thuis_sinds || null) === update.thuis_sinds
+
+  if (sameStatus && sameOnBoard && sameThuis) {
+    return null
+  }
+
+  return update
+}
+
 // Nieuwe functie om automatisch status te berekenen op basis van regime en huidige datum
 export function calculateCurrentStatus(
   regime: "1/1" | "2/2" | "3/3" | "Altijd" | "" | "Onbekend",
@@ -54,128 +229,47 @@ export function calculateCurrentStatus(
   daysUntilRotation: number
   isOnBoard: boolean
 } {
-  const today = referenceDate ? parseLocalDate(referenceDate) : new Date()
-  today.setHours(0, 0, 0, 0)
-  
-  // Als expected_start_date vandaag is of geweest is, behandel alsof ze vandaag aan boord zijn gekomen
-  if (expectedStartDate && !onBoardSince) {
-    const expectedDate = parseLocalDate(expectedStartDate)
-    if (today >= expectedDate) {
-      // Ze zouden vandaag of eerder aan boord moeten zijn
-      onBoardSince = getLocalDateString(expectedDate)
-    }
-  }
-  
   if (!regime || regime === "" || regime === "Onbekend") {
     return {
       currentStatus: "thuis",
       nextRotationDate: null,
       daysUntilRotation: 0,
-      isOnBoard: false
+      isOnBoard: false,
     }
   }
 
-  // Als iemand ziek is, stop de rotatie
   if (isSick) {
     return {
-      currentStatus: "thuis", // Default status voor zieke bemanningsleden
+      currentStatus: "thuis",
       nextRotationDate: null,
       daysUntilRotation: 0,
-      isOnBoard: false
+      isOnBoard: false,
     }
   }
 
-  // Altijd regime - altijd aan boord
-  if (regime === "Altijd") {
+  const phase = computeRotationPhase(
+    regime,
+    thuisSinds,
+    onBoardSince,
+    isSick,
+    expectedStartDate,
+    referenceDate,
+  )
+
+  if (!phase) {
     return {
-      currentStatus: "aan-boord",
+      currentStatus: "thuis",
       nextRotationDate: null,
       daysUntilRotation: 0,
-      isOnBoard: true
+      isOnBoard: false,
     }
   }
-
-  // Bepaal N (wisseldag) en phaseLen (effectieve dagen per fase)
-  // 1/1 → N=8, phaseLen=7
-  // 2/2 → N=15, phaseLen=14
-  // 3/3 → N=22, phaseLen=21
-  const regimeWeeks = Number.parseInt(regime.split("/")[0])
-  const phaseLen = regimeWeeks * 7 // N - 1 (effectieve dagen per fase)
-  const N = phaseLen + 1 // Wisseldag (dag waarop om 00:00 wordt gewisseld)
-  const cycleLen = phaseLen * 2 // Totale cyclus lengte
-
-  // Bepaal anker (anchor) - dit is dag 1 van de cyclus
-  let anchor: Date | null = null
-  let hasFutureStartDate = false
-  
-  // Prioriteit 1: onBoardSince is altijd het anker (dag 1)
-  if (onBoardSince) {
-    anchor = parseLocalDate(onBoardSince)
-  } else if (expectedStartDate) {
-    // Prioriteit 2: expectedStartDate (als die bestaat, heeft die voorrang over thuisSinds)
-    const expectedDate = parseLocalDate(expectedStartDate)
-    if (today >= expectedDate) {
-      // Vandaag of verleden: gebruik als anker
-      anchor = expectedDate
-    } else {
-      // Toekomst: markeer dat er een toekomstige startdatum is
-      hasFutureStartDate = true
-      anchor = expectedDate // Gebruik als anker voor berekening, maar status blijft thuis
-    }
-  } else if (thuisSinds) {
-    // Prioriteit 3: Als alleen thuisSinds bestaat, dan is dat een wisseldag
-    // Anker = thuisSinds - phaseLen (terug naar dag 1)
-    const thuisDate = parseLocalDate(thuisSinds)
-    anchor = new Date(thuisDate)
-    anchor.setDate(anchor.getDate() - phaseLen)
-  }
-
-  let isOnBoardPhase: boolean = false
-  let nextRotationDate: Date
-
-  if (!anchor) {
-    // Geen anker - default naar thuis, nextRotation = vandaag + phaseLen
-    isOnBoardPhase = false
-    nextRotationDate = new Date(today)
-    nextRotationDate.setDate(nextRotationDate.getDate() + phaseLen)
-  } else if (hasFutureStartDate) {
-    // Toekomstige startdatum: status is thuis, nextRotation = expectedStartDate
-    isOnBoardPhase = false
-    nextRotationDate = new Date(anchor)
-  } else {
-    // Bereken diff = aantal kalenderdagen (today@00:00 - anchor@00:00)
-    const diff = Math.floor((today.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24))
-    
-    if (diff < 0) {
-      // Vóór de start: status = Thuis, nextRotation = anchor
-      isOnBoardPhase = false
-      nextRotationDate = new Date(anchor)
-    } else {
-      // diff >= 0: bereken fase
-      // k = floor(diff / phaseLen) (aantal halve cycli)
-      const k = Math.floor(diff / phaseLen)
-      // fase = k % 2 (0 = Aan boord, 1 = Thuis)
-      const fase = k % 2
-      isOnBoardPhase = fase === 0
-      
-      // phaseStart = anchor + k × phaseLen
-      const phaseStart = new Date(anchor)
-      phaseStart.setDate(phaseStart.getDate() + (k * phaseLen))
-      // nextRotation = phaseStart + phaseLen (middernacht van wisseldag)
-      nextRotationDate = new Date(phaseStart)
-      nextRotationDate.setDate(nextRotationDate.getDate() + phaseLen)
-    }
-    nextRotationDate.setHours(0, 0, 0, 0)
-  }
-  
-  // Bereken dagen tot wissel (0 op wisseldag, nooit negatief)
-  const daysUntilRotation = Math.max(0, Math.floor((nextRotationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
 
   return {
-    currentStatus: isOnBoardPhase ? "aan-boord" : "thuis",
-    nextRotationDate: getLocalDateString(nextRotationDate),
-    daysUntilRotation: daysUntilRotation,
-    isOnBoard: isOnBoardPhase
+    currentStatus: phase.currentStatus,
+    nextRotationDate: phase.nextRotationDate,
+    daysUntilRotation: phase.daysUntilRotation,
+    isOnBoard: phase.isOnBoard,
   }
 }
 
@@ -223,51 +317,23 @@ export function autoUpdateStatus(crewDatabase: any): { hasChanges: boolean; upda
 export function autoAdvanceDates(crewDatabase: any): { hasChanges: boolean; updatedCrew: any } {
   let hasChanges = false
   const updatedCrew = { ...crewDatabase }
-  const today = new Date()
 
   Object.keys(updatedCrew).forEach((crewId) => {
     const crew = updatedCrew[crewId]
-    
-    // Skip als crew member geen regime heeft, ziek is, of "Altijd" regime heeft
-    if (!crew.regime || crew.status === "ziek" || crew.regime === "Altijd") {
-      return
-    }
+    const sync = getRotationSyncUpdate({
+      regime: crew.regime,
+      status: crew.status,
+      on_board_since: crew.onBoardSince,
+      thuis_sinds: crew.thuisSinds,
+      expected_start_date: crew.expectedStartDate,
+    })
 
-    const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
-    const regimeDays = regimeWeeks * 7
+    if (!sync) return
 
-    // Bereken huidige status
-    const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
-
-    // Als ze aan boord zijn en de offBoardDate is gepasseerd, update naar thuis
-    if (statusCalculation.currentStatus === "aan-boord" && crew.onBoardSince) {
-      const onBoardDate = new Date(crew.onBoardSince)
-      const offBoardDate = new Date(onBoardDate)
-      offBoardDate.setDate(offBoardDate.getDate() + regimeDays)
-
-      if (today > offBoardDate) {
-        // Ze zijn over tijd, update naar thuis
-        crew.status = "thuis"
-        crew.thuisSinds = offBoardDate.toISOString().split('T')[0]
-        crew.onBoardSince = null
-        hasChanges = true
-      }
-    }
-
-    // Als ze thuis zijn en de nextOnBoardDate is gepasseerd, update naar aan boord
-    if (statusCalculation.currentStatus === "thuis" && crew.thuisSinds) {
-      const thuisDate = new Date(crew.thuisSinds)
-      const nextOnBoardDate = new Date(thuisDate)
-      nextOnBoardDate.setDate(nextOnBoardDate.getDate() + regimeDays)
-
-      if (today >= nextOnBoardDate) {
-        // Ze moeten aan boord zijn, update
-        crew.status = "aan-boord"
-        crew.onBoardSince = nextOnBoardDate.toISOString().split('T')[0]
-        crew.thuisSinds = null
-        hasChanges = true
-      }
-    }
+    crew.status = sync.status
+    crew.onBoardSince = sync.on_board_since
+    crew.thuisSinds = sync.thuis_sinds
+    hasChanges = true
   })
 
   return { hasChanges, updatedCrew }
@@ -290,25 +356,16 @@ export function manuallyAdjustDates(
   const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
   const regimeDays = regimeWeeks * 7
 
-  // Update de opgegeven datum
   crew[dateType] = newDate
 
-  // Bereken de andere datum op basis van het regime
   if (dateType === "thuisSinds") {
-    // Als thuisSinds wordt aangepast, bereken onBoardSince
-    const thuisDate = new Date(newDate)
-    const onBoardDate = new Date(thuisDate)
-    onBoardDate.setDate(onBoardDate.getDate() + regimeDays)
-    crew.onBoardSince = onBoardDate.toISOString().split('T')[0]
+    const onBoardDate = addLocalDays(parseLocalDate(newDate), regimeDays)
+    crew.onBoardSince = getLocalDateString(onBoardDate)
   } else {
-    // Als onBoardSince wordt aangepast, bereken thuisSinds
-    const onBoardDate = new Date(newDate)
-    const thuisDate = new Date(onBoardDate)
-    thuisDate.setDate(thuisDate.getDate() + regimeDays)
-    crew.thuisSinds = thuisDate.toISOString().split('T')[0]
+    const thuisDate = addLocalDays(parseLocalDate(newDate), regimeDays)
+    crew.thuisSinds = getLocalDateString(thuisDate)
   }
 
-  // Bereken nieuwe status
   const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
   crew.status = statusCalculation.currentStatus
 
@@ -345,58 +402,27 @@ export function autoAdvanceCrewDatabase(): boolean {
 export function updateAllCrewStatuses(crewDatabase: any): { hasChanges: boolean; updatedCrew: any } {
   let hasChanges = false
   const updatedCrew = { ...crewDatabase }
-  const today = new Date()
 
   Object.keys(updatedCrew).forEach((crewId) => {
     const crew = updatedCrew[crewId]
-    
-    // Skip als crew member geen regime heeft of ziek is
-    if (!crew.regime || crew.status === "ziek") {
-      return
-    }
+    const sync = getRotationSyncUpdate({
+      regime: crew.regime,
+      status: crew.status,
+      on_board_since: crew.onBoardSince,
+      thuis_sinds: crew.thuisSinds,
+      expected_start_date: crew.expectedStartDate,
+    })
 
-    // Skip als regime "Altijd" is - deze hoeven niet bijgewerkt te worden
-    if (crew.regime === "Altijd") {
-      return
-    }
+    if (!sync) return
 
-    // Bereken huidige status op basis van regime en datums
-    const statusCalculation = calculateCurrentStatus(
-      crew.regime,
-      crew.thuisSinds,
-      crew.onBoardSince
-    )
+    crew.status = sync.status
+    crew.onBoardSince = sync.on_board_since
+    crew.thuisSinds = sync.thuis_sinds
 
-    // Update status als deze anders is
-    if (crew.status !== statusCalculation.currentStatus) {
-      crew.status = statusCalculation.currentStatus
-      crew.nextRotationDate = statusCalculation.nextRotationDate
-      crew.daysUntilRotation = statusCalculation.daysUntilRotation
-      hasChanges = true
-    }
-
-    // Update datums als ze nog niet bestaan
-    if (statusCalculation.currentStatus === "aan-boord" && !crew.onBoardSince) {
-      // Bereken wanneer ze aan boord kwamen
-      if (crew.thuisSinds) {
-        const thuisDate = new Date(crew.thuisSinds)
-        const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
-        const regimeDays = regimeWeeks * 7
-        const onBoardDate = new Date(thuisDate)
-        onBoardDate.setDate(onBoardDate.getDate() + regimeDays)
-        crew.onBoardSince = onBoardDate.toISOString().split('T')[0]
-      }
-    } else if (statusCalculation.currentStatus === "thuis" && !crew.thuisSinds) {
-      // Bereken wanneer ze naar huis gingen
-      if (crew.onBoardSince) {
-        const onBoardDate = new Date(crew.onBoardSince)
-        const regimeWeeks = Number.parseInt(crew.regime.split("/")[0])
-        const regimeDays = regimeWeeks * 7
-        const thuisDate = new Date(onBoardDate)
-        thuisDate.setDate(thuisDate.getDate() + regimeDays)
-        crew.thuisSinds = thuisDate.toISOString().split('T')[0]
-      }
-    }
+    const statusCalculation = calculateCurrentStatus(crew.regime, crew.thuisSinds, crew.onBoardSince)
+    crew.nextRotationDate = statusCalculation.nextRotationDate
+    crew.daysUntilRotation = statusCalculation.daysUntilRotation
+    hasChanges = true
   })
 
   return { hasChanges, updatedCrew }
@@ -433,7 +459,7 @@ export function calculateRegimeStatus(
   onBoardSince: string | null,
   currentStatus: string,
 ): RegimeCalculation {
-  const today = new Date()
+  const today = getTodayLocal()
 
   if (!onBoardSince || currentStatus !== "aan-boord") {
     return {
@@ -447,7 +473,7 @@ export function calculateRegimeStatus(
     }
   }
 
-  const startDate = new Date(onBoardSince)
+  const startDate = parseLocalDate(onBoardSince)
   const daysOnBoard = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
 
   // Bepaal regime duur in weken
@@ -466,13 +492,8 @@ export function calculateRegimeStatus(
   const regimeWeeks = Number.parseInt(regime.split("/")[0])
   const regimeDays = regimeWeeks * 7
 
-  // Bereken wanneer ze van boord moeten
-  const offBoardDate = new Date(startDate)
-  offBoardDate.setDate(offBoardDate.getDate() + regimeDays)
-
-  // Bereken wanneer ze weer aan boord komen (na evenveel weken thuis)
-  const nextOnBoardDate = new Date(offBoardDate)
-  nextOnBoardDate.setDate(nextOnBoardDate.getDate() + regimeDays)
+  const offBoardDate = addLocalDays(startDate, regimeDays)
+  const nextOnBoardDate = addLocalDays(offBoardDate, regimeDays)
 
   const daysLeft = Math.floor((offBoardDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
   const isOverdue = daysLeft < 0
@@ -482,8 +503,8 @@ export function calculateRegimeStatus(
     currentStatus: "aan-boord",
     daysOnBoard,
     daysLeft: Math.max(0, daysLeft),
-    offBoardDate: offBoardDate.toISOString().split("T")[0],
-    nextOnBoardDate: nextOnBoardDate.toISOString().split("T")[0],
+    offBoardDate: getLocalDateString(offBoardDate),
+    nextOnBoardDate: getLocalDateString(nextOnBoardDate),
     isOverdue,
     rotationAlert,
   }
