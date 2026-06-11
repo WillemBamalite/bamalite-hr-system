@@ -43,7 +43,12 @@ import {
   OverwerkersPlanning,
   type OverwerkersPageTab,
 } from "@/components/overwerkers/OverwerkersPlanning"
-import { isActiveTripStillOpen, isOverwerkTrip } from "@/utils/overwerker-availability"
+import {
+  isActiveTripStillOpen,
+  isAflosserCrewMember,
+  isOverwerkTrip,
+  qualifiesForOverwerkersPage,
+} from "@/utils/overwerker-availability"
 import {
   buildOverwerkTripName,
   buildOverwerkTripNotes,
@@ -573,13 +578,7 @@ export default function ReizenAflossersPage() {
     if (!crew || crew.length === 0) return
     
     const overwerkerIds = crew
-      .filter((member: any) => {
-        const notes = parseNotes(member.notes)
-        return notes.some((note: any) => 
-          typeof note === 'object' && 
-          (note.content?.includes('OVERWERKER:true') || note.text?.includes('OVERWERKER:true'))
-        )
-      })
+      .filter((member: any) => qualifiesForOverwerkersPage(member))
       .map((member: any) => member.id)
     
     setOverwerkers(overwerkerIds)
@@ -604,6 +603,10 @@ export default function ReizenAflossersPage() {
     try {
       const member = crew.find((c: any) => c.id === memberId)
       if (!member) return
+      if (isAflosserCrewMember(member)) {
+        alert("Aflossers kunnen niet als overwerker worden toegevoegd.")
+        return
+      }
       
       const currentPeriods = getOverwerkerPeriods(member)
       const newPeriod: OverwerkerPeriod = overwerkerMode === 'vrije_weken'
@@ -706,6 +709,12 @@ export default function ReizenAflossersPage() {
     endDate?: string,
     settlement: OverwerkSettlementType = "none"
   ) => {
+    const member = crew.find((c: any) => c.id === memberId)
+    if (member && isAflosserCrewMember(member)) {
+      alert("Aflossers horen op de aflossers-pagina, niet bij overwerkers.")
+      return
+    }
+
     const ship = ships.find((s: any) => s.id === shipId)
     const shipLabel = ship?.name || "Overwerk"
 
@@ -2423,7 +2432,8 @@ export default function ReizenAflossersPage() {
                     .filter((member: any) => 
                       (!overwerkers.includes(member.id) || member.id === selectedOverwerkerId) && 
                       member.status !== "uit-dienst" &&
-                      !member.is_dummy
+                      !member.is_dummy &&
+                      !isAflosserCrewMember(member)
                     )
                     .map((member: any) => (
                       <SelectItem key={member.id} value={member.id}>

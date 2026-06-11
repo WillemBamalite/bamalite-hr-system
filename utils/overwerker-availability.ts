@@ -84,6 +84,43 @@ export function parseNotesArray(notes: unknown): unknown[] {
   return []
 }
 
+export function isRegisteredOverwerker(member: {
+  notes?: unknown
+  active_notes?: unknown
+}): boolean {
+  const notePool = [
+    ...parseNotesArray(member?.notes),
+    ...parseNotesArray(member?.active_notes),
+  ]
+  return notePool.some((n: unknown) => {
+    const content = String(
+      (n as { content?: string; text?: string })?.content ||
+        (n as { content?: string; text?: string })?.text ||
+        n ||
+        ""
+    )
+    return content.includes("OVERWERKER:true")
+  })
+}
+
+/** Vaste aflosser / uitzend-aflosser — hoort op aflossers-pagina, niet bij overwerkers. */
+export function isAflosserCrewMember(member: {
+  position?: string | null
+  is_aflosser?: boolean | null
+}): boolean {
+  const position = String(member?.position || "").toLowerCase()
+  return member?.is_aflosser === true || position === "aflosser"
+}
+
+export function qualifiesForOverwerkersPage(member: {
+  notes?: unknown
+  active_notes?: unknown
+  position?: string | null
+  is_aflosser?: boolean | null
+}): boolean {
+  return isRegisteredOverwerker(member) && !isAflosserCrewMember(member)
+}
+
 export function getOverwerkerPeriodsFromNotes(notes: unknown): OverwerkerPeriod[] {
   const arr = parseNotesArray(notes)
   const periodsNote = arr.find((note: unknown) => {
@@ -107,14 +144,26 @@ export function getOverwerkerPeriodsFromNotes(notes: unknown): OverwerkerPeriod[
   return []
 }
 
+function toTripDateOnly(value: string | null | undefined): string | null {
+  if (!value) return null
+  const s = String(value).trim()
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [day, month, year] = s.split("-")
+    return `${year}-${month}-${day}`
+  }
+  return s.length >= 10 ? s.slice(0, 10) : s
+}
+
 function getTripDateRange(trip: {
   start_date?: string | null
   end_date?: string | null
   start_datum?: string | null
   eind_datum?: string | null
 }): { from: string | null; to: string | null } {
-  const from = trip.start_datum || trip.start_date || null
-  const to = trip.eind_datum || trip.end_date || from
+  const from = toTripDateOnly(trip.start_datum || trip.start_date)
+  // Geen einddatum = open reis tot "naar huis" (niet alleen op de startdag)
+  const to = toTripDateOnly(trip.eind_datum || trip.end_date)
   return { from, to }
 }
 
@@ -139,13 +188,13 @@ export function getActiveTripOnDate(
     trips.find((trip) => {
       if (String(trip.aflosser_id) !== String(memberId)) return false
       if (!trip.status || !activeStatuses.has(trip.status)) return false
-      const { from, to } = getTripDateRange(trip)
+      const { from } = getTripDateRange(trip)
       if (!from) return false
       const start = parseDay(from)
-      const end = to ? parseDay(to) : new Date("2099-12-31")
-      if (day < start || day > end) return false
-      if (isOverwerkTrip(trip)) return true
-      return true
+      // Van startdatum t/m naar huis: optionele tot-datum beëindigt de reis niet op de planning
+      if (day < start) return false
+      // Alleen echte overwerk-reizen — geen gewone aflosser-reizen
+      return isOverwerkTrip(trip)
     }) || null
   )
 }
@@ -362,8 +411,9 @@ export function isOverwerkTrip(trip: {
 }): boolean {
   const notes = String(trip.notes || "")
   const name = String(trip.trip_name || "")
-  if (notes.includes("Overwerker")) return true
   if (name.startsWith("Overwerk")) return true
+  if (notes.includes("Overwerker-toewijzing")) return true
+  if (notes.includes("OVERWERK_SETTLEMENT:")) return true
   return false
 }
 
@@ -408,7 +458,6 @@ export function isOverwerkTripVisibleOnShip(
   if (!isOverwerkTrip(trip)) return false
   if (!trip.status || trip.status === "voltooid" || trip.status === "geannuleerd") return false
   if (!ACTIVE_TRIP_STATUSES.has(trip.status)) return false
-  if (isOverwerkTripEndDatePassed(trip, referenceDate)) return false
 
   const ref = referenceDate ? parseDay(referenceDate) : new Date()
   ref.setHours(0, 0, 0, 0)
