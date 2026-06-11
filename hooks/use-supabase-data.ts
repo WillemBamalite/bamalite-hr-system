@@ -445,9 +445,7 @@ export function calculateWorkDays(startDate: string, startTime: string, endDate:
   const start = parseDate(startDate)
   const end = parseDate(endDate)
 
-  // Validatie: afstapdatum mag niet voor instapdatum liggen
   if (end < start) {
-    console.error('Error: end date is before start date')
     return 0
   }
 

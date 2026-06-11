@@ -36,7 +36,9 @@ import {
   type OverwerkerPlanningColumn,
 } from "@/utils/overwerker-availability"
 import {
+  computeOverwerkWorkDays,
   getStandBackBalanceSummary,
+  normalizeTripDate,
   parseOverwerkSettlement,
   settlementTypeLabel,
   type OverwerkSettlementType,
@@ -180,6 +182,7 @@ export function OverwerkersPlanning({
   }, [initialPageTab])
   const [assignDialog, setAssignDialog] = useState<{ memberId: string; name: string } | null>(null)
   const [assignShipId, setAssignShipId] = useState("")
+  const [assignStartDate, setAssignStartDate] = useState(today)
   const [assignEndDate, setAssignEndDate] = useState("")
   const [assignSettlement, setAssignSettlement] = useState<OverwerkSettlementType>("none")
   const [assigning, setAssigning] = useState(false)
@@ -318,9 +321,31 @@ export function OverwerkersPlanning({
     }
   }
 
+  const endDialogTrip = useMemo(() => {
+    if (!endDialog) return null
+    return trips.find((t) => t.id === endDialog.tripId) ?? null
+  }, [endDialog, trips])
+
+  const previewEndWorkDays = useMemo(() => {
+    if (!endDialogTrip || !endDatum) return null
+    const startOnly = normalizeTripDate(endDialogTrip.start_datum || endDialogTrip.start_date)
+    const endOnly = normalizeTripDate(endDatum)
+    if (!startOnly || !endOnly) return null
+    if (endOnly < startOnly) {
+      return { invalid: true as const }
+    }
+    const days = computeOverwerkWorkDays(endDialogTrip, endDatum, endTijd || "17:00")
+    return days > 0 ? { invalid: false as const, days } : null
+  }, [endDialogTrip, endDatum, endTijd])
+
   const openEndDialog = (tripId: string, name: string, shipName?: string) => {
+    const trip = trips.find((t) => t.id === tripId)
+    const todayIso = format(new Date(), "yyyy-MM-dd")
+    const startOnly = trip ? normalizeTripDate(trip.start_datum || trip.start_date) : null
+    const defaultEnd = startOnly && startOnly > todayIso ? startOnly : todayIso
+
     setEndDialog({ tripId, name, shipName })
-    setEndDatum(format(new Date(), "yyyy-MM-dd"))
+    setEndDatum(defaultEnd)
     setEndTijd(format(new Date(), "HH:mm"))
     setEndOpmerking("")
   }
@@ -408,18 +433,23 @@ export function OverwerkersPlanning({
   }
 
   const handleAssign = async () => {
-    if (!assignDialog || !assignShipId) return
+    if (!assignDialog || !assignShipId || !assignStartDate) return
+    if (assignEndDate && assignEndDate < assignStartDate) {
+      alert("Tot-datum moet op of na de van-datum liggen.")
+      return
+    }
     setAssigning(true)
     try {
       await onAssignToShip(
         assignDialog.memberId,
         assignShipId,
-        planningDate,
+        assignStartDate,
         assignEndDate || undefined,
         assignSettlement
       )
       setAssignDialog(null)
       setAssignShipId("")
+      setAssignStartDate(planningDate)
       setAssignEndDate("")
       setAssignSettlement("none")
     } catch {
@@ -586,6 +616,8 @@ export function OverwerkersPlanning({
                 onClick={() => {
                   setAssignDialog({ memberId: member.id, name })
                   setAssignShipId(ships[0]?.id || "")
+                  setAssignStartDate(planningDate)
+                  setAssignEndDate("")
                   setAssignSettlement("none")
                 }}
               >
@@ -995,6 +1027,20 @@ export function OverwerkersPlanning({
                 value={endDatum}
                 onChange={(e) => setEndDatum(e.target.value)}
               />
+              {previewEndWorkDays?.invalid && (
+                <p className="text-sm font-medium text-amber-700 mt-1.5">
+                  Afstapdatum ligt vóór de startdatum van deze reis.
+                </p>
+              )}
+              {previewEndWorkDays && !previewEndWorkDays.invalid && (
+                <p className="text-sm font-medium text-blue-700 mt-1.5">
+                  Gewerkte overwerkdagen:{" "}
+                  {previewEndWorkDays.days === Math.floor(previewEndWorkDays.days)
+                    ? previewEndWorkDays.days
+                    : previewEndWorkDays.days}{" "}
+                  {previewEndWorkDays.days === 1 ? "dag" : "dagen"}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="end-tijd">Afgestapt om *</Label>
@@ -1146,8 +1192,7 @@ export function OverwerkersPlanning({
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Actieve overwerk-reis vanaf {formatDateDDMMYYYY(planningDate)}. Vast schip blijft
-              ongewijzigd.
+              Vast schip blijft ongewijzigd — dit is alleen de overwerk-reis op het gekozen schip.
             </p>
             <div>
               <Label>Schip *</Label>
@@ -1164,15 +1209,26 @@ export function OverwerkersPlanning({
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="assign-end">Einddatum (optioneel)</Label>
-              <Input
-                id="assign-end"
-                type="date"
-                value={assignEndDate}
-                min={planningDate}
-                onChange={(e) => setAssignEndDate(e.target.value)}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="assign-start">Van datum *</Label>
+                <Input
+                  id="assign-start"
+                  type="date"
+                  value={assignStartDate}
+                  onChange={(e) => setAssignStartDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="assign-end">Tot datum (optioneel)</Label>
+                <Input
+                  id="assign-end"
+                  type="date"
+                  value={assignEndDate}
+                  min={assignStartDate || undefined}
+                  onChange={(e) => setAssignEndDate(e.target.value)}
+                />
+              </div>
             </div>
             <div>
               <Label className="mb-2 block">Verrekening na afloop</Label>
@@ -1231,7 +1287,7 @@ export function OverwerkersPlanning({
               </Button>
               <Button
                 className="flex-1"
-                disabled={!assignShipId || assigning}
+                disabled={!assignShipId || !assignStartDate || assigning}
                 onClick={handleAssign}
               >
                 {assigning ? "Bezig..." : "Toewijzen"}

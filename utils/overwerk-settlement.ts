@@ -156,7 +156,7 @@ export function computeOverwerkWorkDays(
   const startRaw = trip.start_datum || trip.start_date
   const startOnly = normalizeTripDate(startRaw)
   const endOnly = normalizeTripDate(eindDatum || trip.eind_datum || trip.end_date)
-  if (!startOnly || !endOnly) return 0
+  if (!startOnly || !endOnly || endOnly < startOnly) return 0
 
   const startTijd = trip.start_tijd || "08:00"
   const endTime = eindTijd || "17:00"
