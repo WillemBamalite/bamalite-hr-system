@@ -27,6 +27,7 @@ import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { supabase } from "@/lib/supabase"
 import {
   computeMemberStandBackTotals,
+  consolidateIngehaaldHistoryForDisplay,
   formatStandBackSaldo,
   formatStandBackSaldoHint,
   formatHistoryNoteLabel,
@@ -233,48 +234,19 @@ export function StandBackManagement() {
       { x: margin + 300, label: "Waar / notitie" },
     ])
 
-    const allHistory: Array<{ date: string; period: string; days: string; note: string }> = []
-    const tegoedRecords = (group.records || []).filter((r: any) => isTegoedStandBackRecord(r))
-    tegoedRecords.forEach((record: any) => {
-      const history = Array.isArray(record.standBackHistory) ? record.standBackHistory : []
-      history
-        .filter((h: any) => {
-          const d = typeof h.daysCompleted === "number" ? h.daysCompleted : Number(h.daysCompleted || 0)
-          return d > 0
-        })
-        .forEach((h: any) => {
-        const daysNum = typeof h.daysCompleted === "number" ? h.daysCompleted : Number(h.daysCompleted || 0)
-        allHistory.push({
-          date: formatDateShort(h.date),
-          period: formatHistoryPeriodLabel(h, record),
-          days: Number.isFinite(daysNum) ? String(daysNum) : "-",
-          note: formatHistoryNoteLabel(h).replace(/[\r\n]+/g, " "),
-        })
-      })
-    })
-    records.forEach((record: any) => {
-      const history = Array.isArray(record.standBackHistory) ? record.standBackHistory : []
-      history.filter(isReturnedHistoryEntry).forEach((h: any) => {
-        const daysNum = typeof h.daysCompleted === "number" ? h.daysCompleted : Number(h.daysCompleted || 0)
-        allHistory.push({
-          date: formatDateShort(h.date),
-          period: formatHistoryPeriodLabel(h, record),
-          days: Number.isFinite(daysNum) ? String(daysNum) : "-",
-          note: formatHistoryNoteLabel(h).replace(/[\r\n]+/g, " "),
-        })
-      })
-    })
+    const pdfHistoryRows = consolidateIngehaaldHistoryForDisplay(
+      getGroupIngehaaldHistory(group)
+    ).map((entry: any) => ({
+      date: entry.date ? formatDateShort(entry.date) : "-",
+      period: entry.returnedPeriod || "-",
+      days: Number.isFinite(entry.daysCompleted) ? String(entry.daysCompleted) : "-",
+      note: String(entry.note || "-").replace(/[\r\n]+/g, " "),
+    }))
 
-    if (allHistory.length === 0) {
+    if (pdfHistoryRows.length === 0) {
       drawText("Nog geen teruggestane dagen geregistreerd.")
     } else {
-      allHistory
-        .sort((a, b) => {
-          const da = a.date.split("-").reverse().join("-")
-          const db = b.date.split("-").reverse().join("-")
-          return db.localeCompare(da)
-        })
-        .forEach((h) => {
+      pdfHistoryRows.forEach((h) => {
           const linesDate = wrapText(h.date, 10).length
           const linesPeriod = wrapText(h.period, 26).length
           const linesDays = wrapText(h.days, 8).length
@@ -304,9 +276,14 @@ export function StandBackManagement() {
     URL.revokeObjectURL(url)
   }
 
-  // Alleen openstaande registraties in openstaand-tab; gearchiveerd hoort in archief-tab
+  // Openstaand-tab: ook voltooide schuldregels meenemen zodat overwerk-afboekingen in history/totalen blijven
   const openStandBackRecordsRaw = standBackRecords
-    .filter((record: any) => record.stand_back_status === "openstaand")
+    .filter(
+      (record: any) =>
+        (record.stand_back_status === "openstaand" ||
+          record.stand_back_status === "voltooid") &&
+        !String(record.description || "").includes("[UIT DIENST")
+    )
     .map((record: any) => {
       const crewMember = crew.find((c: any) => c.id === record.crew_member_id)
       const ship = crewMember?.ship_id ? ships.find((s: any) => s.id === crewMember.ship_id) : null
@@ -779,6 +756,9 @@ export function StandBackManagement() {
           note: formatHistoryNoteLabel(entry),
           returnedPeriod: formatHistoryPeriodLabel(entry, rec),
           completedBy: entry?.completedBy,
+          periodStart: entry?.periodStart,
+          periodEnd: entry?.periodEnd,
+          tripId: entry?.tripId,
         }))
     })
 
@@ -819,14 +799,15 @@ export function StandBackManagement() {
             note: formatHistoryNoteLabel(entry),
             returnedPeriod: formatHistoryPeriodLabel(entry, rec),
             completedBy: entry?.completedBy,
+            periodStart: entry?.periodStart,
+            periodEnd: entry?.periodEnd,
+            tripId: entry?.tripId,
             type: "overwerk" as const,
           }))
       })
       .filter((e) => e.daysCompleted > 0)
 
-    return [...debtEntries, ...tegoedEntries].sort(
-      (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
-    )
+    return consolidateIngehaaldHistoryForDisplay([...debtEntries, ...tegoedEntries])
   }
 
   const handleDeleteIngehaaldHistoryEntry = async (
@@ -838,13 +819,13 @@ export function StandBackManagement() {
       type: string
       returnedPeriod: string
       note: string
+      sourceEntries?: Array<{ recordId: string; historyIndex: number }>
     }
   ) => {
-    const record = (group.records || []).find((r: any) => r.id === entry.recordId)
-    if (!record) {
-      alert("Registratie niet gevonden.")
-      return
-    }
+    const targets =
+      entry.sourceEntries && entry.sourceEntries.length > 0
+        ? entry.sourceEntries
+        : [{ recordId: entry.recordId, historyIndex: entry.historyIndex }]
 
     const typeLabel = entry.type === "overwerk" ? "Overwerk" : "Teruggestaan"
     const confirmMsg =
@@ -852,43 +833,61 @@ export function StandBackManagement() {
       `${entry.daysCompleted} dag(en) (${typeLabel})\n` +
       `Periode: ${entry.returnedPeriod}\n` +
       `${entry.note}\n\n` +
-      `Alleen deze regel verdwijnt; de telling (saldo) wordt opnieuw berekend.`
+      `De telling (saldo) wordt opnieuw berekend.`
 
     if (!confirm(confirmMsg)) return
 
-    const key = `${entry.recordId}-${entry.historyIndex}`
+    const key =
+      targets.length > 1
+        ? targets.map((t) => `${t.recordId}-${t.historyIndex}`).join("|")
+        : `${targets[0].recordId}-${targets[0].historyIndex}`
     setDeletingHistoryKey(key)
 
     try {
-      const history = Array.isArray(record.standBackHistory)
-        ? [...record.standBackHistory]
-        : []
-      if (entry.historyIndex < 0 || entry.historyIndex >= history.length) {
-        alert("Registratie niet meer gevonden. Vernieuw de pagina.")
-        return
+      const byRecord = new Map<string, number[]>()
+      for (const target of targets) {
+        const list = byRecord.get(target.recordId) || []
+        list.push(target.historyIndex)
+        byRecord.set(target.recordId, list)
       }
 
-      const filtered = history.filter((_, i) => i !== entry.historyIndex)
+      for (const [recordId, indices] of byRecord) {
+        const record = (group.records || []).find((r: any) => r.id === recordId)
+        if (!record) {
+          alert("Registratie niet gevonden.")
+          return
+        }
 
-      const recordWithHistory = { ...record, standBackHistory: filtered }
-      if (isTegoedStandBackRecord(record)) {
-        const creditSum = sumCreditDaysFromHistory(recordWithHistory)
-        await updateStandBackRecord(record.id, {
-          stand_back_days_remaining: creditSum > 0 ? -creditSum : 0,
-          stand_back_days_completed: 0,
-          stand_back_history: filtered,
-          stand_back_status: creditSum > 0 ? "openstaand" : "voltooid",
-        })
-      } else {
-        const required = Number(record.standBackDaysRequired || 0)
-        const returned = sumReturnedDaysFromHistory(recordWithHistory)
-        const remaining = Math.max(0, required - returned)
-        await updateStandBackRecord(record.id, {
-          stand_back_days_completed: returned,
-          stand_back_days_remaining: remaining,
-          stand_back_status: remaining <= 0 ? "voltooid" : "openstaand",
-          stand_back_history: filtered,
-        })
+        const history = Array.isArray(record.standBackHistory)
+          ? [...record.standBackHistory]
+          : []
+        const indexSet = new Set(indices)
+        if (indices.some((i) => i < 0 || i >= history.length)) {
+          alert("Registratie niet meer gevonden. Vernieuw de pagina.")
+          return
+        }
+
+        const filtered = history.filter((_, i) => !indexSet.has(i))
+        const recordWithHistory = { ...record, standBackHistory: filtered }
+        if (isTegoedStandBackRecord(record)) {
+          const creditSum = sumCreditDaysFromHistory(recordWithHistory)
+          await updateStandBackRecord(record.id, {
+            stand_back_days_remaining: creditSum > 0 ? -creditSum : 0,
+            stand_back_days_completed: 0,
+            stand_back_history: filtered,
+            stand_back_status: creditSum > 0 ? "openstaand" : "voltooid",
+          })
+        } else {
+          const required = Number(record.standBackDaysRequired || 0)
+          const returned = sumReturnedDaysFromHistory(recordWithHistory)
+          const remaining = Math.max(0, required - returned)
+          await updateStandBackRecord(record.id, {
+            stand_back_days_completed: returned,
+            stand_back_days_remaining: remaining,
+            stand_back_status: remaining <= 0 ? "voltooid" : "openstaand",
+            stand_back_history: filtered,
+          })
+        }
       }
 
       await loadData()
@@ -1506,10 +1505,18 @@ export function StandBackManagement() {
                               </thead>
                               <tbody>
                                 {getGroupIngehaaldHistory(group).map((entry: any, index: number) => {
-                                  const deleteKey = `${entry.recordId}-${entry.historyIndex}`
+                                  const deleteKey =
+                                    entry.sourceEntries?.length > 1
+                                      ? entry.sourceEntries
+                                          .map(
+                                            (s: { recordId: string; historyIndex: number }) =>
+                                              `${s.recordId}-${s.historyIndex}`
+                                          )
+                                          .join("|")
+                                      : `${entry.recordId}-${entry.historyIndex}`
                                   return (
                                   <tr
-                                    key={`${entry.recordId}-${entry.historyIndex}-${entry.type}-${index}`}
+                                    key={`${deleteKey}-${entry.type}-${index}`}
                                     className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
                                   >
                                     <td className="border px-2 py-1">

@@ -294,6 +294,76 @@ export function computeMemberStandBackTotals(
   }
 }
 
+/** Groepeer overwerk-afboekingen van dezelfde reis (meerdere schuldregels → één UI-regel). */
+export function getOverwerkTripHistoryKey(entry: {
+  completedBy?: string | null
+  periodStart?: string | null
+  periodEnd?: string | null
+  tripId?: string | null
+}): string | null {
+  if (entry.completedBy !== "Overwerker-systeem") return null
+  if (entry.tripId) return `trip:${entry.tripId}`
+  const ps = String(entry.periodStart || "").slice(0, 10)
+  const pe = String(entry.periodEnd || "").slice(0, 10)
+  if (ps && pe) return `period:${ps}|${pe}`
+  return null
+}
+
+export type IngehaaldHistorySourceRef = { recordId: string; historyIndex: number }
+
+export function consolidateIngehaaldHistoryForDisplay<
+  T extends {
+    completedBy?: string | null
+    periodStart?: string | null
+    periodEnd?: string | null
+    tripId?: string | null
+    daysCompleted: number
+    date?: string | null
+    recordId: string
+    historyIndex: number
+  },
+>(entries: T[]): Array<T & { sourceEntries?: IngehaaldHistorySourceRef[] }> {
+  const standalone: Array<T & { sourceEntries?: IngehaaldHistorySourceRef[] }> = []
+  const overwerkGroups = new Map<string, T[]>()
+
+  for (const entry of entries) {
+    const key = getOverwerkTripHistoryKey(entry)
+    if (key) {
+      const list = overwerkGroups.get(key) || []
+      list.push(entry)
+      overwerkGroups.set(key, list)
+    } else {
+      standalone.push(entry)
+    }
+  }
+
+  const consolidated: Array<T & { sourceEntries?: IngehaaldHistorySourceRef[] }> = []
+
+  for (const group of overwerkGroups.values()) {
+    if (group.length === 1) {
+      consolidated.push(group[0])
+      continue
+    }
+    const sorted = [...group].sort(
+      (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+    )
+    const primary = sorted[0]
+    const totalDays = group.reduce((sum, e) => sum + (e.daysCompleted || 0), 0)
+    consolidated.push({
+      ...primary,
+      daysCompleted: totalDays,
+      sourceEntries: group.map((e) => ({
+        recordId: e.recordId,
+        historyIndex: e.historyIndex,
+      })),
+    })
+  }
+
+  return [...standalone, ...consolidated].sort(
+    (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+  )
+}
+
 export function getStandBackBalanceSummary(
   records: Array<{
     crew_member_id?: string
@@ -307,12 +377,14 @@ export function getStandBackBalanceSummary(
   }>,
   crewMemberId: string
 ) {
-  const open = records.filter(
+  const active = records.filter(
     (r) =>
       String(r.crew_member_id) === String(crewMemberId) &&
-      r.stand_back_status === "openstaand"
+      (r.stand_back_status === "openstaand" ||
+        r.stand_back_status === "voltooid") &&
+      !String(r.description || "").includes("[UIT DIENST")
   )
-  const totals = computeMemberStandBackTotals(open)
+  const totals = computeMemberStandBackTotals(active)
   return {
     outstanding: totals.totalOutstanding,
     credit: totals.totalCredit,

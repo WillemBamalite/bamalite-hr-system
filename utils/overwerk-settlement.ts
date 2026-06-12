@@ -441,6 +441,7 @@ export async function processOverwerkSettlement(params: {
         periodStart: startOnly,
         periodEnd: endOnly,
         completedBy: "Overwerker-systeem",
+        tripId: trip.id,
       }
       await updateStandBackRecord(rec.id, {
         stand_back_days_completed: newReturned,
@@ -464,6 +465,7 @@ export async function processOverwerkSettlement(params: {
           periodStart: startOnly,
           periodEnd: endOnly,
           completedBy: "Overwerker-systeem",
+          tripId: trip.id,
         }
         await updateStandBackRecord(tegoedRecord.id, {
           stand_back_days_remaining: newRem,
@@ -495,6 +497,7 @@ export async function processOverwerkSettlement(params: {
               periodStart: startOnly,
               periodEnd: endOnly,
               completedBy: "Overwerker-systeem",
+              tripId: trip.id,
             },
           ],
         })
@@ -539,7 +542,8 @@ function historyEntryMatchesTrip(
   const startOnly = normalizeTripDate(trip.start_datum || trip.start_date)
   const endOnly = normalizeTripDate(trip.eind_datum || trip.end_date)
   if (!startOnly || !endOnly) return false
-  const e = entry as { periodStart?: string; periodEnd?: string }
+  const e = entry as { periodStart?: string; periodEnd?: string; tripId?: string }
+  if (e.tripId && trip.id && e.tripId === trip.id) return true
   return e.periodStart === startOnly && e.periodEnd === endOnly
 }
 

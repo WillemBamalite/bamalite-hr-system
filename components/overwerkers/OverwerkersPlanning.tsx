@@ -183,7 +183,6 @@ export function OverwerkersPlanning({
   const [assignDialog, setAssignDialog] = useState<{ memberId: string; name: string } | null>(null)
   const [assignShipId, setAssignShipId] = useState("")
   const [assignStartDate, setAssignStartDate] = useState(today)
-  const [assignEndDate, setAssignEndDate] = useState("")
   const [assignSettlement, setAssignSettlement] = useState<OverwerkSettlementType>("none")
   const [assigning, setAssigning] = useState(false)
   const [endDialog, setEndDialog] = useState<{
@@ -434,23 +433,18 @@ export function OverwerkersPlanning({
 
   const handleAssign = async () => {
     if (!assignDialog || !assignShipId || !assignStartDate) return
-    if (assignEndDate && assignEndDate < assignStartDate) {
-      alert("Tot-datum moet op of na de van-datum liggen.")
-      return
-    }
     setAssigning(true)
     try {
       await onAssignToShip(
         assignDialog.memberId,
         assignShipId,
         assignStartDate,
-        assignEndDate || undefined,
+        undefined,
         assignSettlement
       )
       setAssignDialog(null)
       setAssignShipId("")
       setAssignStartDate(planningDate)
-      setAssignEndDate("")
       setAssignSettlement("none")
     } catch {
       alert("Fout bij toewijzen aan schip")
@@ -617,7 +611,6 @@ export function OverwerkersPlanning({
                   setAssignDialog({ memberId: member.id, name })
                   setAssignShipId(ships[0]?.id || "")
                   setAssignStartDate(planningDate)
-                  setAssignEndDate("")
                   setAssignSettlement("none")
                 }}
               >
@@ -1209,26 +1202,14 @@ export function OverwerkersPlanning({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="assign-start">Van datum *</Label>
-                <Input
-                  id="assign-start"
-                  type="date"
-                  value={assignStartDate}
-                  onChange={(e) => setAssignStartDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="assign-end">Tot datum (optioneel)</Label>
-                <Input
-                  id="assign-end"
-                  type="date"
-                  value={assignEndDate}
-                  min={assignStartDate || undefined}
-                  onChange={(e) => setAssignEndDate(e.target.value)}
-                />
-              </div>
+            <div>
+              <Label htmlFor="assign-start">Startdatum *</Label>
+              <Input
+                id="assign-start"
+                type="date"
+                value={assignStartDate}
+                onChange={(e) => setAssignStartDate(e.target.value)}
+              />
             </div>
             <div>
               <Label className="mb-2 block">Verrekening na afloop</Label>
