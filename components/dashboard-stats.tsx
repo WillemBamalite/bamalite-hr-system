@@ -12,8 +12,8 @@ import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { countsAsTotalCrewMember, isExcludedFromAssignmentPool } from "@/utils/crew-filters"
+import { buildOfficeCelebrationsForMonth } from "@/utils/office-celebrations"
 import {
-  filterOfficeMeldingenNotifications,
   filterReceivedTasksForOfficeViewer,
   filterTasksForViewer,
   isTaskOfficeUser,
@@ -44,18 +44,18 @@ export function DashboardStats() {
 
   const notificationCount = useMemo(() => {
     try {
-      const all = buildDashboardNotifications({
+      if (isTaskOfficeUser(viewerEmailLower)) {
+        const { birthdays, anniversaries } = buildOfficeCelebrationsForMonth(crew || [])
+        return birthdays.length + anniversaries.length
+      }
+      return buildDashboardNotifications({
         crew: crew || [],
         tasks: tasks || [],
         ships: ships || [],
         sickLeave: sickLeave || [],
         visits: visits || [],
         getShipsNotVisitedInDays,
-      })
-      const visible = isTaskOfficeUser(viewerEmailLower)
-        ? filterOfficeMeldingenNotifications(all)
-        : all
-      return visible.length
+      }).length
     } catch {
       return 0
     }

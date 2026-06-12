@@ -10,15 +10,15 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { format } from "date-fns"
 import { authenticatedFetch } from "@/lib/authenticated-fetch"
 import { useAuth } from "@/contexts/AuthContext"
+import { isTaskOfficeUser } from "@/utils/task-permissions"
 import {
-  filterOfficeMeldingenNotifications,
-  isTaskOfficeUser,
-  OFFICE_MELDINGEN_GROUP_LABELS,
-} from "@/utils/task-permissions"
+  buildOfficeCelebrationsForMonth,
+  getOfficeCelebrationsMonthLabel,
+} from "@/utils/office-celebrations"
 
 const kindLabel = (kind: string) => {
   switch (kind) {
@@ -150,7 +150,13 @@ export default function MeldingenPage() {
     return format(d, "dd/MM/yy")
   }
 
-  const allNotifications = buildDashboardNotifications({
+  const officeCelebrations = useMemo(
+    () => (isOfficeMeldingenViewer ? buildOfficeCelebrationsForMonth(crew || []) : null),
+    [crew, isOfficeMeldingenViewer]
+  )
+  const officeMonthLabel = getOfficeCelebrationsMonthLabel()
+
+  const notifications = buildDashboardNotifications({
     crew: crew || [],
     tasks: tasks || [],
     ships: ships || [],
@@ -158,9 +164,6 @@ export default function MeldingenPage() {
     visits: visits || [],
     getShipsNotVisitedInDays,
   })
-  const notifications = isOfficeMeldingenViewer
-    ? filterOfficeMeldingenNotifications(allNotifications)
-    : allNotifications
 
   const grouped = notifications.reduce((acc, n) => {
     const key = kindLabel(n.kind)
@@ -173,12 +176,8 @@ export default function MeldingenPage() {
   const gridGroupsRow2 = ["Ziektebriefjes", "Verjaardagen", "Dienstjubilea", "Proeftijd"] as const
   const otherGroups = ["Overig"] as const
 
-  const gridGroups = isOfficeMeldingenViewer
-    ? [...OFFICE_MELDINGEN_GROUP_LABELS]
-    : [...gridGroupsRow1, ...gridGroupsRow2]
-  const orderedOtherGroups = isOfficeMeldingenViewer
-    ? []
-    : otherGroups.filter((k) => (grouped[k] || []).length > 0)
+  const gridGroups = [...gridGroupsRow1, ...gridGroupsRow2]
+  const orderedOtherGroups = otherGroups.filter((k) => (grouped[k] || []).length > 0)
 
   const handleSendCertificateEmail = async (notification: any) => {
     const meta = (notification?.meta || {}) as Record<string, any>
@@ -229,7 +228,7 @@ export default function MeldingenPage() {
             <h2 className="text-2xl font-bold text-gray-900">Meldingen</h2>
             <p className="text-gray-600">
               {isOfficeMeldingenViewer
-                ? "Verjaardagen en dienstjubilea"
+                ? `Overzicht voor ${officeMonthLabel}`
                 : "Alles wat ook op het dashboard zichtbaar is"}
             </p>
           </div>
@@ -249,7 +248,76 @@ export default function MeldingenPage() {
           </Card>
         )}
 
-        {!loading && !error && (
+        {!loading && !error && isOfficeMeldingenViewer && officeCelebrations && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <Card className="overflow-hidden h-full">
+              <CardHeader className={`border-b py-4 ${groupHeaderClasses("Verjaardagen")}`}>
+                <CardTitle className="flex items-center justify-between text-base">
+                  <span>Verjaardagen vandaag</span>
+                  <Badge className={groupCountBadge("Verjaardagen")}>
+                    {officeCelebrations.birthdays.length}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {officeCelebrations.birthdays.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-600">Geen verjaardagen vandaag.</div>
+                ) : (
+                  <div className="divide-y">
+                    {officeCelebrations.birthdays.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={`/bemanning/${item.crewId}`}
+                        className="flex items-center justify-between gap-3 p-4 hover:bg-pink-50/50 transition-colors"
+                      >
+                        <span className="font-medium text-gray-900">{item.fullName}</span>
+                        <span className="text-sm text-gray-600 shrink-0">{item.age} jaar</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden h-full">
+              <CardHeader className={`border-b py-4 ${groupHeaderClasses("Dienstjubilea")}`}>
+                <CardTitle className="flex items-center justify-between text-base">
+                  <span>Dienstjubilea deze maand</span>
+                  <Badge className={groupCountBadge("Dienstjubilea")}>
+                    {officeCelebrations.anniversaries.length}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {officeCelebrations.anniversaries.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-600">Geen dienstjubilea deze maand.</div>
+                ) : (
+                  <div className="divide-y">
+                    {officeCelebrations.anniversaries.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={`/bemanning/${item.crewId}`}
+                        className="flex items-center justify-between gap-3 p-4 hover:bg-yellow-50/50 transition-colors"
+                      >
+                        <span className="font-medium text-gray-900 min-w-0">
+                          {item.fullName}
+                          <span className="ml-2 text-sm font-normal text-gray-600">
+                            ({item.years} jaar)
+                          </span>
+                        </span>
+                        <span className="text-sm font-semibold text-yellow-900 tabular-nums shrink-0">
+                          {item.dateLabel}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {!loading && !error && !isOfficeMeldingenViewer && (
           <div className="space-y-6">
             <Card className="overflow-hidden">
               <CardHeader className="border-b bg-white">
