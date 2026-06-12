@@ -13,6 +13,12 @@ import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { useState } from "react"
 import { format } from "date-fns"
 import { authenticatedFetch } from "@/lib/authenticated-fetch"
+import { useAuth } from "@/contexts/AuthContext"
+import {
+  filterOfficeMeldingenNotifications,
+  isTaskOfficeUser,
+  OFFICE_MELDINGEN_GROUP_LABELS,
+} from "@/utils/task-permissions"
 
 const kindLabel = (kind: string) => {
   switch (kind) {
@@ -129,7 +135,9 @@ const groupCountBadge = (groupName: string) => {
 }
 
 export default function MeldingenPage() {
+  const { user } = useAuth()
   const { crew, tasks, ships, sickLeave, loading, error } = useSupabaseData()
+  const isOfficeMeldingenViewer = isTaskOfficeUser(user?.email)
   const { visits, getShipsNotVisitedInDays } = useShipVisits()
   const [sendingCertificateEmailId, setSendingCertificateEmailId] = useState<string | null>(null)
   const [sentCertificateNotificationIds, setSentCertificateNotificationIds] = useState<Record<string, boolean>>({})
@@ -142,7 +150,7 @@ export default function MeldingenPage() {
     return format(d, "dd/MM/yy")
   }
 
-  const notifications = buildDashboardNotifications({
+  const allNotifications = buildDashboardNotifications({
     crew: crew || [],
     tasks: tasks || [],
     ships: ships || [],
@@ -150,6 +158,9 @@ export default function MeldingenPage() {
     visits: visits || [],
     getShipsNotVisitedInDays,
   })
+  const notifications = isOfficeMeldingenViewer
+    ? filterOfficeMeldingenNotifications(allNotifications)
+    : allNotifications
 
   const grouped = notifications.reduce((acc, n) => {
     const key = kindLabel(n.kind)
@@ -162,8 +173,12 @@ export default function MeldingenPage() {
   const gridGroupsRow2 = ["Ziektebriefjes", "Verjaardagen", "Dienstjubilea", "Proeftijd"] as const
   const otherGroups = ["Overig"] as const
 
-  const gridGroups = [...gridGroupsRow1, ...gridGroupsRow2]
-  const orderedOtherGroups = otherGroups.filter((k) => (grouped[k] || []).length > 0)
+  const gridGroups = isOfficeMeldingenViewer
+    ? [...OFFICE_MELDINGEN_GROUP_LABELS]
+    : [...gridGroupsRow1, ...gridGroupsRow2]
+  const orderedOtherGroups = isOfficeMeldingenViewer
+    ? []
+    : otherGroups.filter((k) => (grouped[k] || []).length > 0)
 
   const handleSendCertificateEmail = async (notification: any) => {
     const meta = (notification?.meta || {}) as Record<string, any>
@@ -212,7 +227,11 @@ export default function MeldingenPage() {
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Meldingen</h2>
-            <p className="text-gray-600">Alles wat ook op het dashboard zichtbaar is</p>
+            <p className="text-gray-600">
+              {isOfficeMeldingenViewer
+                ? "Verjaardagen en dienstjubilea"
+                : "Alles wat ook op het dashboard zichtbaar is"}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <DashboardButton />

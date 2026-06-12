@@ -63,6 +63,26 @@ export function canAccessTasksPage(email?: string | null): boolean {
   return isTaskManagementUser(e) || isTaskOfficeUser(e)
 }
 
+/** Dunja en Karina: meldingen beperkt tot verjaardagen en dienstjubilea. */
+export const OFFICE_MELDINGEN_GROUP_LABELS = ["Verjaardagen", "Dienstjubilea"] as const
+
+export function canAccessOfficeMeldingenPage(email?: string | null): boolean {
+  return isTaskOfficeUser(email)
+}
+
+/** Dunja en Karina: geen notities/opmerkingen op profiel of schepenoverzicht. */
+export function shouldHideCrewNotesForViewer(email?: string | null): boolean {
+  return isTaskOfficeUser(email)
+}
+
+export function filterOfficeMeldingenNotifications<
+  T extends { kind: string },
+>(notifications: T[]): T[] {
+  return notifications.filter(
+    (n) => n.kind === "birthday" || n.kind === "anniversary"
+  )
+}
+
 export function getTaskAssigneeForEmail(email?: string | null): TaskAssignee | null {
   const e = normalizeEmail(email)
   if (TASK_OFFICE_EMAIL_TO_ASSIGNEE[e]) return TASK_OFFICE_EMAIL_TO_ASSIGNEE[e]

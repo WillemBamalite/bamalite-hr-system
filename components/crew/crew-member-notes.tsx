@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { format } from "date-fns"
 import { useAuth } from "@/contexts/AuthContext"
+import { shouldHideCrewNotesForViewer } from "@/utils/task-permissions"
 
 interface Props {
   crewMemberId: string
@@ -36,11 +37,16 @@ export function CrewMemberNotes({ crewMemberId }: Props) {
     currentUserEmail === "tanja@bamalite.com" ||
     currentUserEmail === "karina@bamalite.com" ||
     currentUserEmail === "lucie@bamalite.com"
+  const hideCrewNotesForViewer = shouldHideCrewNotesForViewer(currentUserEmail)
 
   // Prevent hydration errors
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  if (hideCrewNotesForViewer) {
+    return null
+  }
 
   // Find crew member from Supabase data
   const crewMember = crew.find(member => member.id === crewMemberId)

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { canAccessTasksPage } from '@/utils/task-permissions'
+import { canAccessOfficeMeldingenPage, canAccessTasksPage, isTaskOfficeUser } from '@/utils/task-permissions'
 
 interface AuthContextType {
   user: User | null
@@ -91,6 +91,19 @@ function canAccessPathForRole(
   const normalized = path.split("?")[0]
   const emailLower = (email || "").trim().toLowerCase()
   if (normalized === "/login" || normalized === "/login/email-verify") return true
+
+  // Dunja & Karina: bemanningsprofielen en meldingen (verjaardagen/jubilea)
+  if (isTaskOfficeUser(emailLower)) {
+    if (canAccessOfficeMeldingenPage(emailLower) && normalized === "/meldingen") {
+      return true
+    }
+    const officeProfileMatch = normalized.match(/^\/bemanning\/([^/]+)$/)
+    if (officeProfileMatch) {
+      const segment = (officeProfileMatch[1] || "").toLowerCase()
+      if (!LIMITED_BLOCKED_BEMANNING_SEGMENTS.has(segment)) return true
+    }
+  }
+
   if (
     emailLower === "jos@bamalite.com" &&
     (normalized === "/bemanning/loon-bemerkingen" || normalized.startsWith("/bemanning/loon-bemerkingen/"))

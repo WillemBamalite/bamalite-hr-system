@@ -13,6 +13,7 @@ import Link from "next/link"
 import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { countsAsTotalCrewMember, isExcludedFromAssignmentPool } from "@/utils/crew-filters"
 import {
+  filterOfficeMeldingenNotifications,
   filterReceivedTasksForOfficeViewer,
   filterTasksForViewer,
   isTaskOfficeUser,
@@ -39,22 +40,26 @@ export function DashboardStats() {
       locale === "de" ? "Schiffe & Zertifikate" : locale === "fr" ? "Navires & certificats" : "Schepen en Certificaten",
   }
 
+  const viewerEmailLower = String(user?.email || "").toLowerCase()
+
   const notificationCount = useMemo(() => {
     try {
-      return buildDashboardNotifications({
+      const all = buildDashboardNotifications({
         crew: crew || [],
         tasks: tasks || [],
         ships: ships || [],
         sickLeave: sickLeave || [],
         visits: visits || [],
         getShipsNotVisitedInDays,
-      }).length
+      })
+      const visible = isTaskOfficeUser(viewerEmailLower)
+        ? filterOfficeMeldingenNotifications(all)
+        : all
+      return visible.length
     } catch {
       return 0
     }
-  }, [crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays])
-  
-  const viewerEmailLower = String(user?.email || "").toLowerCase()
+  }, [crew, tasks, ships, sickLeave, visits, getShipsNotVisitedInDays, viewerEmailLower])
   const isNewsletterReadonlyUser = viewerEmailLower === "dunja@bamalite.com"
   const visibleTasks = isTaskOfficeUser(viewerEmailLower)
     ? filterTasksForViewer(tasks, viewerEmailLower)
@@ -375,6 +380,41 @@ export function DashboardStats() {
               </Link>
             </div>
           )}
+          {canAccessPath("/meldingen") && (
+            <div className="aspect-[3/1]">
+              <Link
+                href="/meldingen"
+                className={`h-full flex flex-col items-center justify-center rounded-lg p-2 md:p-4 text-center transition cursor-pointer border dashboard-tile ${
+                  notificationCount > 0
+                    ? "bg-pink-600 border-pink-700 hover:bg-pink-700"
+                    : "bg-pink-50 border-pink-200 hover:bg-pink-100"
+                }`}
+              >
+                <div
+                  className={`flex items-center gap-1 md:gap-2 text-xl md:text-2xl font-semibold dashboard-tile-title ${
+                    notificationCount > 0 ? "text-white" : "text-pink-800"
+                  }`}
+                >
+                  <Bell className={`w-4 h-4 md:w-5 md:h-5 ${notificationCount > 0 ? "text-white" : "text-pink-700"}`} />
+                  Verjaardagen & jubilea
+                </div>
+                <div
+                  className={`text-xl md:text-2xl font-extrabold dashboard-tile-number ${
+                    notificationCount > 0 ? "text-white" : "text-pink-900"
+                  }`}
+                >
+                  {notificationCount}
+                </div>
+                <div
+                  className={`text-xl md:text-2xl font-semibold dashboard-tile-sub ${
+                    notificationCount > 0 ? "text-pink-100" : "text-pink-700"
+                  }`}
+                >
+                  {uiText.open}
+                </div>
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -399,7 +439,9 @@ export function DashboardStats() {
               }`}
             >
               <Bell className={`w-4 h-4 md:w-5 md:h-5 ${notificationCount > 0 ? "text-white" : "text-gray-600"}`} />
-              {uiText.notifications}
+              {isTaskOfficeUser(viewerEmailLower)
+                ? "Verjaardagen & jubilea"
+                : uiText.notifications}
             </div>
             <div
               className={`text-xl md:text-2xl font-extrabold dashboard-tile-number ${

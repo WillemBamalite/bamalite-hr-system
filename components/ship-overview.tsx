@@ -47,6 +47,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAuth } from "@/contexts/AuthContext"
+import { shouldHideCrewNotesForViewer } from "@/utils/task-permissions"
 import { supabase } from "@/lib/supabase"
 import { useDashboardSearch } from "@/contexts/DashboardSearchContext"
 
@@ -127,6 +128,7 @@ export function ShipOverview() {
   const ABSENT_MARKER = "[AFWEZIG]"
   const userEmailLower = String(user?.email || "").toLowerCase()
   const isNewsletterReadonlyUser = userEmailLower === "dunja@bamalite.com"
+  const hideCrewNotesForViewer = shouldHideCrewNotesForViewer(userEmailLower)
   const hideABAndColorControls =
     userEmailLower === "tanja@bamalite.com" ||
     userEmailLower === "karina@bamalite.com" ||
@@ -525,7 +527,7 @@ export function ShipOverview() {
         <CardContent
           className={
             isNewsletterReadonlyUser
-              ? "[&_a]:pointer-events-none [&_button]:pointer-events-none [&_input]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=button]]:pointer-events-none"
+              ? "[&_button]:pointer-events-none [&_input]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=button]]:pointer-events-none"
               : undefined
           }
         >
@@ -856,24 +858,18 @@ export function ShipOverview() {
                 </span>
               ) : (
                 <>
-                  {isNewsletterReadonlyUser ? (
-                    <span className="font-medium text-gray-900 truncate text-sm">
-                      {member.first_name} {member.last_name}
-                    </span>
-                  ) : (
-                    <Link 
-                      href={`/bemanning/${member.id}`}
-                      className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
-                      onClick={() => {
-                        const currentScroll = window.scrollY
-                        sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString())
-                        sessionStorage.setItem('shipOverviewScrollToCrewId', member.id)
-                        scrollPositionRef.current = currentScroll
-                      }}
-                    >
-                      {member.first_name} {member.last_name}
-                    </Link>
-                  )}
+                  <Link
+                    href={`/bemanning/${member.id}`}
+                    className="font-medium text-gray-900 hover:text-blue-600 truncate text-sm"
+                    onClick={() => {
+                      const currentScroll = window.scrollY
+                      sessionStorage.setItem('shipOverviewScrollPosition', currentScroll.toString())
+                      sessionStorage.setItem('shipOverviewScrollToCrewId', member.id)
+                      scrollPositionRef.current = currentScroll
+                    }}
+                  >
+                    {member.first_name} {member.last_name}
+                  </Link>
                   <span className="text-sm">{getNationalityFlag(member.nationality)}</span>
                 </>
               )}
@@ -943,7 +939,7 @@ export function ShipOverview() {
                   </div>
                 )}
                 {/* Dummy opmerking */}
-                {!isNewsletterReadonlyUser && member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
+                {!hideCrewNotesForViewer && member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
                   <div className="mt-2 space-y-1 border-t pt-2">
                     <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
@@ -1101,7 +1097,7 @@ export function ShipOverview() {
             })()}
 
             {/* Active Notes */}
-            {!isNewsletterReadonlyUser && member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
+            {!hideCrewNotesForViewer && member.active_notes && member.active_notes.filter((note: any) => !note.content?.startsWith('DUMMY_LOCATION:') && !note.content?.startsWith('CREW_AB_DESIGNATION:') && !note.content?.startsWith('COPIED_FROM:') && !note.content?.startsWith('Gekopieerd van:')).length > 0 && (
               <div className="mt-2 space-y-1 border-t pt-2">
                 <div className="text-xs text-orange-800 font-semibold flex items-center gap-1">
                   <MessageSquare className="w-3 h-3" />

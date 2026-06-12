@@ -18,6 +18,7 @@ import {
 } from "@/utils/ship-constants"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAuth } from "@/contexts/AuthContext"
+import { shouldHideCrewNotesForViewer } from "@/utils/task-permissions"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -113,7 +114,9 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
   const isReadOnlyProfileUser =
     currentUserEmail === "tanja@bamalite.com" ||
     currentUserEmail === "karina@bamalite.com" ||
-    currentUserEmail === "lucie@bamalite.com"
+    currentUserEmail === "lucie@bamalite.com" ||
+    currentUserEmail === "dunja@bamalite.com"
+  const hideCrewNotesForViewer = shouldHideCrewNotesForViewer(currentUserEmail)
 
   const getRoleType = (member: any) => {
     if (!member) return "vast"
@@ -1313,7 +1316,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
           </div>
         )}
 
-        {/* Notes */}
+        {!hideCrewNotesForViewer && (
           <div>
             <label className="text-sm font-medium text-gray-700">{t('notes')}</label>
             {isEditing ? (
@@ -1350,6 +1353,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
               </div>
             )}
           </div>
+        )}
         </CardContent>
       </Card>
 

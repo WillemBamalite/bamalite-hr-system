@@ -26,7 +26,8 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
   const isReadOnlyProfileUser =
     userEmailLower === "tanja@bamalite.com" ||
     userEmailLower === "karina@bamalite.com" ||
-    userEmailLower === "lucie@bamalite.com"
+    userEmailLower === "lucie@bamalite.com" ||
+    userEmailLower === "dunja@bamalite.com"
   
   // Haal data uit Supabase
   const crewMember = crew.find((c: any) => c.id === crewMemberId)
