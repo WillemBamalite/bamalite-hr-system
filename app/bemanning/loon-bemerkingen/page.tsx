@@ -13,6 +13,7 @@ import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
 import { isCopiedCrewMember, isExcludedFromSalaryMonth, isRealCrewMember, parseCrewDate } from "@/utils/crew-filters"
+import { calculateOverwerkAmount } from "@/utils/overwerk-pay-rates"
 
 const TRAVEL_AMOUNT_OPTIONS = [0, 150, 300] as const
 type TravelAmountOption = (typeof TRAVEL_AMOUNT_OPTIONS)[number]
@@ -163,24 +164,6 @@ const formatCurrency = (value: number) => formatEuro(Number(value || 0))
 const SEPA_CCY = "EUR"
 const DEFAULT_SEPA_MESSAGE_PREFIX = "Salaris"
 const CLOTHING_ALLOWANCE_FIXED = 25
-const OVERWORK_CAPTAIN_RATE_EUR = 400
-
-/** Kapitein, schipper en 2e kapitein: vast €400 per overwerkdag (salarislijst). */
-function isFixedRateOverworkPosition(position: string | null | undefined): boolean {
-  const normalized = String(position || "")
-    .toLowerCase()
-    .trim()
-    .replace(/[_-]/g, " ")
-  if (!normalized) return false
-  return (
-    normalized.includes("kapitein") ||
-    normalized.includes("captain") ||
-    normalized.includes("schipper") ||
-    normalized.includes("skipper") ||
-    /\b2e\s*kapit/.test(normalized) ||
-    normalized.includes("tweede kapitein")
-  )
-}
 
 const parseMoney = (value: any): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
@@ -1217,22 +1200,14 @@ export default function LoonBemerkingenPage() {
   const getOverworkAmount = (row: SalaryDraft) => {
     const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
-    if (overtimeDays <= 0) return 0
     const crewMember = crewById.get(String(row.crew_id))
-    const isFixedRate = isFixedRateOverworkPosition(crewMember?.position)
-    if (!isFixedRate && baseSalaryExcl <= 0) return 0
-    const perDayOverwork = isFixedRate ? OVERWORK_CAPTAIN_RATE_EUR : baseSalaryExcl / 15
-    return perDayOverwork * overtimeDays
+    return calculateOverwerkAmount(crewMember?.position, overtimeDays, baseSalaryExcl)
   }
 
   const getOverworkAmountForCrew = (crewId: string, baseSalary: number, overtimeDays: number) => {
-    if (overtimeDays <= 0) return 0
     const crewMember = crewById.get(String(crewId))
-    const isFixedRate = isFixedRateOverworkPosition(crewMember?.position)
     const baseSalaryExcl = Math.max(0, baseSalary - CLOTHING_ALLOWANCE_FIXED)
-    if (!isFixedRate && baseSalaryExcl <= 0) return 0
-    const perDayOverwork = isFixedRate ? OVERWORK_CAPTAIN_RATE_EUR : baseSalaryExcl / 15
-    return perDayOverwork * overtimeDays
+    return calculateOverwerkAmount(crewMember?.position, overtimeDays, baseSalaryExcl)
   }
 
   const isInServiceThisMonth = (inServiceFrom: string | null, selectedMonthKey: string) => {
