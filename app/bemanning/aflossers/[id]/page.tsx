@@ -42,6 +42,11 @@ import {
   Printer,
 } from "lucide-react"
 import Link from "next/link"
+import { isOverwerkTrip } from "@/utils/overwerker-availability"
+import {
+  parseOverwerkSettlement,
+  revertOverwerkSettlementForDeletedTrip,
+} from "@/utils/overwerk-settlement"
 
 const DIPLOMA_OPTIONS = [
   "Vaarbewijs",
@@ -142,7 +147,9 @@ export default function AflosserDetailPage() {
     error, 
     updateCrew, 
     deleteAflosser, 
+    deleteTrip,
     updateTrip,
+    updateStandBackRecord,
     addVasteDienstMindag,
     deleteVasteDienstMindag
   } = useSupabaseData()
@@ -176,6 +183,7 @@ export default function AflosserDetailPage() {
   const [showAllVasteDienstMonths, setShowAllVasteDienstMonths] = useState(false)
   const [isRemovingStartsaldo, setIsRemovingStartsaldo] = useState(false)
   const [mindagenDialogOpen, setMindagenDialogOpen] = useState(false)
+  const [deletingTripId, setDeletingTripId] = useState<string | null>(null)
   const [printIncludeBedrag, setPrintIncludeBedrag] = useState(true)
   const [printBedragDialogOpen, setPrintBedragDialogOpen] = useState(false)
   const [newMindag, setNewMindag] = useState({
@@ -678,6 +686,40 @@ export default function AflosserDetailPage() {
         description: "Mindagen konden niet worden verwijderd",
         variant: "destructive"
       })
+    }
+  }
+
+  const handleDeleteTripFromHistory = async (trip: any) => {
+    if (!aflosser?.id || !trip?.id) return
+    if (!confirm("Weet je zeker dat je deze reis volledig wilt verwijderen?")) return
+
+    setDeletingTripId(String(trip.id))
+    try {
+      if (isOverwerkTrip(trip)) {
+        const settlement = parseOverwerkSettlement(trip)
+        if (settlement.processed && settlement.type !== "none") {
+          await revertOverwerkSettlementForDeletedTrip({
+            trip,
+            crewMember: aflosser,
+            updateStandBackRecord,
+          })
+        }
+      }
+
+      await deleteTrip(trip.id)
+      toast({
+        title: "Succes",
+        description: "Reis volledig verwijderd",
+      })
+    } catch (error) {
+      console.error("Error deleting trip from profile history:", error)
+      toast({
+        title: "Fout",
+        description: "Reis kon niet worden verwijderd",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingTripId(null)
     }
   }
 
@@ -1857,16 +1899,29 @@ export default function AflosserDetailPage() {
                     return (
                       <div key={trip.id || `trip-${index}`} className="border rounded-lg p-4">
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center space-x-2">
                               <Ship className="w-5 h-5 text-blue-600" />
                               <span className="font-medium">
                                 {ship ? ship.name : 'Onbekend schip'}
                               </span>
                             </div>
-                            <Badge className={getStatusColor(trip.status)}>
-                              {getStatusText(trip.status)}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge className={getStatusColor(trip.status)}>
+                                {getStatusText(trip.status)}
+                              </Badge>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                disabled={deletingTripId === String(trip.id)}
+                                onClick={() => handleDeleteTripFromHistory(trip)}
+                                title="Reis volledig verwijderen"
+                                aria-label="Reis volledig verwijderen"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

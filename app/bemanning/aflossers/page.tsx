@@ -804,6 +804,17 @@ export default function ReizenAflossersPage() {
     })
   }, [aflossers])
 
+  const isStartedButStillIngedeeldTrip = (trip: any) => {
+    if (trip?.status !== "ingedeeld") return false
+    return Boolean(trip?.start_datum && trip?.start_tijd)
+  }
+
+  const isTripOccupyingAflosser = (trip: any) => {
+    if (!trip || isOverwerkTrip(trip)) return false
+    if (trip.status === "actief") return true
+    return isStartedButStillIngedeeldTrip(trip)
+  }
+
   // Filter trips by status
   const geplandeTrips = trips
     .filter((trip: any) => trip.status === 'gepland')
@@ -814,9 +825,13 @@ export default function ReizenAflossersPage() {
       if (!b.start_date) return -1
       return new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
     })
-  const ingedeeldeTrips = trips.filter((trip: any) => trip.status === 'ingedeeld')
+  const ingedeeldeTrips = trips.filter(
+    (trip: any) => trip.status === "ingedeeld" && !isStartedButStillIngedeeldTrip(trip)
+  )
   const actieveTrips = trips.filter(
-    (trip: any) => isActiveTripStillOpen(trip) && !isOverwerkTrip(trip)
+    (trip: any) =>
+      !isOverwerkTrip(trip) &&
+      (isActiveTripStillOpen(trip) || isStartedButStillIngedeeldTrip(trip))
   )
   const voltooideTrips = trips.filter((trip: any) => trip.status === 'voltooid')
 
@@ -2128,8 +2143,10 @@ export default function ReizenAflossersPage() {
                 <SelectContent>
                   {aflossers.map((aflosser: any) => {
                     // Check if aflosser has an active trip
-                    const hasActiveTrip = trips.some((trip: any) => 
-                      trip.aflosser_id === aflosser.id && trip.status === 'actief'
+                    const hasActiveTrip = trips.some(
+                      (trip: any) =>
+                        trip.aflosser_id === aflosser.id &&
+                        isTripOccupyingAflosser(trip)
                     )
                     
                     // Check if aflosser has a future assigned trip
