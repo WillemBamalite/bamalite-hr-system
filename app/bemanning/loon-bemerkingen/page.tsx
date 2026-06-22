@@ -1304,7 +1304,7 @@ export default function LoonBemerkingenPage() {
 
     if (isStartMonth && start && start.getDate() >= 25) {
       const extraStartSuffix = extras.length > 0 ? ` (+ ${extras.join(" + ")})` : ""
-      return `Start op ${start.getDate()}e (na betaaldag 25e): salaris excl. kledinggeld via te-goed naar volgende maand${extraStartSuffix}.`
+      return `Start op ${start.getDate()}e (na betaaldag 25e): pro-rata excl. kledinggeld via te-goed naar volgende maand${extraStartSuffix}.`
     }
 
     const workedDays = getEffectiveWorkedDaysInSalaryMonth(row, selectedMonthKey)
@@ -1388,6 +1388,7 @@ export default function LoonBemerkingenPage() {
   const getSalaryTotals = (row: SalaryDraft) => {
     const selectedMonthKey = row.month_key || monthKey
     const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
+    const clothingAmount = getRowClothingAllowance(row)
     const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
     const workedDays = getEffectiveWorkedDaysInSalaryMonth(row, selectedMonthKey)
     const sickBreakdown = getSickDaysInMonth(
@@ -1403,14 +1404,15 @@ export default function LoonBemerkingenPage() {
       workedDays,
       sickBreakdown
     )
-    const clothingAmount = getRowClothingAllowance(row)
     const travelAmount = getPayableTravelAmount(row.travel_amount)
     const advanceAmount = getTotalDeductionAmount(row.deductions || [])
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
     const teGoedDays = getTeGoedDays(row.in_service_from, selectedMonthKey)
     const sourceDaysInMonth = getTeGoedSourceDaysInMonth(row.in_service_from, selectedMonthKey)
     const amountPerDay = sourceDaysInMonth > 0 ? baseSalaryExcl / sourceDaysInMonth : 0
-    const teGoedAmount = teGoedDays > 0 ? amountPerDay * teGoedDays : 0
+    const teGoedProRata = teGoedDays > 0 ? amountPerDay * teGoedDays : 0
+    const teGoedClothing = teGoedDays > 0 ? clothingAmount : 0
+    const teGoedAmount = teGoedProRata + teGoedClothing
     const totalSalaryMonth =
       payableBaseSalary + clothingAmount + travelAmount + raiseAmount - advanceAmount + teGoedAmount
     return {
