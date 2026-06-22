@@ -1,3 +1,5 @@
+import defaultSepaDebtors from "@/config/sepa-debtors.json"
+
 export type SepaDebtorConfig = {
   name: string
   iban: string
@@ -22,6 +24,18 @@ const normalizeCompanyKey = (value: string) =>
 
 const normalizeIban = (iban: string) => String(iban || "").replace(/\s+/g, "").toUpperCase()
 
+function normalizeDebtorMap(parsed: Record<string, Partial<SepaDebtorConfig>>): Record<string, SepaDebtorConfig> {
+  const result: Record<string, SepaDebtorConfig> = {}
+  for (const [key, value] of Object.entries(parsed || {})) {
+    const name = String(value?.name || key).trim()
+    const iban = normalizeIban(String(value?.iban || ""))
+    const bic = String(value?.bic || "").trim().toUpperCase()
+    if (!name || !iban || !bic) continue
+    result[key.trim()] = { name, iban, bic }
+  }
+  return result
+}
+
 const COMPANY_ALIASES: Record<string, string> = {
   bamalite: "Bamalite S.A.",
   "bamalite sa": "Bamalite S.A.",
@@ -42,17 +56,10 @@ export function parseSepaDebtorsFromEnv(): Record<string, SepaDebtorConfig> {
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as Record<string, Partial<SepaDebtorConfig>>
-      const result: Record<string, SepaDebtorConfig> = {}
-      for (const [key, value] of Object.entries(parsed || {})) {
-        const name = String(value?.name || key).trim()
-        const iban = normalizeIban(String(value?.iban || ""))
-        const bic = String(value?.bic || "").trim().toUpperCase()
-        if (!name || !iban || !bic) continue
-        result[key.trim()] = { name, iban, bic }
-      }
+      const result = normalizeDebtorMap(parsed)
       if (Object.keys(result).length > 0) return result
     } catch {
-      /* fallback naar legacy env */
+      /* fallback naar legacy env / repo-default */
     }
   }
 
@@ -66,7 +73,7 @@ export function parseSepaDebtorsFromEnv(): Record<string, SepaDebtorConfig> {
     return { [legacyName]: legacy }
   }
 
-  return {}
+  return normalizeDebtorMap(defaultSepaDebtors as Record<string, Partial<SepaDebtorConfig>>)
 }
 
 export function resolveSepaDebtorForCompany(

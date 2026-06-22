@@ -1,0 +1,27 @@
+{
+  "Bamalite S.A.": {
+    "name": "Bamalite S.A.",
+    "iban": "NL45ABNA0456565655",
+    "bic": "ABNANL2A"
+  },
+  "Alcina S.A.": {
+    "name": "Alcina S.A.",
+    "iban": "NL14ABNA0495532762",
+    "bic": "ABNANL2A"
+  },
+  "Europe Shipping AG.": {
+    "name": "Europe Shipping AG.",
+    "iban": "NL36ABNA0404281168",
+    "bic": "ABNANL2A"
+  },
+  "Brugo Shipping SARL.": {
+    "name": "Brugo Shipping SARL.",
+    "iban": "NL58ABNA0128869739",
+    "bic": "ABNANL2A"
+  },
+  "Devel Shipping S.A.": {
+    "name": "Devel Shipping S.A.",
+    "iban": "NL80ABNA0128656913",
+    "bic": "ABNANL2A"
+  }
+}
