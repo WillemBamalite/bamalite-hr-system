@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,8 +29,12 @@ import {
 import {
   applySickAdjustmentToSalary,
   collectOverigeBetalingenForMonth,
+  buildSepaExtraWorkMessage,
   getOvertimePayoutMonthKey,
   getSickDaysInMonth,
+  isOvertimePayableRow,
+  resolveOvertimeInputMode,
+  type OvertimeInputMode,
   getSickSalaryNote,
   getTotalDeductionAmount,
   normalizeDeductionsFromMeta,
@@ -133,7 +137,9 @@ type SalaryDraft = {
   raise_enabled: boolean
   raise_amount: number | null
   overtime_enabled: boolean
+  overtime_mode: OvertimeInputMode
   overtime_days: number | null
+  overtime_manual_amount: number | null
   overtime_note: string
   inflation_adjustment: number | null
   inflation_batch_id: string
@@ -463,7 +469,9 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       raise_enabled?: boolean
       raise_amount?: number
       overtime_enabled?: boolean
+      overtime_mode?: OvertimeInputMode
       overtime_days?: number
+      overtime_manual_amount?: number
       overtime_note?: string
       inflation_adjustment?: number
       inflation_batch_id?: string
@@ -499,7 +507,10 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       raise_enabled: parsed.raise_enabled === true,
       raise_amount: typeof parsed.raise_amount === "number" ? parsed.raise_amount : 0,
       overtime_enabled: parsed.overtime_enabled === true,
+      overtime_mode: resolveOvertimeInputMode(parsed.overtime_mode),
       overtime_days: typeof parsed.overtime_days === "number" ? parsed.overtime_days : 0,
+      overtime_manual_amount:
+        typeof parsed.overtime_manual_amount === "number" ? parsed.overtime_manual_amount : 0,
       overtime_note: String(parsed.overtime_note || ""),
       inflation_adjustment: typeof parsed.inflation_adjustment === "number" ? parsed.inflation_adjustment : 0,
       inflation_batch_id: String(parsed.inflation_batch_id || ""),
@@ -547,6 +558,9 @@ export default function LoonBemerkingenPage() {
   const [editingSourceMonthKey, setEditingSourceMonthKey] = useState<string | null>(null)
   const [baseSalaryEditText, setBaseSalaryEditText] = useState("")
   const [overtimeDaysInput, setOvertimeDaysInput] = useState<string>("")
+  const [overtimeModeInput, setOvertimeModeInput] = useState<OvertimeInputMode>("days")
+  const [overtimeAmountInput, setOvertimeAmountInput] = useState<string>("")
+  const editingFormHydrationKeyRef = useRef("")
   const [prorationDaysInput, setProrationDaysInput] = useState<string>("")
   const [overtimeFromDate, setOvertimeFromDate] = useState<string>("")
   const [overtimeToDate, setOvertimeToDate] = useState<string>("")
@@ -821,10 +835,19 @@ export default function LoonBemerkingenPage() {
                 : (currentMeta?.raise_amount || 0),
             overtime_enabled:
               (current?.overtime_enabled ?? currentMeta?.overtime_enabled ?? false) === true,
+            overtime_mode: resolveOvertimeInputMode(
+              current?.overtime_mode ?? currentMeta?.overtime_mode
+            ),
             overtime_days:
               typeof current?.overtime_days === "number"
                 ? current.overtime_days
                 : (currentMeta?.overtime_days || 0),
+            overtime_manual_amount:
+              typeof current?.overtime_manual_amount === "number"
+                ? current.overtime_manual_amount
+                : typeof currentMeta?.overtime_manual_amount === "number"
+                  ? currentMeta.overtime_manual_amount
+                  : 0,
             overtime_note: String(
               current?.overtime_note ??
               currentMeta?.overtime_note ??
@@ -914,7 +937,14 @@ export default function LoonBemerkingenPage() {
           raise_enabled: (prevRow?.raise_enabled ?? meta?.raise_enabled ?? false) === true,
           raise_amount: typeof prevRow?.raise_amount === "number" ? prevRow.raise_amount : (meta?.raise_amount || 0),
           overtime_enabled: (prevRow?.overtime_enabled ?? meta?.overtime_enabled ?? false) === true,
+          overtime_mode: resolveOvertimeInputMode(prevRow?.overtime_mode ?? meta?.overtime_mode),
           overtime_days: typeof prevRow?.overtime_days === "number" ? prevRow.overtime_days : (meta?.overtime_days || 0),
+          overtime_manual_amount:
+            typeof prevRow?.overtime_manual_amount === "number"
+              ? prevRow.overtime_manual_amount
+              : typeof meta?.overtime_manual_amount === "number"
+                ? meta.overtime_manual_amount
+                : 0,
           overtime_note: String(prevRow?.overtime_note ?? meta?.overtime_note ?? ""),
           inflation_adjustment: typeof prevRow?.inflation_adjustment === "number" ? prevRow.inflation_adjustment : (meta?.inflation_adjustment || 0),
           inflation_batch_id: String(prevRow?.inflation_batch_id ?? meta?.inflation_batch_id ?? ""),
@@ -1014,19 +1044,32 @@ export default function LoonBemerkingenPage() {
   }, [editingCrewId, editingSourceMonthKey, rowsByCrewId, previousMonthRowsByCrewId])
 
   useEffect(() => {
-    if (!editingRow) {
+    if (!editingRow || !editingCrewId) {
+      editingFormHydrationKeyRef.current = ""
       setBaseSalaryEditText("")
       setOvertimeDaysInput("")
+      setOvertimeModeInput("days")
+      setOvertimeAmountInput("")
       setOvertimeFromDate("")
       setOvertimeToDate("")
       setProrationDaysInput("")
       return
     }
+    const hydrationKey = `${editingCrewId}::${editingSourceMonthKey || monthKey}`
+    if (editingFormHydrationKeyRef.current === hydrationKey) return
+    editingFormHydrationKeyRef.current = hydrationKey
+
     const current = editingRow
     const rowMonth = current.month_key || monthKey
     setBaseSalaryEditText(formatSalaryInputFromNumber(current.base_salary))
+    setOvertimeModeInput(resolveOvertimeInputMode(current.overtime_mode))
     setOvertimeDaysInput(
       typeof current.overtime_days === "number" ? String(current.overtime_days).replace(".", ",") : ""
+    )
+    setOvertimeAmountInput(
+      typeof current.overtime_manual_amount === "number" && current.overtime_manual_amount > 0
+        ? formatSalaryInputFromNumber(current.overtime_manual_amount)
+        : ""
     )
     const autoProrationDays = getWorkedDaysInSalaryMonth(current, rowMonth)
     setProrationDaysInput(
@@ -1053,7 +1096,7 @@ export default function LoonBemerkingenPage() {
       texts[d.id] = formatSalaryInputFromNumber(d.amount)
     }
     setDeductionAmountTexts(texts)
-  }, [editingRow, monthKey])
+  }, [editingRow, editingCrewId, editingSourceMonthKey, monthKey])
 
   useEffect(() => {
     if (companyNames.length === 0) {
@@ -1430,8 +1473,12 @@ export default function LoonBemerkingenPage() {
   }
 
   const getOverworkAmount = (row: SalaryDraft) => {
+    if (!row.overtime_enabled) return 0
+    if (resolveOvertimeInputMode(row.overtime_mode) === "amount") {
+      return Number(row.overtime_manual_amount || 0)
+    }
     const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
-    const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
+    const overtimeDays = Number(row.overtime_days || 0)
     const crewMember = crewById.get(String(row.crew_id))
     return calculateOverwerkAmount(crewMember?.position, overtimeDays, baseSalaryExcl)
   }
@@ -1460,7 +1507,7 @@ export default function LoonBemerkingenPage() {
       (row.deductions?.length || 0) > 0 ||
       (row.advance_enabled && Number(row.advance_amount || 0) !== 0) ||
       (row.raise_enabled && Number(row.raise_amount || 0) !== 0) ||
-      (row.overtime_enabled && Number(row.overtime_days || 0) > 0) ||
+      (row.overtime_enabled && isOvertimePayableRow(row)) ||
       teGoedDays > 0
 
     if (isSickOrAbsent) return "bg-red-100"
@@ -1494,7 +1541,9 @@ export default function LoonBemerkingenPage() {
       Object.prototype.hasOwnProperty.call(patch, "deductions") ||
       Object.prototype.hasOwnProperty.call(patch, "proration_worked_days") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_enabled") ||
+      Object.prototype.hasOwnProperty.call(patch, "overtime_mode") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_days") ||
+      Object.prototype.hasOwnProperty.call(patch, "overtime_manual_amount") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_note")
 
     const applyPatch = (prev: Record<string, SalaryDraft>) => ({
@@ -1581,7 +1630,9 @@ export default function LoonBemerkingenPage() {
           raise_enabled: !!row.raise_enabled,
           raise_amount: row.raise_amount ?? 0,
           overtime_enabled: !!row.overtime_enabled,
+          overtime_mode: resolveOvertimeInputMode(row.overtime_mode),
           overtime_days: row.overtime_days ?? 0,
+          overtime_manual_amount: row.overtime_manual_amount ?? 0,
           overtime_note: String(row.overtime_note || "").trim(),
           inflation_adjustment: row.inflation_adjustment ?? 0,
           inflation_batch_id: String(row.inflation_batch_id || "").trim(),
@@ -1682,21 +1733,40 @@ export default function LoonBemerkingenPage() {
     const advanceAmount = getTotalDeductionAmount(row.deductions || [])
     const teGoedDaysForValidation = getTeGoedDays(row.in_service_from, row.month_key)
     const hasNotes = !!String(row.notes || "").trim()
+    const overtimeMode = resolveOvertimeInputMode(row.overtime_mode)
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
+    const overtimeManualAmount = row.overtime_enabled ? Number(row.overtime_manual_amount || 0) : 0
     const overtimeNotes = String(row.overtime_note || "").toLowerCase()
     const hasFromToRangeInNotes = overtimeNotes.includes("van") && overtimeNotes.includes("tot")
 
-    // Altijd verplicht: overwerk vereist notitie met periode (van/tot).
-    if (row.overtime_enabled && overtimeDays > 0 && (!String(row.overtime_note || "").trim() || !hasFromToRangeInNotes)) {
+    if (row.overtime_enabled && overtimeMode === "amount") {
+      if (overtimeManualAmount <= 0) {
+        alert(
+          isTanja
+            ? "Bei manueller Überstunden-Eingabe ist ein Betrag Pflicht."
+            : "Bij handmatig extra werk is een bedrag verplicht."
+        )
+        return false
+      }
+    } else if (row.overtime_enabled && overtimeDays > 0) {
+      if (!String(row.overtime_note || "").trim() || !hasFromToRangeInNotes) {
+        alert(
+          isTanja
+            ? "Bei Überstunden ist ein Hinweis mit Zeitraum Pflicht (von ... bis ...)."
+            : "Bij overwerk is een opmerking verplicht met periode (van ... tot ...)."
+        )
+        return false
+      }
+    } else if (row.overtime_enabled) {
       alert(
         isTanja
-          ? "Bei Überstunden ist ein Hinweis mit Zeitraum Pflicht (von ... bis ...)."
-          : "Bij overwerk is een opmerking verplicht met periode (van ... tot ...)."
+          ? "Bei Überstunden geben Sie entweder Tage + Zeitraum oder einen manuellen Betrag an."
+          : "Bij extra werk vul je dagen + periode in, of kies handmatig bedrag."
       )
       return false
     }
 
-    if (row.overtime_enabled && overtimeDays > 0) {
+    if (row.overtime_enabled && isOvertimePayableRow(row) && overtimeMode === "days" && overtimeDays > 0) {
       const payoutMonth = getOvertimePayoutMonthKey(String(row.overtime_note || ""), row.month_key)
       if (payoutMonth !== row.month_key) {
         const payoutLabel = monthNumberToName(payoutMonth.split("-")[1] || "", isTanja)
@@ -2003,17 +2073,51 @@ export default function LoonBemerkingenPage() {
     }
   }
 
+  const syncOvertimeDateNoteToRow = (from: string, to: string) => {
+    if (!editingCrewId || !from || !to) return
+    const note = buildOvertimeNoteFromDateRange(from, to)
+    if (!note) return
+    setCrewField(
+      editingCrewId,
+      { overtime_note: note, overtime_mode: "days" },
+      editingSourceMonthKey || undefined
+    )
+  }
+
   const syncOvertimeInputToRow = (crewId: string): SalaryDraft | null => {
     if (!crewId) return null
-    const parsed = overtimeDaysInput.trim() === "" ? 0 : parseDecimalInput(overtimeDaysInput)
     const base = editingSourceMonthKey
       ? previousMonthRowsByCrewId[crewId]
       : rowsByCrewId[crewId]
     if (!base) return null
+
+    if (overtimeModeInput === "amount") {
+      const manualAmount = parseSalaryMoneyInputOrZero(overtimeAmountInput)
+      const nextRow: SalaryDraft = {
+        ...base,
+        overtime_enabled: manualAmount > 0 || base.overtime_enabled,
+        overtime_mode: "amount",
+        overtime_manual_amount: manualAmount,
+        overtime_days: 0,
+        overtime_note: manualAmount > 0 ? "handmatig bedrag" : "",
+      }
+      setCrewField(crewId, nextRow, editingSourceMonthKey)
+      return nextRow
+    }
+
+    const parsed = overtimeDaysInput.trim() === "" ? 0 : parseDecimalInput(overtimeDaysInput)
+    const note =
+      overtimeFromDate && overtimeToDate
+        ? buildOvertimeNoteFromDateRange(overtimeFromDate, overtimeToDate) ||
+          String(base.overtime_note || "")
+        : String(base.overtime_note || "")
     const nextRow: SalaryDraft = {
       ...base,
       overtime_enabled: parsed > 0 || base.overtime_enabled,
+      overtime_mode: "days",
+      overtime_manual_amount: 0,
       overtime_days: parsed,
+      overtime_note: note,
     }
     setCrewField(crewId, nextRow, editingSourceMonthKey)
     return nextRow
@@ -2053,7 +2157,10 @@ export default function LoonBemerkingenPage() {
           raise_enabled: (item?.raise_enabled ?? meta?.raise_enabled ?? false) === true,
           raise_amount: typeof item?.raise_amount === "number" ? item.raise_amount : (meta?.raise_amount || 0),
           overtime_enabled: (item?.overtime_enabled ?? meta?.overtime_enabled ?? false) === true,
+          overtime_mode: resolveOvertimeInputMode(meta?.overtime_mode),
           overtime_days: typeof item?.overtime_days === "number" ? item.overtime_days : (meta?.overtime_days || 0),
+          overtime_manual_amount:
+            typeof meta?.overtime_manual_amount === "number" ? meta.overtime_manual_amount : 0,
           overtime_note: String(item?.overtime_note ?? meta?.overtime_note ?? ""),
           inflation_adjustment: typeof item?.inflation_adjustment === "number" ? item.inflation_adjustment : (meta?.inflation_adjustment || 0),
           inflation_batch_id: String(item?.inflation_batch_id ?? meta?.inflation_batch_id ?? ""),
@@ -2284,7 +2391,14 @@ export default function LoonBemerkingenPage() {
     const rows = groupedByCompany[activeCompanyTab] || []
     const skippedNotApproved: string[] = []
     const skippedInvalid: string[] = []
-    const payments = rows
+    const salaryMsg = `${DEFAULT_SEPA_MESSAGE_PREFIX} ${monthKey}`
+
+    const resolveCompanyForCrew = (crewId: string, rowCompany?: string) => {
+      const fallbackCrew = crewById.get(String(crewId))
+      return (rowCompany || fallbackCrew?.company || "Onbekende firma").trim() || "Onbekende firma"
+    }
+
+    const salaryPayments = rows
       .map((r: SalaryDraft) => {
         const crewMember = crewById.get(String(r.crew_id))
         const name = crewMember ? formatCrewName(crewMember) : "Onbekend"
@@ -2296,7 +2410,7 @@ export default function LoonBemerkingenPage() {
         const validAmount = amount > 0
 
         if (!hasApprovals) {
-          skippedNotApproved.push(name)
+          skippedNotApproved.push(`${name} (salaris)`)
           return null
         }
         if (!validIban || !validAmount) {
@@ -2304,17 +2418,56 @@ export default function LoonBemerkingenPage() {
             !validIban ? "ongeldige IBAN" : "",
             !validAmount ? "bedrag moet > 0 zijn" : "",
           ].filter(Boolean).join(", ")
-          skippedInvalid.push(`${name}: ${reasons}`)
+          skippedInvalid.push(`${name} (salaris): ${reasons}`)
           return null
         }
-        return { name, iban, amount }
+        return { name, iban, amount, message: salaryMsg }
       })
-      .filter((p): p is { name: string; iban: string; amount: number } => !!p)
+      .filter((p): p is { name: string; iban: string; amount: number; message: string } => !!p)
+
+    const overtimeForCompany = overigeBetalingenRows.filter((r) => {
+      const sourceRow = getRowForApproval(String(r.crew_id), r.sourceMonthKey)
+      return resolveCompanyForCrew(String(r.crew_id), sourceRow?.company) === activeCompanyTab
+    })
+
+    const extraWorkPayments = overtimeForCompany
+      .map((r) => {
+        const crewMember = crewById.get(String(r.crew_id))
+        const name = crewMember ? formatCrewName(crewMember) : "Onbekend"
+        const sourceRow = getRowForApproval(String(r.crew_id), r.sourceMonthKey)
+        const amount = Number((sourceRow ? getOverworkAmount(sourceRow) : 0).toFixed(2))
+        const iban = normalizeIban(r.iban || sourceRow?.iban || "")
+        const hasApprovals = !!r.approval_leo && !!r.approval_karina
+        const validIban = isValidIban(iban)
+        const validAmount = amount > 0
+
+        if (!hasApprovals) {
+          skippedNotApproved.push(`${name} (extra werk)`)
+          return null
+        }
+        if (!validIban || !validAmount) {
+          const reasons = [
+            !validIban ? "ongeldige IBAN" : "",
+            !validAmount ? "bedrag moet > 0 zijn" : "",
+          ].filter(Boolean).join(", ")
+          skippedInvalid.push(`${name} (extra werk): ${reasons}`)
+          return null
+        }
+        return {
+          name,
+          iban,
+          amount,
+          message: buildSepaExtraWorkMessage(r.overtime_note, r.sourceMonthKey),
+        }
+      })
+      .filter((p): p is { name: string; iban: string; amount: number; message: string } => !!p)
+
+    const payments = [...salaryPayments, ...extraWorkPayments]
 
     if (payments.length === 0) {
       const lines = [
         "Geen betalingen om te exporteren.",
-        "Alleen rijen met vinkjes van Leo én Karina, geldig IBAN en bedrag > €0 worden meegenomen.",
+        "Alleen goedgekeurde salaris- en extra-werkrijen met geldig IBAN en bedrag > €0 worden meegenomen.",
       ]
       if (skippedNotApproved.length > 0) {
         lines.push(`\n${skippedNotApproved.length} nog niet volledig afgevinkt.`)
@@ -2332,7 +2485,6 @@ export default function LoonBemerkingenPage() {
     const msgId = `SAL-${monthKey.replace("-", "")}-${now.getTime()}`
     const pmtInfId = `PMT-${monthKey.replace("-", "")}-${activeCompanyTab.replace(/\s+/g, "").slice(0, 12)}`
     const ctrlSum = payments.reduce((sum, p) => sum + p.amount, 0)
-    const companyMsg = `${DEFAULT_SEPA_MESSAGE_PREFIX} ${monthKey}`
 
     const txsXml = payments
       .map((p, idx) => {
@@ -2343,7 +2495,7 @@ export default function LoonBemerkingenPage() {
           <Amt><InstdAmt Ccy="${SEPA_CCY}">${p.amount.toFixed(2)}</InstdAmt></Amt>
           <Cdtr><Nm>${escapeXml(p.name)}</Nm></Cdtr>
           <CdtrAcct><Id><IBAN>${escapeXml(p.iban)}</IBAN></Id></CdtrAcct>
-          <RmtInf><Ustrd>${escapeXml(companyMsg)}</Ustrd></RmtInf>
+          <RmtInf><Ustrd>${escapeXml(p.message)}</Ustrd></RmtInf>
         </CdtTrfTxInf>`
       })
       .join("")
@@ -2385,6 +2537,7 @@ export default function LoonBemerkingenPage() {
 
     const summaryParts = [
       `SEPA bestand gedownload met ${payments.length} betaling(en) voor ${activeCompanyTab}.`,
+      `${salaryPayments.length} salaris, ${extraWorkPayments.length} extra werk.`,
       `Totaal: ${formatCurrency(ctrlSum)}`,
     ]
     if (skippedNotApproved.length > 0) {
@@ -2916,8 +3069,16 @@ export default function LoonBemerkingenPage() {
                               )}
                             </td>
                             <td className="px-3 py-2">{r.iban || "-"}</td>
-                            <td className="px-3 py-2">{Number(r.overtime_days || 0)}</td>
-                            <td className="px-3 py-2">{String(r.overtime_note || "").trim() || "-"}</td>
+                            <td className="px-3 py-2">
+                              {sourceRow && resolveOvertimeInputMode(sourceRow.overtime_mode) === "amount"
+                                ? (isTanja ? "handmatig" : "handmatig")
+                                : Number(r.overtime_days || 0)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {sourceRow && resolveOvertimeInputMode(sourceRow.overtime_mode) === "amount"
+                                ? (isTanja ? "Handmatig bedrag" : "Handmatig bedrag")
+                                : String(r.overtime_note || "").trim() || "-"}
+                            </td>
                             <td className="px-3 py-2 font-semibold text-emerald-700">{formatCurrency(overtimeAmount)}</td>
                             <td className="px-3 py-2 text-xs">{paidDates || "-"}</td>
                             <td className="px-3 py-2">
@@ -3207,15 +3368,28 @@ export default function LoonBemerkingenPage() {
                     const enabled = v === "ja"
                     if (!enabled) {
                       setOvertimeDaysInput("")
+                      setOvertimeAmountInput("")
+                      setOvertimeModeInput("days")
                       setOvertimeFromDate("")
                       setOvertimeToDate("")
                     } else {
-                      const existing = Number(editingRow.overtime_days || 0)
-                      setOvertimeDaysInput(existing > 0 ? String(existing).replace(".", ",") : "")
+                      const mode = resolveOvertimeInputMode(editingRow.overtime_mode)
+                      setOvertimeModeInput(mode)
+                      if (mode === "amount") {
+                        const existingAmount = Number(editingRow.overtime_manual_amount || 0)
+                        setOvertimeAmountInput(
+                          existingAmount > 0 ? String(existingAmount).replace(".", ",") : ""
+                        )
+                      } else {
+                        const existing = Number(editingRow.overtime_days || 0)
+                        setOvertimeDaysInput(existing > 0 ? String(existing).replace(".", ",") : "")
+                      }
                     }
                     setCrewField(editingCrewId, {
                       overtime_enabled: enabled,
+                      overtime_mode: enabled ? resolveOvertimeInputMode(editingRow.overtime_mode) : "days",
                       overtime_days: enabled ? Number(editingRow.overtime_days || 0) : 0,
+                      overtime_manual_amount: enabled ? Number(editingRow.overtime_manual_amount || 0) : 0,
                       overtime_note: enabled
                         ? String(editingRow.overtime_note || "")
                         : "",
@@ -3227,6 +3401,40 @@ export default function LoonBemerkingenPage() {
                 </Select>
               </div>
               {editingRow.overtime_enabled && (
+                <div>
+                  <Label>{isTanja ? "Invoer extra werk" : "Invoer extra werk"}</Label>
+                  <Select
+                    disabled={salaryEditingDisabled}
+                    value={overtimeModeInput}
+                    onValueChange={(v: OvertimeInputMode) => {
+                      setOvertimeModeInput(v)
+                      if (v === "amount") {
+                        setOvertimeDaysInput("")
+                        setOvertimeFromDate("")
+                        setOvertimeToDate("")
+                        setCrewField(editingCrewId, {
+                          overtime_mode: "amount",
+                          overtime_days: 0,
+                          overtime_note: "",
+                        })
+                      } else {
+                        setOvertimeAmountInput("")
+                        setCrewField(editingCrewId, {
+                          overtime_mode: "days",
+                          overtime_manual_amount: 0,
+                        })
+                      }
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="days">{isTanja ? "Tage + Zeitraum" : "Dagen + periode"}</SelectItem>
+                      <SelectItem value="amount">{isTanja ? "Manueller Betrag" : "Handmatig bedrag"}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {editingRow.overtime_enabled && overtimeModeInput === "days" && (
                 <div>
                   <Label>{isTanja ? "Anzahl Extra-Tage" : "Aantal dagen extra gewerkt"}</Label>
                   <Input
@@ -3243,7 +3451,24 @@ export default function LoonBemerkingenPage() {
                   />
                 </div>
               )}
-              {editingRow.overtime_enabled && (
+              {editingRow.overtime_enabled && overtimeModeInput === "amount" && (
+                <div>
+                  <Label>{isTanja ? "Betrag extra werk" : "Bedrag extra werk"}</Label>
+                  <Input
+                    disabled={salaryEditingDisabled}
+                    inputMode="decimal"
+                    value={overtimeAmountInput}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      if (/^\d*([.,]\d*)?$/.test(raw)) {
+                        setOvertimeAmountInput(raw)
+                      }
+                    }}
+                    placeholder="0,00"
+                  />
+                </div>
+              )}
+              {editingRow.overtime_enabled && overtimeModeInput === "days" && (
                 <div className="md:col-span-2">
                   <Label>{isTanja ? "Periode extra werk" : "Periode extra werk"}</Label>
                   <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 rounded-md border p-2">
@@ -3256,8 +3481,7 @@ export default function LoonBemerkingenPage() {
                         onChange={(e) => {
                           const from = e.target.value
                           setOvertimeFromDate(from)
-                          const note = buildOvertimeNoteFromDateRange(from, overtimeToDate)
-                          setCrewField(editingCrewId, { overtime_note: note })
+                          syncOvertimeDateNoteToRow(from, overtimeToDate)
                         }}
                       />
                     </div>
@@ -3270,14 +3494,13 @@ export default function LoonBemerkingenPage() {
                         onChange={(e) => {
                           const to = e.target.value
                           setOvertimeToDate(to)
-                          const note = buildOvertimeNoteFromDateRange(overtimeFromDate, to)
-                          setCrewField(editingCrewId, { overtime_note: note })
+                          syncOvertimeDateNoteToRow(overtimeFromDate, to)
                         }}
                       />
                     </div>
                   </div>
                   <div className="mt-2 text-xs text-slate-600">
-                    {editingRow.overtime_note
+                    {editingRow.overtime_note && editingRow.overtime_note !== "handmatig bedrag"
                       ? `${isTanja ? "Automatische opmerking" : "Automatische opmerking"}: ${editingRow.overtime_note}`
                       : (isTanja ? "Kies begin- en einddatum om automatisch 'van ... tot ...' te vullen." : "Kies begin- en einddatum om automatisch 'van ... tot ...' te vullen.")}
                   </div>

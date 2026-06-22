@@ -27,6 +27,25 @@ export const shiftMonthKey = (monthKey: string, deltaMonths: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
 }
 
+export type OvertimeInputMode = "days" | "amount"
+
+export function resolveOvertimeInputMode(mode?: string | null): OvertimeInputMode {
+  return mode === "amount" ? "amount" : "days"
+}
+
+export function isOvertimePayableRow(row: {
+  overtime_enabled?: boolean
+  overtime_mode?: string | null
+  overtime_days?: number | null
+  overtime_manual_amount?: number | null
+}): boolean {
+  if (!row.overtime_enabled) return false
+  if (resolveOvertimeInputMode(row.overtime_mode) === "amount") {
+    return Number(row.overtime_manual_amount || 0) > 0
+  }
+  return Number(row.overtime_days || 0) > 0
+}
+
 export function parseOvertimeDateRange(note: string): { from: Date | null; to: Date | null } {
   const regex = /van\s+(\d{2})-(\d{2})-(\d{4})\s+tot\s+(\d{2})-(\d{2})-(\d{4})/i
   const match = String(note || "").match(regex)
@@ -44,6 +63,27 @@ export function getOvertimePayoutMonthKey(overtimeNote: string, rowMonthKey: str
   const refMonthKey = getMonthKeyFromDate(ref) || rowMonthKey
   if (ref.getDate() > 25) return shiftMonthKey(refMonthKey, 1)
   return refMonthKey
+}
+
+const formatDutchDateForSepa = (d: Date) =>
+  `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`
+
+/** Omschrijving voor SEPA-betaling extra werk (max. leesbaar voor ontvanger). */
+export function buildSepaExtraWorkMessage(overtimeNote: string, fallbackMonthKey: string): string {
+  const note = String(overtimeNote || "").trim().toLowerCase()
+  if (note.includes("handmatig")) {
+    return `Extra werk ${fallbackMonthKey}`
+  }
+  const { from, to } = parseOvertimeDateRange(overtimeNote)
+  if (from && to) {
+    const fromStr = formatDutchDateForSepa(from)
+    const toStr = formatDutchDateForSepa(to)
+    if (fromStr === toStr) return `Extra werk ${fromStr}`
+    return `Extra werk ${fromStr} t/m ${toStr}`
+  }
+  if (to) return `Extra werk ${formatDutchDateForSepa(to)}`
+  if (from) return `Extra werk ${formatDutchDateForSepa(from)}`
+  return `Extra werk ${fallbackMonthKey}`
 }
 
 export type SickDayBreakdown = {
@@ -241,7 +281,9 @@ export function collectOverigeBetalingenForMonth(
     crew_id: string
     month_key: string
     overtime_enabled?: boolean
+    overtime_mode?: string | null
     overtime_days?: number | null
+    overtime_manual_amount?: number | null
     overtime_note?: string
     iban?: string
     approval_leo?: boolean
@@ -254,8 +296,12 @@ export function collectOverigeBetalingenForMonth(
   const items: OvertimeDisplayRow[] = []
 
   const maybeAdd = (row: (typeof currentRows)[number], sourceMonthKey: string) => {
-    if (!row.overtime_enabled || Number(row.overtime_days || 0) <= 0) return
-    const payoutMonth = getOvertimePayoutMonthKey(String(row.overtime_note || ""), sourceMonthKey)
+    if (!isOvertimePayableRow(row)) return
+    const mode = resolveOvertimeInputMode(row.overtime_mode)
+    const payoutMonth =
+      mode === "amount"
+        ? sourceMonthKey
+        : getOvertimePayoutMonthKey(String(row.overtime_note || ""), sourceMonthKey)
     if (payoutMonth !== monthKey) return
     items.push({
       crew_id: String(row.crew_id),
