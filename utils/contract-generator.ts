@@ -137,6 +137,34 @@ function normalizeTextForPDF(text: string): string {
   return normalized.replace(/[^\x00-\x7F]/g, '')
 }
 
+/** Adobe Acrobat print vaak beter zonder object streams (pdf-lib default). */
+async function savePdfDocument(pdfDoc: PDFDocument): Promise<Uint8Array> {
+  return pdfDoc.save({
+    useObjectStreams: false,
+    addDefaultPage: false,
+  })
+}
+
+async function embedFormFont(pdfDoc: PDFDocument) {
+  try {
+    return await pdfDoc.embedFont('Helvetica-Bold')
+  } catch {
+    return await pdfDoc.embedFont('Helvetica')
+  }
+}
+
+/** Werk veld-weergave bij vóór flatten — voorkomt lege/onprintbare PDF's in Acrobat. */
+function flattenPdfForm(form: { updateFieldAppearances?: (font: any) => void; flatten: () => void }, font?: any) {
+  try {
+    if (font && typeof form.updateFieldAppearances === 'function') {
+      form.updateFieldAppearances(font)
+    }
+  } catch (error) {
+    console.warn('updateFieldAppearances mislukt:', error)
+  }
+  form.flatten()
+}
+
 /**
  * Genereert een contract PDF op basis van de template en vult deze in met de crew member data
  */
@@ -288,7 +316,7 @@ export async function generateContract(
               console.warn('⚠️ Kon alignment niet instellen:', alignError)
             }
             
-            form.flatten()
+            flattenPdfForm(form, helveticaBoldFont)
             console.log('✓ Contract ingevuld en geflattened')
           }
         } catch (fillError) {
@@ -323,11 +351,7 @@ export async function generateContract(
       throw new Error(errorMsg)
     }
     
-    // Genereer de PDF bytes
-    const pdfBytes = await pdfDoc.save()
-    
-    // Maak een Blob van de PDF bytes
-    // pdfBytes is al een Uint8Array, wat direct gebruikt kan worden in Blob
+    const pdfBytes = await savePdfDocument(pdfDoc)
     return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
   } catch (error) {
     console.error('Error generating contract:', error)
@@ -1654,7 +1678,7 @@ export async function generateAddendum(
               console.warn('⚠️ Kon alignment niet instellen:', alignError)
             }
             
-            form.flatten()
+            flattenPdfForm(form, helveticaBoldFont)
             console.log('✓ Addendum ingevuld en geflattened')
           }
         } catch (fillError) {
@@ -1680,7 +1704,7 @@ export async function generateAddendum(
     }
     
     // Genereer de PDF bytes
-    const pdfBytes = await pdfDoc.save()
+    const pdfBytes = await savePdfDocument(pdfDoc)
     
     // Maak een Blob van de PDF bytes
     return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
@@ -1747,9 +1771,10 @@ export async function generateOutOfServiceLetter(
       form.getTextField('Text5').setText(normalizeTextForPDF(finalDate))
     } catch {}
 
-    form.flatten()
+    const formFont = await embedFormFont(pdfDoc)
+    flattenPdfForm(form, formFont)
 
-    const pdfBytes = await pdfDoc.save()
+    const pdfBytes = await savePdfDocument(pdfDoc)
     return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
   } catch (error) {
     console.error('Error generating out-of-service letter:', error)
@@ -1840,9 +1865,10 @@ export async function generateOfficialWarningLetter(
       } catch {}
     })
 
-    form.flatten()
+    const formFont = await embedFormFont(pdfDoc)
+    flattenPdfForm(form, formFont)
 
-    const pdfBytes = await pdfDoc.save()
+    const pdfBytes = await savePdfDocument(pdfDoc)
     return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
   } catch (error) {
     console.error('Error generating official warning letter:', error)

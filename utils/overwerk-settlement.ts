@@ -119,6 +119,26 @@ export function buildOverwerkHistoryNote(shipName?: string | null): string {
   return `Overgewerkt op de ${ship}`
 }
 
+function buildSalaryNotesFromOverwerk(overtimeNote: string, existingNotes?: string | null): string {
+  const existing = String(existingNotes || "").trim()
+  if (existing) return existing
+  const period = String(overtimeNote || "").trim()
+  if (period) return `Overwerk overwerker — ${period}`
+  return "Overwerk overwerker"
+}
+
+/** Verwijder technische ID's uit opmerkingen voor weergave in de salarislijst. */
+export function humanizeSalaryDisplayNote(note: string | null | undefined): string {
+  return String(note || "")
+    .replace(
+      /Automatisch overwerk via overwerker-toewijzing\s*\([0-9a-f-]{36}\)/gi,
+      "Overwerk overwerker"
+    )
+    .replace(/\s*\([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+}
+
 function buildOvertimeNote(from: string, to: string, shipName?: string): string {
   const shipPart = shipName ? ` (${shipName})` : ""
   return `Overwerk${shipPart} van ${formatNlDate(from)} tot ${formatNlDate(to)}`
@@ -180,9 +200,8 @@ async function upsertSalaryOvertime(params: {
   monthKey: string
   workDays: number
   overtimeNote: string
-  tripId: string
 }): Promise<{ newDays: number; prevDays: number; usedMetaFallback: boolean }> {
-  const { crewId, company, monthKey, workDays, overtimeNote, tripId } = params
+  const { crewId, company, monthKey, workDays, overtimeNote } = params
 
   const { data: existing, error: loadError } = await supabase
     .from("loon_bemerkingen")
@@ -216,9 +235,7 @@ async function upsertSalaryOvertime(params: {
     overtime_days: newDays,
     overtime_note: newNote,
     reason: reasonWithMeta,
-    notes:
-      String(existing?.notes || "").trim() ||
-      `Automatisch overwerk via overwerker-toewijzing (${tripId})`,
+    notes: buildSalaryNotesFromOverwerk(overtimeNote, existing?.notes),
     updated_at: new Date().toISOString(),
   }
 
@@ -382,7 +399,6 @@ export async function processOverwerkSettlement(params: {
       monthKey,
       workDays,
       overtimeNote,
-      tripId: trip.id,
     })
 
     if (prevDays > 0) {

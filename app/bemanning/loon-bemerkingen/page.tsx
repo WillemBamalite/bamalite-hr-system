@@ -12,11 +12,47 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { BackButton } from "@/components/ui/back-button"
-import { isCopiedCrewMember, isExcludedFromSalaryMonth, isRealCrewMember, parseCrewDate } from "@/utils/crew-filters"
+import {
+  hasOutOfServiceStatus,
+  isCopiedCrewMember,
+  isExcludedFromSalaryMonth,
+  isRealCrewMember,
+  parseCrewDate,
+} from "@/utils/crew-filters"
 import { calculateOverwerkAmount } from "@/utils/overwerk-pay-rates"
+import { humanizeSalaryDisplayNote } from "@/utils/overwerk-settlement"
+import {
+  listConfiguredSepaCompanies,
+  parseSepaDebtorsFromEnv,
+  resolveSepaDebtorForCompany,
+} from "@/utils/sepa-debtor-config"
+import {
+  applySickAdjustmentToSalary,
+  collectOverigeBetalingenForMonth,
+  getOvertimePayoutMonthKey,
+  getSickDaysInMonth,
+  getSickSalaryNote,
+  getTotalDeductionAmount,
+  normalizeDeductionsFromMeta,
+  shiftMonthKey,
+  syncLegacyAdvanceFields,
+  type SalaryDeduction,
+  type SalaryDeductionCategory,
+} from "@/utils/salary-month-helpers"
 
 const TRAVEL_AMOUNT_OPTIONS = [0, 150, 300] as const
-type TravelAmountOption = (typeof TRAVEL_AMOUNT_OPTIONS)[number]
+/** Bedrijfsauto: geen reiskostenvergoeding, wel zichtbaar als "Auto". */
+const TRAVEL_AMOUNT_COMPANY_CAR = -1 as const
+type TravelAmountOption = (typeof TRAVEL_AMOUNT_OPTIONS)[number] | typeof TRAVEL_AMOUNT_COMPANY_CAR
+
+const getPayableTravelAmount = (amount: TravelAmountOption | number | null | undefined): number => {
+  const n = typeof amount === "number" ? amount : 0
+  if (n === TRAVEL_AMOUNT_COMPANY_CAR || n <= 0) return 0
+  return n
+}
+
+const isCompanyCarTravel = (amount: unknown): boolean =>
+  amount === TRAVEL_AMOUNT_COMPANY_CAR || String(amount || "").toLowerCase() === "auto"
 
 type SalaryHistoryItem = {
   id: string
@@ -30,6 +66,8 @@ type SalaryHistoryItem = {
   inflation_adjustment: number
   notes: string
   total_salary_month: number
+  approval_leo_paid_at: string
+  approval_karina_paid_at: string
 }
 
 const getCurrentMonthKey = () => {
@@ -37,16 +75,6 @@ const getCurrentMonthKey = () => {
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, "0")
   return `${year}-${month}`
-}
-
-const shiftMonthKey = (monthKey: string, deltaMonths: number) => {
-  const [yearStr, monthStr] = (monthKey || "").split("-")
-  const year = parseInt(yearStr || "0", 10)
-  const month = parseInt(monthStr || "0", 10)
-  if (!year || !month) return getCurrentMonthKey()
-  const d = new Date(year, month - 1, 1)
-  d.setMonth(d.getMonth() + deltaMonths)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
 }
 
 const monthKeyToDisplay = (monthKey: string) => {
@@ -100,7 +128,8 @@ type SalaryDraft = {
   travel_amount: TravelAmountOption
   advance_enabled: boolean
   advance_amount: number | null
-  deduction_category: "lening" | "voorschot" | "kleding" | "opleidingskosten" | "boetes" | "overig"
+  deduction_category: SalaryDeductionCategory
+  deductions: SalaryDeduction[]
   raise_enabled: boolean
   raise_amount: number | null
   overtime_enabled: boolean
@@ -113,10 +142,14 @@ type SalaryDraft = {
   month_closed_at: string
   approval_leo: boolean
   approval_karina: boolean
+  approval_leo_paid_at: string
+  approval_karina_paid_at: string
   notes: string
   review_comment: string
   review_by: string
   review_type: "opmerking" | "correctie"
+  /** Handmatige override gewerkte dagen bij pro-rata; null = automatisch berekenen. */
+  proration_worked_days: number | null
 }
 
 const DEDUCTION_CATEGORY_OPTIONS = [
@@ -302,7 +335,9 @@ const normalizeBaseSalaryExclClothingForCrew = (
 }
 
 const normalizeTravelAmount = (value: unknown): TravelAmountOption => {
+  if (isCompanyCarTravel(value)) return TRAVEL_AMOUNT_COMPANY_CAR
   const amount = typeof value === "number" ? value : parseMoney(value)
+  if (amount === TRAVEL_AMOUNT_COMPANY_CAR) return TRAVEL_AMOUNT_COMPANY_CAR
   if (amount >= 225) return 300
   if (amount >= 75) return 150
   return 0
@@ -341,6 +376,7 @@ const resolveTravelAmountFromRow = (dbRow: any, meta: ReturnType<typeof parseSal
 }
 
 const formatTravelDisplay = (amount: number, german = false) => {
+  if (amount === TRAVEL_AMOUNT_COMPANY_CAR) return german ? "Firmenwagen" : "Bedrijfsauto"
   if (amount <= 0) return german ? "Nein" : "Nee"
   return `Ja (+${formatCurrency(amount)})`
 }
@@ -372,15 +408,16 @@ const escapeXml = (value: string) =>
 const isAflosser = (member: any) =>
   member?.position === "Aflosser" || member?.position === "aflosser" || member?.is_aflosser === true
 
-const isEligibleForSalaryPage = (member: any) => {
-  if (!isRealCrewMember(member)) return false
+const isEligibleForSalaryPage = (member: any, selectedMonthKey: string) => {
+  if (!member || member.is_dummy === true) return false
   if (isCopiedCrewMember(member)) return false
+  if (isExcludedFromSalaryMonth(member, selectedMonthKey)) return false
   if (isAflosser(member)) {
-    // Vaste aflossers tellen mee voor salarissen, ook als recruitment_status nog niet exact "aangenomen" is.
     return member?.vaste_dienst === true
   }
   if (member?.recruitment_status && member.recruitment_status !== "aangenomen") return false
-  return true
+  if (hasOutOfServiceStatus(member)) return true
+  return isRealCrewMember(member)
 }
 
 const isEligibleForSalaryMonth = (member: any, selectedMonthKey: string) => {
@@ -421,7 +458,8 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       review_type?: "opmerking" | "correctie"
       advance_enabled?: boolean
       advance_amount?: number
-      deduction_category?: "lening" | "voorschot" | "kleding" | "opleidingskosten" | "boetes" | "overig"
+      deduction_category?: SalaryDeductionCategory
+      deductions?: SalaryDeduction[]
       raise_enabled?: boolean
       raise_amount?: number
       overtime_enabled?: boolean
@@ -434,24 +472,30 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       month_closed_at?: string
       approval_leo?: boolean
       approval_karina?: boolean
+      approval_leo_paid_at?: string
+      approval_karina_paid_at?: string
+      proration_worked_days?: number | null
       travel_amount?: number
     }
+    const deductions = normalizeDeductionsFromMeta(
+      {
+        deductions: parsed.deductions,
+        advance_enabled: parsed.advance_enabled,
+        advance_amount: parsed.advance_amount,
+        deduction_category: parsed.deduction_category,
+      },
+      null
+    )
+    const legacyAdvance = syncLegacyAdvanceFields(deductions)
     return {
       iban: String(parsed.iban || ""),
       review_comment: String(parsed.review_comment || ""),
       review_by: String(parsed.review_by || ""),
       review_type: parsed.review_type === "correctie" ? "correctie" : "opmerking",
-      advance_enabled: parsed.advance_enabled === true,
-      advance_amount: typeof parsed.advance_amount === "number" ? parsed.advance_amount : 0,
-      deduction_category:
-        parsed.deduction_category === "lening" ||
-        parsed.deduction_category === "voorschot" ||
-        parsed.deduction_category === "kleding" ||
-        parsed.deduction_category === "opleidingskosten" ||
-        parsed.deduction_category === "boetes" ||
-        parsed.deduction_category === "overig"
-          ? parsed.deduction_category
-          : "voorschot",
+      advance_enabled: legacyAdvance.advance_enabled,
+      advance_amount: legacyAdvance.advance_amount,
+      deduction_category: legacyAdvance.deduction_category,
+      deductions,
       raise_enabled: parsed.raise_enabled === true,
       raise_amount: typeof parsed.raise_amount === "number" ? parsed.raise_amount : 0,
       overtime_enabled: parsed.overtime_enabled === true,
@@ -464,6 +508,10 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       month_closed_at: String(parsed.month_closed_at || ""),
       approval_leo: parsed.approval_leo === true,
       approval_karina: parsed.approval_karina === true,
+      approval_leo_paid_at: String(parsed.approval_leo_paid_at || ""),
+      approval_karina_paid_at: String(parsed.approval_karina_paid_at || ""),
+      proration_worked_days:
+        typeof parsed.proration_worked_days === "number" ? parsed.proration_worked_days : null,
       travel_amount:
         typeof parsed.travel_amount === "number"
           ? normalizeTravelAmount(parsed.travel_amount)
@@ -475,7 +523,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
 }
 
 export default function LoonBemerkingenPage() {
-  const { crew, loans } = useSupabaseData()
+  const { crew, loans, sickLeave } = useSupabaseData()
   const [currentUserId, setCurrentUserId] = useState("")
   const [currentUserEmail, setCurrentUserEmail] = useState("")
   const [salaryPageUnlocked, setSalaryPageUnlocked] = useState(false)
@@ -496,8 +544,10 @@ export default function LoonBemerkingenPage() {
   const [lastSavedAt, setLastSavedAt] = useState<string>("")
   const [activeCompanyTab, setActiveCompanyTab] = useState<string>("")
   const [editingCrewId, setEditingCrewId] = useState<string | null>(null)
+  const [editingSourceMonthKey, setEditingSourceMonthKey] = useState<string | null>(null)
   const [baseSalaryEditText, setBaseSalaryEditText] = useState("")
   const [overtimeDaysInput, setOvertimeDaysInput] = useState<string>("")
+  const [prorationDaysInput, setProrationDaysInput] = useState<string>("")
   const [overtimeFromDate, setOvertimeFromDate] = useState<string>("")
   const [overtimeToDate, setOvertimeToDate] = useState<string>("")
   const [inflationPercent, setInflationPercent] = useState<string>("")
@@ -506,6 +556,19 @@ export default function LoonBemerkingenPage() {
   const [showSalaryHistory, setShowSalaryHistory] = useState(false)
   const [salaryHistoryLoading, setSalaryHistoryLoading] = useState(false)
   const [salaryHistoryItems, setSalaryHistoryItems] = useState<SalaryHistoryItem[]>([])
+  const [previousMonthRowsByCrewId, setPreviousMonthRowsByCrewId] = useState<Record<string, SalaryDraft>>({})
+  const [previousMonthWarning, setPreviousMonthWarning] = useState<{
+    monthKey: string
+    notClosed: boolean
+    unapprovedCount: number
+  } | null>(null)
+  const [approvalDatePrompt, setApprovalDatePrompt] = useState<{
+    crewId: string
+    field: "approval_leo" | "approval_karina"
+    paymentDate: string
+    sourceMonthKey?: string
+  } | null>(null)
+  const [deductionAmountTexts, setDeductionAmountTexts] = useState<Record<string, string>>({})
   const isTanja = currentUserEmail === "tanja@bamalite.com"
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
   const isLeoUser = currentUserEmail === LEO_EMAIL
@@ -617,6 +680,36 @@ export default function LoonBemerkingenPage() {
         .order("month_key", { ascending: false })
       if (olderError) throw olderError
 
+      const prevMonthKey = shiftMonthKey(monthKey, -1)
+      const { data: prevMonthRows, error: prevMonthError } = await supabase
+        .from("loon_bemerkingen")
+        .select("*")
+        .eq("month_key", prevMonthKey)
+      if (prevMonthError) throw prevMonthError
+
+      const prevWarningRows = prevMonthRows || []
+      const prevNotClosed =
+        prevWarningRows.length > 0 &&
+        !prevWarningRows.some((r: any) => {
+          const meta = parseSalaryMetaFromReason(r?.reason)
+          return (r?.month_closed ?? meta?.month_closed) === true
+        })
+      const prevUnapproved = prevWarningRows.filter((r: any) => {
+        const meta = parseSalaryMetaFromReason(r?.reason)
+        const leo = (r?.approval_leo ?? meta?.approval_leo) === true
+        const karina = (r?.approval_karina ?? meta?.approval_karina) === true
+        return !(leo && karina)
+      }).length
+      if (prevWarningRows.length > 0 && (prevNotClosed || prevUnapproved > 0)) {
+        setPreviousMonthWarning({
+          monthKey: prevMonthKey,
+          notClosed: prevNotClosed,
+          unapprovedCount: prevUnapproved,
+        })
+      } else {
+        setPreviousMonthWarning(null)
+      }
+
       const currentByCrew = new Map<string, any>()
       ;(currentRows || []).forEach((r: any) => currentByCrew.set(String(r.crew_id), r))
 
@@ -630,8 +723,9 @@ export default function LoonBemerkingenPage() {
 
       const nextRowsByCrew: Record<string, SalaryDraft> = {}
       const nextCompanySwitchByCrew: Record<string, boolean> = {}
+      const nextPrevMonthRows: Record<string, SalaryDraft> = {}
       ;(crew || [])
-        .filter((c: any) => isEligibleForSalaryPage(c))
+        .filter((c: any) => isEligibleForSalaryPage(c, monthKey))
         .filter((c: any) => isEligibleForSalaryMonth(c, monthKey))
         .forEach((c: any) => {
           const crewId = String(c.id)
@@ -646,8 +740,18 @@ export default function LoonBemerkingenPage() {
               current?.advance_enabled === true ||
               (typeof current?.advance_amount === "number" && current.advance_amount > 0) ||
               currentMeta?.advance_enabled === true ||
-              Number(currentMeta?.advance_amount || 0) > 0
+              Number(currentMeta?.advance_amount || 0) > 0 ||
+              (currentMeta?.deductions?.length || 0) > 0
             )
+          const manualDeductions = hasManualCurrentDeduction
+            ? normalizeDeductionsFromMeta(currentMeta, current)
+            : []
+          const autoLoanDeductions: SalaryDeduction[] =
+            !hasManualCurrentDeduction && autoLoanDeduction > 0
+              ? [{ id: "auto-loan", amount: autoLoanDeduction, category: "lening" }]
+              : []
+          const deductions = manualDeductions.length > 0 ? manualDeductions : autoLoanDeductions
+          const legacyAdvance = syncLegacyAdvanceFields(deductions)
           const previousRaiseEnabled =
             currentMeta?.raise_enabled === true
               ? false
@@ -705,25 +809,10 @@ export default function LoonBemerkingenPage() {
               : (previous
                   ? resolveTravelAmountFromRow(previous, previousMeta)
                   : contractTravelAmount),
-            advance_enabled:
-              hasManualCurrentDeduction
-                ? (current?.advance_enabled ?? currentMeta?.advance_enabled ?? false) === true
-                : autoLoanDeduction > 0,
-            advance_amount:
-              hasManualCurrentDeduction
-                ? (
-                    typeof current?.advance_amount === "number"
-                      ? current.advance_amount
-                      : (currentMeta?.advance_amount || 0)
-                  )
-                : autoLoanDeduction,
-            deduction_category:
-              hasManualCurrentDeduction
-                ? (
-                    currentMeta?.deduction_category ||
-                    (autoLoanDeduction > 0 ? "lening" : "voorschot")
-                  )
-                : (autoLoanDeduction > 0 ? "lening" : "voorschot"),
+            advance_enabled: legacyAdvance.advance_enabled,
+            advance_amount: legacyAdvance.advance_amount,
+            deduction_category: legacyAdvance.deduction_category,
+            deductions,
             raise_enabled:
               (current?.raise_enabled ?? currentMeta?.raise_enabled ?? false) === true,
             raise_amount:
@@ -766,6 +855,16 @@ export default function LoonBemerkingenPage() {
               (current?.approval_leo ?? currentMeta?.approval_leo ?? false) === true,
             approval_karina:
               (current?.approval_karina ?? currentMeta?.approval_karina ?? false) === true,
+            approval_leo_paid_at: String(
+              current?.approval_leo_paid_at ??
+              currentMeta?.approval_leo_paid_at ??
+              ""
+            ),
+            approval_karina_paid_at: String(
+              current?.approval_karina_paid_at ??
+              currentMeta?.approval_karina_paid_at ??
+              ""
+            ),
             notes: rawCurrentNotes,
             review_comment: String(
               current?.review_comment ??
@@ -781,6 +880,10 @@ export default function LoonBemerkingenPage() {
               current?.review_type === "correctie"
                 ? "correctie"
                 : (currentMeta?.review_type || "opmerking"),
+            proration_worked_days:
+              typeof currentMeta?.proration_worked_days === "number"
+                ? currentMeta.proration_worked_days
+                : null,
           }
           draftRow.notes = getNormalizedManualNote(
             draftRow.notes,
@@ -789,12 +892,57 @@ export default function LoonBemerkingenPage() {
           nextRowsByCrew[crewId] = draftRow
         })
 
+      for (const prevRow of prevMonthRows || []) {
+        const crewId = String(prevRow.crew_id)
+        const meta = parseSalaryMetaFromReason(prevRow?.reason)
+        const deductions = normalizeDeductionsFromMeta(meta, prevRow)
+        const legacyAdvance = syncLegacyAdvanceFields(deductions)
+        nextPrevMonthRows[crewId] = {
+          id: prevRow?.id,
+          crew_id: crewId,
+          company: prevRow?.company || null,
+          month_key: prevMonthKey,
+          in_service_from: crewById.get(crewId)?.in_dienst_vanaf || null,
+          out_of_service_date: crewById.get(crewId)?.out_of_service_date || null,
+          iban: String(prevRow?.iban ?? meta?.iban ?? ""),
+          base_salary: typeof prevRow?.base_salary === "number" ? prevRow.base_salary : 0,
+          travel_amount: resolveTravelAmountFromRow(prevRow, meta),
+          advance_enabled: legacyAdvance.advance_enabled,
+          advance_amount: legacyAdvance.advance_amount,
+          deduction_category: legacyAdvance.deduction_category,
+          deductions,
+          raise_enabled: (prevRow?.raise_enabled ?? meta?.raise_enabled ?? false) === true,
+          raise_amount: typeof prevRow?.raise_amount === "number" ? prevRow.raise_amount : (meta?.raise_amount || 0),
+          overtime_enabled: (prevRow?.overtime_enabled ?? meta?.overtime_enabled ?? false) === true,
+          overtime_days: typeof prevRow?.overtime_days === "number" ? prevRow.overtime_days : (meta?.overtime_days || 0),
+          overtime_note: String(prevRow?.overtime_note ?? meta?.overtime_note ?? ""),
+          inflation_adjustment: typeof prevRow?.inflation_adjustment === "number" ? prevRow.inflation_adjustment : (meta?.inflation_adjustment || 0),
+          inflation_batch_id: String(prevRow?.inflation_batch_id ?? meta?.inflation_batch_id ?? ""),
+          month_closed: (prevRow?.month_closed ?? meta?.month_closed ?? false) === true,
+          month_closed_by: String(prevRow?.month_closed_by ?? meta?.month_closed_by ?? ""),
+          month_closed_at: String(prevRow?.month_closed_at ?? meta?.month_closed_at ?? ""),
+          approval_leo: (prevRow?.approval_leo ?? meta?.approval_leo ?? false) === true,
+          approval_karina: (prevRow?.approval_karina ?? meta?.approval_karina ?? false) === true,
+          approval_leo_paid_at: String(prevRow?.approval_leo_paid_at ?? meta?.approval_leo_paid_at ?? ""),
+          approval_karina_paid_at: String(prevRow?.approval_karina_paid_at ?? meta?.approval_karina_paid_at ?? ""),
+          notes: String(prevRow?.notes || ""),
+          review_comment: String(prevRow?.review_comment ?? meta?.review_comment ?? ""),
+          review_by: String(prevRow?.review_by ?? meta?.review_by ?? ""),
+          review_type: prevRow?.review_type === "correctie" ? "correctie" : (meta?.review_type || "opmerking"),
+          proration_worked_days:
+            typeof meta?.proration_worked_days === "number" ? meta.proration_worked_days : null,
+        }
+      }
+
       setRowsByCrewId(nextRowsByCrew)
       setCompanySwitchByCrewId(nextCompanySwitchByCrew)
+      setPreviousMonthRowsByCrewId(nextPrevMonthRows)
     } catch (e) {
       console.warn("Fout bij laden salarissen:", getErrMsg(e))
       setRowsByCrewId({})
       setCompanySwitchByCrewId({})
+      setPreviousMonthRowsByCrewId({})
+      setPreviousMonthWarning(null)
     } finally {
       setLoading(false)
     }
@@ -843,6 +991,13 @@ export default function LoonBemerkingenPage() {
   }, [rowsByCrewId, crewById])
 
   const companyNames = useMemo(() => Object.keys(groupedByCompany).sort((a, b) => a.localeCompare(b)), [groupedByCompany])
+  const overigeBetalingenRows = useMemo(() => {
+    return collectOverigeBetalingenForMonth(
+      monthKey,
+      Object.values(rowsByCrewId),
+      Object.values(previousMonthRowsByCrewId)
+    )
+  }, [rowsByCrewId, previousMonthRowsByCrewId, monthKey])
   const monthIsClosed = useMemo(
     () => Object.values(rowsByCrewId).some((r) => r.month_closed === true),
     [rowsByCrewId]
@@ -850,18 +1005,36 @@ export default function LoonBemerkingenPage() {
   const salaryReadOnlyUser = isTanja
   const salaryEditingDisabled = monthIsClosed || salaryReadOnlyUser
 
+  const editingRow = useMemo(() => {
+    if (!editingCrewId) return null
+    if (editingSourceMonthKey) {
+      return previousMonthRowsByCrewId[editingCrewId] || rowsByCrewId[editingCrewId] || null
+    }
+    return rowsByCrewId[editingCrewId] || null
+  }, [editingCrewId, editingSourceMonthKey, rowsByCrewId, previousMonthRowsByCrewId])
+
   useEffect(() => {
-    if (!editingCrewId || !rowsByCrewId[editingCrewId]) {
+    if (!editingRow) {
       setBaseSalaryEditText("")
       setOvertimeDaysInput("")
       setOvertimeFromDate("")
       setOvertimeToDate("")
+      setProrationDaysInput("")
       return
     }
-    const current = rowsByCrewId[editingCrewId]
+    const current = editingRow
+    const rowMonth = current.month_key || monthKey
     setBaseSalaryEditText(formatSalaryInputFromNumber(current.base_salary))
     setOvertimeDaysInput(
       typeof current.overtime_days === "number" ? String(current.overtime_days).replace(".", ",") : ""
+    )
+    const autoProrationDays = getWorkedDaysInSalaryMonth(current, rowMonth)
+    setProrationDaysInput(
+      typeof current.proration_worked_days === "number"
+        ? String(current.proration_worked_days)
+        : autoProrationDays !== null
+          ? String(autoProrationDays)
+          : ""
     )
     const note = String(current.overtime_note || "")
     const regex = /van\s+(\d{2})-(\d{2})-(\d{4})\s+tot\s+(\d{2})-(\d{2})-(\d{4})/i
@@ -875,7 +1048,12 @@ export default function LoonBemerkingenPage() {
       setOvertimeFromDate("")
       setOvertimeToDate("")
     }
-  }, [editingCrewId, monthKey])
+    const texts: Record<string, string> = {}
+    for (const d of current.deductions || []) {
+      texts[d.id] = formatSalaryInputFromNumber(d.amount)
+    }
+    setDeductionAmountTexts(texts)
+  }, [editingRow, monthKey])
 
   useEffect(() => {
     if (companyNames.length === 0) {
@@ -989,7 +1167,7 @@ export default function LoonBemerkingenPage() {
   }
 
   /**
-   * Gewerkte dagen in salarismaand (kalenderdagen, incl. start/eind).
+   * Gewerkte dagen in salarismaand (kalenderdagen, incl. start; uit-dienst-dag telt niet mee).
    * null = volledige maand, 0 = geen basis deze maand (bv. start na 25e).
    */
   const getWorkedDaysInSalaryMonth = (row: SalaryDraft, selectedMonthKey: string): number | null => {
@@ -1017,12 +1195,23 @@ export default function LoonBemerkingenPage() {
     }
 
     if (isEndMonth && end) {
-      rangeEnd = Math.min(rangeEnd, end.getDate())
+      // Uit-dienst datum = eerste dag niet meer in dienst (zelfde regel als crew-filters).
+      rangeEnd = Math.min(rangeEnd, Math.max(1, end.getDate() - 1))
     }
 
     if (rangeEnd < rangeStart) return 0
     return rangeEnd - rangeStart + 1
   }
+
+  const getEffectiveWorkedDaysInSalaryMonth = (row: SalaryDraft, selectedMonthKey: string): number | null => {
+    if (typeof row.proration_worked_days === "number" && Number.isFinite(row.proration_worked_days)) {
+      return Math.max(0, row.proration_worked_days)
+    }
+    return getWorkedDaysInSalaryMonth(row, selectedMonthKey)
+  }
+
+  const hasProrationInMonth = (row: SalaryDraft, selectedMonthKey: string) =>
+    getWorkedDaysInSalaryMonth(row, selectedMonthKey) !== null
 
   const getProratedMonthlyAmount = (
     fullAmount: number,
@@ -1030,7 +1219,7 @@ export default function LoonBemerkingenPage() {
     selectedMonthKey: string
   ) => {
     if (fullAmount <= 0) return 0
-    const workedDays = getWorkedDaysInSalaryMonth(row, selectedMonthKey)
+    const workedDays = getEffectiveWorkedDaysInSalaryMonth(row, selectedMonthKey)
     if (workedDays === null) return fullAmount
 
     const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
@@ -1091,7 +1280,7 @@ export default function LoonBemerkingenPage() {
   const getAutoProrationNote = (row: SalaryDraft, selectedMonthKey: string) => {
     const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
     const clothingAmount = getRowClothingAllowance(row)
-    const travelAmount = row.travel_amount || 0
+    const travelAmount = getPayableTravelAmount(row.travel_amount)
     if (baseSalaryExcl <= 0 && travelAmount <= 0) return ""
 
     const [yearStr, monthStr] = selectedMonthKey.split("-")
@@ -1118,19 +1307,21 @@ export default function LoonBemerkingenPage() {
       return `Start op ${start.getDate()}e (na betaaldag 25e): salaris excl. kledinggeld via te-goed naar volgende maand${extraStartSuffix}.`
     }
 
-    const workedDays = getWorkedDaysInSalaryMonth(row, selectedMonthKey)
+    const workedDays = getEffectiveWorkedDaysInSalaryMonth(row, selectedMonthKey)
     if (workedDays === null) return ""
 
+    const autoWorkedDays = getWorkedDaysInSalaryMonth(row, selectedMonthKey)
     const proratedBase = getProratedBaseSalaryForMonth(row, selectedMonthKey)
-    if (proratedBase >= baseSalaryExcl) return ""
+    if (proratedBase >= baseSalaryExcl && autoWorkedDays === workedDays) return ""
 
     const monthLabel = String(month).padStart(2, "0")
+    const lastPaidDay = isEndMonth && end ? Math.max(1, end.getDate() - 1) : null
 
-    if (isStartMonth && isEndMonth && start && end) {
-      return `Pro-rata ${start.getDate()}/${monthLabel}-${end.getDate()}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
+    if (isStartMonth && isEndMonth && start && end && lastPaidDay) {
+      return `Pro-rata ${start.getDate()}/${monthLabel}-${lastPaidDay}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
     }
-    if (isEndMonth && end) {
-      return `Pro-rata t/m ${end.getDate()}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
+    if (isEndMonth && end && lastPaidDay) {
+      return `Pro-rata t/m ${lastPaidDay}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
     }
     if (isStartMonth && start) {
       return `Pro-rata vanaf ${start.getDate()}/${monthLabel}: salaris excl. kledinggeld ${workedDays}d × ${baseSalaryExcl}/${divisorDays}${extraSuffix}.`
@@ -1161,21 +1352,60 @@ export default function LoonBemerkingenPage() {
     return uniqueParts.join(" | ")
   }
 
+  const getAutoSickNote = (row: SalaryDraft, selectedMonthKey: string) => {
+    const breakdown = getSickDaysInMonth(
+      row.crew_id,
+      selectedMonthKey,
+      sickLeave || [],
+      row.in_service_from,
+      row.out_of_service_date
+    )
+    return getSickSalaryNote(breakdown)
+  }
+
   const getEffectiveMonthlyNote = (row: SalaryDraft, selectedMonthKey: string) => {
-    const auto = getAutoProrationNote(row, selectedMonthKey).trim()
-    const manual = getNormalizedManualNote(String(row.notes || ""), auto)
-    if (auto && manual) return `${auto} | ${manual}`
-    if (auto) return auto
-    return manual
+    const autoParts = [
+      getAutoProrationNote(row, selectedMonthKey).trim(),
+      getAutoSickNote(row, selectedMonthKey).trim(),
+    ].filter(Boolean)
+    let manual = humanizeSalaryDisplayNote(String(row.notes || ""))
+    for (const auto of autoParts) {
+      manual = getNormalizedManualNote(manual, auto)
+    }
+    return [...autoParts, manual].filter(Boolean).join(" | ")
+  }
+
+  const formatDeductionsDisplay = (row: SalaryDraft) => {
+    const deductions = row.deductions || []
+    if (deductions.length === 0) {
+      return row.advance_enabled ? `${getDeductionCategoryLabel(row.deduction_category)} (-${formatCurrency(Number(row.advance_amount || 0))})` : ""
+    }
+    return deductions
+      .map((d) => `${getDeductionCategoryLabel(d.category)} (-${formatCurrency(d.amount)})`)
+      .join(" | ")
   }
 
   const getSalaryTotals = (row: SalaryDraft) => {
     const selectedMonthKey = row.month_key || monthKey
     const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
-    const payableBaseSalary = getProratedBaseSalaryForMonth(row, selectedMonthKey)
+    const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
+    const workedDays = getEffectiveWorkedDaysInSalaryMonth(row, selectedMonthKey)
+    const sickBreakdown = getSickDaysInMonth(
+      row.crew_id,
+      selectedMonthKey,
+      sickLeave || [],
+      row.in_service_from,
+      row.out_of_service_date
+    )
+    const payableBaseSalary = applySickAdjustmentToSalary(
+      baseSalaryExcl,
+      divisorDays,
+      workedDays,
+      sickBreakdown
+    )
     const clothingAmount = getRowClothingAllowance(row)
-    const travelAmount = row.travel_amount || 0
-    const advanceAmount = row.advance_enabled ? (typeof row.advance_amount === "number" ? row.advance_amount : 0) : 0
+    const travelAmount = getPayableTravelAmount(row.travel_amount)
+    const advanceAmount = getTotalDeductionAmount(row.deductions || [])
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
     const teGoedDays = getTeGoedDays(row.in_service_from, selectedMonthKey)
     const sourceDaysInMonth = getTeGoedSourceDaysInMonth(row.in_service_from, selectedMonthKey)
@@ -1225,6 +1455,7 @@ export default function LoonBemerkingenPage() {
     const isCompanySwitchMonth = companySwitchByCrewId[String(row.crew_id)] === true
     const hasSpecial =
       !!String(row.notes || "").trim() ||
+      (row.deductions?.length || 0) > 0 ||
       (row.advance_enabled && Number(row.advance_amount || 0) !== 0) ||
       (row.raise_enabled && Number(row.raise_amount || 0) !== 0) ||
       (row.overtime_enabled && Number(row.overtime_days || 0) > 0) ||
@@ -1237,29 +1468,34 @@ export default function LoonBemerkingenPage() {
     return ""
   }
 
-  const handleRowClickOpenEdit = (event: any, crewId: string) => {
+  const handleRowClickOpenEdit = (event: any, crewId: string, sourceMonthKey?: string) => {
     if (monthIsClosed) return
     const target = event.target as HTMLElement | null
     if (!target) return
     const interactiveEl = target.closest("button, input, select, textarea, a, label")
     if (interactiveEl) return
     setEditingCrewId(crewId)
+    setEditingSourceMonthKey(sourceMonthKey && sourceMonthKey !== monthKey ? sourceMonthKey : null)
   }
 
   const setCrewField = (
     crewId: string,
-    patch: Partial<SalaryDraft>
+    patch: Partial<SalaryDraft>,
+    sourceMonthKey?: string | null
   ) => {
     if (salaryReadOnlyUser) return
+    const rowMonthKey = sourceMonthKey ?? editingSourceMonthKey ?? monthKey
     const shouldResetApprovals =
       Object.prototype.hasOwnProperty.call(patch, "advance_enabled") ||
       Object.prototype.hasOwnProperty.call(patch, "advance_amount") ||
       Object.prototype.hasOwnProperty.call(patch, "deduction_category") ||
+      Object.prototype.hasOwnProperty.call(patch, "deductions") ||
+      Object.prototype.hasOwnProperty.call(patch, "proration_worked_days") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_enabled") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_days") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_note")
 
-    setRowsByCrewId((prev) => ({
+    const applyPatch = (prev: Record<string, SalaryDraft>) => ({
       ...prev,
       [crewId]: {
         ...prev[crewId],
@@ -1268,10 +1504,18 @@ export default function LoonBemerkingenPage() {
           ? {
               approval_leo: false,
               approval_karina: false,
+              approval_leo_paid_at: "",
+              approval_karina_paid_at: "",
             }
           : {}),
       },
-    }))
+    })
+
+    if (rowMonthKey !== monthKey) {
+      setPreviousMonthRowsByCrewId(applyPatch)
+    } else {
+      setRowsByCrewId(applyPatch)
+    }
   }
 
   const persistRow = async (crewId: string, row: SalaryDraft) => {
@@ -1298,14 +1542,16 @@ export default function LoonBemerkingenPage() {
     const baseSalaryExcl =
       normalizeBaseSalaryExclClothingForCrew(row.base_salary, crewMember) ?? row.base_salary
 
+    const legacyAdvance = syncLegacyAdvanceFields(row.deductions || [])
+
     const payload = {
       crew_id: row.crew_id,
       company: row.company,
       month_key: row.month_key,
       base_salary: baseSalaryExcl ?? null,
-      travel_allowance: row.travel_amount > 0,
-      advance_enabled: !!row.advance_enabled,
-      advance_amount: row.advance_amount ?? 0,
+      travel_allowance: getPayableTravelAmount(row.travel_amount) > 0,
+      advance_enabled: legacyAdvance.advance_enabled,
+      advance_amount: legacyAdvance.advance_amount,
       raise_enabled: !!row.raise_enabled,
       raise_amount: row.raise_amount ?? 0,
       overtime_enabled: !!row.overtime_enabled,
@@ -1326,9 +1572,10 @@ export default function LoonBemerkingenPage() {
           review_comment: String(row.review_comment || "").trim(),
           review_by: String(row.review_by || "").trim(),
           review_type: row.review_type || "opmerking",
-          advance_enabled: !!row.advance_enabled,
-          advance_amount: row.advance_amount ?? 0,
-          deduction_category: row.deduction_category || "voorschot",
+          advance_enabled: legacyAdvance.advance_enabled,
+          advance_amount: legacyAdvance.advance_amount,
+          deduction_category: legacyAdvance.deduction_category,
+          deductions: row.deductions || [],
           raise_enabled: !!row.raise_enabled,
           raise_amount: row.raise_amount ?? 0,
           overtime_enabled: !!row.overtime_enabled,
@@ -1341,7 +1588,11 @@ export default function LoonBemerkingenPage() {
           month_closed_at: String(row.month_closed_at || "").trim(),
           approval_leo: !!row.approval_leo,
           approval_karina: !!row.approval_karina,
-          travel_amount: row.travel_amount || 0,
+          approval_leo_paid_at: String(row.approval_leo_paid_at || "").trim(),
+          approval_karina_paid_at: String(row.approval_karina_paid_at || "").trim(),
+          proration_worked_days:
+            typeof row.proration_worked_days === "number" ? row.proration_worked_days : null,
+          travel_amount: row.travel_amount ?? 0,
         })}` +
         (String(row.review_comment || "").trim()
           ? `\n${REVIEW_META_PREFIX}${JSON.stringify({
@@ -1426,7 +1677,7 @@ export default function LoonBemerkingenPage() {
       return false
     }
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
-    const advanceAmount = row.advance_enabled ? (typeof row.advance_amount === "number" ? row.advance_amount : 0) : 0
+    const advanceAmount = getTotalDeductionAmount(row.deductions || [])
     const teGoedDaysForValidation = getTeGoedDays(row.in_service_from, row.month_key)
     const hasNotes = !!String(row.notes || "").trim()
     const overtimeDays = row.overtime_enabled ? Number(row.overtime_days || 0) : 0
@@ -1443,7 +1694,30 @@ export default function LoonBemerkingenPage() {
       return false
     }
 
-    if (row.advance_enabled) {
+    if (row.overtime_enabled && overtimeDays > 0) {
+      const payoutMonth = getOvertimePayoutMonthKey(String(row.overtime_note || ""), row.month_key)
+      if (payoutMonth !== row.month_key) {
+        const payoutLabel = monthNumberToName(payoutMonth.split("-")[1] || "", isTanja)
+        alert(
+          isTanja
+            ? `Extra werk na de 25e wordt uitbetaald in ${payoutLabel} (overige betalingen).`
+            : `Extra werk na de 25e wordt uitbetaald in ${payoutLabel} (overige betalingen).`
+        )
+      }
+    }
+
+    if ((row.deductions || []).length > 0) {
+      for (const deduction of row.deductions) {
+        if (!String(deduction.category || "").trim()) {
+          alert(isTanja ? "Kategorie für Einbehalt ist verpflichtend." : "Categorie voor in te houden is verplicht.")
+          return false
+        }
+        if (!Number.isFinite(deduction.amount) || deduction.amount <= 0) {
+          alert(isTanja ? "Betrag voor Einbehalt moet groter dan 0 zijn." : "Bedrag voor in te houden moet groter dan 0 zijn.")
+          return false
+        }
+      }
+    } else if (row.advance_enabled) {
       const category = String(row.deduction_category || "").trim()
       if (!category) {
         alert(isTanja ? "Kategorie für Einbehalt ist verpflichtend." : "Categorie voor in te houden is verplicht.")
@@ -1487,38 +1761,78 @@ export default function LoonBemerkingenPage() {
     }
   }
 
-  const handleApprovalToggle = async (
+  const getRowForApproval = (crewId: string, sourceMonthKey?: string) => {
+    const key = sourceMonthKey || monthKey
+    if (key === monthKey) return rowsByCrewId[crewId] || null
+    return previousMonthRowsByCrewId[crewId] || null
+  }
+
+  const setRowInState = (crewId: string, row: SalaryDraft, sourceMonthKey?: string) => {
+    const key = sourceMonthKey || monthKey
+    if (key === monthKey) {
+      setRowsByCrewId((prev) => ({ ...prev, [crewId]: row }))
+      return
+    }
+    setPreviousMonthRowsByCrewId((prev) => ({ ...prev, [crewId]: row }))
+  }
+
+  const requestApprovalToggle = (
     crewId: string,
     field: "approval_leo" | "approval_karina",
-    value: boolean
+    value: boolean,
+    sourceMonthKey?: string
   ) => {
     if (monthIsClosed) {
       alert(isTanja ? "Dieser Monat ist abgeschlossen en niet meer bewerkbaar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
       return
     }
-    const row = rowsByCrewId[crewId]
+    if (!value) {
+      void applyApprovalToggle(crewId, field, false, "", sourceMonthKey)
+      return
+    }
+    const today = new Date()
+    const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+    setApprovalDatePrompt({ crewId, field, paymentDate: defaultDate, sourceMonthKey })
+  }
+
+  const applyApprovalToggle = async (
+    crewId: string,
+    field: "approval_leo" | "approval_karina",
+    value: boolean,
+    paymentDate: string,
+    sourceMonthKey?: string
+  ) => {
+    const row = getRowForApproval(crewId, sourceMonthKey)
     if (!row) return
+    const paidAtField = field === "approval_leo" ? "approval_leo_paid_at" : "approval_karina_paid_at"
     const updatedRow: SalaryDraft = {
       ...row,
       [field]: value,
+      [paidAtField]: value ? paymentDate : "",
     }
-    setRowsByCrewId((prev) => ({
-      ...prev,
-      [crewId]: updatedRow,
-    }))
+    setRowInState(crewId, updatedRow, sourceMonthKey)
     try {
       setSavingCrewId(crewId)
       await persistRow(crewId, updatedRow)
       setLastSavedAt(new Date().toISOString())
+      if (sourceMonthKey && sourceMonthKey !== monthKey) {
+        await loadRows()
+      }
     } catch (e) {
       alert(`${isTanja ? "Fehler beim Speichern" : "Fout bij opslaan"}: ${getErrMsg(e)}`)
-      setRowsByCrewId((prev) => ({
-        ...prev,
-        [crewId]: row,
-      }))
+      setRowInState(crewId, row, sourceMonthKey)
     } finally {
       setSavingCrewId(null)
     }
+  }
+
+  const handleApprovalToggle = async (
+    crewId: string,
+    field: "approval_leo" | "approval_karina",
+    value: boolean,
+    sourceMonthKey?: string
+  ) => {
+    requestApprovalToggle(crewId, field, value, sourceMonthKey)
   }
 
   const applyInflationCorrectionForAll = async () => {
@@ -1688,19 +2002,18 @@ export default function LoonBemerkingenPage() {
   }
 
   const syncOvertimeInputToRow = (crewId: string): SalaryDraft | null => {
-    if (!crewId) return
+    if (!crewId) return null
     const parsed = overtimeDaysInput.trim() === "" ? 0 : parseDecimalInput(overtimeDaysInput)
-    const base = rowsByCrewId[crewId]
+    const base = editingSourceMonthKey
+      ? previousMonthRowsByCrewId[crewId]
+      : rowsByCrewId[crewId]
     if (!base) return null
     const nextRow: SalaryDraft = {
       ...base,
       overtime_enabled: parsed > 0 || base.overtime_enabled,
       overtime_days: parsed,
     }
-    setRowsByCrewId((prev) => ({
-      ...prev,
-      [crewId]: nextRow,
-    }))
+    setCrewField(crewId, nextRow, editingSourceMonthKey)
     return nextRow
   }
 
@@ -1733,6 +2046,8 @@ export default function LoonBemerkingenPage() {
           travel_amount: resolveTravelAmountFromRow(item, meta),
           advance_enabled: (item?.advance_enabled ?? meta?.advance_enabled ?? false) === true,
           advance_amount: typeof item?.advance_amount === "number" ? item.advance_amount : (meta?.advance_amount || 0),
+          deduction_category: meta?.deduction_category || "voorschot",
+          deductions: normalizeDeductionsFromMeta(meta, item),
           raise_enabled: (item?.raise_enabled ?? meta?.raise_enabled ?? false) === true,
           raise_amount: typeof item?.raise_amount === "number" ? item.raise_amount : (meta?.raise_amount || 0),
           overtime_enabled: (item?.overtime_enabled ?? meta?.overtime_enabled ?? false) === true,
@@ -1745,6 +2060,8 @@ export default function LoonBemerkingenPage() {
           month_closed_at: String(item?.month_closed_at ?? meta?.month_closed_at ?? ""),
           approval_leo: !!(item?.approval_leo ?? meta?.approval_leo),
           approval_karina: !!(item?.approval_karina ?? meta?.approval_karina),
+          approval_leo_paid_at: String(item?.approval_leo_paid_at ?? meta?.approval_leo_paid_at ?? ""),
+          approval_karina_paid_at: String(item?.approval_karina_paid_at ?? meta?.approval_karina_paid_at ?? ""),
           notes: String(item?.notes || ""),
           review_comment: String(item?.review_comment || ""),
           review_by: String(item?.review_by || ""),
@@ -1755,14 +2072,16 @@ export default function LoonBemerkingenPage() {
           id: row.id || `${row.crew_id}-${row.month_key}`,
           month_key: row.month_key,
           base_salary: Number(row.base_salary || 0),
-          travel_amount: Number(totals.travelAmount || 0),
+          travel_amount: Number(r.travel_amount ?? 0),
           raise_amount: Number(row.raise_amount || 0),
-          advance_amount: Number(row.advance_amount || 0),
+          advance_amount: Number(getTotalDeductionAmount(row.deductions || [])),
           overtime_days: Number(row.overtime_days || 0),
           overtime_note: String(row.overtime_note || ""),
           inflation_adjustment: Number(row.inflation_adjustment || 0),
           notes: String(item?.notes || ""),
           total_salary_month: Number(totals.totalSalaryMonth || 0),
+          approval_leo_paid_at: String(row.approval_leo_paid_at || ""),
+          approval_karina_paid_at: String(row.approval_karina_paid_at || ""),
         } satisfies SalaryHistoryItem
       })
       setSalaryHistoryItems(history)
@@ -1787,7 +2106,7 @@ export default function LoonBemerkingenPage() {
           inService: formatDateShort(r.in_service_from),
           iban: r.iban || "",
           baseSalary,
-          travel: formatTravelDisplay(travelAmount),
+          travel: formatTravelDisplay(r.travel_amount ?? 0),
           advance: r.advance_enabled ? `Ja (-${advanceAmount.toFixed(2)})` : "Nee",
           raise: r.raise_enabled ? `Ja (+${raiseAmount.toFixed(2)})` : "Nee",
           teGoed: teGoedDays > 0 ? `${teGoedDays} (${teGoedAmount.toFixed(2)})` : "",
@@ -1804,7 +2123,7 @@ export default function LoonBemerkingenPage() {
       "Naam",
       "Datum in dienst",
       "IBAN",
-      "Basissalaris incl kledinggeld",
+      "Basissalaris excl. kledinggeld",
       "Reiskosten",
       "Voorschot",
       "Verhoging",
@@ -1863,7 +2182,7 @@ export default function LoonBemerkingenPage() {
                 <td>${escapeHtml(formatDateShort(r.in_service_from))}</td>
                 <td>${escapeHtml(r.iban || "")}</td>
                 <td class="num">${formatEuro(baseSalary)}</td>
-                <td>${escapeHtml(formatTravelDisplay(travelAmount))}</td>
+                <td>${escapeHtml(formatTravelDisplay(r.travel_amount ?? 0))}</td>
                 <td>${r.advance_enabled ? `Ja (-${formatEuro(advanceAmount)})` : "Nee"}</td>
                 <td>${r.raise_enabled ? `Ja (+${formatEuro(raiseAmount)})` : "Nee"}</td>
                 <td>${teGoedDays > 0 ? `${teGoedDays} dagen (+${formatEuro(teGoedAmount)})` : "-"}</td>
@@ -1941,20 +2260,28 @@ export default function LoonBemerkingenPage() {
   }
 
   const downloadSepaXml = () => {
-    const debtorName = (process.env.NEXT_PUBLIC_SEPA_DEBTOR_NAME || "").trim()
-    const debtorIban = normalizeIban(process.env.NEXT_PUBLIC_SEPA_DEBTOR_IBAN || "")
-    const debtorBic = (process.env.NEXT_PUBLIC_SEPA_DEBTOR_BIC || "").trim().toUpperCase()
-    if (!debtorName || !debtorIban || !debtorBic) {
-      alert("SEPA export mist instellingen. Voeg toe in .env.local: NEXT_PUBLIC_SEPA_DEBTOR_NAME, NEXT_PUBLIC_SEPA_DEBTOR_IBAN, NEXT_PUBLIC_SEPA_DEBTOR_BIC")
+    const sepaDebtors = parseSepaDebtorsFromEnv()
+    const debtor = resolveSepaDebtorForCompany(activeCompanyTab, sepaDebtors)
+    if (!debtor) {
+      const configured = listConfiguredSepaCompanies(sepaDebtors)
+      alert(
+        configured.length > 0
+          ? `Geen SEPA-rekening gevonden voor firma "${activeCompanyTab}".\n\nGeconfigureerde firmas:\n- ${configured.join("\n- ")}\n\nPas NEXT_PUBLIC_SEPA_DEBTORS_JSON aan in .env.local.`
+          : "SEPA export mist instellingen. Voeg NEXT_PUBLIC_SEPA_DEBTORS_JSON toe in .env.local (per firma: naam, IBAN, BIC)."
+      )
       return
     }
+    const debtorName = debtor.name
+    const debtorIban = normalizeIban(debtor.iban)
+    const debtorBic = debtor.bic.trim().toUpperCase()
     if (!isValidIban(debtorIban)) {
-      alert("SEPA export geblokkeerd: Debiteur IBAN is ongeldig.")
+      alert(`SEPA export geblokkeerd: Debiteur IBAN is ongeldig voor ${debtorName}.`)
       return
     }
 
     const rows = groupedByCompany[activeCompanyTab] || []
-    const invalids: string[] = []
+    const skippedNotApproved: string[] = []
+    const skippedInvalid: string[] = []
     const payments = rows
       .map((r: SalaryDraft) => {
         const crewMember = crewById.get(String(r.crew_id))
@@ -1965,25 +2292,35 @@ export default function LoonBemerkingenPage() {
         const hasApprovals = !!r.approval_leo && !!r.approval_karina
         const validIban = isValidIban(iban)
         const validAmount = amount > 0
-        if (!validIban || !validAmount || !hasApprovals) {
+
+        if (!hasApprovals) {
+          skippedNotApproved.push(name)
+          return null
+        }
+        if (!validIban || !validAmount) {
           const reasons = [
             !validIban ? "ongeldige IBAN" : "",
             !validAmount ? "bedrag moet > 0 zijn" : "",
-            !hasApprovals ? "goedkeuring Leo + Karina ontbreekt" : "",
           ].filter(Boolean).join(", ")
-          invalids.push(`${name}: ${reasons}`)
+          skippedInvalid.push(`${name}: ${reasons}`)
           return null
         }
         return { name, iban, amount }
       })
       .filter((p): p is { name: string; iban: string; amount: number } => !!p)
 
-    if (invalids.length > 0) {
-      alert(`SEPA export geblokkeerd. Los eerst op:\n- ${invalids.join("\n- ")}`)
-      return
-    }
     if (payments.length === 0) {
-      alert("Geen betalingen klaar voor SEPA export in deze firma-tab.")
+      const lines = [
+        "Geen betalingen om te exporteren.",
+        "Alleen rijen met vinkjes van Leo én Karina, geldig IBAN en bedrag > €0 worden meegenomen.",
+      ]
+      if (skippedNotApproved.length > 0) {
+        lines.push(`\n${skippedNotApproved.length} nog niet volledig afgevinkt.`)
+      }
+      if (skippedInvalid.length > 0) {
+        lines.push(`\nNiet exporteerbaar ondanks vinkjes:\n- ${skippedInvalid.join("\n- ")}`)
+      }
+      alert(lines.join("\n"))
       return
     }
 
@@ -2043,6 +2380,22 @@ export default function LoonBemerkingenPage() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+
+    const summaryParts = [
+      `SEPA bestand gedownload met ${payments.length} betaling(en) voor ${activeCompanyTab}.`,
+      `Totaal: ${formatCurrency(ctrlSum)}`,
+    ]
+    if (skippedNotApproved.length > 0) {
+      summaryParts.push(
+        `${skippedNotApproved.length} overgeslagen (nog niet afgevinkt door Leo én Karina).`
+      )
+    }
+    if (skippedInvalid.length > 0) {
+      summaryParts.push(
+        `${skippedInvalid.length} niet meegenomen ondanks vinkjes — los eerst op:\n- ${skippedInvalid.join("\n- ")}`
+      )
+    }
+    alert(summaryParts.join("\n\n"))
   }
 
   const handleSetMonthlySalaryPassword = async () => {
@@ -2249,6 +2602,30 @@ export default function LoonBemerkingenPage() {
         </div>
       </div>
 
+      {previousMonthWarning && (
+        <div className="mb-4 rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+          <div className="font-semibold">
+            {isTanja ? "Hinweis vorige maand" : "Melding vorige maand"}
+          </div>
+          <div className="mt-1">
+            {previousMonthWarning.notClosed && (
+              <div>
+                {isTanja
+                  ? `${monthNumberToName(previousMonthWarning.monthKey.split("-")[1] || "", true)} ${previousMonthWarning.monthKey.split("-")[0]} is nog niet afgesloten.`
+                  : `${monthNumberToName(previousMonthWarning.monthKey.split("-")[1] || "")} ${previousMonthWarning.monthKey.split("-")[0]} is nog niet afgesloten.`}
+              </div>
+            )}
+            {previousMonthWarning.unapprovedCount > 0 && (
+              <div>
+                {isTanja
+                  ? `${previousMonthWarning.unapprovedCount} betaling(en) in ${monthKeyToDisplay(previousMonthWarning.monthKey)} nog niet volledig afgevinkt.`
+                  : `${previousMonthWarning.unapprovedCount} betaling(en) in ${monthKeyToDisplay(previousMonthWarning.monthKey)} nog niet volledig afgevinkt.`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <Card className="w-full">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-2">
@@ -2394,7 +2771,7 @@ export default function LoonBemerkingenPage() {
                         <th className="px-3 py-2 text-base font-bold" rowSpan={2}>{isTanja ? "Name" : "Naam"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Eintrittsdatum" : "Datum in dienst"}</th>
                         <th className="px-3 py-2" rowSpan={2}>IBAN</th>
-                        <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Grundgehalt inkl. Kleidungsgeld" : "Basissalaris incl kledinggeld"}</th>
+                        <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl. kledinggeld"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Reisekosten" : "Reiskosten"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Einbehalt" : "In te houden"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Erhöhung" : "Verhoging"}</th>
@@ -2429,11 +2806,9 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">{formatDateShort(r.in_service_from)}</td>
                             <td className="px-3 py-2">{r.iban || "-"}</td>
                             <td className="px-3 py-2">{formatCurrency(baseSalary)}</td>
-                            <td className="px-3 py-2">{formatTravelDisplay(travelAmount, isTanja)}</td>
+                            <td className="px-3 py-2">{formatTravelDisplay(r.travel_amount ?? 0, isTanja)}</td>
                             <td className="px-3 py-2">
-                              {r.advance_enabled
-                                ? `${getDeductionCategoryLabel(r.deduction_category)} (-${formatCurrency(advanceAmount)})`
-                                : (isTanja ? "Nein" : "Nee")}
+                              {formatDeductionsDisplay(r) || (isTanja ? "Nein" : "Nee")}
                             </td>
                             <td className="px-3 py-2">{r.raise_enabled ? `Ja (+${formatCurrency(raiseAmount)})` : (isTanja ? "Nein" : "Nee")}</td>
                             <td className="px-3 py-2">
@@ -2491,15 +2866,16 @@ export default function LoonBemerkingenPage() {
           </CardHeader>
           <CardContent>
             {(() => {
-              const overtimeRows = (groupedByCompany[activeCompanyTab] || []).filter(
-                (r: SalaryDraft) => r.overtime_enabled && Number(r.overtime_days || 0) > 0
+              const companyCrewIds = new Set(
+                (groupedByCompany[activeCompanyTab] || []).map((r: SalaryDraft) => String(r.crew_id))
               )
+              const overtimeRows = overigeBetalingenRows.filter((r) => companyCrewIds.has(String(r.crew_id)))
               if (overtimeRows.length === 0) {
                 return <div className="text-sm text-gray-500">{isTanja ? "Geen overige betalingen." : "Geen overige betalingen."}</div>
               }
               return (
                 <div className="overflow-x-auto rounded-md border border-slate-200">
-                  <table className="w-full min-w-[900px] text-sm">
+                  <table className="w-full min-w-[1000px] text-sm">
                     <thead className="bg-slate-100">
                       <tr className="text-left">
                         <th className="px-3 py-2">{isTanja ? "Name" : "Naam"}</th>
@@ -2507,36 +2883,55 @@ export default function LoonBemerkingenPage() {
                         <th className="px-3 py-2">{isTanja ? "Extra Arbeitstage" : "Dagen extra gewerkt"}</th>
                         <th className="px-3 py-2">{isTanja ? "Hinweis (von/bis)" : "Opmerking (van/tot)"}</th>
                         <th className="px-3 py-2">{isTanja ? "Betrag" : "Bedrag"}</th>
+                        <th className="px-3 py-2">{isTanja ? "Betaaldatum" : "Betaaldatum"}</th>
                         <th className="px-3 py-2">Leo</th>
                         <th className="px-3 py-2">Karina</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {overtimeRows.map((r: SalaryDraft) => {
+                      {overtimeRows.map((r) => {
                         const crewMember = crewById.get(String(r.crew_id))
                         const name = crewMember ? formatCrewName(crewMember) : "Onbekend"
-                        const overtimeAmount = getOverworkAmount(r)
+                        const sourceRow = getRowForApproval(String(r.crew_id), r.sourceMonthKey)
+                        const overtimeAmount = sourceRow ? getOverworkAmount(sourceRow) : 0
+                        const paidDates = [
+                          r.approval_leo_paid_at ? `Leo: ${formatDateShort(r.approval_leo_paid_at)}` : "",
+                          r.approval_karina_paid_at ? `Karina: ${formatDateShort(r.approval_karina_paid_at)}` : "",
+                        ].filter(Boolean).join(" | ")
+                        const fromOtherMonth = r.sourceMonthKey !== monthKey
                         return (
-                          <tr key={`overtime-${r.crew_id}-${r.month_key}`} className="border-t border-slate-200">
-                            <td className="px-3 py-2">{name}</td>
+                          <tr
+                            key={`overtime-${r.crew_id}-${r.sourceMonthKey}-${r.month_key}`}
+                            className={`border-t border-slate-200 ${monthIsClosed ? "" : "cursor-pointer hover:bg-slate-50/80"}`}
+                            onClick={(e) => handleRowClickOpenEdit(e, String(r.crew_id), r.sourceMonthKey)}
+                          >
+                            <td className="px-3 py-2">
+                              {name}
+                              {fromOtherMonth && (
+                                <div className="text-xs text-slate-500">
+                                  {isTanja ? "uit" : "uit"} {monthKeyToDisplay(r.sourceMonthKey)}
+                                </div>
+                              )}
+                            </td>
                             <td className="px-3 py-2">{r.iban || "-"}</td>
                             <td className="px-3 py-2">{Number(r.overtime_days || 0)}</td>
                             <td className="px-3 py-2">{String(r.overtime_note || "").trim() || "-"}</td>
                             <td className="px-3 py-2 font-semibold text-emerald-700">{formatCurrency(overtimeAmount)}</td>
+                            <td className="px-3 py-2 text-xs">{paidDates || "-"}</td>
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
                                 checked={!!r.approval_leo}
-                                onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked)}
-                                disabled={!isLeoUser || savingCrewId === String(r.crew_id)}
+                                onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked, r.sourceMonthKey)}
+                                disabled={monthIsClosed || !isLeoUser || savingCrewId === String(r.crew_id)}
                               />
                             </td>
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
                                 checked={!!r.approval_karina}
-                                onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_karina", e.target.checked)}
-                                disabled={!isKarinaUser || savingCrewId === String(r.crew_id)}
+                                onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_karina", e.target.checked, r.sourceMonthKey)}
+                                disabled={monthIsClosed || !isKarinaUser || savingCrewId === String(r.crew_id)}
                               />
                             </td>
                           </tr>
@@ -2551,12 +2946,17 @@ export default function LoonBemerkingenPage() {
         </Card>
       </div>
 
-      {editingCrewId && rowsByCrewId[editingCrewId] && (
+      {editingCrewId && editingRow && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-4xl rounded-lg border bg-white p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">
                 {isTanja ? "Gehalt bearbeiten" : "Salaris bewerken"} - {formatCrewName(crewById.get(editingCrewId))}
+                {editingSourceMonthKey && (
+                  <span className="ml-2 text-sm font-normal text-slate-500">
+                    ({monthKeyToDisplay(editingSourceMonthKey)})
+                  </span>
+                )}
               </h3>
               {salaryReadOnlyUser && (
                 <span className="mr-2 rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
@@ -2568,6 +2968,7 @@ export default function LoonBemerkingenPage() {
                 size="sm"
                 onClick={() => {
                   setEditingCrewId(null)
+                  setEditingSourceMonthKey(null)
                   setShowSalaryHistory(false)
                   setSalaryHistoryItems([])
                 }}
@@ -2578,7 +2979,7 @@ export default function LoonBemerkingenPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <Label>IBAN</Label>
-                <Input value={rowsByCrewId[editingCrewId].iban || ""} onChange={(e) => setCrewField(editingCrewId, { iban: e.target.value })} />
+                <Input value={editingRow.iban || ""} onChange={(e) => setCrewField(editingCrewId, { iban: e.target.value })} />
               </div>
               <div>
                 <Label>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl. kledinggeld"}</Label>
@@ -2605,86 +3006,187 @@ export default function LoonBemerkingenPage() {
                   }}
                 />
               </div>
+              {hasProrationInMonth(editingRow, editingRow.month_key || monthKey) && (
+                <div>
+                  <Label>{isTanja ? "Gewerkte Tage" : "Gewerkte dagen deze maand"}</Label>
+                  <Input
+                    disabled={salaryEditingDisabled}
+                    inputMode="decimal"
+                    value={prorationDaysInput}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      if (/^\d*([.,]\d*)?$/.test(raw)) setProrationDaysInput(raw)
+                    }}
+                    onBlur={() => {
+                      const rowMonth = editingRow.month_key || monthKey
+                      const autoDays = getWorkedDaysInSalaryMonth(editingRow, rowMonth)
+                      const parsed = prorationDaysInput.trim() === "" ? null : parseDecimalInput(prorationDaysInput)
+                      setCrewField(editingCrewId, {
+                        proration_worked_days:
+                          parsed === null || parsed === autoDays ? null : Math.max(0, parsed),
+                      })
+                    }}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    {isTanja
+                      ? `Automatisch: ${getWorkedDaysInSalaryMonth(editingRow, editingRow.month_key || monthKey) ?? "-"} Tage (uit-dienst-dag telt niet).`
+                      : `Automatisch: ${getWorkedDaysInSalaryMonth(editingRow, editingRow.month_key || monthKey) ?? "-"} dagen (uit-dienst-dag telt niet mee).`}
+                  </p>
+                </div>
+              )}
               <div>
                 <Label>{isTanja ? "Reisekosten" : "Reiskosten"}</Label>
                 <Select
                   disabled={salaryEditingDisabled}
-                  value={String(rowsByCrewId[editingCrewId].travel_amount || 0)}
+                  value={
+                    editingRow.travel_amount === TRAVEL_AMOUNT_COMPANY_CAR
+                      ? "auto"
+                      : String(editingRow.travel_amount ?? 0)
+                  }
                   onValueChange={(v) =>
                     setCrewField(editingCrewId, {
-                      travel_amount: normalizeTravelAmount(Number(v)),
+                      travel_amount: normalizeTravelAmount(v === "auto" ? TRAVEL_AMOUNT_COMPANY_CAR : v),
                     })
                   }
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="0">{isTanja ? "Nein" : "Nee"}</SelectItem>
+                    <SelectItem value="auto">{isTanja ? "Firmenwagen" : "Bedrijfsauto"}</SelectItem>
                     <SelectItem value="150">€ 150</SelectItem>
                     <SelectItem value="300">€ 300</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <Label>{isTanja ? "Einbehalt" : "In te houden"}</Label>
                 <Select
                   disabled={salaryEditingDisabled}
-                  value={rowsByCrewId[editingCrewId].advance_enabled ? "ja" : "nee"}
+                  value={(editingRow.deductions?.length || 0) > 0 ? "ja" : "nee"}
                   onValueChange={(v) => {
-                    const enabled = v === "ja"
-                    setCrewField(editingCrewId, {
-                      advance_enabled: enabled,
-                      advance_amount: enabled ? Number(rowsByCrewId[editingCrewId].advance_amount || 0) : 0,
-                      deduction_category: enabled ? rowsByCrewId[editingCrewId].deduction_category : "voorschot",
-                    })
+                    if (v === "nee") {
+                      setDeductionAmountTexts({})
+                      setCrewField(editingCrewId, {
+                        deductions: [],
+                        advance_enabled: false,
+                        advance_amount: 0,
+                        deduction_category: "voorschot",
+                      })
+                      return
+                    }
+                    const existing = editingRow.deductions || []
+                    const nextDeductions =
+                      existing.length > 0
+                        ? existing
+                        : [{ id: `ded-${Date.now()}`, amount: 0, category: "voorschot" as SalaryDeductionCategory }]
+                    const legacy = syncLegacyAdvanceFields(nextDeductions)
+                    setCrewField(editingCrewId, { deductions: nextDeductions, ...legacy })
                   }}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="ja">Ja</SelectItem><SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem></SelectContent>
                 </Select>
               </div>
-              {rowsByCrewId[editingCrewId].advance_enabled && (
-                <>
-                  <div>
-                    <Label>{isTanja ? "Kategorie" : "Categorie"}</Label>
-                    <Select
-                      disabled={salaryEditingDisabled}
-                      value={rowsByCrewId[editingCrewId].deduction_category || "voorschot"}
-                      onValueChange={(v) =>
-                        setCrewField(editingCrewId, {
-                          deduction_category: (v as SalaryDraft["deduction_category"]) || "voorschot",
-                        })
-                      }
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {DEDUCTION_CATEGORY_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>{isTanja ? "Betrag" : "Bedrag"}</Label>
-                    <Input
-                      disabled={salaryEditingDisabled}
-                      inputMode="decimal"
-                      value={rowsByCrewId[editingCrewId].advance_amount ?? ""}
-                      onChange={(e) =>
-                        setCrewField(editingCrewId, {
-                          advance_enabled: true,
-                          advance_amount: parseSalaryMoneyInputOrZero(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                </>
+              {(editingRow.deductions?.length || 0) > 0 && (
+                <div className="md:col-span-2 space-y-2 rounded-md border p-3">
+                  <div className="text-sm font-medium">{isTanja ? "Inhoudingen" : "Inhoudingen"}</div>
+                  {(editingRow.deductions || []).map((deduction) => (
+                    <div key={deduction.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                      <div className="md:col-span-4">
+                        <Label className="text-xs">{isTanja ? "Kategorie" : "Categorie"}</Label>
+                        <Select
+                          disabled={salaryEditingDisabled}
+                          value={deduction.category || "voorschot"}
+                          onValueChange={(v) => {
+                            const next = (editingRow.deductions || []).map((d) =>
+                              d.id === deduction.id
+                                ? { ...d, category: (v as SalaryDeductionCategory) || "voorschot" }
+                                : d
+                            )
+                            const legacy = syncLegacyAdvanceFields(next)
+                            setCrewField(editingCrewId, { deductions: next, ...legacy })
+                          }}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DEDUCTION_CATEGORY_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="md:col-span-5">
+                        <Label className="text-xs">{isTanja ? "Betrag" : "Bedrag"}</Label>
+                        <Input
+                          disabled={salaryEditingDisabled}
+                          inputMode="decimal"
+                          value={deductionAmountTexts[deduction.id] ?? formatSalaryInputFromNumber(deduction.amount)}
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            if (raw !== "" && !/^[-\d.,]*$/.test(raw)) return
+                            setDeductionAmountTexts((prev) => ({ ...prev, [deduction.id]: raw }))
+                          }}
+                          onBlur={() => {
+                            const parsed = parseSalaryMoneyInputOrZero(deductionAmountTexts[deduction.id] ?? "")
+                            const next = (editingRow.deductions || []).map((d) =>
+                              d.id === deduction.id ? { ...d, amount: parsed } : d
+                            )
+                            const legacy = syncLegacyAdvanceFields(next)
+                            setCrewField(editingCrewId, { deductions: next, ...legacy })
+                            setDeductionAmountTexts((prev) => ({
+                              ...prev,
+                              [deduction.id]: formatSalaryInputFromNumber(parsed),
+                            }))
+                          }}
+                          placeholder="0,00"
+                        />
+                      </div>
+                      <div className="md:col-span-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={salaryEditingDisabled}
+                          onClick={() => {
+                            const next = (editingRow.deductions || []).filter((d) => d.id !== deduction.id)
+                            const legacy = syncLegacyAdvanceFields(next)
+                            setCrewField(editingCrewId, { deductions: next, ...legacy })
+                            setDeductionAmountTexts((prev) => {
+                              const copy = { ...prev }
+                              delete copy[deduction.id]
+                              return copy
+                            })
+                          }}
+                        >
+                          {isTanja ? "Entfernen" : "Verwijderen"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={salaryEditingDisabled}
+                    onClick={() => {
+                      const next = [
+                        ...(editingRow.deductions || []),
+                        { id: `ded-${Date.now()}`, amount: 0, category: "voorschot" as SalaryDeductionCategory },
+                      ]
+                      const legacy = syncLegacyAdvanceFields(next)
+                      setCrewField(editingCrewId, { deductions: next, ...legacy })
+                    }}
+                  >
+                    {isTanja ? "Inhouding toevoegen" : "Inhouding toevoegen"}
+                  </Button>
+                </div>
               )}
               <div>
                 <Label>{isTanja ? "Erhöhungsbetrag" : "Verhoging bedrag"}</Label>
                 <Input
                   disabled={salaryEditingDisabled}
                   inputMode="decimal"
-                  value={rowsByCrewId[editingCrewId].raise_amount ?? ""}
+                  value={editingRow.raise_amount ?? ""}
                   onChange={(e) => {
                     const raw = e.target.value
                     setCrewField(editingCrewId, {
@@ -2698,7 +3200,7 @@ export default function LoonBemerkingenPage() {
                 <Label>{isTanja ? "Uberstunden" : "Overwerk"}</Label>
                 <Select
                   disabled={salaryEditingDisabled}
-                  value={rowsByCrewId[editingCrewId].overtime_enabled ? "ja" : "nee"}
+                  value={editingRow.overtime_enabled ? "ja" : "nee"}
                   onValueChange={(v) => {
                     const enabled = v === "ja"
                     if (!enabled) {
@@ -2706,14 +3208,14 @@ export default function LoonBemerkingenPage() {
                       setOvertimeFromDate("")
                       setOvertimeToDate("")
                     } else {
-                      const existing = Number(rowsByCrewId[editingCrewId].overtime_days || 0)
+                      const existing = Number(editingRow.overtime_days || 0)
                       setOvertimeDaysInput(existing > 0 ? String(existing).replace(".", ",") : "")
                     }
                     setCrewField(editingCrewId, {
                       overtime_enabled: enabled,
-                      overtime_days: enabled ? Number(rowsByCrewId[editingCrewId].overtime_days || 0) : 0,
+                      overtime_days: enabled ? Number(editingRow.overtime_days || 0) : 0,
                       overtime_note: enabled
-                        ? String(rowsByCrewId[editingCrewId].overtime_note || "")
+                        ? String(editingRow.overtime_note || "")
                         : "",
                     })
                   }}
@@ -2722,7 +3224,7 @@ export default function LoonBemerkingenPage() {
                   <SelectContent><SelectItem value="ja">Ja</SelectItem><SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem></SelectContent>
                 </Select>
               </div>
-              {rowsByCrewId[editingCrewId].overtime_enabled && (
+              {editingRow.overtime_enabled && (
                 <div>
                   <Label>{isTanja ? "Anzahl Extra-Tage" : "Aantal dagen extra gewerkt"}</Label>
                   <Input
@@ -2739,7 +3241,7 @@ export default function LoonBemerkingenPage() {
                   />
                 </div>
               )}
-              {rowsByCrewId[editingCrewId].overtime_enabled && (
+              {editingRow.overtime_enabled && (
                 <div className="md:col-span-2">
                   <Label>{isTanja ? "Periode extra werk" : "Periode extra werk"}</Label>
                   <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 rounded-md border p-2">
@@ -2773,15 +3275,15 @@ export default function LoonBemerkingenPage() {
                     </div>
                   </div>
                   <div className="mt-2 text-xs text-slate-600">
-                    {rowsByCrewId[editingCrewId].overtime_note
-                      ? `${isTanja ? "Automatische opmerking" : "Automatische opmerking"}: ${rowsByCrewId[editingCrewId].overtime_note}`
+                    {editingRow.overtime_note
+                      ? `${isTanja ? "Automatische opmerking" : "Automatische opmerking"}: ${editingRow.overtime_note}`
                       : (isTanja ? "Kies begin- en einddatum om automatisch 'van ... tot ...' te vullen." : "Kies begin- en einddatum om automatisch 'van ... tot ...' te vullen.")}
                   </div>
                 </div>
               )}
               <div>
                 <Label>{isTanja ? "Bemerkungen" : "Opmerkingen"}</Label>
-                <Input disabled={salaryEditingDisabled} value={rowsByCrewId[editingCrewId].notes || ""} onChange={(e) => setCrewField(editingCrewId, { notes: e.target.value })} />
+                <Input disabled={salaryEditingDisabled} value={editingRow.notes || ""} onChange={(e) => setCrewField(editingCrewId, { notes: e.target.value })} />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
@@ -2801,6 +3303,7 @@ export default function LoonBemerkingenPage() {
                 variant="outline"
                 onClick={() => {
                   setEditingCrewId(null)
+                  setEditingSourceMonthKey(null)
                   setShowSalaryHistory(false)
                   setSalaryHistoryItems([])
                 }}
@@ -2813,8 +3316,12 @@ export default function LoonBemerkingenPage() {
                   if (!editingCrewId) return
                   const parsedBase = parseSalaryMoneyInput(baseSalaryEditText.trim())
                   const preparedRow = syncOvertimeInputToRow(editingCrewId)
-                  const base = preparedRow || rowsByCrewId[editingCrewId]
+                  const base = preparedRow || editingRow
                   if (!base) return
+                  const rowMonth = base.month_key || monthKey
+                  const autoProrationDays = getWorkedDaysInSalaryMonth(base, rowMonth)
+                  const parsedProration =
+                    prorationDaysInput.trim() === "" ? null : parseDecimalInput(prorationDaysInput)
                   const toSave: SalaryDraft = {
                     ...base,
                     base_salary:
@@ -2822,10 +3329,26 @@ export default function LoonBemerkingenPage() {
                         parsedBase,
                         crewById.get(editingCrewId)
                       ) ?? parsedBase,
+                    proration_worked_days:
+                      parsedProration === null || parsedProration === autoProrationDays
+                        ? null
+                        : Math.max(0, parsedProration),
                   }
-                  const ok = await saveCrewRow(editingCrewId, toSave)
+                  const syncedDeductions = (toSave.deductions || []).map((d) => {
+                    const text = deductionAmountTexts[d.id]
+                    if (text === undefined) return d
+                    return { ...d, amount: parseSalaryMoneyInputOrZero(text) }
+                  })
+                  const legacyDeductions = syncLegacyAdvanceFields(syncedDeductions)
+                  const finalRow: SalaryDraft = {
+                    ...toSave,
+                    deductions: syncedDeductions,
+                    ...legacyDeductions,
+                  }
+                  const ok = await saveCrewRow(editingCrewId, finalRow)
                   if (ok) {
                     setEditingCrewId(null)
+                    setEditingSourceMonthKey(null)
                     setShowSalaryHistory(false)
                     setSalaryHistoryItems([])
                   }
@@ -2855,6 +3378,7 @@ export default function LoonBemerkingenPage() {
                           <th className="px-2 py-1">{isTanja ? "Voorschot" : "Voorschot"}</th>
                           <th className="px-2 py-1">{isTanja ? "Overwerk" : "Overwerk"}</th>
                           <th className="px-2 py-1">{isTanja ? "Totaal" : "Totaal"}</th>
+                          <th className="px-2 py-1">{isTanja ? "Betaaldatum" : "Betaaldatum"}</th>
                           <th className="px-2 py-1">{isTanja ? "Reden/opmerking" : "Reden/opmerking"}</th>
                         </tr>
                       </thead>
@@ -2863,7 +3387,7 @@ export default function LoonBemerkingenPage() {
                           <tr key={item.id} className="border-t">
                             <td className="px-2 py-1">{item.month_key}</td>
                             <td className="px-2 py-1">{formatCurrency(item.base_salary)}</td>
-                            <td className="px-2 py-1">{formatTravelDisplay(item.travel_amount || 0)}</td>
+                            <td className="px-2 py-1">{formatTravelDisplay(item.travel_amount ?? 0)}</td>
                             <td className="px-2 py-1">{formatCurrency(item.raise_amount)}</td>
                             <td className="px-2 py-1">{formatCurrency(item.advance_amount)}</td>
                             <td className="px-2 py-1">
@@ -2872,6 +3396,12 @@ export default function LoonBemerkingenPage() {
                                 : "-"}
                             </td>
                             <td className="px-2 py-1 font-semibold">{formatCurrency(item.total_salary_month)}</td>
+                            <td className="px-2 py-1 text-xs">
+                              {[
+                                item.approval_leo_paid_at ? `Leo: ${formatDateShort(item.approval_leo_paid_at)}` : "",
+                                item.approval_karina_paid_at ? `Karina: ${formatDateShort(item.approval_karina_paid_at)}` : "",
+                              ].filter(Boolean).join(" | ") || "-"}
+                            </td>
                             <td className="px-2 py-1">{String(item.overtime_note || item.notes || "").trim()}</td>
                           </tr>
                         ))}
@@ -2881,6 +3411,50 @@ export default function LoonBemerkingenPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {approvalDatePrompt && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-lg border bg-white p-5">
+            <h3 className="text-lg font-semibold mb-3">
+              {isTanja ? "Betaaldatum invoeren" : "Betaaldatum invoeren"}
+            </h3>
+            <p className="text-sm text-slate-600 mb-3">
+              {isTanja
+                ? "Vul de datum in waarop deze betaling is gedaan."
+                : "Vul de datum in waarop deze betaling is gedaan."}
+            </p>
+            <Label>{isTanja ? "Betaaldatum" : "Betaaldatum"}</Label>
+            <Input
+              type="date"
+              className="mt-1"
+              value={approvalDatePrompt.paymentDate}
+              onChange={(e) =>
+                setApprovalDatePrompt((prev) =>
+                  prev ? { ...prev, paymentDate: e.target.value } : prev
+                )
+              }
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setApprovalDatePrompt(null)}>
+                {isTanja ? "Abbrechen" : "Annuleren"}
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!approvalDatePrompt.paymentDate) {
+                    alert(isTanja ? "Betaaldatum is verplicht." : "Betaaldatum is verplicht.")
+                    return
+                  }
+                  const { crewId, field, paymentDate, sourceMonthKey } = approvalDatePrompt
+                  setApprovalDatePrompt(null)
+                  await applyApprovalToggle(crewId, field, true, paymentDate, sourceMonthKey)
+                }}
+              >
+                {isTanja ? "Bevestigen" : "Bevestigen"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
