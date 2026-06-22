@@ -66,6 +66,11 @@ export function canAccessTasksPage(email?: string | null): boolean {
 /** Dunja en Karina: meldingen beperkt tot verjaardagen en dienstjubilea. */
 export const OFFICE_MELDINGEN_GROUP_LABELS = ["Verjaardagen", "Dienstjubilea"] as const
 
+/** Karina: alleen terug-te-staan overzicht (niet de volledige overwerkers-pagina). */
+export function canAccessTerugTeStaanPage(email?: string | null): boolean {
+  return normalizeEmail(email) === "karina@bamalite.com"
+}
+
 export function canAccessOfficeMeldingenPage(email?: string | null): boolean {
   return isTaskOfficeUser(email)
 }

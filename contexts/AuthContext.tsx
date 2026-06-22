@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { canAccessOfficeMeldingenPage, canAccessTasksPage, isTaskOfficeUser } from '@/utils/task-permissions'
+import { canAccessOfficeMeldingenPage, canAccessTasksPage, canAccessTerugTeStaanPage, isTaskOfficeUser } from '@/utils/task-permissions'
 
 interface AuthContextType {
   user: User | null
@@ -67,6 +67,7 @@ const LIMITED_BLOCKED_BEMANNING_SEGMENTS = new Set([
   "rotatie-kalender",
   "update",
   "tekorten",
+  "terug-te-staan",
 ])
 
 const FIRMA_READONLY_EMAILS = new Set([
@@ -91,6 +92,13 @@ function canAccessPathForRole(
   const normalized = path.split("?")[0]
   const emailLower = (email || "").trim().toLowerCase()
   if (normalized === "/login" || normalized === "/login/email-verify") return true
+
+  if (
+    canAccessTerugTeStaanPage(emailLower) &&
+    (normalized === "/bemanning/terug-te-staan" || normalized.startsWith("/bemanning/terug-te-staan/"))
+  ) {
+    return true
+  }
 
   // Dunja & Karina: bemanningsprofielen en meldingen (verjaardagen/jubilea)
   if (isTaskOfficeUser(emailLower)) {
