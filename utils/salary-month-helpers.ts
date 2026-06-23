@@ -441,6 +441,23 @@ export function getSalaryPaymentDateForMonth(monthKey: string): string {
   return `${monthKey}-25`
 }
 
+/** Betaaldatum uit goedkeuring (YYYY-MM-DD) voor SEPA ReqdExctnDt; anders 25e van de maand. */
+export function resolveSepaExecutionDate(
+  paidAt: string | null | undefined,
+  fallbackMonthKey: string
+): string {
+  const raw = String(paidAt || "").trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const parsed = new Date(raw)
+  if (!isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear()
+    const month = String(parsed.getMonth() + 1).padStart(2, "0")
+    const day = String(parsed.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+  return getSalaryPaymentDateForMonth(fallbackMonthKey)
+}
+
 export function canUserSetSalaryApproval(userEmail: string, field: SalaryApprovalField): boolean {
   const email = String(userEmail || "").toLowerCase().trim()
   if (field === "approval_leo") return email === "leo@bamalite.com"

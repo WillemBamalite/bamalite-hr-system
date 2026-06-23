@@ -39,6 +39,7 @@ import {
   isOvertimePayableRow,
   readSalaryApproval,
   readSalaryApprovalPaidAt,
+  resolveSepaExecutionDate,
   resolveStorageApprovalKeys,
   resolveOvertimeInputMode,
   type OvertimeInputMode,
@@ -2580,9 +2581,18 @@ export default function LoonBemerkingenPage() {
           skippedInvalid.push(`${name} (salaris): ${reasons}`)
           return null
         }
-        return { name, iban, amount, message: salaryMsg }
+        return {
+          name,
+          iban,
+          amount,
+          message: salaryMsg,
+          executionDate: resolveSepaExecutionDate(r.approval_karina_paid_at, monthKey),
+        }
       })
-      .filter((p): p is { name: string; iban: string; amount: number; message: string } => !!p)
+      .filter(
+        (p): p is { name: string; iban: string; amount: number; message: string; executionDate: string } =>
+          !!p
+      )
 
     const overtimeForCompany = overigeBetalingenRows.filter((r) => {
       const sourceRow = getRowForApproval(String(r.crew_id), r.sourceMonthKey)
@@ -2617,9 +2627,16 @@ export default function LoonBemerkingenPage() {
           iban,
           amount,
           message: buildSepaExtraWorkMessage(r.overtime_note, r.sourceMonthKey),
+          executionDate: resolveSepaExecutionDate(
+            sourceRow?.overtime_approval_karina_paid_at,
+            r.sourceMonthKey || monthKey
+          ),
         }
       })
-      .filter((p): p is { name: string; iban: string; amount: number; message: string } => !!p)
+      .filter(
+        (p): p is { name: string; iban: string; amount: number; message: string; executionDate: string } =>
+          !!p
+      )
 
     const payments = [...salaryPayments, ...extraWorkPayments]
 
@@ -2640,15 +2657,29 @@ export default function LoonBemerkingenPage() {
 
     const now = new Date()
     const creationDateTime = now.toISOString()
-    const requestedDate = `${monthKey}-25`
     const msgId = `SAL-${monthKey.replace("-", "")}-${now.getTime()}`
-    const pmtInfId = `PMT-${monthKey.replace("-", "")}-${activeCompanyTab.replace(/\s+/g, "").slice(0, 12)}`
     const ctrlSum = payments.reduce((sum, p) => sum + p.amount, 0)
 
-    const txsXml = payments
-      .map((p, idx) => {
-        const endToEndId = `E2E-${monthKey.replace("-", "")}-${String(idx + 1).padStart(4, "0")}`
-        return `
+    const paymentsByDate = new Map<string, typeof payments>()
+    for (const payment of payments) {
+      const group = paymentsByDate.get(payment.executionDate) || []
+      group.push(payment)
+      paymentsByDate.set(payment.executionDate, group)
+    }
+
+    let txIndex = 0
+    const companySlug = activeCompanyTab.replace(/\s+/g, "").slice(0, 12)
+    const pmtInfXml = [...paymentsByDate.keys()]
+      .sort()
+      .map((executionDate) => {
+        const groupPayments = paymentsByDate.get(executionDate) || []
+        const groupSum = groupPayments.reduce((sum, p) => sum + p.amount, 0)
+        const pmtInfId = `PMT-${monthKey.replace("-", "")}-${companySlug}-${executionDate.replace(/-/g, "")}`
+        const txsXml = groupPayments
+          .map((p) => {
+            txIndex += 1
+            const endToEndId = `E2E-${monthKey.replace("-", "")}-${String(txIndex).padStart(4, "0")}`
+            return `
         <CdtTrfTxInf>
           <PmtId><EndToEndId>${escapeXml(endToEndId)}</EndToEndId></PmtId>
           <Amt><InstdAmt Ccy="${SEPA_CCY}">${p.amount.toFixed(2)}</InstdAmt></Amt>
@@ -2656,6 +2687,22 @@ export default function LoonBemerkingenPage() {
           <CdtrAcct><Id><IBAN>${escapeXml(p.iban)}</IBAN></Id></CdtrAcct>
           <RmtInf><Ustrd>${escapeXml(p.message)}</Ustrd></RmtInf>
         </CdtTrfTxInf>`
+          })
+          .join("")
+
+        return `
+    <PmtInf>
+      <PmtInfId>${escapeXml(pmtInfId)}</PmtInfId>
+      <PmtMtd>TRF</PmtMtd>
+      <NbOfTxs>${groupPayments.length}</NbOfTxs>
+      <CtrlSum>${groupSum.toFixed(2)}</CtrlSum>
+      <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
+      <ReqdExctnDt>${executionDate}</ReqdExctnDt>
+      <Dbtr><Nm>${escapeXml(debtorName)}</Nm></Dbtr>
+      <DbtrAcct><Id><IBAN>${escapeXml(debtorIban)}</IBAN></Id></DbtrAcct>
+      <DbtrAgt><FinInstnId><BIC>${escapeXml(debtorBic)}</BIC></FinInstnId></DbtrAgt>
+      <ChrgBr>SLEV</ChrgBr>${txsXml}
+    </PmtInf>`
       })
       .join("")
 
@@ -2668,19 +2715,7 @@ export default function LoonBemerkingenPage() {
       <NbOfTxs>${payments.length}</NbOfTxs>
       <CtrlSum>${ctrlSum.toFixed(2)}</CtrlSum>
       <InitgPty><Nm>${escapeXml(debtorName)}</Nm></InitgPty>
-    </GrpHdr>
-    <PmtInf>
-      <PmtInfId>${escapeXml(pmtInfId)}</PmtInfId>
-      <PmtMtd>TRF</PmtMtd>
-      <NbOfTxs>${payments.length}</NbOfTxs>
-      <CtrlSum>${ctrlSum.toFixed(2)}</CtrlSum>
-      <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
-      <ReqdExctnDt>${requestedDate}</ReqdExctnDt>
-      <Dbtr><Nm>${escapeXml(debtorName)}</Nm></Dbtr>
-      <DbtrAcct><Id><IBAN>${escapeXml(debtorIban)}</IBAN></Id></DbtrAcct>
-      <DbtrAgt><FinInstnId><BIC>${escapeXml(debtorBic)}</BIC></FinInstnId></DbtrAgt>
-      <ChrgBr>SLEV</ChrgBr>${txsXml}
-    </PmtInf>
+    </GrpHdr>${pmtInfXml}
   </CstmrCdtTrfInitn>
 </Document>`
 
@@ -2694,9 +2729,11 @@ export default function LoonBemerkingenPage() {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
 
+    const executionDates = [...paymentsByDate.keys()].sort()
     const summaryParts = [
       `SEPA bestand gedownload met ${payments.length} betaling(en) voor ${activeCompanyTab}.`,
       `${salaryPayments.length} salaris, ${extraWorkPayments.length} extra werk.`,
+      `Uitvoerdatum(s): ${executionDates.map((d) => formatDateShort(d)).join(", ")}.`,
       `Totaal: ${formatCurrency(ctrlSum)}`,
     ]
     if (skippedNotApproved.length > 0) {
