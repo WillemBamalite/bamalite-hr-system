@@ -1,4 +1,5 @@
 import { format, isAfter, isPast, isToday, startOfDay } from "date-fns"
+import { hasOutOfServiceStatus } from "@/utils/crew-filters"
 
 export type DashboardNotificationSeverity = "info" | "warning" | "danger"
 export type DashboardNotificationKind =
@@ -6,6 +7,7 @@ export type DashboardNotificationKind =
   | "birthday"
   | "anniversary"
   | "certificate_expiring"
+  | "sick_leave_cns"
   | "ship_certificate_paper"
   | "task"
   | "ship_visit"
@@ -22,6 +24,26 @@ export type DashboardNotification = {
 }
 
 const toYmd = (d: Date) => format(d, "yyyy-MM-dd")
+
+/** Na dit aantal ziektedagen: herinnering CNS / 0% (handmatig zetten). */
+export const SICK_LEAVE_CNS_THRESHOLD_DAYS = 77
+
+const isActiveSickLeaveRecord = (record: any) => {
+  const status = String(record?.status || "").toLowerCase()
+  return status === "actief" || status === "wacht-op-briefje"
+}
+
+const isSickLeaveHandledByCns = (record: any) => {
+  const pct = Number(record?.salary_percentage ?? 80)
+  const paidBy = String(record?.paid_by || "").trim().toUpperCase()
+  return pct <= 0 || paidBy.includes("CNS")
+}
+
+const getSickDaysSinceStart = (startDate: Date, today: Date) => {
+  const start = startOfDay(startDate)
+  const diffMs = today.getTime() - start.getTime()
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+}
 
 export const parseFlexibleDate = (value: unknown): Date | null => {
   if (!value || typeof value !== "string") return null
@@ -86,7 +108,7 @@ export function buildDashboardNotifications(args: {
   const isActiveCrewMember = (member: any) => {
     if (!member) return false
     if (member.is_dummy === true) return false
-    if (String(member.status || "").toLowerCase() === "uit-dienst") return false
+    if (hasOutOfServiceStatus(member)) return false
     return true
   }
 
@@ -252,6 +274,46 @@ export function buildDashboardNotifications(args: {
         daysUntilExpiry: item.daysUntilExpiry,
         mailSent: item.mailSent,
         mailSentAt: item.record.expiry_email_sent_at || null,
+      },
+    })
+  }
+
+  // Ziekte langer dan 77 dagen: herinnering om op 0% / CNS te zetten (niet automatisch)
+  const longSickLeaveAlerts =
+    (sickLeave || [])
+      .filter((record: any) => {
+        if (!isActiveSickLeaveRecord(record)) return false
+        if (isSickLeaveHandledByCns(record)) return false
+        const startDate = parseFlexibleDate(record.start_date)
+        if (!startDate) return false
+        return getSickDaysSinceStart(startDate, today) > SICK_LEAVE_CNS_THRESHOLD_DAYS
+      })
+      .map((record: any) => {
+        const crewMember = (crew || []).find((c: any) => c.id === record.crew_member_id)
+        const startDate = parseFlexibleDate(record.start_date) || today
+        const daysSick = getSickDaysSinceStart(startDate, today)
+        return { record, crewMember, daysSick }
+      })
+      .filter((x: any) => x.crewMember && isActiveCrewMember(x.crewMember)) || []
+
+  for (const item of longSickLeaveAlerts) {
+    const name = `${item.crewMember.first_name ?? ""} ${item.crewMember.last_name ?? ""}`.trim()
+    const pct = Number(item.record.salary_percentage ?? 80)
+    const paidBy = String(item.record.paid_by || "Bamalite S.A.").trim()
+    notifications.push({
+      id: `sick-cns:${item.record.id}`,
+      kind: "sick_leave_cns",
+      severity: "danger",
+      title: "Ziekte langer dan 77 dagen – check CNS",
+      description: `${name} – ${item.daysSick} dagen ziek (${pct}% via ${paidBy}). Zet handmatig op 0% / CNS indien van toepassing.`,
+      href: "/ziekte",
+      meta: {
+        sickLeaveId: item.record.id,
+        crewId: item.crewMember.id,
+        crewName: name,
+        daysSick: item.daysSick,
+        salaryPercentage: pct,
+        paidBy,
       },
     })
   }

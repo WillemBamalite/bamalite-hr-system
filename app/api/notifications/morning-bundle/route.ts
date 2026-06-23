@@ -175,6 +175,7 @@ export async function GET(request: NextRequest) {
 
     // 1) Mail naar management
     const mgmtGroups = [
+      { label: "Ziekte >77 dagen (CNS)", items: byKind["sick_leave_cns"] || [] },
       { label: "Ziektebriefjes", items: byKind["certificate_expiring"] || [] },
       { label: "Urgente taken", items: (byKind["task"] || []).filter((t) => t.severity === "danger") },
       { label: "Verjaardagen vandaag", items: byKind["birthday"] || [] },

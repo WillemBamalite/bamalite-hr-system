@@ -27,18 +27,24 @@ import {
   resolveSepaDebtorForCompany,
 } from "@/utils/sepa-debtor-config"
 import {
+  applyApprovalOwnership,
   applySickAdjustmentToSalary,
+  canUserSetSalaryApproval,
   collectOverigeBetalingenForMonth,
   buildSepaExtraWorkMessage,
   getOvertimePayoutMonthKey,
+  getPayableClothingAllowance,
   getSickDaysInMonth,
   isOvertimePayableRow,
+  readSalaryApproval,
+  readSalaryApprovalPaidAt,
   resolveOvertimeInputMode,
   type OvertimeInputMode,
   getSickSalaryNote,
   getTotalDeductionAmount,
   normalizeDeductionsFromMeta,
   shiftMonthKey,
+  stripAutoSickNotesFromManual,
   syncLegacyAdvanceFields,
   type SalaryDeduction,
   type SalaryDeductionCategory,
@@ -586,6 +592,7 @@ export default function LoonBemerkingenPage() {
   const isTanja = currentUserEmail === "tanja@bamalite.com"
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
   const isLeoUser = currentUserEmail === LEO_EMAIL
+  const canDownloadSepa = isLeoUser || isKarinaUser
   const isSalaryPasswordAdmin = SALARY_PASSWORD_ADMIN_EMAILS.has(currentUserEmail)
   const overtimeCalendarReadOnlyUser = isTanja || isKarinaUser
 
@@ -874,19 +881,17 @@ export default function LoonBemerkingenPage() {
               currentMeta?.month_closed_at ??
               ""
             ),
-            approval_leo:
-              (current?.approval_leo ?? currentMeta?.approval_leo ?? false) === true,
-            approval_karina:
-              (current?.approval_karina ?? currentMeta?.approval_karina ?? false) === true,
-            approval_leo_paid_at: String(
-              current?.approval_leo_paid_at ??
-              currentMeta?.approval_leo_paid_at ??
-              ""
+            approval_leo: readSalaryApproval(current, currentMeta, "approval_leo"),
+            approval_karina: readSalaryApproval(current, currentMeta, "approval_karina"),
+            approval_leo_paid_at: readSalaryApprovalPaidAt(
+              current,
+              currentMeta,
+              "approval_leo_paid_at"
             ),
-            approval_karina_paid_at: String(
-              current?.approval_karina_paid_at ??
-              currentMeta?.approval_karina_paid_at ??
-              ""
+            approval_karina_paid_at: readSalaryApprovalPaidAt(
+              current,
+              currentMeta,
+              "approval_karina_paid_at"
             ),
             notes: rawCurrentNotes,
             review_comment: String(
@@ -908,9 +913,8 @@ export default function LoonBemerkingenPage() {
                 ? currentMeta.proration_worked_days
                 : null,
           }
-          draftRow.notes = getNormalizedManualNote(
-            draftRow.notes,
-            getAutoProrationNote(draftRow, monthKey)
+          draftRow.notes = stripAutoSickNotesFromManual(
+            getNormalizedManualNote(draftRow.notes, getAutoProrationNote(draftRow, monthKey))
           )
           nextRowsByCrew[crewId] = draftRow
         })
@@ -951,10 +955,10 @@ export default function LoonBemerkingenPage() {
           month_closed: (prevRow?.month_closed ?? meta?.month_closed ?? false) === true,
           month_closed_by: String(prevRow?.month_closed_by ?? meta?.month_closed_by ?? ""),
           month_closed_at: String(prevRow?.month_closed_at ?? meta?.month_closed_at ?? ""),
-          approval_leo: (prevRow?.approval_leo ?? meta?.approval_leo ?? false) === true,
-          approval_karina: (prevRow?.approval_karina ?? meta?.approval_karina ?? false) === true,
-          approval_leo_paid_at: String(prevRow?.approval_leo_paid_at ?? meta?.approval_leo_paid_at ?? ""),
-          approval_karina_paid_at: String(prevRow?.approval_karina_paid_at ?? meta?.approval_karina_paid_at ?? ""),
+          approval_leo: readSalaryApproval(prevRow, meta, "approval_leo"),
+          approval_karina: readSalaryApproval(prevRow, meta, "approval_karina"),
+          approval_leo_paid_at: readSalaryApprovalPaidAt(prevRow, meta, "approval_leo_paid_at"),
+          approval_karina_paid_at: readSalaryApprovalPaidAt(prevRow, meta, "approval_karina_paid_at"),
           notes: String(prevRow?.notes || ""),
           review_comment: String(prevRow?.review_comment ?? meta?.review_comment ?? ""),
           review_by: String(prevRow?.review_by ?? meta?.review_by ?? ""),
@@ -1411,7 +1415,7 @@ export default function LoonBemerkingenPage() {
       getAutoProrationNote(row, selectedMonthKey).trim(),
       getAutoSickNote(row, selectedMonthKey).trim(),
     ].filter(Boolean)
-    let manual = humanizeSalaryDisplayNote(String(row.notes || ""))
+    let manual = stripAutoSickNotesFromManual(humanizeSalaryDisplayNote(String(row.notes || "")))
     for (const auto of autoParts) {
       manual = getNormalizedManualNote(manual, auto)
     }
@@ -1431,9 +1435,6 @@ export default function LoonBemerkingenPage() {
   const getSalaryTotals = (row: SalaryDraft) => {
     const selectedMonthKey = row.month_key || monthKey
     const baseSalaryExcl = getRowBaseSalaryExclClothing(row)
-    const clothingAmount = getRowClothingAllowance(row)
-    const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
-    const workedDays = getEffectiveWorkedDaysInSalaryMonth(row, selectedMonthKey)
     const sickBreakdown = getSickDaysInMonth(
       row.crew_id,
       selectedMonthKey,
@@ -1441,6 +1442,9 @@ export default function LoonBemerkingenPage() {
       row.in_service_from,
       row.out_of_service_date
     )
+    const clothingAmount = getPayableClothingAllowance(getRowClothingAllowance(row), sickBreakdown)
+    const divisorDays = getSalaryMonthDivisorDays(selectedMonthKey)
+    const workedDays = getEffectiveWorkedDaysInSalaryMonth(row, selectedMonthKey)
     const payableBaseSalary = applySickAdjustmentToSalary(
       baseSalaryExcl,
       divisorDays,
@@ -1570,12 +1574,26 @@ export default function LoonBemerkingenPage() {
   }
 
   const persistRow = async (crewId: string, row: SalaryDraft) => {
+    let rowForPersist = row
+    const needsApprovalGuard =
+      !canUserSetSalaryApproval(currentUserEmail, "approval_leo") ||
+      !canUserSetSalaryApproval(currentUserEmail, "approval_karina")
+    if (needsApprovalGuard) {
+      const { data: existing } = await supabase
+        .from("loon_bemerkingen")
+        .select("approval_leo, approval_karina, approval_leo_paid_at, approval_karina_paid_at")
+        .eq("crew_id", crewId)
+        .eq("month_key", row.month_key)
+        .maybeSingle()
+      rowForPersist = applyApprovalOwnership(row, currentUserEmail, existing)
+    }
+
     // IBAN in crew is optioneel: sommige databases hebben (nog) geen `iban` kolom.
     // In dat geval blokkeren we het opslaan van salarissen niet.
     const { error: crewUpdateError } = await supabase
       .from("crew")
       .update({
-        iban: row.iban?.trim() ? row.iban.trim() : null,
+        iban: rowForPersist.iban?.trim() ? rowForPersist.iban.trim() : null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", crewId)
@@ -1591,73 +1609,78 @@ export default function LoonBemerkingenPage() {
 
     const crewMember = crewById.get(String(crewId))
     const baseSalaryExcl =
-      normalizeBaseSalaryExclClothingForCrew(row.base_salary, crewMember) ?? row.base_salary
+      normalizeBaseSalaryExclClothingForCrew(rowForPersist.base_salary, crewMember) ?? rowForPersist.base_salary
 
-    const legacyAdvance = syncLegacyAdvanceFields(row.deductions || [])
+    const legacyAdvance = syncLegacyAdvanceFields(rowForPersist.deductions || [])
 
     const payload = {
-      crew_id: row.crew_id,
-      company: row.company,
-      month_key: row.month_key,
+      crew_id: rowForPersist.crew_id,
+      company: rowForPersist.company,
+      month_key: rowForPersist.month_key,
       base_salary: baseSalaryExcl ?? null,
-      travel_allowance: getPayableTravelAmount(row.travel_amount) > 0,
+      travel_allowance: getPayableTravelAmount(rowForPersist.travel_amount) > 0,
       advance_enabled: legacyAdvance.advance_enabled,
       advance_amount: legacyAdvance.advance_amount,
-      raise_enabled: !!row.raise_enabled,
-      raise_amount: row.raise_amount ?? 0,
-      overtime_enabled: !!row.overtime_enabled,
-      overtime_days: row.overtime_days ?? 0,
-      overtime_note: String(row.overtime_note || "").trim(),
-      inflation_adjustment: row.inflation_adjustment ?? 0,
-      inflation_batch_id: String(row.inflation_batch_id || "").trim(),
-      month_closed: !!row.month_closed,
-      month_closed_by: String(row.month_closed_by || "").trim(),
-      month_closed_at: String(row.month_closed_at || "").trim(),
-      approval_leo: !!row.approval_leo,
-      approval_karina: !!row.approval_karina,
-      iban: row.iban?.trim() || "",
+      raise_enabled: !!rowForPersist.raise_enabled,
+      raise_amount: rowForPersist.raise_amount ?? 0,
+      overtime_enabled: !!rowForPersist.overtime_enabled,
+      overtime_days: rowForPersist.overtime_days ?? 0,
+      overtime_note: String(rowForPersist.overtime_note || "").trim(),
+      inflation_adjustment: rowForPersist.inflation_adjustment ?? 0,
+      inflation_batch_id: String(rowForPersist.inflation_batch_id || "").trim(),
+      month_closed: !!rowForPersist.month_closed,
+      month_closed_by: String(rowForPersist.month_closed_by || "").trim(),
+      month_closed_at: String(rowForPersist.month_closed_at || "").trim(),
+      approval_leo: !!rowForPersist.approval_leo,
+      approval_karina: !!rowForPersist.approval_karina,
+      iban: rowForPersist.iban?.trim() || "",
       reason:
-        (getEffectiveMonthlyNote(row, row.month_key) || "Salarisadministratie") +
+        (getEffectiveMonthlyNote(rowForPersist, rowForPersist.month_key) || "Salarisadministratie") +
         `\n${SALARY_META_PREFIX}${JSON.stringify({
-          iban: row.iban?.trim() || "",
-          review_comment: String(row.review_comment || "").trim(),
-          review_by: String(row.review_by || "").trim(),
-          review_type: row.review_type || "opmerking",
+          iban: rowForPersist.iban?.trim() || "",
+          review_comment: String(rowForPersist.review_comment || "").trim(),
+          review_by: String(rowForPersist.review_by || "").trim(),
+          review_type: rowForPersist.review_type || "opmerking",
           advance_enabled: legacyAdvance.advance_enabled,
           advance_amount: legacyAdvance.advance_amount,
           deduction_category: legacyAdvance.deduction_category,
-          deductions: row.deductions || [],
-          raise_enabled: !!row.raise_enabled,
-          raise_amount: row.raise_amount ?? 0,
-          overtime_enabled: !!row.overtime_enabled,
-          overtime_mode: resolveOvertimeInputMode(row.overtime_mode),
-          overtime_days: row.overtime_days ?? 0,
-          overtime_manual_amount: row.overtime_manual_amount ?? 0,
-          overtime_note: String(row.overtime_note || "").trim(),
-          inflation_adjustment: row.inflation_adjustment ?? 0,
-          inflation_batch_id: String(row.inflation_batch_id || "").trim(),
-          month_closed: !!row.month_closed,
-          month_closed_by: String(row.month_closed_by || "").trim(),
-          month_closed_at: String(row.month_closed_at || "").trim(),
-          approval_leo: !!row.approval_leo,
-          approval_karina: !!row.approval_karina,
-          approval_leo_paid_at: String(row.approval_leo_paid_at || "").trim(),
-          approval_karina_paid_at: String(row.approval_karina_paid_at || "").trim(),
+          deductions: rowForPersist.deductions || [],
+          raise_enabled: !!rowForPersist.raise_enabled,
+          raise_amount: rowForPersist.raise_amount ?? 0,
+          overtime_enabled: !!rowForPersist.overtime_enabled,
+          overtime_mode: resolveOvertimeInputMode(rowForPersist.overtime_mode),
+          overtime_days: rowForPersist.overtime_days ?? 0,
+          overtime_manual_amount: rowForPersist.overtime_manual_amount ?? 0,
+          overtime_note: String(rowForPersist.overtime_note || "").trim(),
+          inflation_adjustment: rowForPersist.inflation_adjustment ?? 0,
+          inflation_batch_id: String(rowForPersist.inflation_batch_id || "").trim(),
+          month_closed: !!rowForPersist.month_closed,
+          month_closed_by: String(rowForPersist.month_closed_by || "").trim(),
+          month_closed_at: String(rowForPersist.month_closed_at || "").trim(),
+          approval_leo: !!rowForPersist.approval_leo,
+          approval_karina: !!rowForPersist.approval_karina,
+          approval_leo_paid_at: String(rowForPersist.approval_leo_paid_at || "").trim(),
+          approval_karina_paid_at: String(rowForPersist.approval_karina_paid_at || "").trim(),
           proration_worked_days:
-            typeof row.proration_worked_days === "number" ? row.proration_worked_days : null,
-          travel_amount: row.travel_amount ?? 0,
+            typeof rowForPersist.proration_worked_days === "number"
+              ? rowForPersist.proration_worked_days
+              : null,
+          travel_amount: rowForPersist.travel_amount ?? 0,
         })}` +
-        (String(row.review_comment || "").trim()
+        (String(rowForPersist.review_comment || "").trim()
           ? `\n${REVIEW_META_PREFIX}${JSON.stringify({
-              review_comment: String(row.review_comment || "").trim(),
-              review_by: String(row.review_by || "").trim(),
-              review_type: row.review_type || "opmerking",
+              review_comment: String(rowForPersist.review_comment || "").trim(),
+              review_by: String(rowForPersist.review_by || "").trim(),
+              review_type: rowForPersist.review_type || "opmerking",
             })}`
           : ""),
-      notes: getNormalizedManualNote(String(row.notes || ""), getAutoProrationNote(row, row.month_key)),
-      review_comment: String(row.review_comment || "").trim(),
-      review_by: String(row.review_by || "").trim(),
-      review_type: row.review_type || "opmerking",
+      notes: getNormalizedManualNote(
+        String(rowForPersist.notes || ""),
+        getAutoProrationNote(rowForPersist, rowForPersist.month_key)
+      ),
+      review_comment: String(rowForPersist.review_comment || "").trim(),
+      review_by: String(rowForPersist.review_by || "").trim(),
+      review_type: rowForPersist.review_type || "opmerking",
       updated_at: new Date().toISOString(),
     }
 
@@ -2369,6 +2392,11 @@ export default function LoonBemerkingenPage() {
   }
 
   const downloadSepaXml = () => {
+    if (!canDownloadSepa) {
+      alert("SEPA export is alleen beschikbaar voor Leo en Karina.")
+      return
+    }
+
     const sepaDebtors = parseSepaDebtorsFromEnv()
     const debtor = resolveSepaDebtorForCompany(activeCompanyTab, sepaDebtors)
     if (!debtor) {
@@ -2405,11 +2433,11 @@ export default function LoonBemerkingenPage() {
         const { totalSalaryMonth } = getSalaryTotals(r)
         const amount = Number(totalSalaryMonth.toFixed(2))
         const iban = normalizeIban(r.iban || "")
-        const hasApprovals = !!r.approval_leo && !!r.approval_karina
+        const hasKarinaApproval = !!r.approval_karina
         const validIban = isValidIban(iban)
         const validAmount = amount > 0
 
-        if (!hasApprovals) {
+        if (!hasKarinaApproval) {
           skippedNotApproved.push(`${name} (salaris)`)
           return null
         }
@@ -2437,11 +2465,11 @@ export default function LoonBemerkingenPage() {
         const sourceRow = getRowForApproval(String(r.crew_id), r.sourceMonthKey)
         const amount = Number((sourceRow ? getOverworkAmount(sourceRow) : 0).toFixed(2))
         const iban = normalizeIban(r.iban || sourceRow?.iban || "")
-        const hasApprovals = !!r.approval_leo && !!r.approval_karina
+        const hasKarinaApproval = !!sourceRow?.approval_karina
         const validIban = isValidIban(iban)
         const validAmount = amount > 0
 
-        if (!hasApprovals) {
+        if (!hasKarinaApproval) {
           skippedNotApproved.push(`${name} (extra werk)`)
           return null
         }
@@ -2467,10 +2495,10 @@ export default function LoonBemerkingenPage() {
     if (payments.length === 0) {
       const lines = [
         "Geen betalingen om te exporteren.",
-        "Alleen goedgekeurde salaris- en extra-werkrijen met geldig IBAN en bedrag > €0 worden meegenomen.",
+        "Alleen door Karina afgevinkte salaris- en extra-werkrijen met geldig IBAN en bedrag > €0 worden meegenomen.",
       ]
       if (skippedNotApproved.length > 0) {
-        lines.push(`\n${skippedNotApproved.length} nog niet volledig afgevinkt.`)
+        lines.push(`\n${skippedNotApproved.length} nog niet afgevinkt door Karina.`)
       }
       if (skippedInvalid.length > 0) {
         lines.push(`\nNiet exporteerbaar ondanks vinkjes:\n- ${skippedInvalid.join("\n- ")}`)
@@ -2542,7 +2570,7 @@ export default function LoonBemerkingenPage() {
     ]
     if (skippedNotApproved.length > 0) {
       summaryParts.push(
-        `${skippedNotApproved.length} overgeslagen (nog niet afgevinkt door Leo én Karina).`
+        `${skippedNotApproved.length} overgeslagen (nog niet afgevinkt door Karina).`
       )
     }
     if (skippedInvalid.length > 0) {
@@ -2853,9 +2881,11 @@ export default function LoonBemerkingenPage() {
             <Button variant="outline" size="sm" onClick={downloadCsv}>
               Download CSV
             </Button>
-            <Button variant="default" size="sm" onClick={downloadSepaXml}>
-              Download SEPA XML
-            </Button>
+            {canDownloadSepa && (
+              <Button variant="default" size="sm" onClick={downloadSepaXml}>
+                Download SEPA XML
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

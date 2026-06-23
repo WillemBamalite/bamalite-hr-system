@@ -89,7 +89,38 @@ export function buildSepaExtraWorkMessage(overtimeNote: string, fallbackMonthKey
 export type SickDayBreakdown = {
   days80: number
   days100: number
+  days0: number
   totalSickDays: number
+}
+
+export function isSickLeaveRecordActive(record: any): boolean {
+  const status = String(record?.status || "").toLowerCase()
+  return status === "actief" || status === "wacht-op-briefje"
+}
+
+export function isSickLeaveCnsOrUnpaid(record: any): boolean {
+  const pct = Number(record?.salary_percentage ?? 80)
+  const paidBy = String(record?.paid_by || "").trim().toUpperCase()
+  return pct <= 0 || paidBy.includes("CNS")
+}
+
+/** Verwijder opgeslagen ZIEK-opmerkingen; die worden live uit ziekmeldingen berekend. */
+export function stripAutoSickNotesFromManual(manualValue: string): string {
+  const manual = String(manualValue || "")
+    .replace(/ZIEK\s*\([^)]*\)/gi, " | ")
+    .replace(/\s*\|\s*\|\s*/g, " | ")
+    .trim()
+    .replace(/^\|\s*/, "")
+    .replace(/\s*\|$/, "")
+  return manual
+}
+
+const getSickSalaryPctForDay = (record: any): number => {
+  if (isSickLeaveCnsOrUnpaid(record)) return 0
+  const pct = Number(record.salary_percentage ?? 80)
+  if (pct >= 100) return 100
+  if (pct <= 0) return 0
+  return pct
 }
 
 const toDateKey = (d: Date) => {
@@ -146,11 +177,11 @@ export function getSickDaysInMonth(
   const [yearStr, monthStr] = monthKey.split("-")
   const year = Number(yearStr)
   const month = Number(monthStr)
-  if (!year || !month) return { days80: 0, days100: 0, totalSickDays: 0 }
+  if (!year || !month) return { days80: 0, days100: 0, days0: 0, totalSickDays: 0 }
 
   const employment = getEmploymentDayRangeInMonth(inServiceFrom, outOfServiceDate, monthKey)
   if (!employment || employment.endDay < employment.startDay || employment.startDay === 0) {
-    return { days80: 0, days100: 0, totalSickDays: 0 }
+    return { days80: 0, days100: 0, days0: 0, totalSickDays: 0 }
   }
 
   const monthStart = new Date(year, month - 1, employment.startDay, 12, 0, 0, 0)
@@ -160,10 +191,10 @@ export function getSickDaysInMonth(
 
   for (const record of sickRecords || []) {
     if (String(record.crew_member_id) !== String(crewId)) continue
+    if (!isSickLeaveRecordActive(record)) continue
     const start = parseCrewDate(record.start_date)
     if (!start) continue
     const end = parseCrewDate(record.end_date) || monthEnd
-    const pct = Number(record.salary_percentage ?? 80)
     const effectiveStart = start > monthStart ? start : monthStart
     const effectiveEnd = end < monthEnd ? end : monthEnd
     if (effectiveEnd < effectiveStart) continue
@@ -174,6 +205,7 @@ export function getSickDaysInMonth(
     endCursor.setHours(12, 0, 0, 0)
 
     while (cursor <= endCursor) {
+      const pct = getSickSalaryPctForDay(record)
       const key = toDateKey(cursor)
       const existing = dayMap.get(key)
       if (existing === undefined || pct < existing) {
@@ -185,18 +217,36 @@ export function getSickDaysInMonth(
 
   let days80 = 0
   let days100 = 0
+  let days0 = 0
   for (const pct of dayMap.values()) {
-    if (pct >= 100) days100++
+    if (pct <= 0) days0++
+    else if (pct >= 100) days100++
     else days80++
   }
-  return { days80, days100, totalSickDays: days80 + days100 }
+  return { days80, days100, days0, totalSickDays: days80 + days100 + days0 }
 }
 
 export function getSickSalaryNote(breakdown: SickDayBreakdown): string {
   if (breakdown.totalSickDays <= 0) return ""
+  if (breakdown.days0 > 0 && breakdown.days80 === 0 && breakdown.days100 === 0) return "ZIEK (0%)"
+  if (breakdown.days0 > 0 && breakdown.days80 > 0 && breakdown.days100 === 0) return "ZIEK (80%/0%)"
+  if (breakdown.days0 > 0) return "ZIEK (0%/80%/100%)"
   if (breakdown.days80 > 0 && breakdown.days100 > 0) return "ZIEK (100%/80%)"
   if (breakdown.days100 > 0) return "ZIEK (100%)"
   return "ZIEK (80%)"
+}
+
+/** Geen kledinggeld bij volledige maand ziek op 0% / CNS (Bamalite betaalt niets). */
+export function isCnsUnpaidSickMonth(breakdown: SickDayBreakdown): boolean {
+  return breakdown.totalSickDays > 0 && breakdown.days0 === breakdown.totalSickDays
+}
+
+export function getPayableClothingAllowance(
+  monthlyClothing: number,
+  breakdown: SickDayBreakdown
+): number {
+  if (monthlyClothing <= 0) return 0
+  return isCnsUnpaidSickMonth(breakdown) ? 0 : monthlyClothing
 }
 
 export function applySickAdjustmentToSalary(
@@ -321,4 +371,64 @@ export function collectOverigeBetalingenForMonth(
   for (const row of previousMonthRows) maybeAdd(row, row.month_key || shiftMonthKey(monthKey, -1))
 
   return items
+}
+
+export type SalaryApprovalField = "approval_leo" | "approval_karina"
+export type SalaryApprovalPaidAtField = "approval_leo_paid_at" | "approval_karina_paid_at"
+
+export function readSalaryApproval(
+  dbRow: any,
+  meta: Record<string, unknown> | null | undefined,
+  field: SalaryApprovalField
+): boolean {
+  if (dbRow != null && Object.prototype.hasOwnProperty.call(dbRow, field)) {
+    return dbRow[field] === true
+  }
+  return meta?.[field] === true
+}
+
+export function readSalaryApprovalPaidAt(
+  dbRow: any,
+  meta: Record<string, unknown> | null | undefined,
+  field: SalaryApprovalPaidAtField
+): string {
+  if (dbRow != null && Object.prototype.hasOwnProperty.call(dbRow, field)) {
+    return String(dbRow[field] || "").trim()
+  }
+  return String(meta?.[field] || "").trim()
+}
+
+export function canUserSetSalaryApproval(userEmail: string, field: SalaryApprovalField): boolean {
+  const email = String(userEmail || "").toLowerCase().trim()
+  if (field === "approval_leo") return email === "leo@bamalite.com"
+  if (field === "approval_karina") return email === "karina@bamalite.com"
+  return false
+}
+
+/** Alleen Leo/Karina mogen hun eigen vinkje wijzigen; anderen behouden bestaande waarden. */
+export function applyApprovalOwnership<T extends {
+  approval_leo: boolean
+  approval_karina: boolean
+  approval_leo_paid_at: string
+  approval_karina_paid_at: string
+}>(
+  row: T,
+  userEmail: string,
+  existing?: {
+    approval_leo?: boolean
+    approval_karina?: boolean
+    approval_leo_paid_at?: string
+    approval_karina_paid_at?: string
+  } | null
+): T {
+  const next = { ...row }
+  if (!canUserSetSalaryApproval(userEmail, "approval_leo")) {
+    next.approval_leo = existing?.approval_leo === true
+    next.approval_leo_paid_at = String(existing?.approval_leo_paid_at || "")
+  }
+  if (!canUserSetSalaryApproval(userEmail, "approval_karina")) {
+    next.approval_karina = existing?.approval_karina === true
+    next.approval_karina_paid_at = String(existing?.approval_karina_paid_at || "")
+  }
+  return next
 }

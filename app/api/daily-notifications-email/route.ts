@@ -26,6 +26,8 @@ const kindLabel = (kind: string) => {
       return "Scheepsbezoeken"
     case "certificate_expiring":
       return "Ziektebriefjes"
+    case "sick_leave_cns":
+      return "Ziekte >77 dagen"
     case "anniversary":
       return "Dienstjubilea"
     case "luxembourg_pending_boarding":
@@ -123,6 +125,7 @@ export async function GET(request: NextRequest) {
       "Taken",
       "Scheepsbezoeken",
       "Nieuw personeel",
+      "Ziekte >77 dagen",
       "Ziektebriefjes",
       "Verjaardagen",
       "Dienstjubilea",
