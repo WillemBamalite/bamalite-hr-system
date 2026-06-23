@@ -250,21 +250,25 @@ export function getPayableClothingAllowance(
 }
 
 export function applySickAdjustmentToSalary(
-  fullMonthSalary: number,
+  fullMonthSalaryExcl: number,
   divisorDays: number,
   workedDaysInMonth: number | null,
-  breakdown: SickDayBreakdown
+  breakdown: SickDayBreakdown,
+  monthlyClothing = 0
 ): number {
-  if (breakdown.totalSickDays <= 0 || divisorDays <= 0 || fullMonthSalary <= 0) {
-    if (workedDaysInMonth === null) return fullMonthSalary
+  const salaryForSickDaily =
+    breakdown.totalSickDays > 0 ? fullMonthSalaryExcl + monthlyClothing : fullMonthSalaryExcl
+
+  if (breakdown.totalSickDays <= 0 || divisorDays <= 0 || salaryForSickDaily <= 0) {
+    if (workedDaysInMonth === null) return fullMonthSalaryExcl
     if (workedDaysInMonth <= 0) return 0
-    return (fullMonthSalary / divisorDays) * workedDaysInMonth
+    return (fullMonthSalaryExcl / divisorDays) * workedDaysInMonth
   }
 
   const totalDaysInScope = workedDaysInMonth ?? divisorDays
   if (totalDaysInScope <= 0) return 0
 
-  const daily = fullMonthSalary / divisorDays
+  const daily = salaryForSickDaily / divisorDays
   const healthyDays = Math.max(0, totalDaysInScope - breakdown.totalSickDays)
   return healthyDays * daily + breakdown.days80 * daily * 0.8 + breakdown.days100 * daily
 }
@@ -340,6 +344,10 @@ export function collectOverigeBetalingenForMonth(
     approval_karina?: boolean
     approval_leo_paid_at?: string
     approval_karina_paid_at?: string
+    overtime_approval_leo?: boolean
+    overtime_approval_karina?: boolean
+    overtime_approval_leo_paid_at?: string
+    overtime_approval_karina_paid_at?: string
   }>,
   previousMonthRows: typeof currentRows
 ): OvertimeDisplayRow[] {
@@ -359,10 +367,10 @@ export function collectOverigeBetalingenForMonth(
       overtime_days: Number(row.overtime_days || 0),
       overtime_note: String(row.overtime_note || ""),
       iban: String(row.iban || ""),
-      approval_leo: !!row.approval_leo,
-      approval_karina: !!row.approval_karina,
-      approval_leo_paid_at: String(row.approval_leo_paid_at || ""),
-      approval_karina_paid_at: String(row.approval_karina_paid_at || ""),
+      approval_leo: !!row.overtime_approval_leo,
+      approval_karina: !!row.overtime_approval_karina,
+      approval_leo_paid_at: String(row.overtime_approval_leo_paid_at || ""),
+      approval_karina_paid_at: String(row.overtime_approval_karina_paid_at || ""),
       sourceMonthKey,
     })
   }
@@ -375,12 +383,40 @@ export function collectOverigeBetalingenForMonth(
 
 export type SalaryApprovalField = "approval_leo" | "approval_karina"
 export type SalaryApprovalPaidAtField = "approval_leo_paid_at" | "approval_karina_paid_at"
+export type OvertimeApprovalField = "overtime_approval_leo" | "overtime_approval_karina"
+export type OvertimeApprovalPaidAtField =
+  | "overtime_approval_leo_paid_at"
+  | "overtime_approval_karina_paid_at"
+export type StoredApprovalField = SalaryApprovalField | OvertimeApprovalField
+export type StoredApprovalPaidAtField = SalaryApprovalPaidAtField | OvertimeApprovalPaidAtField
+
+export function resolveStorageApprovalKeys(
+  uiField: SalaryApprovalField,
+  kind: "salary" | "overtime"
+): { flag: StoredApprovalField; paidAt: StoredApprovalPaidAtField } {
+  if (kind === "salary") {
+    return {
+      flag: uiField,
+      paidAt: uiField === "approval_leo" ? "approval_leo_paid_at" : "approval_karina_paid_at",
+    }
+  }
+  return {
+    flag: uiField === "approval_leo" ? "overtime_approval_leo" : "overtime_approval_karina",
+    paidAt:
+      uiField === "approval_leo"
+        ? "overtime_approval_leo_paid_at"
+        : "overtime_approval_karina_paid_at",
+  }
+}
 
 export function readSalaryApproval(
   dbRow: any,
   meta: Record<string, unknown> | null | undefined,
-  field: SalaryApprovalField
+  field: StoredApprovalField
 ): boolean {
+  if (field.startsWith("overtime_")) {
+    return meta?.[field] === true
+  }
   if (dbRow != null && Object.prototype.hasOwnProperty.call(dbRow, field)) {
     return dbRow[field] === true
   }
@@ -390,12 +426,19 @@ export function readSalaryApproval(
 export function readSalaryApprovalPaidAt(
   dbRow: any,
   meta: Record<string, unknown> | null | undefined,
-  field: SalaryApprovalPaidAtField
+  field: StoredApprovalPaidAtField
 ): string {
+  if (field.startsWith("overtime_")) {
+    return String(meta?.[field] || "").trim()
+  }
   if (dbRow != null && Object.prototype.hasOwnProperty.call(dbRow, field)) {
     return String(dbRow[field] || "").trim()
   }
   return String(meta?.[field] || "").trim()
+}
+
+export function getSalaryPaymentDateForMonth(monthKey: string): string {
+  return `${monthKey}-25`
 }
 
 export function canUserSetSalaryApproval(userEmail: string, field: SalaryApprovalField): boolean {
@@ -411,6 +454,10 @@ export function applyApprovalOwnership<T extends {
   approval_karina: boolean
   approval_leo_paid_at: string
   approval_karina_paid_at: string
+  overtime_approval_leo: boolean
+  overtime_approval_karina: boolean
+  overtime_approval_leo_paid_at: string
+  overtime_approval_karina_paid_at: string
 }>(
   row: T,
   userEmail: string,
@@ -419,16 +466,24 @@ export function applyApprovalOwnership<T extends {
     approval_karina?: boolean
     approval_leo_paid_at?: string
     approval_karina_paid_at?: string
+    overtime_approval_leo?: boolean
+    overtime_approval_karina?: boolean
+    overtime_approval_leo_paid_at?: string
+    overtime_approval_karina_paid_at?: string
   } | null
 ): T {
   const next = { ...row }
   if (!canUserSetSalaryApproval(userEmail, "approval_leo")) {
     next.approval_leo = existing?.approval_leo === true
     next.approval_leo_paid_at = String(existing?.approval_leo_paid_at || "")
+    next.overtime_approval_leo = existing?.overtime_approval_leo === true
+    next.overtime_approval_leo_paid_at = String(existing?.overtime_approval_leo_paid_at || "")
   }
   if (!canUserSetSalaryApproval(userEmail, "approval_karina")) {
     next.approval_karina = existing?.approval_karina === true
     next.approval_karina_paid_at = String(existing?.approval_karina_paid_at || "")
+    next.overtime_approval_karina = existing?.overtime_approval_karina === true
+    next.overtime_approval_karina_paid_at = String(existing?.overtime_approval_karina_paid_at || "")
   }
   return next
 }

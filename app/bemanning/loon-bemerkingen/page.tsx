@@ -34,10 +34,12 @@ import {
   buildSepaExtraWorkMessage,
   getOvertimePayoutMonthKey,
   getPayableClothingAllowance,
+  getSalaryPaymentDateForMonth,
   getSickDaysInMonth,
   isOvertimePayableRow,
   readSalaryApproval,
   readSalaryApprovalPaidAt,
+  resolveStorageApprovalKeys,
   resolveOvertimeInputMode,
   type OvertimeInputMode,
   getSickSalaryNote,
@@ -156,6 +158,10 @@ type SalaryDraft = {
   approval_karina: boolean
   approval_leo_paid_at: string
   approval_karina_paid_at: string
+  overtime_approval_leo: boolean
+  overtime_approval_karina: boolean
+  overtime_approval_leo_paid_at: string
+  overtime_approval_karina_paid_at: string
   notes: string
   review_comment: string
   review_by: string
@@ -488,6 +494,10 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       approval_karina?: boolean
       approval_leo_paid_at?: string
       approval_karina_paid_at?: string
+      overtime_approval_leo?: boolean
+      overtime_approval_karina?: boolean
+      overtime_approval_leo_paid_at?: string
+      overtime_approval_karina_paid_at?: string
       proration_worked_days?: number | null
       travel_amount?: number
     }
@@ -527,6 +537,10 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       approval_karina: parsed.approval_karina === true,
       approval_leo_paid_at: String(parsed.approval_leo_paid_at || ""),
       approval_karina_paid_at: String(parsed.approval_karina_paid_at || ""),
+      overtime_approval_leo: parsed.overtime_approval_leo === true,
+      overtime_approval_karina: parsed.overtime_approval_karina === true,
+      overtime_approval_leo_paid_at: String(parsed.overtime_approval_leo_paid_at || ""),
+      overtime_approval_karina_paid_at: String(parsed.overtime_approval_karina_paid_at || ""),
       proration_worked_days:
         typeof parsed.proration_worked_days === "number" ? parsed.proration_worked_days : null,
       travel_amount:
@@ -588,11 +602,22 @@ export default function LoonBemerkingenPage() {
     paymentDate: string
     sourceMonthKey?: string
   } | null>(null)
+  const [bulkSalaryApprovalPrompt, setBulkSalaryApprovalPrompt] = useState<{
+    paymentDate: string
+    company: string
+  } | null>(null)
+  const [bulkApprovingSalary, setBulkApprovingSalary] = useState(false)
   const [deductionAmountTexts, setDeductionAmountTexts] = useState<Record<string, string>>({})
   const isTanja = currentUserEmail === "tanja@bamalite.com"
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
   const isLeoUser = currentUserEmail === LEO_EMAIL
   const canDownloadSepa = isLeoUser || isKarinaUser
+  const canBulkApproveSalary = isLeoUser || isKarinaUser
+  const ownSalaryApprovalField: "approval_leo" | "approval_karina" | null = isLeoUser
+    ? "approval_leo"
+    : isKarinaUser
+      ? "approval_karina"
+      : null
   const isSalaryPasswordAdmin = SALARY_PASSWORD_ADMIN_EMAILS.has(currentUserEmail)
   const overtimeCalendarReadOnlyUser = isTanja || isKarinaUser
 
@@ -893,6 +918,22 @@ export default function LoonBemerkingenPage() {
               currentMeta,
               "approval_karina_paid_at"
             ),
+            overtime_approval_leo: readSalaryApproval(current, currentMeta, "overtime_approval_leo"),
+            overtime_approval_karina: readSalaryApproval(
+              current,
+              currentMeta,
+              "overtime_approval_karina"
+            ),
+            overtime_approval_leo_paid_at: readSalaryApprovalPaidAt(
+              current,
+              currentMeta,
+              "overtime_approval_leo_paid_at"
+            ),
+            overtime_approval_karina_paid_at: readSalaryApprovalPaidAt(
+              current,
+              currentMeta,
+              "overtime_approval_karina_paid_at"
+            ),
             notes: rawCurrentNotes,
             review_comment: String(
               current?.review_comment ??
@@ -959,6 +1000,18 @@ export default function LoonBemerkingenPage() {
           approval_karina: readSalaryApproval(prevRow, meta, "approval_karina"),
           approval_leo_paid_at: readSalaryApprovalPaidAt(prevRow, meta, "approval_leo_paid_at"),
           approval_karina_paid_at: readSalaryApprovalPaidAt(prevRow, meta, "approval_karina_paid_at"),
+          overtime_approval_leo: readSalaryApproval(prevRow, meta, "overtime_approval_leo"),
+          overtime_approval_karina: readSalaryApproval(prevRow, meta, "overtime_approval_karina"),
+          overtime_approval_leo_paid_at: readSalaryApprovalPaidAt(
+            prevRow,
+            meta,
+            "overtime_approval_leo_paid_at"
+          ),
+          overtime_approval_karina_paid_at: readSalaryApprovalPaidAt(
+            prevRow,
+            meta,
+            "overtime_approval_karina_paid_at"
+          ),
           notes: String(prevRow?.notes || ""),
           review_comment: String(prevRow?.review_comment ?? meta?.review_comment ?? ""),
           review_by: String(prevRow?.review_by ?? meta?.review_by ?? ""),
@@ -1449,8 +1502,10 @@ export default function LoonBemerkingenPage() {
       baseSalaryExcl,
       divisorDays,
       workedDays,
-      sickBreakdown
+      sickBreakdown,
+      clothingAmount
     )
+    const clothingInTotal = sickBreakdown.totalSickDays > 0 ? 0 : clothingAmount
     const travelAmount = getPayableTravelAmount(row.travel_amount)
     const advanceAmount = getTotalDeductionAmount(row.deductions || [])
     const raiseAmount = row.raise_enabled ? (typeof row.raise_amount === "number" ? row.raise_amount : 0) : 0
@@ -1461,7 +1516,7 @@ export default function LoonBemerkingenPage() {
     const teGoedClothing = teGoedDays > 0 ? clothingAmount : 0
     const teGoedAmount = teGoedProRata + teGoedClothing
     const totalSalaryMonth =
-      payableBaseSalary + clothingAmount + travelAmount + raiseAmount - advanceAmount + teGoedAmount
+      payableBaseSalary + clothingInTotal + travelAmount + raiseAmount - advanceAmount + teGoedAmount
     return {
       baseSalary: baseSalaryExcl,
       payableBaseSalary,
@@ -1538,12 +1593,13 @@ export default function LoonBemerkingenPage() {
   ) => {
     if (salaryReadOnlyUser) return
     const rowMonthKey = sourceMonthKey ?? editingSourceMonthKey ?? monthKey
-    const shouldResetApprovals =
+    const shouldResetSalaryApprovals =
       Object.prototype.hasOwnProperty.call(patch, "advance_enabled") ||
       Object.prototype.hasOwnProperty.call(patch, "advance_amount") ||
       Object.prototype.hasOwnProperty.call(patch, "deduction_category") ||
       Object.prototype.hasOwnProperty.call(patch, "deductions") ||
-      Object.prototype.hasOwnProperty.call(patch, "proration_worked_days") ||
+      Object.prototype.hasOwnProperty.call(patch, "proration_worked_days")
+    const shouldResetOvertimeApprovals =
       Object.prototype.hasOwnProperty.call(patch, "overtime_enabled") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_mode") ||
       Object.prototype.hasOwnProperty.call(patch, "overtime_days") ||
@@ -1555,12 +1611,20 @@ export default function LoonBemerkingenPage() {
       [crewId]: {
         ...prev[crewId],
         ...patch,
-        ...(shouldResetApprovals
+        ...(shouldResetSalaryApprovals
           ? {
               approval_leo: false,
               approval_karina: false,
               approval_leo_paid_at: "",
               approval_karina_paid_at: "",
+            }
+          : {}),
+        ...(shouldResetOvertimeApprovals
+          ? {
+              overtime_approval_leo: false,
+              overtime_approval_karina: false,
+              overtime_approval_leo_paid_at: "",
+              overtime_approval_karina_paid_at: "",
             }
           : {}),
       },
@@ -1581,11 +1645,21 @@ export default function LoonBemerkingenPage() {
     if (needsApprovalGuard) {
       const { data: existing } = await supabase
         .from("loon_bemerkingen")
-        .select("approval_leo, approval_karina, approval_leo_paid_at, approval_karina_paid_at")
+        .select("approval_leo, approval_karina, approval_leo_paid_at, approval_karina_paid_at, reason")
         .eq("crew_id", crewId)
         .eq("month_key", row.month_key)
         .maybeSingle()
-      rowForPersist = applyApprovalOwnership(row, currentUserEmail, existing)
+      const existingMeta = parseSalaryMetaFromReason(existing?.reason)
+      rowForPersist = applyApprovalOwnership(row, currentUserEmail, {
+        approval_leo: existing?.approval_leo === true,
+        approval_karina: existing?.approval_karina === true,
+        approval_leo_paid_at: String(existing?.approval_leo_paid_at || ""),
+        approval_karina_paid_at: String(existing?.approval_karina_paid_at || ""),
+        overtime_approval_leo: existingMeta?.overtime_approval_leo === true,
+        overtime_approval_karina: existingMeta?.overtime_approval_karina === true,
+        overtime_approval_leo_paid_at: String(existingMeta?.overtime_approval_leo_paid_at || ""),
+        overtime_approval_karina_paid_at: String(existingMeta?.overtime_approval_karina_paid_at || ""),
+      })
     }
 
     // IBAN in crew is optioneel: sommige databases hebben (nog) geen `iban` kolom.
@@ -1661,6 +1735,12 @@ export default function LoonBemerkingenPage() {
           approval_karina: !!rowForPersist.approval_karina,
           approval_leo_paid_at: String(rowForPersist.approval_leo_paid_at || "").trim(),
           approval_karina_paid_at: String(rowForPersist.approval_karina_paid_at || "").trim(),
+          overtime_approval_leo: !!rowForPersist.overtime_approval_leo,
+          overtime_approval_karina: !!rowForPersist.overtime_approval_karina,
+          overtime_approval_leo_paid_at: String(rowForPersist.overtime_approval_leo_paid_at || "").trim(),
+          overtime_approval_karina_paid_at: String(
+            rowForPersist.overtime_approval_karina_paid_at || ""
+          ).trim(),
           proration_worked_days:
             typeof rowForPersist.proration_worked_days === "number"
               ? rowForPersist.proration_worked_days
@@ -1885,9 +1965,14 @@ export default function LoonBemerkingenPage() {
       void applyApprovalToggle(crewId, field, false, "", sourceMonthKey)
       return
     }
-    const today = new Date()
-    const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
-    setApprovalDatePrompt({ crewId, field, paymentDate: defaultDate, sourceMonthKey })
+    // Overige betalingen: handmatige betaaldatum. Normaal salaris: altijd de 25e van de maand.
+    if (sourceMonthKey !== undefined) {
+      const today = new Date()
+      const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+      setApprovalDatePrompt({ crewId, field, paymentDate: defaultDate, sourceMonthKey })
+      return
+    }
+    void applyApprovalToggle(crewId, field, true, getSalaryPaymentDateForMonth(monthKey), sourceMonthKey)
   }
 
   const applyApprovalToggle = async (
@@ -1899,11 +1984,12 @@ export default function LoonBemerkingenPage() {
   ) => {
     const row = getRowForApproval(crewId, sourceMonthKey)
     if (!row) return
-    const paidAtField = field === "approval_leo" ? "approval_leo_paid_at" : "approval_karina_paid_at"
+    const kind = sourceMonthKey !== undefined ? "overtime" : "salary"
+    const { flag, paidAt } = resolveStorageApprovalKeys(field, kind)
     const updatedRow: SalaryDraft = {
       ...row,
-      [field]: value,
-      [paidAtField]: value ? paymentDate : "",
+      [flag]: value,
+      [paidAt]: value ? paymentDate : "",
     }
     setRowInState(crewId, updatedRow, sourceMonthKey)
     try {
@@ -1928,6 +2014,51 @@ export default function LoonBemerkingenPage() {
     sourceMonthKey?: string
   ) => {
     requestApprovalToggle(crewId, field, value, sourceMonthKey)
+  }
+
+  const requestBulkSalaryApproval = () => {
+    if (!canBulkApproveSalary || !ownSalaryApprovalField || monthIsClosed) return
+    const company = activeCompanyTab || companyNames[0] || ""
+    const rows = groupedByCompany[company] || []
+    if (rows.length === 0) {
+      alert("Geen salarisrijen om af te vinken voor deze firma.")
+      return
+    }
+    setBulkSalaryApprovalPrompt({
+      company,
+      paymentDate: getSalaryPaymentDateForMonth(monthKey),
+    })
+  }
+
+  const applyBulkSalaryApproval = async (paymentDate: string, company: string) => {
+    if (!ownSalaryApprovalField || !paymentDate.trim()) return
+    const paidAtField =
+      ownSalaryApprovalField === "approval_leo" ? "approval_leo_paid_at" : "approval_karina_paid_at"
+    const rows = (groupedByCompany[company] || []).map(
+      (r) => rowsByCrewId[String(r.crew_id)] || r
+    )
+    if (rows.length === 0) return
+
+    try {
+      setBulkApprovingSalary(true)
+      const updatedRows: SalaryDraft[] = rows.map((row) => ({
+        ...row,
+        [ownSalaryApprovalField]: true,
+        [paidAtField]: paymentDate,
+      }))
+      setRowsByCrewId((prev) => {
+        const next = { ...prev }
+        for (const row of updatedRows) next[String(row.crew_id)] = row
+        return next
+      })
+      await Promise.all(updatedRows.map((row) => persistRow(String(row.crew_id), row)))
+      setLastSavedAt(new Date().toISOString())
+    } catch (e) {
+      alert(`Fout bij bulk afvinken: ${getErrMsg(e)}`)
+      await loadRows()
+    } finally {
+      setBulkApprovingSalary(false)
+    }
   }
 
   const applyInflationCorrectionForAll = async () => {
@@ -2465,7 +2596,7 @@ export default function LoonBemerkingenPage() {
         const sourceRow = getRowForApproval(String(r.crew_id), r.sourceMonthKey)
         const amount = Number((sourceRow ? getOverworkAmount(sourceRow) : 0).toFixed(2))
         const iban = normalizeIban(r.iban || sourceRow?.iban || "")
-        const hasKarinaApproval = !!sourceRow?.approval_karina
+        const hasKarinaApproval = !!sourceRow?.overtime_approval_karina
         const validIban = isValidIban(iban)
         const validAmount = amount > 0
 
@@ -2779,11 +2910,6 @@ export default function LoonBemerkingenPage() {
         <BackButton />
         <DashboardButton />
       </div>
-      <div className="mb-4 rounded-lg border-2 border-amber-400 bg-amber-100 px-4 py-3 text-center">
-        <div className="text-2xl md:text-3xl font-extrabold tracking-wide text-amber-900">
-          NOG IN PROGRESS
-        </div>
-      </div>
 
       {previousMonthWarning && (
         <div className="mb-4 rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-900">
@@ -2948,6 +3074,19 @@ export default function LoonBemerkingenPage() {
                     ))}
                   </TabsList>
                 </Tabs>
+
+                {canBulkApproveSalary && !monthIsClosed && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={requestBulkSalaryApproval}
+                      disabled={bulkApprovingSalary || (groupedByCompany[activeCompanyTab] || []).length === 0}
+                    >
+                      {bulkApprovingSalary ? "Bezig..." : "Alles afvinken"}
+                    </Button>
+                  </div>
+                )}
 
                 <div className="overflow-x-auto rounded-md border border-slate-200">
                   <table className="w-full min-w-[1700px] text-sm">
@@ -3670,6 +3809,49 @@ export default function LoonBemerkingenPage() {
         </div>
       )}
 
+      {bulkSalaryApprovalPrompt && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-lg border bg-white p-5">
+            <h3 className="text-lg font-semibold mb-3">Alle salarissen afvinken</h3>
+            <p className="text-sm text-slate-600 mb-3">
+              {bulkSalaryApprovalPrompt.company}: {groupedByCompany[bulkSalaryApprovalPrompt.company]?.length || 0}{" "}
+              salarisrijen. Overige betalingen worden niet meegenomen. Standaard is de 25e; pas aan indien nodig
+              (bijv. december eerder).
+            </p>
+            <Label>Betaaldatum voor alle salarissen</Label>
+            <Input
+              type="date"
+              className="mt-1"
+              value={bulkSalaryApprovalPrompt.paymentDate}
+              onChange={(e) =>
+                setBulkSalaryApprovalPrompt((prev) =>
+                  prev ? { ...prev, paymentDate: e.target.value } : prev
+                )
+              }
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBulkSalaryApprovalPrompt(null)}>
+                Annuleren
+              </Button>
+              <Button
+                disabled={bulkApprovingSalary}
+                onClick={async () => {
+                  if (!bulkSalaryApprovalPrompt.paymentDate) {
+                    alert("Betaaldatum is verplicht.")
+                    return
+                  }
+                  const { paymentDate, company } = bulkSalaryApprovalPrompt
+                  setBulkSalaryApprovalPrompt(null)
+                  await applyBulkSalaryApproval(paymentDate, company)
+                }}
+              >
+                {bulkApprovingSalary ? "Bezig..." : "Alles afvinken"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {approvalDatePrompt && (
         <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-lg border bg-white p-5">
@@ -3677,9 +3859,7 @@ export default function LoonBemerkingenPage() {
               {isTanja ? "Betaaldatum invoeren" : "Betaaldatum invoeren"}
             </h3>
             <p className="text-sm text-slate-600 mb-3">
-              {isTanja
-                ? "Vul de datum in waarop deze betaling is gedaan."
-                : "Vul de datum in waarop deze betaling is gedaan."}
+              Vul de betaaldatum in voor deze overige betaling.
             </p>
             <Label>{isTanja ? "Betaaldatum" : "Betaaldatum"}</Label>
             <Input
