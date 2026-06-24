@@ -52,8 +52,8 @@ export default function RootLayout({
             <LanguageProvider>
               <DashboardSearchProvider>
                 <AppAccessGate>
-                  <DashboardHeader />
                   <div className="app-container">
+                    <DashboardHeader />
                     {children}
                   </div>
                 </AppAccessGate>

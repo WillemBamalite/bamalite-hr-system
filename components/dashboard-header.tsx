@@ -122,10 +122,10 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
   const hideHeaderCalendarForUser = userEmailLower === "dunja@bamalite.com"
 
   return (
-    <div className="space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm dashboard-header">
+    <div className="w-full space-y-4 p-6 bg-white border-b print-header sticky top-0 z-40 shadow-sm dashboard-header">
       <div className="flex flex-wrap items-center justify-between gap-4 dashboard-header-row">
-        <Link href="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer shrink-0">
-          <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shadow-lg">
+        <Link href="/" className="dashboard-header-brand flex items-center gap-4 hover:opacity-80 transition-opacity cursor-pointer shrink-0">
+          <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shadow-lg dashboard-header-logo">
             <Image
               src="/bemanningslijst-icon.png.png"
               alt="Bemanningslijst logo"
@@ -195,7 +195,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
               setAgendaOpen(true)
             }}
             disabled={disableHeaderCalendarClick}
-            className={`flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200 transition-colors ${
+            className={`dashboard-header-calendar flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200 transition-colors ${
               disableHeaderCalendarClick ? "cursor-default" : "hover:bg-blue-100 cursor-pointer"
             }`}
             title={disableHeaderCalendarClick ? "Alleen zichtbaar, niet bewerkbaar" : ""}
@@ -215,34 +215,45 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
         <div className="flex items-center gap-4 dashboard-header-actions">
           {user && (
             <div className="flex items-center gap-3 dashboard-header-actions-row">
-              {role === "admin_full" && user && (
-                <Link href="/taken?statusUnread=1" className="relative">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`flex items-center gap-2 ${
-                      statusUnreadCount > 0 ? "border-amber-500 text-amber-800 hover:bg-amber-50" : ""
-                    }`}
-                    title="Taken met ongelezen statusupdates van collega's"
-                  >
-                    <Bell
-                      className={`w-4 h-4 shrink-0 ${statusUnreadCount > 0 ? "task-status-bell-attention text-amber-600" : ""}`}
-                    />
-                    {uiText.statusUpdates}
-                  </Button>
-                  {statusUnreadCount > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
-                      {statusUnreadCount > 99 ? "99+" : statusUnreadCount}
-                    </span>
-                  )}
-                </Link>
-              )}
+              <div className="dashboard-header-desktop-only flex items-center gap-3">
+                {role === "admin_full" && user && (
+                  <Link href="/taken?statusUnread=1" className="relative">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`flex items-center gap-2 ${
+                        statusUnreadCount > 0 ? "border-amber-500 text-amber-800 hover:bg-amber-50" : ""
+                      }`}
+                      title="Taken met ongelezen statusupdates van collega's"
+                    >
+                      <Bell
+                        className={`w-4 h-4 shrink-0 ${statusUnreadCount > 0 ? "task-status-bell-attention text-amber-600" : ""}`}
+                      />
+                      {uiText.statusUpdates}
+                    </Button>
+                    {statusUnreadCount > 0 && (
+                      <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] leading-5 text-center font-semibold ring-2 ring-white">
+                        {statusUnreadCount > 99 ? "99+" : statusUnreadCount}
+                      </span>
+                    )}
+                  </Link>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.print()}
+                  className="flex items-center gap-2 print-button"
+                >
+                  <Printer className="w-4 h-4" />
+                  {uiText.print}
+                </Button>
+              </div>
               {/* Snelknop: Nieuwe taak overal in de app */}
               {role === "admin_full" && <Link href="/taken?newTask=1">
                 <Button
                   variant="default"
                   size="sm"
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 dashboard-header-mobile-primary-btn"
                 >
                   <ListTodo className="w-4 h-4" />
                   {uiText.newTask}
@@ -250,7 +261,7 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
               </Link>}
               {role !== "admin_full" && canAccessPath("/taken") && (
                 <Link href="/taken">
-                  <Button variant="default" size="sm" className="flex items-center gap-2">
+                  <Button variant="default" size="sm" className="flex items-center gap-2 dashboard-header-mobile-primary-btn">
                     <ListTodo className="w-4 h-4" />
                     {uiText.myTasks}
                   </Button>
@@ -259,17 +270,8 @@ export function DashboardHeader({}: DashboardHeaderProps = {}) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.print()}
-                className="flex items-center gap-2 print-button"
-              >
-                <Printer className="w-4 h-4" />
-                {uiText.print}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
                 onClick={() => signOut()}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 dashboard-header-mobile-primary-btn"
               >
                 <LogOut className="w-4 h-4" />
                 {t('logout')}

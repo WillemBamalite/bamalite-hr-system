@@ -474,7 +474,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-screen h-screen max-w-[100vw] max-h-[100vh] flex flex-col p-4 sm:p-6 rounded-none">
+      <DialogContent className="calendar-dialog-fullscreen flex flex-col p-4 sm:p-6 rounded-none !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none max-h-none">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <CalendarIcon className="w-5 h-5" />
@@ -482,44 +482,48 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col gap-3 sm:gap-4 overflow-hidden min-h-0">
           {/* Month Navigation */}
-          <div className="flex items-center justify-between flex-shrink-0">
-            <Button variant="outline" onClick={previousMonth}>
-              ← Vorige maand
-            </Button>
-            <h2 className="text-xl font-bold">
+          <div className="calendar-dialog-month-nav flex-shrink-0">
+            <h2 className="text-lg sm:text-xl font-bold text-center capitalize sm:hidden">
               {format(currentMonth, 'MMMM yyyy', { locale: nl })}
             </h2>
-            <Button variant="outline" onClick={nextMonth}>
-              Volgende maand →
-            </Button>
+            <div className="grid grid-cols-2 gap-2 mt-2 sm:hidden">
+              <Button variant="outline" size="sm" onClick={previousMonth}>
+                ← Vorige
+              </Button>
+              <Button variant="outline" size="sm" onClick={nextMonth}>
+                Volgende →
+              </Button>
+            </div>
+            <div className="hidden sm:flex items-center justify-between gap-3">
+              <Button variant="outline" onClick={previousMonth}>
+                ← Vorige maand
+              </Button>
+              <h2 className="text-xl font-bold capitalize">
+                {format(currentMonth, 'MMMM yyyy', { locale: nl })}
+              </h2>
+              <Button variant="outline" onClick={nextMonth}>
+                Volgende maand →
+              </Button>
+            </div>
           </div>
 
           <div className={`flex-1 grid gap-4 overflow-hidden min-h-0 ${selectedDate ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
             {/* Calendar Grid */}
             <Card className="flex flex-col overflow-hidden">
-            <CardContent className="p-4 flex-1 overflow-auto">
+            <CardContent className="p-2 sm:p-4 flex-1 overflow-auto">
               {/* Day headers */}
-              <div className="grid grid-cols-7 gap-1 mb-2">
+              <div className="calendar-day-headers grid grid-cols-7 gap-1 mb-2">
                 {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(day => (
-                  <div key={day} className="text-center font-semibold text-sm text-gray-600 py-2">
+                  <div key={day} className="text-center font-semibold text-[10px] sm:text-sm text-gray-600 py-1 sm:py-2">
                     {day}
                   </div>
                 ))}
               </div>
-              <div>
-                <Label htmlFor="location">Locatie (optioneel)</Label>
-                <Input
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  placeholder="bijv. kantoor Dordrecht, MS Example, Teams"
-                />
-              </div>
 
               {/* Calendar days */}
-              <div className="grid grid-cols-7 auto-rows-[minmax(120px,1fr)] gap-1">
+              <div className="calendar-days-grid grid grid-cols-7 gap-1 sm:auto-rows-[minmax(120px,1fr)]">
                 {/* Empty cells */}
                 {emptyCells.map((_, i) => (
                   <div key={`empty-${i}`} className="aspect-square" />
@@ -536,7 +540,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                       key={day.toISOString()}
                       onClick={() => handleDateClick(day)}
                       className={`
-                        border rounded-lg p-1 text-[11px] sm:text-xs md:text-sm relative flex flex-col h-full
+                        calendar-day-cell border rounded-lg p-0.5 sm:p-1 text-[11px] sm:text-xs md:text-sm relative flex flex-col min-h-[2.75rem] sm:min-h-0 sm:h-full
                         hover:bg-blue-50 transition-colors
                         ${isToday ? 'bg-blue-100 border-blue-400 font-bold' : ''}
                         ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''}
@@ -544,19 +548,36 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
                       `}
                     >
                       <div className="flex flex-col h-full">
-                        <div className="flex items-start justify-between">
-                          <div className="text-sm font-medium">{format(day, 'd')}</div>
+                        <div className="flex items-center justify-between gap-0.5">
+                          <div className="text-xs sm:text-sm font-medium leading-none">{format(day, 'd')}</div>
                           {dayItems.length > 0 && (
                             <Badge 
                               variant="secondary" 
-                              className="text-xs h-5 px-1.5 bg-blue-600 text-white"
+                              className="text-[9px] sm:text-xs h-4 sm:h-5 px-1 sm:px-1.5 bg-blue-600 text-white shrink-0"
                             >
                               {dayItems.length}
                             </Badge>
                           )}
                         </div>
                         {dayItems.length > 0 && (
-                          <div className="mt-1 space-y-0.5 overflow-hidden">
+                          <div className="mt-auto pt-0.5 flex justify-center gap-0.5 sm:hidden">
+                            {dayItems.slice(0, 3).map((item) => {
+                              const isBirthday = (item as any).isBirthday
+                              const itemColor = isBirthday
+                                ? '#ec4899'
+                                : ((item as any).color || '#3b82f6')
+                              return (
+                                <span
+                                  key={item.id}
+                                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: itemColor }}
+                                />
+                              )
+                            })}
+                          </div>
+                        )}
+                        {dayItems.length > 0 && (
+                          <div className="calendar-day-events mt-1 space-y-0.5 overflow-hidden hidden sm:block">
                             {dayItems.slice(0, 4).map((item) => {
                               const isBirthday = (item as any).isBirthday
                               const itemColor = isBirthday
@@ -595,13 +616,13 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
 
           {/* Selected Date Items (alleen tonen als er echt iets geselecteerd is) */}
           {selectedDate && (
-            <Card className="flex flex-col overflow-hidden">
-              <CardHeader className="flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <CardTitle>
-                    {format(selectedDate, 'EEEE d MMMM yyyy', { locale: nl })} ({format(selectedDate, 'dd-MM-yyyy')})
+            <Card className="flex flex-col overflow-hidden calendar-selected-day">
+              <CardHeader className="flex-shrink-0 p-3 sm:p-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle className="text-base sm:text-lg leading-tight">
+                    {format(selectedDate, 'EEEE d MMMM yyyy', { locale: nl })}
                   </CardTitle>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {getItemsForDate(selectedDate).length > 0 && (
                       <Badge variant="outline" className="text-sm">
                         {getItemsForDate(selectedDate).length} item{getItemsForDate(selectedDate).length > 1 ? 's' : ''}
@@ -733,7 +754,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
 
         {/* Add/Edit Item Dialog */}
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogContent>
+          <DialogContent className="calendar-dialog-add-item sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>
                 {editingItem ? 'Item bewerken' : 'Nieuw agenda item'}
