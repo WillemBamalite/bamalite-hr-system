@@ -461,11 +461,13 @@ export function resolveSepaExecutionDate(
 export function canUserSetSalaryApproval(userEmail: string, field: SalaryApprovalField): boolean {
   const email = String(userEmail || "").toLowerCase().trim()
   if (field === "approval_leo") return email === "leo@bamalite.com"
-  if (field === "approval_karina") return email === "karina@bamalite.com"
+  if (field === "approval_karina") {
+    return email === "karina@bamalite.com" || email === "leo@bamalite.com"
+  }
   return false
 }
 
-/** Alleen Leo/Karina mogen hun eigen vinkje wijzigen; anderen behouden bestaande waarden. */
+/** Leo/Karina (Leo ook Karina-kolom) mogen hun vinkje wijzigen; anderen behouden bestaande waarden. */
 export function applyApprovalOwnership<T extends {
   approval_leo: boolean
   approval_karina: boolean

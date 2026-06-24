@@ -606,6 +606,7 @@ export default function LoonBemerkingenPage() {
   const [bulkSalaryApprovalPrompt, setBulkSalaryApprovalPrompt] = useState<{
     paymentDate: string
     company: string
+    field: "approval_leo" | "approval_karina"
   } | null>(null)
   const [bulkApprovingSalary, setBulkApprovingSalary] = useState(false)
   const [deductionAmountTexts, setDeductionAmountTexts] = useState<Record<string, string>>({})
@@ -613,12 +614,10 @@ export default function LoonBemerkingenPage() {
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
   const isLeoUser = currentUserEmail === LEO_EMAIL
   const canDownloadSepa = isLeoUser || isKarinaUser
-  const canBulkApproveSalary = isLeoUser || isKarinaUser
-  const ownSalaryApprovalField: "approval_leo" | "approval_karina" | null = isLeoUser
-    ? "approval_leo"
-    : isKarinaUser
-      ? "approval_karina"
-      : null
+  const canSetLeoApproval = isLeoUser
+  const canSetKarinaApproval = isLeoUser || isKarinaUser
+  const canBulkApproveLeo = isLeoUser
+  const canBulkApproveKarina = isLeoUser || isKarinaUser
   const isSalaryPasswordAdmin = SALARY_PASSWORD_ADMIN_EMAILS.has(currentUserEmail)
   const overtimeCalendarReadOnlyUser = isTanja || isKarinaUser
 
@@ -2017,8 +2016,10 @@ export default function LoonBemerkingenPage() {
     requestApprovalToggle(crewId, field, value, sourceMonthKey)
   }
 
-  const requestBulkSalaryApproval = () => {
-    if (!canBulkApproveSalary || !ownSalaryApprovalField || monthIsClosed) return
+  const requestBulkSalaryApproval = (field: "approval_leo" | "approval_karina") => {
+    if (monthIsClosed) return
+    if (field === "approval_leo" && !canBulkApproveLeo) return
+    if (field === "approval_karina" && !canBulkApproveKarina) return
     const company = activeCompanyTab || companyNames[0] || ""
     const rows = groupedByCompany[company] || []
     if (rows.length === 0) {
@@ -2028,13 +2029,17 @@ export default function LoonBemerkingenPage() {
     setBulkSalaryApprovalPrompt({
       company,
       paymentDate: getSalaryPaymentDateForMonth(monthKey),
+      field,
     })
   }
 
-  const applyBulkSalaryApproval = async (paymentDate: string, company: string) => {
-    if (!ownSalaryApprovalField || !paymentDate.trim()) return
-    const paidAtField =
-      ownSalaryApprovalField === "approval_leo" ? "approval_leo_paid_at" : "approval_karina_paid_at"
+  const applyBulkSalaryApproval = async (
+    paymentDate: string,
+    company: string,
+    field: "approval_leo" | "approval_karina"
+  ) => {
+    if (!paymentDate.trim() || !canUserSetSalaryApproval(currentUserEmail, field)) return
+    const paidAtField = field === "approval_leo" ? "approval_leo_paid_at" : "approval_karina_paid_at"
     const rows = (groupedByCompany[company] || []).map(
       (r) => rowsByCrewId[String(r.crew_id)] || r
     )
@@ -2044,7 +2049,7 @@ export default function LoonBemerkingenPage() {
       setBulkApprovingSalary(true)
       const updatedRows: SalaryDraft[] = rows.map((row) => ({
         ...row,
-        [ownSalaryApprovalField]: true,
+        [field]: true,
         [paidAtField]: paymentDate,
       }))
       setRowsByCrewId((prev) => {
@@ -3112,16 +3117,28 @@ export default function LoonBemerkingenPage() {
                   </TabsList>
                 </Tabs>
 
-                {canBulkApproveSalary && !monthIsClosed && (
-                  <div className="flex justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={requestBulkSalaryApproval}
-                      disabled={bulkApprovingSalary || (groupedByCompany[activeCompanyTab] || []).length === 0}
-                    >
-                      {bulkApprovingSalary ? "Bezig..." : "Alles afvinken"}
-                    </Button>
+                {(canBulkApproveLeo || canBulkApproveKarina) && !monthIsClosed && (
+                  <div className="flex justify-end gap-2">
+                    {canBulkApproveLeo && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => requestBulkSalaryApproval("approval_leo")}
+                        disabled={bulkApprovingSalary || (groupedByCompany[activeCompanyTab] || []).length === 0}
+                      >
+                        {bulkApprovingSalary ? "Bezig..." : "Alles afvinken (Leo)"}
+                      </Button>
+                    )}
+                    {canBulkApproveKarina && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => requestBulkSalaryApproval("approval_karina")}
+                        disabled={bulkApprovingSalary || (groupedByCompany[activeCompanyTab] || []).length === 0}
+                      >
+                        {bulkApprovingSalary ? "Bezig..." : "Alles afvinken (Karina)"}
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -3184,8 +3201,8 @@ export default function LoonBemerkingenPage() {
                                 type="checkbox"
                                 checked={!!r.approval_leo}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked)}
-                                disabled={monthIsClosed || !isLeoUser || savingCrewId === String(r.crew_id)}
-                                title={!isLeoUser ? (isTanja ? "Nur Leo kann dieses Häkchen setzen." : "Alleen Leo kan dit vinkje zetten.") : ""}
+                                disabled={monthIsClosed || !canSetLeoApproval || savingCrewId === String(r.crew_id)}
+                                title={!canSetLeoApproval ? (isTanja ? "Nur Leo kann dieses Häkchen setzen." : "Alleen Leo kan dit vinkje zetten.") : ""}
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -3193,8 +3210,14 @@ export default function LoonBemerkingenPage() {
                                 type="checkbox"
                                 checked={!!r.approval_karina}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_karina", e.target.checked)}
-                                disabled={monthIsClosed || !isKarinaUser || savingCrewId === String(r.crew_id)}
-                                title={!isKarinaUser ? (isTanja ? "Nur Karina kann dieses Häkchen setzen." : "Alleen Karina kan dit vinkje zetten.") : ""}
+                                disabled={monthIsClosed || !canSetKarinaApproval || savingCrewId === String(r.crew_id)}
+                                title={
+                                  !canSetKarinaApproval
+                                    ? isTanja
+                                      ? "Nur Karina oder Leo kann dieses Häkchen setzen."
+                                      : "Alleen Karina of Leo kan dit vinkje zetten."
+                                    : ""
+                                }
                               />
                             </td>
                           </tr>
@@ -3292,7 +3315,7 @@ export default function LoonBemerkingenPage() {
                                 type="checkbox"
                                 checked={!!r.approval_leo}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked, r.sourceMonthKey)}
-                                disabled={monthIsClosed || !isLeoUser || savingCrewId === String(r.crew_id)}
+                                disabled={monthIsClosed || !canSetLeoApproval || savingCrewId === String(r.crew_id)}
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -3300,7 +3323,7 @@ export default function LoonBemerkingenPage() {
                                 type="checkbox"
                                 checked={!!r.approval_karina}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_karina", e.target.checked, r.sourceMonthKey)}
-                                disabled={monthIsClosed || !isKarinaUser || savingCrewId === String(r.crew_id)}
+                                disabled={monthIsClosed || !canSetKarinaApproval || savingCrewId === String(r.crew_id)}
                               />
                             </td>
                           </tr>
@@ -3849,11 +3872,15 @@ export default function LoonBemerkingenPage() {
       {bulkSalaryApprovalPrompt && (
         <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-lg border bg-white p-5">
-            <h3 className="text-lg font-semibold mb-3">Alle salarissen afvinken</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              {bulkSalaryApprovalPrompt.field === "approval_leo"
+                ? "Alle Leo-vinkjes afvinken"
+                : "Alle Karina-vinkjes afvinken"}
+            </h3>
             <p className="text-sm text-slate-600 mb-3">
               {bulkSalaryApprovalPrompt.company}: {groupedByCompany[bulkSalaryApprovalPrompt.company]?.length || 0}{" "}
-              salarisrijen. Overige betalingen worden niet meegenomen. Standaard is de 25e; pas aan indien nodig
-              (bijv. december eerder).
+              salarisrijen ({bulkSalaryApprovalPrompt.field === "approval_leo" ? "Leo" : "Karina"}-kolom). Overige
+              betalingen worden niet meegenomen. Standaard is de 25e; pas aan indien nodig (bijv. december eerder).
             </p>
             <Label>Betaaldatum voor alle salarissen</Label>
             <Input
@@ -3877,12 +3904,16 @@ export default function LoonBemerkingenPage() {
                     alert("Betaaldatum is verplicht.")
                     return
                   }
-                  const { paymentDate, company } = bulkSalaryApprovalPrompt
+                  const { paymentDate, company, field } = bulkSalaryApprovalPrompt
                   setBulkSalaryApprovalPrompt(null)
-                  await applyBulkSalaryApproval(paymentDate, company)
+                  await applyBulkSalaryApproval(paymentDate, company, field)
                 }}
               >
-                {bulkApprovingSalary ? "Bezig..." : "Alles afvinken"}
+                {bulkApprovingSalary
+                  ? "Bezig..."
+                  : bulkSalaryApprovalPrompt.field === "approval_leo"
+                    ? "Alles afvinken (Leo)"
+                    : "Alles afvinken (Karina)"}
               </Button>
             </div>
           </div>
