@@ -47,10 +47,23 @@ export function normalizeMonthKey(input: unknown) {
   return /^\d{4}-\d{2}$/.test(value) ? value : ""
 }
 
+/** Vast bereik voor salarislijst-wachtwoord (niet per kalendermaand). */
+export const SALARY_PASSWORD_SCOPE_KEY = "_global"
+
 export function hashSalaryPassword(password: string, salt: string) {
   return crypto.createHash("sha256").update(`${salt}:${password}`).digest("hex")
 }
 
 export function newSalt() {
   return crypto.randomBytes(16).toString("hex")
+}
+
+export function generateTempSalaryPassword(length = 10) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+  const bytes = crypto.randomBytes(length)
+  let result = ""
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i]! % chars.length]
+  }
+  return result
 }

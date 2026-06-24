@@ -564,7 +564,7 @@ export default function LoonBemerkingenPage() {
   const [salaryPagePasswordInput, setSalaryPagePasswordInput] = useState("")
   const [salaryPagePasswordConfirm, setSalaryPagePasswordConfirm] = useState("")
   const [salaryPageGateBusy, setSalaryPageGateBusy] = useState(false)
-  const [salaryPasswordMonthKey] = useState(getCurrentMonthKey())
+  const [salaryPageForceChange, setSalaryPageForceChange] = useState(false)
   const [adminResetEmail, setAdminResetEmail] = useState("")
   const [adminResetBusy, setAdminResetBusy] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -622,26 +622,23 @@ export default function LoonBemerkingenPage() {
   const overtimeCalendarReadOnlyUser = isTanja || isKarinaUser
 
   useEffect(() => {
-    if (!currentUserEmail) return
-    if (typeof window === "undefined") return
-    const alreadyNotified = window.sessionStorage.getItem("salary_access_notified") === "1"
-    if (alreadyNotified) return
+    if (!salaryPageUnlocked || !currentUserEmail) return
 
     const notify = async () => {
       try {
         const { data } = await supabase.auth.getSession()
         const accessToken = data.session?.access_token
+        if (!accessToken) return
         const headers = new Headers({ "Content-Type": "application/json" })
-        if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`)
+        headers.set("Authorization", `Bearer ${accessToken}`)
         await fetch("/api/salary-access-log", { method: "POST", headers })
-        window.sessionStorage.setItem("salary_access_notified", "1")
       } catch {
         // Stil falen: toegang tot pagina mag niet blokkeren op notificatiemail.
       }
     }
 
-    notify()
-  }, [currentUserEmail])
+    void notify()
+  }, [salaryPageUnlocked, currentUserEmail])
 
   useEffect(() => {
     setMounted(true)
@@ -662,9 +659,6 @@ export default function LoonBemerkingenPage() {
     return map
   }, [crew])
 
-  const getSalaryPasswordSessionKey = (selectedMonthKey: string) =>
-    `salary_page_unlock_${String(currentUserId || currentUserEmail || "unknown")}_${selectedMonthKey}`
-
   const getAuthHeaders = async () => {
     const { data } = await supabase.auth.getSession()
     const accessToken = data.session?.access_token
@@ -675,36 +669,28 @@ export default function LoonBemerkingenPage() {
     })
   }
 
-  const loadSalaryPagePasswordGate = async (selectedMonthKey: string) => {
+  const loadSalaryPagePasswordGate = async () => {
     if (!currentUserId || !currentUserEmail) return
-    const sessionKey = getSalaryPasswordSessionKey(selectedMonthKey)
-    if (typeof window !== "undefined" && window.sessionStorage.getItem(sessionKey) === "1") {
-      setSalaryPageUnlocked(true)
-      setSalaryPageGateLoading(false)
-      return
-    }
+    setSalaryPageUnlocked(false)
+    setSalaryPageForceChange(false)
     setSalaryPageGateLoading(true)
     try {
       const headers = await getAuthHeaders()
       if (!headers) {
-        setSalaryPageUnlocked(false)
         setSalaryPageGateMode("verify")
         return
       }
       const response = await fetch("/api/salary-password/status", {
         method: "POST",
         headers,
-        body: JSON.stringify({ monthKey: selectedMonthKey }),
+        body: JSON.stringify({}),
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok || !json?.success) {
-        setSalaryPageUnlocked(false)
         setSalaryPageGateMode("verify")
         return
       }
-      const hasPassword = json?.hasPassword === true
-      setSalaryPageUnlocked(false)
-      setSalaryPageGateMode(hasPassword ? "verify" : "setup")
+      setSalaryPageGateMode(json?.hasPassword === true ? "verify" : "setup")
     } finally {
       setSalaryPageGateLoading(false)
     }
@@ -1040,8 +1026,9 @@ export default function LoonBemerkingenPage() {
     setSalaryPageUnlocked(false)
     setSalaryPagePasswordInput("")
     setSalaryPagePasswordConfirm("")
-    loadSalaryPagePasswordGate(salaryPasswordMonthKey)
-  }, [mounted, currentUserId, currentUserEmail, salaryPasswordMonthKey])
+    setSalaryPageForceChange(false)
+    void loadSalaryPagePasswordGate()
+  }, [mounted, currentUserId, currentUserEmail])
 
   useEffect(() => {
     if (!salaryPageUnlocked) return
@@ -1174,16 +1161,6 @@ export default function LoonBemerkingenPage() {
     const [year] = (monthKey || "").split("-")
     return year || String(new Date().getFullYear())
   }, [monthKey])
-
-  const salaryPasswordMonthPart = useMemo(() => {
-    const [, month] = (salaryPasswordMonthKey || "").split("-")
-    return month || String(new Date().getMonth() + 1).padStart(2, "0")
-  }, [salaryPasswordMonthKey])
-
-  const salaryPasswordYearPart = useMemo(() => {
-    const [year] = (salaryPasswordMonthKey || "").split("-")
-    return year || String(new Date().getFullYear())
-  }, [salaryPasswordMonthKey])
 
   const formatCrewName = (crewMember: any) => {
     const first = String(crewMember?.first_name || "").trim()
@@ -2757,7 +2734,7 @@ export default function LoonBemerkingenPage() {
     alert(summaryParts.join("\n\n"))
   }
 
-  const handleSetMonthlySalaryPassword = async () => {
+  const handleSetSalaryPagePassword = async () => {
     const password = String(salaryPagePasswordInput || "")
     const confirm = String(salaryPagePasswordConfirm || "")
     if (password.length < 6) {
@@ -2775,17 +2752,14 @@ export default function LoonBemerkingenPage() {
       const response = await fetch("/api/salary-password/set", {
         method: "POST",
         headers,
-        body: JSON.stringify({ monthKey: salaryPasswordMonthKey, password }),
+        body: JSON.stringify({ password }),
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok || !json?.success) {
         throw new Error(String(json?.error || "Instellen mislukt"))
       }
-      const sessionKey = getSalaryPasswordSessionKey(salaryPasswordMonthKey)
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(sessionKey, "1")
-      }
       setSalaryPageUnlocked(true)
+      setSalaryPageForceChange(false)
       setSalaryPagePasswordInput("")
       setSalaryPagePasswordConfirm("")
       await loadRows()
@@ -2796,7 +2770,7 @@ export default function LoonBemerkingenPage() {
     }
   }
 
-  const handleVerifyMonthlySalaryPassword = async () => {
+  const handleVerifySalaryPagePassword = async () => {
     const password = String(salaryPagePasswordInput || "")
     if (!password) {
       alert(isTanja ? "Passwort eingeben." : "Vul je wachtwoord in.")
@@ -2809,15 +2783,18 @@ export default function LoonBemerkingenPage() {
       const response = await fetch("/api/salary-password/verify", {
         method: "POST",
         headers,
-        body: JSON.stringify({ monthKey: salaryPasswordMonthKey, password }),
+        body: JSON.stringify({ password }),
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok || !json?.success) {
-        throw new Error(String(json?.error || "Verificatie mislukt"))
+        throw new Error(String(json?.error || "Onjuist wachtwoord"))
       }
-      const sessionKey = getSalaryPasswordSessionKey(salaryPasswordMonthKey)
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(sessionKey, "1")
+      if (json?.mustChangePassword === true) {
+        setSalaryPageGateMode("setup")
+        setSalaryPageForceChange(true)
+        setSalaryPagePasswordInput("")
+        setSalaryPagePasswordConfirm("")
+        return
       }
       setSalaryPageUnlocked(true)
       setSalaryPagePasswordInput("")
@@ -2829,7 +2806,33 @@ export default function LoonBemerkingenPage() {
     }
   }
 
-  const handleAdminResetMonthlySalaryPassword = async () => {
+  const handleForgotSalaryPagePassword = async () => {
+    setSalaryPageGateBusy(true)
+    try {
+      const headers = await getAuthHeaders()
+      if (!headers) throw new Error("Geen sessie")
+      const response = await fetch("/api/salary-password/forgot", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok || !json?.success) {
+        throw new Error(String(json?.error || "Versturen mislukt"))
+      }
+      alert(
+        isTanja
+          ? "Er is een e-mail met een tijdelijk wachtwoord naar je adres gestuurd."
+          : "Er is een e-mail met een tijdelijk wachtwoord naar je adres gestuurd."
+      )
+    } catch (e) {
+      alert(getErrMsg(e))
+    } finally {
+      setSalaryPageGateBusy(false)
+    }
+  }
+
+  const handleAdminResetSalaryPagePassword = async () => {
     const targetEmail = String(adminResetEmail || "").trim().toLowerCase()
     if (!targetEmail || !targetEmail.includes("@")) {
       alert(isTanja ? "Gültige E-Mail eingeben." : "Vul een geldig e-mailadres in.")
@@ -2842,13 +2845,17 @@ export default function LoonBemerkingenPage() {
       const response = await fetch("/api/salary-password/admin-reset", {
         method: "POST",
         headers,
-        body: JSON.stringify({ monthKey: salaryPasswordMonthKey, targetEmail }),
+        body: JSON.stringify({ targetEmail }),
       })
       const json = await response.json().catch(() => ({}))
       if (!response.ok || !json?.success) {
         throw new Error(String(json?.error || "Reset mislukt"))
       }
-      alert(isTanja ? "Monatspasswort wurde zurückgesetzt." : "Maandwachtwoord is gereset.")
+      alert(
+        isTanja
+          ? "Salarislijst-wachtwoord is gereset. Gebruiker moet opnieuw instellen."
+          : "Salarislijst-wachtwoord is gereset. Gebruiker moet opnieuw instellen."
+      )
       setAdminResetEmail("")
     } catch (e) {
       alert(getErrMsg(e))
@@ -2878,16 +2885,20 @@ export default function LoonBemerkingenPage() {
         <MobileHeaderNav />
         <div className="mx-auto max-w-lg rounded-lg border bg-white p-5 space-y-4">
           <h2 className="text-lg font-semibold">
-            {isTanja ? "Monatspasswort Salarissen" : "Maandwachtwoord Salarissen"}
+            {isTanja ? "Passwort Salarislijst" : "Wachtwoord salarislijst"}
           </h2>
           <p className="text-sm text-slate-600">
             {salaryPageGateMode === "setup"
-              ? (isTanja
-                  ? `Für ${monthNumberToName(salaryPasswordMonthPart, true)} ${salaryPasswordYearPart} zuerst ein persönliches Passwort setzen.`
-                  : `Voor ${monthNumberToName(salaryPasswordMonthPart)} ${salaryPasswordYearPart} eerst een persoonlijk wachtwoord instellen.`)
-              : (isTanja
-                  ? "Voer je persoonlijke maandwachtwoord in om toegang te krijgen."
-                  : "Voer je persoonlijke maandwachtwoord in om toegang te krijgen.")}
+              ? salaryPageForceChange
+                ? isTanja
+                  ? "Kies een nieuw wachtwoord (verplicht na tijdelijk wachtwoord)."
+                  : "Kies een nieuw wachtwoord (verplicht na tijdelijk wachtwoord)."
+                : isTanja
+                  ? "Stel eenmalig je persoonlijke wachtwoord in voor de salarislijst."
+                  : "Stel eenmalig je persoonlijke wachtwoord in voor de salarislijst."
+              : isTanja
+                ? "Voer je salarislijst-wachtwoord in. Bij elk bezoek opnieuw."
+                : "Voer je salarislijst-wachtwoord in. Bij elk bezoek opnieuw."}
           </p>
           <div>
             <Label>{isTanja ? "Passwort" : "Wachtwoord"}</Label>
@@ -2908,15 +2919,32 @@ export default function LoonBemerkingenPage() {
             </div>
           )}
           <Button
-            onClick={salaryPageGateMode === "setup" ? handleSetMonthlySalaryPassword : handleVerifyMonthlySalaryPassword}
+            onClick={
+              salaryPageGateMode === "setup"
+                ? handleSetSalaryPagePassword
+                : handleVerifySalaryPagePassword
+            }
             disabled={salaryPageGateBusy}
           >
             {salaryPageGateBusy
               ? (isTanja ? "Bezig..." : "Bezig...")
-              : (salaryPageGateMode === "setup"
-                  ? (isTanja ? "Monatspasswort instellen" : "Maandwachtwoord instellen")
-                  : (isTanja ? "Ontgrendelen" : "Ontgrendelen"))}
+              : salaryPageGateMode === "setup"
+                ? salaryPageForceChange
+                  ? (isTanja ? "Nieuw wachtwoord opslaan" : "Nieuw wachtwoord opslaan")
+                  : (isTanja ? "Wachtwoord instellen" : "Wachtwoord instellen")
+                : (isTanja ? "Inloggen" : "Inloggen")}
           </Button>
+          {salaryPageGateMode === "verify" && (
+            <Button
+              type="button"
+              variant="link"
+              className="px-0 text-sm"
+              onClick={handleForgotSalaryPagePassword}
+              disabled={salaryPageGateBusy}
+            >
+              {isTanja ? "Wachtwoord vergeten?" : "Wachtwoord vergeten?"}
+            </Button>
+          )}
           {isSalaryPasswordAdmin && (
             <div className="mt-2 rounded-md border bg-slate-50 p-3 space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2924,8 +2952,8 @@ export default function LoonBemerkingenPage() {
               </div>
               <div className="text-xs text-slate-500">
                 {isTanja
-                  ? "Reset maandwachtwoord van een gebruiker voor deze maand."
-                  : "Reset maandwachtwoord van een gebruiker voor deze maand."}
+                  ? "Reset salarislijst-wachtwoord van een gebruiker (moet opnieuw instellen)."
+                  : "Reset salarislijst-wachtwoord van een gebruiker (moet opnieuw instellen)."}
               </div>
               <Input
                 type="email"
@@ -2936,7 +2964,7 @@ export default function LoonBemerkingenPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleAdminResetMonthlySalaryPassword}
+                onClick={handleAdminResetSalaryPagePassword}
                 disabled={adminResetBusy}
               >
                 {adminResetBusy ? "Resetten..." : "Reset wachtwoord"}
@@ -3021,7 +3049,7 @@ export default function LoonBemerkingenPage() {
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
               <Input
                 type="email"
-                placeholder="Reset maandwachtwoord: e-mail"
+                placeholder="Reset salarislijst-wachtwoord: e-mail"
                 value={adminResetEmail}
                 onChange={(e) => setAdminResetEmail(e.target.value)}
                 className="h-8 w-64 text-xs"
@@ -3029,7 +3057,7 @@ export default function LoonBemerkingenPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleAdminResetMonthlySalaryPassword}
+                onClick={handleAdminResetSalaryPagePassword}
                 disabled={adminResetBusy}
                 className="h-8 text-xs"
               >

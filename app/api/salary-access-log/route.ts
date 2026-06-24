@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || "auth@bamalite-login.com"
     const { error: sendError } = await resend.emails.send({
       from: `Bemanningslijst <${fromEmail}>`,
-      to: ["leo@bamalite.com", "willem@bamalite.com"],
+      to: ["leo@bamalite.com", "bart@bamalite.com", "willem@bamalite.com"],
       subject,
       html,
       text,

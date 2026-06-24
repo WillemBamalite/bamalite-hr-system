@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
-const ENABLE_EMAIL_VERIFY_LOGIN_FLOW = false
+const ENABLE_EMAIL_VERIFY_LOGIN_FLOW = true
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')

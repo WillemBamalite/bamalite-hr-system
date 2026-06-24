@@ -14,6 +14,7 @@ import { buildDashboardNotifications } from "@/utils/dashboard-notifications"
 import { countsAsTotalCrewMember, isExcludedFromAssignmentPool } from "@/utils/crew-filters"
 import { buildOfficeCelebrationsForMonth } from "@/utils/office-celebrations"
 import {
+  canAccessTerugTeStaanPage,
   filterReceivedTasksForOfficeViewer,
   filterTasksForViewer,
   isTaskOfficeUser,
@@ -559,8 +560,8 @@ export function DashboardStats() {
           </Link>
         </div>}
 
-        {/* 7c. Terug te staan (Karina) */}
-        {canAccessPath("/bemanning/terug-te-staan") && <div className="aspect-[3/1]">
+        {/* 7c. Terug te staan (alleen Karina; admins via Overwerkers) */}
+        {canAccessTerugTeStaanPage(user?.email) && <div className="aspect-[3/1]">
           <Link href="/bemanning/terug-te-staan" className="h-full flex flex-col items-center justify-center bg-sky-50 border border-sky-200 rounded-lg p-2 md:p-4 text-center hover:bg-sky-100 transition cursor-pointer">
             <div className='text-xl md:text-2xl font-semibold text-sky-800 mt-1 flex items-center justify-center gap-1'>
               <Clock className="w-3.5 h-3.5 md:w-4 md:h-4" />

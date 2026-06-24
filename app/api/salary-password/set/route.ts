@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireApiAccess } from "@/lib/api-security"
 import {
+  SALARY_PASSWORD_SCOPE_KEY,
   getBearerToken,
   getServiceRoleSupabaseClient,
   getUserFromBearerToken,
   hashSalaryPassword,
   newSalt,
-  normalizeMonthKey,
 } from "@/lib/salary-page-password"
 
 export async function POST(request: NextRequest) {
@@ -21,11 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const monthKey = normalizeMonthKey(body?.monthKey)
     const password = String(body?.password || "")
-    if (!monthKey) {
-      return NextResponse.json({ success: false, error: "Ongeldige maand" }, { status: 400 })
-    }
     if (password.length < 6) {
       return NextResponse.json({ success: false, error: "Wachtwoord moet minimaal 6 tekens zijn" }, { status: 400 })
     }
@@ -44,15 +40,27 @@ export async function POST(request: NextRequest) {
         {
           user_id: user.id,
           user_email: email,
-          month_key: monthKey,
+          month_key: SALARY_PASSWORD_SCOPE_KEY,
           password_hash: hash,
           password_salt: salt,
+          must_change_password: false,
           updated_at: new Date().toISOString(),
         },
       ],
       { onConflict: "user_id,month_key" }
     )
     if (error) {
+      const msg = String(error.message || "").toLowerCase()
+      if (msg.includes("must_change_password")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Database mist kolom must_change_password. Voer scripts/add-salary-password-must-change.sql uit in Supabase.",
+          },
+          { status: 500 }
+        )
+      }
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
