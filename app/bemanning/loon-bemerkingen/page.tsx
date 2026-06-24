@@ -2197,12 +2197,15 @@ export default function LoonBemerkingenPage() {
       alert(isTanja ? "Geen salarissen om af te sluiten." : "Geen salarissen om af te sluiten.")
       return
     }
-    const notApproved = allRows.filter((r) => !(r.approval_leo && r.approval_karina))
-    if (notApproved.length > 0) {
+    const salaryNotApproved = allRows.filter((r) => !(r.approval_leo && r.approval_karina))
+    const overtimeNotApproved = overigeBetalingenRows.filter(
+      (r) => !(r.approval_leo && r.approval_karina)
+    )
+    if (salaryNotApproved.length > 0 || overtimeNotApproved.length > 0) {
       alert(
         isTanja
-          ? "Monat afsluiten kan pas als alle vinkjes van Leo en Karina aan staan."
-          : "Maand afsluiten kan pas als alle vinkjes van Leo en Karina aan staan."
+          ? "Achtung, noch nicht alle Zahlungen sind erledigt."
+          : "Let op, niet alle betalingen zijn gedaan."
       )
       return
     }
