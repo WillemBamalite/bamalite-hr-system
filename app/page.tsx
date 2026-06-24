@@ -20,6 +20,7 @@ import { format, isToday, isPast, startOfDay } from "date-fns"
 import Link from "next/link"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { isTaskOfficeUser } from "@/utils/task-permissions"
+import { isActiveForCelebrations } from "@/utils/crew-filters"
 
 type SailingRegime = "A1" | "A2" | "B"
 type CanonicalRole =
@@ -195,8 +196,8 @@ function DashboardContent() {
     today.setHours(0, 0, 0, 0)
     
     return crew.filter((member: any) => {
-      if (member.status === 'uit-dienst') return false
-      if (member.is_dummy || member.is_aflosser || !member.in_dienst_vanaf) return false
+      if (!isActiveForCelebrations(member)) return false
+      if (member.is_aflosser || !member.in_dienst_vanaf) return false
       
       const startDate = new Date(member.in_dienst_vanaf)
       startDate.setHours(0, 0, 0, 0)
@@ -221,9 +222,7 @@ function DashboardContent() {
     const todayDay = today.getDate()
     
     return crew.filter((member: any) => {
-      // Dummy's hebben geen verjaardag
-      if (member.status === 'uit-dienst') return false
-      if (member.is_dummy === true) return false
+      if (!isActiveForCelebrations(member)) return false
       if (!member.birth_date) return false
       
       try {
@@ -256,8 +255,7 @@ function DashboardContent() {
     }[] = []
 
     crew.forEach((member: any) => {
-      if (member.status === 'uit-dienst') return
-      if (member.is_dummy === true) return
+      if (!isActiveForCelebrations(member)) return
       if (!member.in_dienst_vanaf) return
 
       let start: Date

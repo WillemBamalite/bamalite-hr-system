@@ -12,6 +12,7 @@ import { Plus, X, Edit, Trash2, Calendar as CalendarIcon, User, Cake } from 'luc
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, getDay, parse, isWithinInterval, isAfter, isBefore } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
+import { isActiveForCelebrations } from '@/utils/crew-filters'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface AgendaItem {
@@ -115,7 +116,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
       
       // Filter en verwerk alleen echte bemanningsleden met geldige geboortedatum
       crewData
-        .filter((member: any) => !member.is_dummy && member.birth_date && member.birth_date.trim() !== '')
+        .filter((member: any) => isActiveForCelebrations(member) && member.birth_date && member.birth_date.trim() !== '')
         .forEach((member: any) => {
           try {
             // Parse birth date (format: YYYY-MM-DD)
@@ -154,7 +155,7 @@ export function CalendarDialog({ open, onOpenChange }: CalendarDialogProps) {
 
       // Dienstjubilea (5,10,15,20,25,30 jaar en vanaf 30 elk jaar)
       crewData
-        .filter((member: any) => !member.is_dummy && member.in_dienst_vanaf && String(member.in_dienst_vanaf).trim() !== '')
+        .filter((member: any) => isActiveForCelebrations(member) && member.in_dienst_vanaf && String(member.in_dienst_vanaf).trim() !== '')
         .forEach((member: any) => {
           try {
             const startStr = String(member.in_dienst_vanaf).trim()

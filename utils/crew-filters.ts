@@ -123,6 +123,15 @@ export function hasOutOfServiceStatus(member: any): boolean {
   return status === "uit-dienst"
 }
 
+/** Actief voor verjaardagen/jubilea-meldingen (vangnet als rotatie status overschreef). */
+export function isActiveForCelebrations(member: any, asOf: Date = new Date()): boolean {
+  if (!member || member.is_dummy === true) return false
+  if (isEffectivelyOutOfService(member, asOf)) return false
+  const out = parseCrewDate(member?.out_of_service_date)
+  if (out && toDateOnly(asOf) > toDateOnly(out)) return false
+  return true
+}
+
 /** Uit dienst of ooit uit-dienst gezet (vangnet als rotatie-sync status overschreef). */
 export function isFormerCrewMember(member: any): boolean {
   if (!member) return false

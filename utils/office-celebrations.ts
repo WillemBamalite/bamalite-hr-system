@@ -1,6 +1,7 @@
 import { format, startOfDay, startOfMonth } from "date-fns"
 import { nl } from "date-fns/locale"
 import { parseFlexibleDate } from "@/utils/dashboard-notifications"
+import { isActiveForCelebrations } from "@/utils/crew-filters"
 
 export type OfficeBirthdayItem = {
   id: string
@@ -19,12 +20,6 @@ export type OfficeAnniversaryItem = {
   sortDay: number
 }
 
-function isActiveCrewMember(member: any): boolean {
-  if (!member || member.is_dummy === true) return false
-  if (String(member.status || "").toLowerCase() === "uit-dienst") return false
-  return true
-}
-
 /** Verjaardagen en dienstjubilea in de gekozen kalendermaand. */
 export function buildOfficeCelebrationsForMonth(
   crew: any[],
@@ -37,7 +32,7 @@ export function buildOfficeCelebrationsForMonth(
   const anniversaries: OfficeAnniversaryItem[] = []
 
   for (const member of crew || []) {
-    if (!isActiveCrewMember(member)) continue
+    if (!isActiveForCelebrations(member, today)) continue
 
     const fullName = `${member.first_name || ""} ${member.last_name || ""}`.trim()
     if (!fullName) continue

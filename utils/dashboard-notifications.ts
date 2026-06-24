@@ -1,5 +1,5 @@
 import { format, isAfter, isPast, isToday, startOfDay } from "date-fns"
-import { hasOutOfServiceStatus } from "@/utils/crew-filters"
+import { isActiveForCelebrations } from "@/utils/crew-filters"
 
 export type DashboardNotificationSeverity = "info" | "warning" | "danger"
 export type DashboardNotificationKind =
@@ -105,12 +105,7 @@ export function buildDashboardNotifications(args: {
   const todayDay = today.getDate()
 
   const notifications: DashboardNotification[] = []
-  const isActiveCrewMember = (member: any) => {
-    if (!member) return false
-    if (member.is_dummy === true) return false
-    if (hasOutOfServiceStatus(member)) return false
-    return true
-  }
+  const isActiveCrewMember = (member: any) => isActiveForCelebrations(member, today)
 
   // Proeftijd aflopend (dag 70 = nog 20 dagen)
   const probationEnding =
