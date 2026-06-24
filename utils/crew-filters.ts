@@ -126,9 +126,14 @@ export function hasOutOfServiceStatus(member: any): boolean {
 /** Actief voor verjaardagen/jubilea-meldingen (vangnet als rotatie status overschreef). */
 export function isActiveForCelebrations(member: any, asOf: Date = new Date()): boolean {
   if (!member || member.is_dummy === true) return false
+  if (isCopiedCrewMember(member)) return false
+  if (member.sub_status === "later-terugkomen") return false
+  if (hasOutOfServiceStatus(member)) return false
   if (isEffectivelyOutOfService(member, asOf)) return false
   const out = parseCrewDate(member?.out_of_service_date)
   if (out && toDateOnly(asOf) > toDateOnly(out)) return false
+  if (!isVasteAflosser(member) && isInRecruitmentPipeline(member)) return false
+  if (member.status === "nog-in-te-delen" && member.recruitment_status !== "aangenomen") return false
   return true
 }
 
