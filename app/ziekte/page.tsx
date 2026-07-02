@@ -379,11 +379,12 @@ export default function ZiektePage() {
       
       // Update de record in Supabase
       // Note: dokters_verklaring is GEEN database kolom, wordt afgeleid van certificate_valid_until
+      const newPct = parseInt(editForm.salaryPercentage, 10)
       const updatedRecord: any = {
         certificate_valid_until: editForm.hasCertificate && editForm.certificateValidUntil ? editForm.certificateValidUntil : null,
-        salary_percentage: parseInt(editForm.salaryPercentage),
+        salary_percentage: newPct,
         paid_by: editForm.paidBy,
-        notes: editForm.notes || "" // Use empty string instead of null
+        notes: editForm.notes || "",
       }
 
       // Update status naar "actief" als er een briefje is

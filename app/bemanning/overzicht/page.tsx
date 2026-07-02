@@ -14,6 +14,7 @@ import { DashboardButton } from "@/components/ui/dashboard-button"
 import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 import { usePathname } from "next/navigation"
 import { CrewOverviewExportButton } from "@/components/crew/crew-overview-export-dialog"
+import { MissingMatriculeExportButton } from "@/components/crew/missing-matricule-export-button"
 
 const RANK_ORDER = [
   "Kapitein",
@@ -42,6 +43,7 @@ export default function CrewOverviewPage() {
   ]
   const overviewTabs = [
     { href: "/bemanning/overzicht", label: "Totaal bemanningsleden" },
+    { href: "/bemanning/luxembourg-a1", label: "Luxembourg A1" },
     { href: "/bemanning/studenten", label: "Stagiairs" },
     { href: "/bemanning/oude-bemanningsleden", label: "Oud medewerkers" },
     { href: "/bemanning/officiele-waarschuwingen", label: "Waarschuwingen" },
@@ -159,6 +161,7 @@ export default function CrewOverviewPage() {
           <h1 className="text-3xl font-bold text-gray-900">{t('crew')} {t('overview')}</h1>
         </div>
         <div className="flex flex-wrap gap-2 justify-end">
+          <MissingMatriculeExportButton crew={crew} ships={ships} />
           <CrewOverviewExportButton crew={crew} ships={ships} />
           <Link href="/bemanning/dienstjubilea">
             <Button variant="outline">

@@ -59,6 +59,7 @@ const LIMITED_BLOCKED_BEMANNING_SEGMENTS = new Set([
   "aflossers",
   "studenten",
   "medische-keuringen",
+  "luxembourg-a1",
   "officiele-waarschuwingen",
   "nog-in-te-delen",
   "nieuw",
