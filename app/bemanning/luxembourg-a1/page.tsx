@@ -23,13 +23,14 @@ import {
   type LuxembourgA1MemberInput,
 } from "@/utils/luxembourg-a1-generator"
 import {
-  buildA1BulkZipFilename,
-  generateLuxembourgA1BulkZip,
+  downloadLuxembourgA1CompanyZips,
+  generateLuxembourgA1BulkZipsByCompany,
 } from "@/utils/luxembourg-a1-bulk-download"
 
 type MemberRow = {
   member: Record<string, unknown> & { id: string }
   shipName: string | null
+  shipCompany: string | null
   readiness: ReturnType<typeof assessLuxembourgA1Readiness>
 }
 
@@ -132,6 +133,7 @@ export default function LuxembourgA1Page() {
       const blob = await generateLuxembourgA1Package({
         member,
         shipName: row.shipName,
+        shipCompany: row.shipCompany,
         generatedAt: new Date(),
       })
       const url = URL.createObjectURL(blob)
@@ -155,31 +157,34 @@ export default function LuxembourgA1Page() {
     setDownloadingAll(true)
     setBulkProgress({ done: 0, total: items.length })
     try {
-      const blob = await generateLuxembourgA1BulkZip({
+      const zips = await generateLuxembourgA1BulkZipsByCompany({
         items: items.map((row) => ({
           member: toA1MemberInput(row.member),
           shipName: row.shipName!,
+          shipCompany: row.shipCompany,
         })),
         generatedAt: new Date(),
         onProgress: (done, total) => setBulkProgress({ done, total }),
       })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = buildA1BulkZipFilename(year)
-      a.click()
-      URL.revokeObjectURL(url)
+      if (zips.length === 0) {
+        alert("Geen A1-pakketten om te downloaden.")
+        return
+      }
+      await downloadLuxembourgA1CompanyZips(zips)
     } catch (e) {
       console.error(e)
-      alert(e instanceof Error ? e.message : "ZIP-bestand kon niet worden gegenereerd.")
+      alert(e instanceof Error ? e.message : "ZIP-bestanden konden niet worden gegenereerd.")
     } finally {
       setDownloadingAll(false)
       setBulkProgress(null)
     }
   }
 
-  const shipNameById = useMemo(
-    () => new Map(ships.map((s: { id: string; name: string }) => [s.id, s.name])),
+  const shipById = useMemo(
+    () =>
+      new Map(
+        ships.map((s: { id: string; name: string; company?: string }) => [s.id, s])
+      ),
     [ships]
   )
 
@@ -188,9 +193,11 @@ export default function LuxembourgA1Page() {
       .filter(Boolean)
       .filter(countsAsTotalCrewMember)
       .map((member: Record<string, unknown> & { id: string; ship_id?: string }) => {
-        const shipName = member.ship_id ? shipNameById.get(member.ship_id) || null : null
-        const readiness = assessLuxembourgA1Readiness(member, shipName)
-        return { member, shipName, readiness }
+        const ship = member.ship_id ? shipById.get(member.ship_id) : undefined
+        const shipName = ship?.name || null
+        const shipCompany = ship?.company ? String(ship.company) : null
+        const readiness = assessLuxembourgA1Readiness(member, shipName, shipCompany)
+        return { member, shipName, shipCompany, readiness }
       })
 
     const q = search.trim().toLowerCase()
@@ -218,7 +225,7 @@ export default function LuxembourgA1Page() {
     })
 
     return { readyRows, incompleteRows }
-  }, [crew, shipNameById, search])
+  }, [crew, shipById, search])
 
   if (loading) {
     return (
@@ -293,7 +300,7 @@ export default function LuxembourgA1Page() {
             </CardTitle>
             {readyRows.length > 0 && (
               <p className="text-xs text-green-800 mt-2">
-                Download alle: één ZIP-bestand met per persoon een apart PDF-pakket.
+                Download alle: per firma een apart ZIP-bestand (max. 5), met per persoon een PDF-pakket.
               </p>
             )}
           </CardHeader>
@@ -341,8 +348,8 @@ export default function LuxembourgA1Page() {
       </div>
 
       <p className="text-xs text-gray-500 mt-6 text-center">
-        Pakket: CCSS-formulier (geldig vanaf vandaag t/m +1 jaar) + schipscertificaten. Signataire:
-        BAMALITE S.A., Luxembourg aangevinkt. Werkgeveradres: Duarrefstrooss 15A, L-9990 Weiswampach.
+        Pakket: CCSS-formulier (periode 1 juli t/m 31 juni, aanvraagdatum = vandaag) + schipscertificaten.
+        Signataire: BAMALITE S.A. Werkgeveradres: Duarrefstrooss 15A, L-9990 Weiswampach.
       </p>
     </div>
   )

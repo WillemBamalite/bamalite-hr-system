@@ -2,6 +2,7 @@ import { getShipEni } from "@/utils/luxembourg-a1-ship-data"
 import {
   getCompanyCcssMatricule,
   getShipCertificatePdfPaths,
+  isCrewShipCompanyMismatch,
   SHIPS_WITHOUT_A1_CERTIFICATE_PDFS,
 } from "@/utils/luxembourg-a1-config"
 
@@ -36,6 +37,7 @@ export type A1MissingFieldId =
   | "adres_land"
   | "firma"
   | "firma_matricule"
+  | "firma_schip_mismatch"
   | "schip"
   | "schip_eni"
   | "schip_papieren"
@@ -52,6 +54,7 @@ export const A1_MISSING_FIELD_LABELS: Record<A1MissingFieldId, string> = {
   adres_land: "Adres (land)",
   firma: "Firma (werkgever)",
   firma_matricule: "Firma CCSS-matricule (onbekende firma)",
+  firma_schip_mismatch: "Schip hoort bij andere firma (nog niet omgezet via Firma Wisseling)",
   schip: "Schip toegewezen",
   schip_eni: "ENI-nummer schip",
   schip_papieren: "Rijnvaartverklaring / Exploitatievergunning (PDF)",
@@ -74,7 +77,8 @@ function normalizeShipKey(name: string): string {
 
 export function assessLuxembourgA1Readiness(
   member: Record<string, unknown>,
-  shipName: string | null
+  shipName: string | null,
+  shipCompany?: string | null
 ): A1ReadinessResult {
   const missing: A1MissingFieldId[] = []
   const company = String(member.company || "").trim() || null
@@ -93,6 +97,10 @@ export function assessLuxembourgA1Readiness(
 
   if (!company) missing.push("firma")
   else if (!getCompanyCcssMatricule(company)) missing.push("firma_matricule")
+
+  if (company && shipCompany && isCrewShipCompanyMismatch(company, shipCompany)) {
+    missing.push("firma_schip_mismatch")
+  }
 
   if (!shipName) {
     missing.push("schip")

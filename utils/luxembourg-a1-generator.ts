@@ -1,11 +1,13 @@
-import { addYears, format } from "date-fns"
-import { PDFDocument } from "pdf-lib"
+import { format } from "date-fns"
+import { PDFDocument, PDFName, PDFNumber } from "pdf-lib"
 import {
   A1_FORM_TEMPLATE_PATH,
   A1_SIGNATURE_IMAGE_PATH,
   A1_ACTIVITY_COUNTRY_CHECKBOXES,
-  getCompanyCcssMatricule,
+  getA1CoveragePeriod,
+  getCompanyCcssMatriculeForForm,
   getShipCertificatePdfPaths,
+  isCrewShipCompanyMismatch,
   LUXEMBOURG_EMPLOYER_ADDRESS,
   LUXEMBOURG_EMPLOYER_PHONE,
 } from "@/utils/luxembourg-a1-config"
@@ -114,6 +116,10 @@ function formatDdMmYyyy(date: Date): string {
   return format(date, "ddMMyyyy")
 }
 
+function formatDdMmYyyyParts(day: number, month: number, year: number): string {
+  return `${String(day).padStart(2, "0")}${String(month).padStart(2, "0")}${year}`
+}
+
 function formatDateSig(date: Date): string {
   return format(date, "dd/MM/yyyy")
 }
@@ -142,6 +148,16 @@ function setFormText(form: ReturnType<PDFDocument["getForm"]>, fieldName: string
 }
 
 function checkA1ActivityCountries(form: ReturnType<PDFDocument["getForm"]>) {
+  for (const field of form.getFields()) {
+    const name = field.getName()
+    if (!name.startsWith("Land")) continue
+    try {
+      const cb = form.getCheckBox(name)
+      if (cb.isChecked()) cb.uncheck()
+    } catch {
+      /* ignore */
+    }
+  }
   for (const fieldName of A1_ACTIVITY_COUNTRY_CHECKBOXES) {
     try {
       const cb = form.getCheckBox(fieldName)
@@ -149,6 +165,26 @@ function checkA1ActivityCountries(form: ReturnType<PDFDocument["getForm"]>) {
     } catch {
       /* ignore */
     }
+  }
+}
+
+function hideFormButton(form: ReturnType<PDFDocument["getForm"]>, fieldName: string) {
+  try {
+    const button = form.getButton(fieldName)
+    for (const widget of button.acroField.getWidgets()) {
+      widget.dict.set(PDFName.of("F"), PDFNumber.of(2))
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function ensureCheckboxUnchecked(form: ReturnType<PDFDocument["getForm"]>, fieldName: string) {
+  try {
+    const cb = form.getCheckBox(fieldName)
+    if (cb.isChecked()) cb.uncheck()
+  } catch {
+    /* ignore */
   }
 }
 
@@ -164,14 +200,25 @@ async function embedSignatureImage(formDoc: PDFDocument, origin: string) {
 
     const imprRect = form.getButton("impr").acroField.getWidgets()[0].getRectangle()
     const initRect = form.getButton("init").acroField.getWidgets()[0].getRectangle()
-    const boxLeft = imprRect.x - 15
-    const boxRight = initRect.x + initRect.width + 5
+    const sigNomRect = form.getTextField("sig_nom").acroField.getWidgets()[0].getRectangle()
+    hideFormButton(form, "impr")
+    hideFormButton(form, "init")
+
+    const boxLeft = imprRect.x - 30
+    const boxRight = initRect.x + initRect.width + 30
+    const boxBottom = 40
+    const boxTop = sigNomRect.y + 8
     const boxWidth = boxRight - boxLeft
-    const width = Math.min(140, boxWidth - 10)
-    const height = (png.height / png.width) * width
+    const boxHeight = boxTop - boxBottom
+
+    let width = boxWidth * 0.98
+    let height = (png.height / png.width) * width
+    if (height > boxHeight * 0.98) {
+      height = boxHeight * 0.98
+      width = (png.width / png.height) * height
+    }
     const x = boxLeft + (boxWidth - width) / 2
-    const maxTop = Math.min(imprRect.y, initRect.y) - 4
-    const y = maxTop - height
+    const y = boxBottom + (boxHeight - height) / 2
 
     page.drawImage(png, { x, y, width, height })
   } catch (e) {
@@ -186,14 +233,14 @@ function fillA1Form(
   generatedAt: Date
 ) {
   const company = String(member.company || "").trim()
-  const companyMatricule = getCompanyCcssMatricule(company) || ""
+  const companyMatricule = getCompanyCcssMatriculeForForm(company) || ""
   const addr = normalizeCrewAddress(member.address)
   const nationalityIso = toIso2Nationality(String(member.nationality || ""))
   const addressCountryIso = countryToIso2(addr.country, String(member.nationality || ""))
   const { street, number } = parseStreetAndNumber(addr.street)
   const eni = getShipEni(shipName)
   const shipOwner = getShipOwner(shipName) || company
-  const validUntil = addYears(generatedAt, 1)
+  const { start: coverageStart, endDay, endMonth, endYear } = getA1CoveragePeriod(generatedAt)
 
   setFormText(form, "re_mat", companyMatricule)
   setFormText(form, "re_denomnom", company.toUpperCase())
@@ -213,8 +260,8 @@ function fillA1Form(
   setFormText(form, "ca_loc_leg", addr.city)
   setFormText(form, "ca_pays_leg", addressCountryIso || nationalityIso)
 
-  setFormText(form, "deb_jjmmaaaa1", formatDdMmYyyy(generatedAt))
-  setFormText(form, "fin_jjmmaaaa1", formatDdMmYyyy(validUntil))
+  setFormText(form, "deb_jjmmaaaa1", formatDdMmYyyy(coverageStart))
+  setFormText(form, "fin_jjmmaaaa1", formatDdMmYyyyParts(endDay, endMonth, endYear))
 
   setFormText(form, "tr_nom_bateau", shipName.toUpperCase())
   setFormText(form, "tr_exp_bateau", company.toUpperCase())
@@ -234,12 +281,8 @@ function fillA1Form(
   } catch {
     /* ignore */
   }
-  try {
-    const cb = form.getCheckBox("CheckboxRect")
-    if (!cb.isChecked()) cb.check()
-  } catch {
-    /* ignore */
-  }
+  ensureCheckboxUnchecked(form, "CheckboxRect")
+  ensureCheckboxUnchecked(form, "CheckboxAnn")
 }
 
 async function appendPdf(merged: PDFDocument, bytes: ArrayBuffer | Uint8Array) {
@@ -251,10 +294,16 @@ async function appendPdf(merged: PDFDocument, bytes: ArrayBuffer | Uint8Array) {
 export async function generateLuxembourgA1Package(options: {
   member: LuxembourgA1MemberInput
   shipName: string
+  shipCompany?: string | null
   generatedAt?: Date
   baseUrl?: string
 }): Promise<Blob> {
   const { member, shipName } = options
+  if (isCrewShipCompanyMismatch(member.company, options.shipCompany)) {
+    throw new Error(
+      "A1 kan niet worden gemaakt: bemanningslid staat op een schip van een andere firma. Eerst omzetten via Firma Wisseling."
+    )
+  }
   const generatedAt = options.generatedAt ?? new Date()
   const origin =
     options.baseUrl || (typeof window !== "undefined" ? window.location.origin : "")
