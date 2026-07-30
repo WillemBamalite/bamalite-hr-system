@@ -1245,7 +1245,8 @@ export default function LoonBemerkingenPage() {
 
   /**
    * Gewerkte dagen in salarismaand (kalenderdagen, incl. start; uit-dienst-dag telt niet mee).
-   * null = volledige maand, 0 = geen basis deze maand (bv. start na 25e).
+   * null = volledige maand (ook bij start op de 1e zonder tussentijdse uitdienst),
+   * 0 = geen basis deze maand (bv. start na 25e).
    */
   const getWorkedDaysInSalaryMonth = (row: SalaryDraft, selectedMonthKey: string): number | null => {
     const [yearStr, monthStr] = selectedMonthKey.split("-")
@@ -1277,6 +1278,10 @@ export default function LoonBemerkingenPage() {
     }
 
     if (rangeEnd < rangeStart) return 0
+
+    // Start op de 1e en hele maand gewerkt → volle maand (voorkomt 31/30-opslag in jul/aug/okt/etc.).
+    if (rangeStart === 1 && rangeEnd === calendarDays) return null
+
     return rangeEnd - rangeStart + 1
   }
 
@@ -1303,7 +1308,9 @@ export default function LoonBemerkingenPage() {
     if (divisorDays <= 0) return fullAmount
     if (workedDays <= 0) return 0
 
-    return (fullAmount / divisorDays) * workedDays
+    // Nooit meer dan een volle maand uitbetalen (bijv. 31 dagen over 30-dagen-tarief).
+    const payableDays = Math.min(workedDays, divisorDays)
+    return (fullAmount / divisorDays) * payableDays
   }
 
   const getRowBaseSalaryExclClothing = (row: SalaryDraft) => {
@@ -3230,6 +3237,7 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
+                                className="h-6 w-6 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
                                 checked={!!r.approval_leo}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked)}
                                 disabled={monthIsClosed || !canSetLeoApproval || savingCrewId === String(r.crew_id)}
@@ -3239,6 +3247,7 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
+                                className="h-6 w-6 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
                                 checked={!!r.approval_karina}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_karina", e.target.checked)}
                                 disabled={monthIsClosed || !canSetKarinaApproval || savingCrewId === String(r.crew_id)}
@@ -3257,16 +3266,32 @@ export default function LoonBemerkingenPage() {
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-2 flex justify-end">
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
-                    {isTanja ? "Totaal salaris firma" : "Totaal salaris firma"}:{" "}
-                    {formatCurrency(
-                      (groupedByCompany[activeCompanyTab] || []).reduce(
-                        (sum, row) => sum + getSalaryTotals(row).totalSalaryMonth,
-                        0
-                      )
-                    )}
-                  </div>
+                <div className="mt-2 flex flex-wrap justify-end gap-2">
+                  {(() => {
+                    const companyRows = groupedByCompany[activeCompanyTab] || []
+                    const totalLeo = companyRows.reduce(
+                      (sum, row) =>
+                        row.approval_leo ? sum + getSalaryTotals(row).totalSalaryMonth : sum,
+                      0
+                    )
+                    const totalKarina = companyRows.reduce(
+                      (sum, row) =>
+                        row.approval_karina ? sum + getSalaryTotals(row).totalSalaryMonth : sum,
+                      0
+                    )
+                    return (
+                      <>
+                        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                          {isTanja ? "Totaal Leo (afgevinkt)" : "Totaal Leo (afgevinkt)"}:{" "}
+                          {formatCurrency(totalLeo)}
+                        </div>
+                        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-800">
+                          {isTanja ? "Totaal Karina (afgevinkt)" : "Totaal Karina (afgevinkt)"}:{" "}
+                          {formatCurrency(totalKarina)}
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               </>
             )}
@@ -3344,6 +3369,7 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
+                                className="h-6 w-6 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
                                 checked={!!r.approval_leo}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked, r.sourceMonthKey)}
                                 disabled={monthIsClosed || !canSetLeoApproval || savingCrewId === String(r.crew_id)}
@@ -3352,6 +3378,7 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
+                                className="h-6 w-6 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
                                 checked={!!r.approval_karina}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_karina", e.target.checked, r.sourceMonthKey)}
                                 disabled={monthIsClosed || !canSetKarinaApproval || savingCrewId === String(r.crew_id)}

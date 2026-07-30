@@ -262,10 +262,12 @@ export function applySickAdjustmentToSalary(
   if (breakdown.totalSickDays <= 0 || divisorDays <= 0 || salaryForSickDaily <= 0) {
     if (workedDaysInMonth === null) return fullMonthSalaryExcl
     if (workedDaysInMonth <= 0) return 0
-    return (fullMonthSalaryExcl / divisorDays) * workedDaysInMonth
+    // Cap op divisor: nooit meer dan een volle maand (31 dagen × 30-dagen-tarief).
+    const payableDays = Math.min(workedDaysInMonth, divisorDays)
+    return (fullMonthSalaryExcl / divisorDays) * payableDays
   }
 
-  const totalDaysInScope = workedDaysInMonth ?? divisorDays
+  const totalDaysInScope = Math.min(workedDaysInMonth ?? divisorDays, divisorDays)
   if (totalDaysInScope <= 0) return 0
 
   const daily = salaryForSickDaily / divisorDays
