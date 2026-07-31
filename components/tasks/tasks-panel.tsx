@@ -695,7 +695,7 @@ export function TasksPanel() {
         completed: true,
         completed_at: new Date().toISOString()
       })
-      scheduleScrollToTask(taskId)
+      // Blijf op openstaande taken; niet naar voltooide taken springen.
     } catch (error) {
       console.error("Error completing task:", error)
       alert("Fout bij voltooien taak")
