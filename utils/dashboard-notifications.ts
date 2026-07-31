@@ -415,7 +415,8 @@ export function buildDashboardNotifications(args: {
     })
   }
 
-  // Nieuw personeel: binnen 7 dagen aan boord maar nog niet ingeschreven in Luxembourg
+  // Nieuw personeel: binnen 7 dagen aan boord / al aan boord, maar nog niet ingeschreven in Luxembourg.
+  // Blijft staan tot ingeschreven_luxembourg === true (ook na de startdatum).
   const hasAssignedShip = (member: any) =>
     !!member?.ship_id && member.ship_id !== "none" && member.ship_id !== ""
 
@@ -428,42 +429,68 @@ export function buildDashboardNotifications(args: {
       if (member?.ingeschreven_luxembourg === true) return false
 
       const status = String(member?.status || "").toLowerCase()
-      if (status === "aan-boord") return false
+      const isOnBoard = status === "aan-boord"
+      if (isOnBoard) return true
 
       const expectedStart = parseFlexibleDate(member?.expected_start_date)
       if (!expectedStart) return false
 
       expectedStart.setHours(0, 0, 0, 0)
-      const daysUntilBoarding = Math.ceil((expectedStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-      return daysUntilBoarding >= 0 && daysUntilBoarding <= 7
+      const daysUntilBoarding = Math.ceil(
+        (expectedStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      )
+      // Vanaf 7 dagen vóór start, en daarna blijven tonen tot inschrijving
+      return daysUntilBoarding <= 7
     })
     .map((member: any) => {
-      const expectedStart = parseFlexibleDate(member?.expected_start_date) || today
-      expectedStart.setHours(0, 0, 0, 0)
-      const daysUntilBoarding = Math.ceil((expectedStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      const expectedStart = parseFlexibleDate(member?.expected_start_date)
+      if (expectedStart) expectedStart.setHours(0, 0, 0, 0)
+      const daysUntilBoarding = expectedStart
+        ? Math.ceil((expectedStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        : null
+      const status = String(member?.status || "").toLowerCase()
+      const isOnBoardOrDue =
+        status === "aan-boord" || (daysUntilBoarding !== null && daysUntilBoarding <= 0)
       const ship = (ships || []).find((s: any) => s.id === member.ship_id)
-      return { member, expectedStart, daysUntilBoarding, shipName: ship?.name || "Onbekend schip" }
+      return {
+        member,
+        expectedStart,
+        daysUntilBoarding,
+        isOnBoardOrDue,
+        shipName: ship?.name || "Onbekend schip",
+      }
     })
 
   for (const item of luxembourgPendingBoarding) {
     const name = `${item.member.first_name ?? ""} ${item.member.last_name ?? ""}`.trim()
-    const dayText =
-      item.daysUntilBoarding === 0
-        ? "vandaag"
-        : `over ${item.daysUntilBoarding} ${item.daysUntilBoarding === 1 ? "dag" : "dagen"}`
+    const dateLabel = item.expectedStart ? ` (${format(item.expectedStart, "dd-MM-yyyy")})` : ""
+
+    let title: string
+    let description: string
+    if (item.isOnBoardOrDue) {
+      title = "Niet ingeschreven in Luxembourg (aan boord)"
+      description = `${name} is aan boord op ${item.shipName} maar nog niet ingeschreven in Luxembourg${dateLabel}`
+    } else {
+      const days = item.daysUntilBoarding ?? 0
+      const dayText =
+        days === 1 ? "over 1 dag" : `over ${days} dagen`
+      title = "Niet ingeschreven in Luxembourg (bijna aan boord)"
+      description = `${name} is nog niet ingeschreven in Luxembourg en gaat ${dayText} aan boord op ${item.shipName}${dateLabel}`
+    }
 
     notifications.push({
-      id: `luxembourg_pending_boarding:${item.member.id}:${toYmd(item.expectedStart)}`,
+      id: `luxembourg_pending_boarding:${item.member.id}:${item.expectedStart ? toYmd(item.expectedStart) : "onboard"}`,
       kind: "luxembourg_pending_boarding",
       severity: "warning",
-      title: "Niet ingeschreven in Luxembourg (bijna aan boord)",
-      description: `${name} gaat ${dayText} aan boord op ${item.shipName} (${format(item.expectedStart, "dd-MM-yyyy")})`,
+      title,
+      description,
       href: "/bemanning/nog-in-te-delen",
       meta: {
         crewId: item.member.id,
         shipId: item.member.ship_id,
-        expectedStartDate: toYmd(item.expectedStart),
+        expectedStartDate: item.expectedStart ? toYmd(item.expectedStart) : null,
         daysUntilBoarding: item.daysUntilBoarding,
+        isOnBoardOrDue: item.isOnBoardOrDue,
       },
     })
   }
