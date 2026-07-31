@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -445,22 +447,7 @@ export function StandBackManagement() {
       return true
     })
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getReasonColor = (reason: string) => {
     switch (reason) {

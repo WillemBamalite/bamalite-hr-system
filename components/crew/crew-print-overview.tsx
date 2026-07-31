@@ -1,4 +1,6 @@
 "use client"
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { Button } from "@/components/ui/button"
 import { PrinterIcon as Print, Download, ArrowLeft } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
@@ -66,22 +68,7 @@ export function CrewPrintOverview() {
     .filter((c: any) => c.status === "ziek" && c.status !== "uit-dienst")
     .map(convertCrew)
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getDocumentStatus = (crew: any) => {
     const docs = crew.documents || {}

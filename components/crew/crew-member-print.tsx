@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { format } from "date-fns"
 import { nl, de } from "date-fns/locale"
@@ -257,22 +259,7 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
     return ship ? ship.name : translations.noShip
   }
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getStatusText = () => {
     if (crewMember.status === "ziek") return translations.sick
@@ -398,7 +385,7 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
                 return null
               })()}
               <div className="flex items-center gap-2 text-base text-gray-700">
-                <span>{getNationalityFlag(crewMember.nationality)} {crewMember.nationality}</span>
+                <span>{getNationalityFlag(crewMember.nationality)}</span>
                 <span>•</span>
                 <span>{crewMember.position}</span>
               </div>
@@ -430,7 +417,7 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
               )}
               <div className="flex justify-between">
                 <span className="text-gray-600 font-medium">{translations.nationality}</span>
-                <span>{getNationalityFlag(crewMember.nationality)} {crewMember.nationality}</span>
+                <span>{getNationalityFlag(crewMember.nationality)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600 font-medium">{translations.phone}</span>

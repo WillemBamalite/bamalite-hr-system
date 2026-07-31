@@ -1,5 +1,6 @@
 "use client";
 
+import { getNationalityFlag } from "@/utils/nationality-display";
 import { useState, useEffect } from "react";
 import { useSupabaseData } from "@/hooks/use-supabase-data";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -75,17 +76,7 @@ export default function PrintPage() {
     });
   };
 
-  // Helper function for nationality flags
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      'NL': '🇳🇱', 'DE': '🇩🇪', 'PL': '🇵🇱', 'RO': '🇷🇴', 'BG': '🇧🇬',
-      'CZ': '🇨🇿', 'SLK': '🇸🇰', 'EG': '🇪🇬', 'SERV': '🇷🇸',
-      'HUN': '🇭🇺', 'FR': '🇫🇷', 'LUX': '🇱🇺', 'PO': '🇵🇱'
-    }
-    return flags[nationality] || '🏳️'
-  }
-
-  // Group ships by company
+    // Group ships by company
   const shipsByCompany = ships.reduce((acc: any, ship: any) => {
     const company = ship.company || 'Geen Bedrijf';
     if (!acc[company]) {
@@ -423,13 +414,7 @@ export default function PrintPage() {
   };
 
   const printNewPersonnel = () => {
-    const getNationalityFlagForPrint = (nationality: string) => {
-      const flags: { [key: string]: string } = {
-        NL: "🇳🇱", CZ: "🇨🇿", SLK: "🇸🇰", EG: "🇪🇬", PO: "🇵🇱",
-        SERV: "🇷🇸", HUN: "🇭🇺", BE: "🇧🇪", FR: "🇫🇷", DE: "🇩🇪", LUX: "🇱🇺"
-      };
-      return flags[nationality] || "🌍";
-    };
+    ;
 
     const formatDateForPrint = (dateString: string) => {
       if (!dateString) return '';
@@ -526,7 +511,7 @@ export default function PrintPage() {
               </div>
               <div style="flex: 1;">
                 <div style="font-weight: bold; font-size: 15px; margin-bottom: 2px;">
-                  ${member.first_name} ${member.last_name} ${getNationalityFlagForPrint(member.nationality)}
+                  ${member.first_name} ${member.last_name} ${getNationalityFlag(member.nationality)}
                 </div>
                 <div style="font-size: 12px; color: #666; margin-bottom: 8px;">${member.position || 'Geen functie'}</div>
                 <div style="font-size: 11px; color: #666;">
@@ -564,7 +549,7 @@ export default function PrintPage() {
               </div>
               <div style="flex: 1;">
                 <div style="font-weight: bold; font-size: 15px; margin-bottom: 2px;">
-                  ${member.first_name} ${member.last_name} ${getNationalityFlagForPrint(member.nationality)}
+                  ${member.first_name} ${member.last_name} ${getNationalityFlag(member.nationality)}
                 </div>
                 <div style="font-size: 12px; color: #666; margin-bottom: 8px;">${member.position || 'Geen functie'}</div>
                 ${assignedShip ? `
@@ -624,7 +609,7 @@ export default function PrintPage() {
               </div>
               <div style="flex: 1;">
                 <div style="font-weight: bold; font-size: 15px; margin-bottom: 2px;">
-                  ${member.first_name} ${member.last_name} ${getNationalityFlagForPrint(member.nationality)}
+                  ${member.first_name} ${member.last_name} ${getNationalityFlag(member.nationality)}
                 </div>
                 <div style="font-size: 12px; color: #666; margin-bottom: 8px;">${member.position || 'Geen functie'}</div>
                 <div style="background: #dbeafe; padding: 8px; border-radius: 4px; border: 1px solid #93c5fd;">
@@ -675,13 +660,7 @@ export default function PrintPage() {
       }
     };
 
-    const getNationalityFlag = (nationality: string) => {
-      const flags: { [key: string]: string } = {
-        NL: "🇳🇱", CZ: "🇨🇿", SLK: "🇸🇰", EG: "🇪🇬", PO: "🇵🇱",
-        SERV: "🇷🇸", HUN: "🇭🇺", BE: "🇧🇪", FR: "🇫🇷", DE: "🇩🇪", LUX: "🇱🇺"
-      };
-      return flags[nationality] || "🌍";
-    };
+    ;
 
     const getCertificateStatus = (record: any) => {
       if (!record.certificate_valid_until) {

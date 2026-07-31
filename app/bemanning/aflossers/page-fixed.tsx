@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
@@ -66,14 +68,7 @@ export default function ReizenAflossersPage() {
   })
 
   // Helper functions
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      'NL': '🇳🇱', 'DE': '🇩🇪', 'PL': '🇵🇱', 'RO': '🇷🇴', 'BG': '🇧🇬',
-      'CZ': '🇨🇿', 'SLK': '🇸🇰', 'EG': '🇪🇬', 'SERV': '🇷🇸',
-      'HUN': '🇭🇺', 'FR': '🇫🇷', 'LUX': '🇱🇺', 'PO': '🇵🇱'
-    }
-    return flags[nationality] || '🏳️'
-  }
+  
 
   const getVasteDienstBalance = (aflosserId: string) => {
     const records = vasteDienstRecords.filter((record: any) => record.aflosser_id === aflosserId)
@@ -559,7 +554,7 @@ export default function ReizenAflossersPage() {
                           <h3 className="font-semibold text-gray-900">
                             {aflosser.first_name} {aflosser.last_name}
                           </h3>
-                          <p className="text-sm text-gray-600">{aflosser.nationality} {getNationalityFlag(aflosser.nationality)}</p>
+                          <p className="text-sm text-gray-600">{getNationalityFlag(aflosser.nationality)}</p>
                         </div>
                       </div>
 

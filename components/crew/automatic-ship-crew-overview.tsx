@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -80,21 +82,7 @@ export function AutomaticShipCrewOverview() {
     }
   }
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "��🇿",
-      SLK: "🇸🇰",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   return (
     <div className="space-y-6">

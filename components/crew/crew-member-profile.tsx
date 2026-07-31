@@ -36,18 +36,18 @@ const POSITION_OPTIONS = [
 ]
 
 const NATIONALITY_OPTIONS = [
-  { value: "NL", label: "🇳🇱 Nederlands" },
-  { value: "CZ", label: "🇨🇿 Tsjechisch" },
-  { value: "SLK", label: "🇸🇰 Slowaaks" },
-  { value: "EG", label: "🇪🇬 Egyptisch" },
-  { value: "PO", label: "🇵🇱 Pools" },
-  { value: "SERV", label: "🇷🇸 Servisch" },
-  { value: "HUN", label: "🇭🇺 Hongaars" },
-  { value: "BE", label: "🇧🇪 Belgisch" },
-  { value: "FR", label: "🇫🇷 Frans" },
-  { value: "DE", label: "🇩🇪 Duits" },
-  { value: "LUX", label: "🇱🇺 Luxemburgs" },
-  { value: "RO", label: "🇷🇴 Roemeens" }
+  { value: "NL", label: "NL Nederlands" },
+  { value: "CZ", label: "CZ Tsjechisch" },
+  { value: "SLK", label: "SLK Slowaaks" },
+  { value: "EG", label: "EG Egyptisch" },
+  { value: "PO", label: "PO Pools" },
+  { value: "SERV", label: "SERV Servisch" },
+  { value: "HUN", label: "HUN Hongaars" },
+  { value: "BE", label: "BE Belgisch" },
+  { value: "FR", label: "FR Frans" },
+  { value: "DE", label: "DE Duits" },
+  { value: "LUX", label: "LUX Luxemburgs" },
+  { value: "RO", label: "RO Roemeens" }
 ]
 
 const REGIME_OPTIONS = ["1/1", "2/2", "3/3"]
@@ -374,22 +374,7 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
 
   const getShipName = (shipId: string) => resolveShipDisplayName(shipId, ships)
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1357,7 +1342,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         </CardContent>
       </Card>
 
-
     <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
       <DialogContent>
         <DialogHeader>
@@ -1493,7 +1477,6 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
         </DialogFooter>
       </DialogContent>
     </Dialog>
-
 
     </div>
   )

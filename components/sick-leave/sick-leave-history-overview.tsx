@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -21,22 +23,7 @@ export function SickLeaveHistoryOverview() {
     .filter((record) => record.crewMember && record.crewMember.status !== "uit-dienst")
     .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getStandBackStatusColor = (status: string) => {
     switch (status) {

@@ -191,7 +191,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                     }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
                   >
-                    🇳🇱 Nederlands
+                    NL Nederlands
                   </button>
                   <button
                     onClick={() => {
@@ -200,7 +200,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                     }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
                   >
-                    🇩🇪 Deutsch
+                    DE Deutsch
                   </button>
                 </div>
               </PopoverContent>

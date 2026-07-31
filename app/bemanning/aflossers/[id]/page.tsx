@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { useSupabaseData, calculateWorkDaysVasteDienst } from "@/hooks/use-supabase-data"
@@ -960,22 +962,7 @@ export default function AflosserDetailPage() {
     (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
   )
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getShipName = (shipId: string) => {
     const ship = ships.find((s: any) => s.id === shipId)
@@ -1468,17 +1455,17 @@ export default function AflosserDetailPage() {
                         <SelectValue placeholder="Selecteer nationaliteit" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="NL">🇳🇱 Nederland</SelectItem>
-                        <SelectItem value="CZ">🇨🇿 Tsjechië</SelectItem>
-                        <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
-                        <SelectItem value="EG">🇪🇬 Egypte</SelectItem>
-                        <SelectItem value="PO">🇵🇱 Polen</SelectItem>
-                        <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
-                        <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
-                        <SelectItem value="BE">🇧🇪 België</SelectItem>
-                        <SelectItem value="FR">🇫🇷 Frankrijk</SelectItem>
-                        <SelectItem value="DE">🇩🇪 Duitsland</SelectItem>
-                        <SelectItem value="LUX">🇱🇺 Luxemburg</SelectItem>
+                        <SelectItem value="NL">NL Nederland</SelectItem>
+                        <SelectItem value="CZ">CZ Tsjechië</SelectItem>
+                        <SelectItem value="SLK">SLK Slowakije</SelectItem>
+                        <SelectItem value="EG">EG Egypte</SelectItem>
+                        <SelectItem value="PO">PO Polen</SelectItem>
+                        <SelectItem value="SERV">SERV Servië</SelectItem>
+                        <SelectItem value="HUN">HUN Hongarije</SelectItem>
+                        <SelectItem value="BE">BE België</SelectItem>
+                        <SelectItem value="FR">FR Frankrijk</SelectItem>
+                        <SelectItem value="DE">DE Duitsland</SelectItem>
+                        <SelectItem value="LUX">LUX Luxemburg</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

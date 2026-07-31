@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { useState, useEffect } from "react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -268,13 +270,7 @@ export default function MedischeKeuringenPage() {
     }
   }
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱", CZ: "🇨🇿", SLK: "🇸🇰", EG: "🇪🇬", PO: "🇵🇱",
-      SERV: "🇷🇸", HUN: "🇭🇺", BE: "🇧🇪", FR: "🇫🇷", DE: "🇩🇪", LUX: "🇱🇺", RO: "🇷🇴"
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   if (!mounted) {
     return (

@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useLanguage } from "@/contexts/LanguageContext"
 import Link from "next/link"
@@ -94,22 +96,7 @@ export default function CrewOverviewPage() {
     }
   }, [crew])
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getShipName = (shipId: string) => {
     const ship = ships.find(s => s.id === shipId)

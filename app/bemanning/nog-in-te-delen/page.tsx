@@ -1,4 +1,6 @@
 "use client";
+
+import { getNationalityFlag } from "@/utils/nationality-display";
 import { useState, useEffect, useRef } from "react";
 import { useSupabaseData } from "@/hooks/use-supabase-data";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -415,22 +417,7 @@ export default function NogInTeDelenPage() {
   
   // Wachtlijst verwijderd op verzoek; er is geen aparte wachtlijstcategorie meer
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱",
-      CZ: "🇨🇿",
-      SLK: "🇸🇰",
-      EG: "🇪🇬",
-      PO: "🇵🇱",
-      SERV: "🇷🇸",
-      HUN: "🇭🇺",
-      BE: "🇧🇪",
-      FR: "🇫🇷",
-      DE: "🇩🇪",
-      LUX: "🇱🇺",
-    };
-    return flags[nationality] || "🌍";
-  };
+  ;
 
   // Helper functie om datum te formatteren naar DD-MM-YYYY
   const formatDate = (dateString: string) => {
@@ -489,7 +476,6 @@ export default function NogInTeDelenPage() {
     setSelectedMemberForContract(null);
   };
 
-
   const assignToShip = async () => {
     if (!selectedMember || !selectedShip || !onBoardDate) {
       alert("Vul alle velden in");
@@ -531,7 +517,6 @@ export default function NogInTeDelenPage() {
       alert("Selecteer een status");
       return;
     }
-
 
     try {
       const updates: any = {
@@ -1588,15 +1573,15 @@ export default function NogInTeDelenPage() {
                     <SelectValue placeholder="Selecteer nationaliteit" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NL">🇳🇱 Nederland</SelectItem>
-                    <SelectItem value="BE">🇧🇪 België</SelectItem>
-                    <SelectItem value="DE">🇩🇪 Duitsland</SelectItem>
-                    <SelectItem value="PO">🇵🇱 Polen</SelectItem>
-                    <SelectItem value="CZ">🇨🇿 Tsjechië</SelectItem>
-                    <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
-                    <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
-                    <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
-                    <SelectItem value="RO">🇷🇴 Roemenië</SelectItem>
+                    <SelectItem value="NL">NL Nederland</SelectItem>
+                    <SelectItem value="BE">BE België</SelectItem>
+                    <SelectItem value="DE">DE Duitsland</SelectItem>
+                    <SelectItem value="PO">PO Polen</SelectItem>
+                    <SelectItem value="CZ">CZ Tsjechië</SelectItem>
+                    <SelectItem value="SLK">SLK Slowakije</SelectItem>
+                    <SelectItem value="HUN">HUN Hongarije</SelectItem>
+                    <SelectItem value="SERV">SERV Servië</SelectItem>
+                    <SelectItem value="RO">RO Roemenië</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1779,7 +1764,6 @@ export default function NogInTeDelenPage() {
         </DialogContent>
       </Dialog>
 
-
       {/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1858,15 +1842,15 @@ export default function NogInTeDelenPage() {
                     <SelectValue placeholder="Selecteer nationaliteit" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NL">🇳🇱 Nederland</SelectItem>
-                    <SelectItem value="BE">🇧🇪 België</SelectItem>
-                    <SelectItem value="DE">🇩🇪 Duitsland</SelectItem>
-                    <SelectItem value="PO">🇵🇱 Polen</SelectItem>
-                    <SelectItem value="CZ">🇨🇿 Tsjechië</SelectItem>
-                    <SelectItem value="SLK">🇸🇰 Slowakije</SelectItem>
-                    <SelectItem value="HUN">🇭🇺 Hongarije</SelectItem>
-                    <SelectItem value="SERV">🇷🇸 Servië</SelectItem>
-                    <SelectItem value="RO">🇷🇴 Roemenië</SelectItem>
+                    <SelectItem value="NL">NL Nederland</SelectItem>
+                    <SelectItem value="BE">BE België</SelectItem>
+                    <SelectItem value="DE">DE Duitsland</SelectItem>
+                    <SelectItem value="PO">PO Polen</SelectItem>
+                    <SelectItem value="CZ">CZ Tsjechië</SelectItem>
+                    <SelectItem value="SLK">SLK Slowakije</SelectItem>
+                    <SelectItem value="HUN">HUN Hongarije</SelectItem>
+                    <SelectItem value="SERV">SERV Servië</SelectItem>
+                    <SelectItem value="RO">RO Roemenië</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2070,7 +2054,6 @@ export default function NogInTeDelenPage() {
               </Select>
             </div>
 
-
             <div className="bg-blue-50 p-3 rounded-lg">
               <p className="text-sm text-blue-800">
                 💡 <strong>Tip:</strong><br/>
@@ -2215,6 +2198,4 @@ export default function NogInTeDelenPage() {
     </div>
   );
 } 
-
-
 

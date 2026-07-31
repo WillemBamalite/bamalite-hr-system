@@ -594,18 +594,18 @@ export function NewCrewForm() {
                     <SelectValue placeholder="Selecteer nationaliteit" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NL">🇳🇱 Nederlands</SelectItem>
-                    <SelectItem value="CZ">🇨🇿 Tsjechisch</SelectItem>
-                    <SelectItem value="SLK">🇸🇰 Slowaaks</SelectItem>
-                    <SelectItem value="EG">🇪🇬 Egyptisch</SelectItem>
-                    <SelectItem value="PO">🇵🇱 Pools</SelectItem>
-                    <SelectItem value="SERV">🇷🇸 Servisch</SelectItem>
-                    <SelectItem value="HUN">🇭🇺 Hongaars</SelectItem>
-                    <SelectItem value="BE">🇧🇪 Belgisch</SelectItem>
-                    <SelectItem value="FR">🇫🇷 Frans</SelectItem>
-                    <SelectItem value="DE">🇩🇪 Duits</SelectItem>
-                    <SelectItem value="LUX">🇱🇺 Luxemburgs</SelectItem>
-                    <SelectItem value="RO">🇷🇴 Roemeens</SelectItem>
+                    <SelectItem value="NL">NL Nederlands</SelectItem>
+                    <SelectItem value="CZ">CZ Tsjechisch</SelectItem>
+                    <SelectItem value="SLK">SLK Slowaaks</SelectItem>
+                    <SelectItem value="EG">EG Egyptisch</SelectItem>
+                    <SelectItem value="PO">PO Pools</SelectItem>
+                    <SelectItem value="SERV">SERV Servisch</SelectItem>
+                    <SelectItem value="HUN">HUN Hongaars</SelectItem>
+                    <SelectItem value="BE">BE Belgisch</SelectItem>
+                    <SelectItem value="FR">FR Frans</SelectItem>
+                    <SelectItem value="DE">DE Duits</SelectItem>
+                    <SelectItem value="LUX">LUX Luxemburgs</SelectItem>
+                    <SelectItem value="RO">RO Roemeens</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

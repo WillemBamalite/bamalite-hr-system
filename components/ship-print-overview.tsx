@@ -1,5 +1,7 @@
 "use client"
 
+
+import { getNationalityFlag } from "@/utils/nationality-display"
 import { format } from "date-fns"
 import { nl } from "date-fns/locale"
 import { useState, useEffect } from "react"
@@ -75,13 +77,7 @@ export function ShipPrintOverview() {
     return acc
   }, {})
 
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      NL: "🇳🇱", CZ: "🇨🇿", SLK: "🇸🇰", EG: "🇪🇬", PO: "🇵🇱", 
-      SERV: "🇷🇸", HUN: "🇭🇺", BE: "🇧🇪", FR: "🇫🇷", DE: "🇩🇪", LUX: "🇱🇺"
-    }
-    return flags[nationality] || "🌍"
-  }
+  
 
   const getRotationDate = (crew: any) => {
     if (crew.assignmentHistory && Array.isArray(crew.assignmentHistory) && crew.assignmentHistory.length > 0) {

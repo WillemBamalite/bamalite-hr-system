@@ -209,14 +209,7 @@ export default function ReizenAflossersPage() {
   }
 
   // Helper functions
-  const getNationalityFlag = (nationality: string) => {
-    const flags: { [key: string]: string } = {
-      'NL': '🇳🇱', 'DE': '🇩🇪', 'PL': '🇵🇱', 'RO': '🇷🇴', 'BG': '🇧🇬',
-      'CZ': '🇨🇿', 'SLK': '🇸🇰', 'EG': '🇪🇬', 'SERV': '🇷🇸',
-      'HUN': '🇭🇺', 'FR': '🇫🇷', 'LUX': '🇱🇺', 'PO': '🇵🇱'
-    }
-    return flags[nationality] || '🏳️'
-  }
+  
 
   // Check if crew member is at home (beschikbaar)
   const isAtHome = (memberId: string) => {
