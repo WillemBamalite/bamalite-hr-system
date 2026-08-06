@@ -1700,10 +1700,16 @@ export function useSupabaseData() {
     return `${y}-${String(m + 1).padStart(2, '0')}`
   }
   const loanMaxYm = (a: string, b: string) => (a.localeCompare(b) >= 0 ? a : b)
-  const loanCurrentYm = () => {
+  const loanInstallmentCutoffYm = () => {
     const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    // Voor de 25e mag de huidige maand nog niet automatisch geboekt worden.
+    if (d.getDate() >= 25) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    }
+    const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1)
+    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
   }
+  const loanPaymentDateForYm = (ym: string) => `${ym}-25`
   const loanYmRangeInclusive = (from: string, to: string) => {
     if (from > to) return [] as string[]
     const out: string[] = []
@@ -1785,7 +1791,7 @@ export function useSupabaseData() {
     loanId: string,
     paymentAmount: number,
     note?: string,
-    opts?: { setInstallmentPeriodYm?: string; skipReload?: boolean }
+    opts?: { setInstallmentPeriodYm?: string; skipReload?: boolean; paymentDate?: string }
   ) => {
     try {
       console.log('Making payment for loan:', loanId, paymentAmount)
@@ -1808,7 +1814,7 @@ export function useSupabaseData() {
       
       // Create payment history entry
       const paymentEntry = {
-        date: new Date().toISOString(),
+        date: opts?.paymentDate || new Date().toISOString(),
         amount: paymentAmount,
         note: note || 'Betaling afgetekend',
         paidBy: 'User'
@@ -1849,7 +1855,8 @@ export function useSupabaseData() {
   }
 
   /**
-   * Boekt openstaande automatische termijnen (maandelijks of jaarlijks) t/m de huidige kalendermaand.
+   * Boekt openstaande automatische termijnen (maandelijks of jaarlijks) t/m cutoff-maand:
+   * vóór de 25e alleen t/m vorige maand, op/na de 25e inclusief huidige maand.
    * Aanroepen bij laden van de leningen-pagina (geen aparte server-cron nodig).
    */
   const applyPendingLoanInstallments = async () => {
@@ -1857,6 +1864,70 @@ export function useSupabaseData() {
     applyingLoanInstallmentsRef.current = true
     let changed = false
     try {
+    const now = new Date()
+    const isBeforeCutoff = now.getDate() < 25
+    const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+
+    // Correctiepad: vóór de 25e mogen automatische termijnen van de huidige maand nog niet geboekt zijn.
+    if (isBeforeCutoff) {
+      const { data: allAutoRows, error: allAutoError } = await supabase
+        .from("loans")
+        .select("*")
+        .eq("auto_installment_enabled", true)
+      if (allAutoError) {
+        console.warn("applyPendingLoanInstallments correction:", allAutoError)
+      } else {
+        for (const loan of allAutoRows || []) {
+          const periodType = ((loan.installment_period_type as string) || "month").toLowerCase()
+          const noteForCurrentYm = periodType === "year"
+            ? `Automatische jaartermijn (${todayYm})`
+            : `Automatische maandtermijn (${todayYm})`
+          const history = Array.isArray(loan.payment_history) ? loan.payment_history : []
+          const toRemove = history.filter((entry: any) => String(entry?.note || "").trim() === noteForCurrentYm)
+          if (toRemove.length === 0) continue
+
+          const removedTotal = Number(
+            toRemove
+              .reduce((sum: number, entry: any) => sum + Number(entry?.amount || 0), 0)
+              .toFixed(2)
+          )
+          const nextHistory = history.filter((entry: any) => String(entry?.note || "").trim() !== noteForCurrentYm)
+          const total = Number(loan.amount || 0)
+          const oldPaid = Number(loan.amount_paid || 0)
+          const nextPaid = Math.max(0, Number((oldPaid - removedTotal).toFixed(2)))
+          const nextRemaining = Math.max(0, Number((total - nextPaid).toFixed(2)))
+          const nextStatus = nextRemaining <= 0 ? "voltooid" : "open"
+
+          let nextLastInstallmentPeriod: string | null = null
+          for (const entry of nextHistory) {
+            const match = String(entry?.note || "").match(/\((\d{4}-\d{2})\)\s*$/)
+            if (!match) continue
+            const ym = match[1]
+            nextLastInstallmentPeriod = nextLastInstallmentPeriod
+              ? loanMaxYm(nextLastInstallmentPeriod, ym)
+              : ym
+          }
+
+          const { error: rollbackError } = await supabase
+            .from("loans")
+            .update({
+              amount_paid: nextPaid,
+              amount_remaining: nextRemaining,
+              status: nextStatus,
+              completed_at: nextStatus === "voltooid" ? loan.completed_at || new Date().toISOString() : null,
+              payment_history: nextHistory,
+              last_installment_period: nextLastInstallmentPeriod,
+            })
+            .eq("id", loan.id)
+          if (!rollbackError) {
+            changed = true
+          } else {
+            console.warn("applyPendingLoanInstallments rollback:", rollbackError)
+          }
+        }
+      }
+    }
+
     const { data: rows, error } = await supabase
       .from('loans')
       .select('*')
@@ -1866,7 +1937,7 @@ export function useSupabaseData() {
       console.warn('applyPendingLoanInstallments:', error)
       return
     }
-    const curYm = loanCurrentYm()
+    const curYm = loanInstallmentCutoffYm()
     for (const loan of rows || []) {
       const perPeriod = Number(loan.monthly_installment_amount)
       if (!Number.isFinite(perPeriod) || perPeriod <= 0) continue
@@ -1908,7 +1979,11 @@ export function useSupabaseData() {
         )
         if (remaining <= 0) break
         const pay = Math.min(perPeriod, remaining)
-        await makePayment(loan.id, pay, note, { setInstallmentPeriodYm: ym, skipReload: true })
+        await makePayment(loan.id, pay, note, {
+          setInstallmentPeriodYm: ym,
+          skipReload: true,
+          paymentDate: loanPaymentDateForYm(ym),
+        })
         changed = true
       }
     }

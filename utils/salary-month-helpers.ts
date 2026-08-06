@@ -270,9 +270,19 @@ export function applySickAdjustmentToSalary(
   const totalDaysInScope = Math.min(workedDaysInMonth ?? divisorDays, divisorDays)
   if (totalDaysInScope <= 0) return 0
 
+  // Ziekte-uitsplitsing kan kalenderdagen bevatten (31), maar salaris draait op divisor (meestal 30).
+  // Schaal ziektedagen terug naar de betaalbare scope zodat er nooit 31/30 ontstaat.
+  const sickScale =
+    breakdown.totalSickDays > totalDaysInScope
+      ? totalDaysInScope / breakdown.totalSickDays
+      : 1
+  const scaledDays80 = breakdown.days80 * sickScale
+  const scaledDays100 = breakdown.days100 * sickScale
+
   const daily = salaryForSickDaily / divisorDays
-  const healthyDays = Math.max(0, totalDaysInScope - breakdown.totalSickDays)
-  return healthyDays * daily + breakdown.days80 * daily * 0.8 + breakdown.days100 * daily
+  const effectiveSickDays = (scaledDays80 + scaledDays100)
+  const healthyDays = Math.max(0, totalDaysInScope - effectiveSickDays)
+  return healthyDays * daily + scaledDays80 * daily * 0.8 + scaledDays100 * daily
 }
 
 export function getTotalDeductionAmount(deductions: SalaryDeduction[]): number {

@@ -2355,13 +2355,14 @@ export default function LoonBemerkingenPage() {
       return companyRows.map((r) => {
         const m = crewById.get(String(r.crew_id))
         const name = m ? formatCrewName(m) : "Onbekend"
-        const { baseSalary, travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
+        const { baseSalary, clothingAmount, travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
         return {
           company,
           name,
           inService: formatDateShort(r.in_service_from),
           iban: r.iban || "",
           baseSalary,
+          clothing: clothingAmount,
           travel: formatTravelDisplay(r.travel_amount ?? 0),
           advance: r.advance_enabled ? `Ja (-${advanceAmount.toFixed(2)})` : "Nee",
           raise: r.raise_enabled ? `Ja (+${raiseAmount.toFixed(2)})` : "Nee",
@@ -2380,6 +2381,7 @@ export default function LoonBemerkingenPage() {
       "Datum in dienst",
       "IBAN",
       "Basissalaris excl. kledinggeld",
+      "Kledinggeld",
       "Reiskosten",
       "Voorschot",
       "Verhoging",
@@ -2399,6 +2401,7 @@ export default function LoonBemerkingenPage() {
           r.inService,
           r.iban,
           r.baseSalary.toFixed(2),
+          r.clothing.toFixed(2),
           r.travel,
           r.advance,
           r.raise,
@@ -2431,13 +2434,14 @@ export default function LoonBemerkingenPage() {
           .map((r) => {
             const m = crewById.get(String(r.crew_id))
             const name = m ? formatCrewName(m) : "Onbekend"
-            const { baseSalary, travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
+            const { baseSalary, clothingAmount, travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
             return `
               <tr>
                 <td>${escapeHtml(name)}</td>
                 <td>${escapeHtml(formatDateShort(r.in_service_from))}</td>
                 <td>${escapeHtml(r.iban || "")}</td>
                 <td class="num">${formatEuro(baseSalary)}</td>
+                <td class="num">${formatEuro(clothingAmount)}</td>
                 <td>${escapeHtml(formatTravelDisplay(r.travel_amount ?? 0))}</td>
                 <td>${r.advance_enabled ? `Ja (-${formatEuro(advanceAmount)})` : "Nee"}</td>
                 <td>${r.raise_enabled ? `Ja (+${formatEuro(raiseAmount)})` : "Nee"}</td>
@@ -2460,6 +2464,7 @@ export default function LoonBemerkingenPage() {
                   <th>Datum in dienst</th>
                   <th>IBAN</th>
                   <th>Basissalaris excl. kledinggeld</th>
+                  <th>Kledinggeld</th>
                   <th>Reiskosten</th>
                   <th>Voorschot</th>
                   <th>Verhoging</th>
@@ -3181,13 +3186,14 @@ export default function LoonBemerkingenPage() {
                 )}
 
                 <div className="overflow-x-auto rounded-md border border-slate-200">
-                  <table className="w-full min-w-[1700px] text-sm">
+                  <table className="w-full min-w-[1800px] text-sm">
                     <thead className="bg-slate-100">
                       <tr className="text-left">
                         <th className="px-3 py-2 text-base font-bold" rowSpan={2}>{isTanja ? "Name" : "Naam"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Eintrittsdatum" : "Datum in dienst"}</th>
                         <th className="px-3 py-2" rowSpan={2}>IBAN</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl. kledinggeld"}</th>
+                        <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Kleidungsgeld" : "Kledinggeld"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Reisekosten" : "Reiskosten"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Einbehalt" : "In te houden"}</th>
                         <th className="px-3 py-2" rowSpan={2}>{isTanja ? "Erhöhung" : "Verhoging"}</th>
@@ -3207,7 +3213,7 @@ export default function LoonBemerkingenPage() {
                       {(groupedByCompany[activeCompanyTab] || []).map((r: SalaryDraft) => {
                         const crewMember = crewById.get(String(r.crew_id))
                         const name = crewMember ? formatCrewName(crewMember) : "Onbekend"
-                        const { baseSalary, travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
+                        const { baseSalary, clothingAmount, travelAmount, advanceAmount, raiseAmount, teGoedDays, teGoedAmount, totalSalaryMonth } = getSalaryTotals(r)
                         return (
                           <tr
                             key={`${r.crew_id}-${r.month_key}`}
@@ -3222,6 +3228,7 @@ export default function LoonBemerkingenPage() {
                             <td className="px-3 py-2">{formatDateShort(r.in_service_from)}</td>
                             <td className="px-3 py-2">{r.iban || "-"}</td>
                             <td className="px-3 py-2">{formatCurrency(baseSalary)}</td>
+                            <td className="px-3 py-2">{formatCurrency(clothingAmount)}</td>
                             <td className="px-3 py-2">{formatTravelDisplay(r.travel_amount ?? 0, isTanja)}</td>
                             <td className="px-3 py-2">
                               {formatDeductionsDisplay(r) || (isTanja ? "Nein" : "Nee")}
