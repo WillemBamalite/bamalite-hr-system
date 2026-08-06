@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -129,9 +130,9 @@ const calculateAge = (birthDateRaw?: string | null): number | null => {
   return age >= 0 ? age : null
 }
 
-const formatStartDate = (member: any): string => {
-  const start = parseYmdFlexible(member?.expected_start_date || member?.in_dienst_vanaf)
-  return start ? format(start, "dd-MM-yyyy") : "Onbekend"
+const toDateInputValue = (raw?: string | null): string => {
+  const d = parseYmdFlexible(raw)
+  return d ? format(d, "yyyy-MM-dd") : ""
 }
 
 const normalizeRole = (position: string): CanonicalRole | null => {
@@ -210,12 +211,14 @@ function DashboardContent() {
   const [selectedNogInTeDelen, setSelectedNogInTeDelen] = useState<any | null>(null)
   const [newNogInTeDelenNote, setNewNogInTeDelenNote] = useState("")
   const [savingNogInTeDelenNote, setSavingNogInTeDelenNote] = useState(false)
+  const [savingNogInTeDelenDateId, setSavingNogInTeDelenDateId] = useState<string | null>(null)
+  const [nogInTeDelenDateDrafts, setNogInTeDelenDateDrafts] = useState<Record<string, string>>({})
   const { role, user } = useAuth()
   const { t } = useLanguage();
   const { toast } = useToast();
   
   // Gebruik Supabase data
-  const { ships, crew, sickLeave, incidents, tasks, loading, error, addNoteToCrew } = useSupabaseData()
+  const { ships, crew, sickLeave, incidents, tasks, loading, error, updateCrew } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
 
   // Check voor proeftijd aflopend (dag 70 = nog 20 dagen)
@@ -623,25 +626,65 @@ function DashboardContent() {
   }
 
   const handleSaveNogInTeDelenNote = async () => {
-    if (!selectedNogInTeDelen || !newNogInTeDelenNote.trim()) return
+    if (!selectedNogInTeDelen) return
     try {
       setSavingNogInTeDelenNote(true)
-      await addNoteToCrew(String(selectedNogInTeDelen.id), newNogInTeDelenNote.trim())
+      const note = newNogInTeDelenNote.trim() || null
+      await updateCrew(String(selectedNogInTeDelen.id), {
+        assignment_pool_note: note,
+      })
       setSelectedNogInTeDelen(null)
       setNewNogInTeDelenNote("")
       toast({
-        title: "Opmerking opgeslagen",
-        description: "De opmerking is toegevoegd aan het bemanningslid.",
+        title: note ? "Opmerking opgeslagen" : "Opmerking verwijderd",
+        description: note
+          ? "De opmerking is alleen zichtbaar op deze kaart."
+          : "De opmerking is van deze kaart verwijderd.",
       })
     } catch (error) {
       console.error("Fout bij opslaan opmerking:", error)
       toast({
         title: "Opslaan mislukt",
-        description: "Kon de opmerking niet opslaan.",
+        description: "Kon de opmerking niet opslaan. Is het databaseveld assignment_pool_note al aangemaakt?",
         variant: "destructive",
       })
     } finally {
       setSavingNogInTeDelenNote(false)
+    }
+  }
+
+  const handleSaveNogInTeDelenDate = async (memberId: string, value: string, previousValue: string) => {
+    const nextValue = value.trim()
+    const prevValue = previousValue.trim()
+    if (nextValue === prevValue) {
+      setNogInTeDelenDateDrafts((prev) => {
+        const copy = { ...prev }
+        delete copy[memberId]
+        return copy
+      })
+      return
+    }
+    // Alleen opslaan als leeg of een complete yyyy-mm-dd datum.
+    if (nextValue && !/^\d{4}-\d{2}-\d{2}$/.test(nextValue)) return
+    try {
+      setSavingNogInTeDelenDateId(memberId)
+      await updateCrew(memberId, {
+        expected_start_date: nextValue || null,
+      })
+      setNogInTeDelenDateDrafts((prev) => {
+        const copy = { ...prev }
+        delete copy[memberId]
+        return copy
+      })
+    } catch (error) {
+      console.error("Fout bij opslaan in-te-delen-datum:", error)
+      toast({
+        title: "Datum opslaan mislukt",
+        description: "Kon de 'in te delen voor'-datum niet opslaan.",
+        variant: "destructive",
+      })
+    } finally {
+      setSavingNogInTeDelenDateId(null)
     }
   }
 
@@ -753,6 +796,7 @@ function DashboardContent() {
                   const name = `${member.first_name || ""} ${member.last_name || ""}`.trim() || "Onbekend"
                   const age = calculateAge(member.birth_date)
                   const isSick = String(member?.pool_availability_status || "").toLowerCase() === "ziek"
+                  const poolNote = String(member?.assignment_pool_note || "").trim()
                   return (
                     <Card
                       key={member.id}
@@ -761,7 +805,7 @@ function DashboardContent() {
                       }`}
                       onDoubleClick={() => {
                         setSelectedNogInTeDelen(member)
-                        setNewNogInTeDelenNote("")
+                        setNewNogInTeDelenNote(String(member?.assignment_pool_note || ""))
                       }}
                     >
                       <CardContent className="p-4">
@@ -777,8 +821,44 @@ function DashboardContent() {
                           <div><span className="text-gray-500">Nationaliteit:</span> {getNationalityFlag(member.nationality)}</div>
                           <div><span className="text-gray-500">Leeftijd:</span> {age !== null ? `${age} jaar` : "Onbekend"}</div>
                           <div><span className="text-gray-500">Functie:</span> {member.position || "Onbekend"}</div>
-                          <div><span className="text-gray-500">Startdatum:</span> {formatStartDate(member)}</div>
+                          <div
+                            className="flex items-center gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="text-gray-500 shrink-0">In te delen voor:</span>
+                            <Input
+                              type="date"
+                              className="h-8 max-w-[160px] bg-white"
+                              value={
+                                nogInTeDelenDateDrafts[String(member.id)] ??
+                                toDateInputValue(member.expected_start_date)
+                              }
+                              disabled={savingNogInTeDelenDateId === String(member.id)}
+                              onChange={(e) => {
+                                const memberId = String(member.id)
+                                setNogInTeDelenDateDrafts((prev) => ({
+                                  ...prev,
+                                  [memberId]: e.target.value,
+                                }))
+                              }}
+                              onBlur={(e) => {
+                                const memberId = String(member.id)
+                                const previous = toDateInputValue(member.expected_start_date)
+                                const draft =
+                                  nogInTeDelenDateDrafts[memberId] ?? e.target.value ?? previous
+                                void handleSaveNogInTeDelenDate(memberId, draft, previous)
+                              }}
+                            />
+                          </div>
                         </div>
+
+                        {poolNote && (
+                          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-950">
+                            <div className="font-medium text-amber-800 mb-0.5">Opmerking</div>
+                            <p className="leading-snug whitespace-pre-wrap">{poolNote}</p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   )
@@ -798,10 +878,10 @@ function DashboardContent() {
           >
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Opmerking toevoegen</DialogTitle>
+                <DialogTitle>Opmerking</DialogTitle>
                 <DialogDescription>
                   {selectedNogInTeDelen
-                    ? `Voor ${selectedNogInTeDelen.first_name || ""} ${selectedNogInTeDelen.last_name || ""}`
+                    ? `Alleen voor de nog-in-te-delen kaart van ${selectedNogInTeDelen.first_name || ""} ${selectedNogInTeDelen.last_name || ""}. Leeg opslaan verwijdert de opmerking.`
                     : "Voeg een opmerking toe."}
                 </DialogDescription>
               </DialogHeader>
@@ -828,7 +908,7 @@ function DashboardContent() {
                 <Button
                   type="button"
                   onClick={handleSaveNogInTeDelenNote}
-                  disabled={savingNogInTeDelenNote || !newNogInTeDelenNote.trim()}
+                  disabled={savingNogInTeDelenNote}
                 >
                   {savingNogInTeDelenNote ? "Opslaan..." : "Opslaan"}
                 </Button>

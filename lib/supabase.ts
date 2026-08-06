@@ -65,6 +65,7 @@ export interface Crew {
   assignment_history: any[]
   diplomas: string[]
   notes: any[]
+  assignment_pool_note?: string | null
   created_at: string
   updated_at: string
 }
