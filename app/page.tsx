@@ -4,6 +4,15 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Ship, Users, CheckCircle, Clock, UserX, Cake, AlertTriangle, AlertCircle, Award, Mail, CheckCircle2 } from "lucide-react"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { ShipOverview } from "@/components/ship-overview"
@@ -20,7 +29,8 @@ import { format, isToday, isPast, startOfDay } from "date-fns"
 import Link from "next/link"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { isTaskOfficeUser } from "@/utils/task-permissions"
-import { isActiveForCelebrations } from "@/utils/crew-filters"
+import { isActiveForCelebrations, isExcludedFromAssignmentPool } from "@/utils/crew-filters"
+import { getNationalityFlag } from "@/utils/nationality-display"
 
 type SailingRegime = "A1" | "A2" | "B"
 type CanonicalRole =
@@ -107,6 +117,23 @@ const addDays = (base: Date, days: number): Date => {
 const formatDateNl = (date: Date): string =>
   `${String(date.getDate()).padStart(2, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${date.getFullYear()}`
 
+const calculateAge = (birthDateRaw?: string | null): number | null => {
+  const birth = parseYmdFlexible(birthDateRaw)
+  if (!birth) return null
+  const now = new Date()
+  let age = now.getFullYear() - birth.getFullYear()
+  const beforeBirthday =
+    now.getMonth() < birth.getMonth() ||
+    (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())
+  if (beforeBirthday) age -= 1
+  return age >= 0 ? age : null
+}
+
+const formatStartDate = (member: any): string => {
+  const start = parseYmdFlexible(member?.expected_start_date || member?.in_dienst_vanaf)
+  return start ? format(start, "dd-MM-yyyy") : "Onbekend"
+}
+
 const normalizeRole = (position: string): CanonicalRole | null => {
   const p = String(position || "").trim().toLowerCase()
   if (p === "schipper" || p === "kapitein") return "schipper"
@@ -180,12 +207,15 @@ export default function Dashboard() {
 function DashboardContent() {
   const [mounted, setMounted] = useState(false);
   const [expandedShortageShipId, setExpandedShortageShipId] = useState<string | null>(null)
+  const [selectedNogInTeDelen, setSelectedNogInTeDelen] = useState<any | null>(null)
+  const [newNogInTeDelenNote, setNewNogInTeDelenNote] = useState("")
+  const [savingNogInTeDelenNote, setSavingNogInTeDelenNote] = useState(false)
   const { role, user } = useAuth()
   const { t } = useLanguage();
   const { toast } = useToast();
   
   // Gebruik Supabase data
-  const { ships, crew, sickLeave, incidents, tasks, loading, error, loadData } = useSupabaseData()
+  const { ships, crew, sickLeave, incidents, tasks, loading, error, addNoteToCrew } = useSupabaseData()
   const { getShipsNotVisitedInDays, visits } = useShipVisits()
 
   // Check voor proeftijd aflopend (dag 70 = nog 20 dagen)
@@ -519,6 +549,39 @@ function DashboardContent() {
       })
   }, [ships, crew, sickLeave])
 
+  const userEmailLower = String(user?.email || "").toLowerCase()
+  const isNewsletterReadonlyUser = userEmailLower === "dunja@bamalite.com"
+  const showQuickActions =
+    role === "admin_full" || (isTaskOfficeUser(userEmailLower) && !isNewsletterReadonlyUser)
+
+  const nogInTeDelenCrew = useMemo(() => {
+    const hasShip = (member: any) =>
+      !!member?.ship_id &&
+      member.ship_id !== "none" &&
+      member.ship_id !== "" &&
+      member.ship_id !== null
+
+    const rank = (member: any) => {
+      const s = member?.pool_availability_status
+      if (s === "ziek") return 1
+      if (s === "afwezig") return 2
+      return 0 // nog in te delen (groen) eerst
+    }
+
+    return (crew || [])
+      .filter((m: any) => m)
+      .filter((m: any) => !isExcludedFromAssignmentPool(m))
+      .filter((m: any) => String(m.recruitment_status || "").toLowerCase() === "aangenomen")
+      .filter((m: any) => !hasShip(m))
+      .sort((a: any, b: any) => {
+        const rankDiff = rank(a) - rank(b)
+        if (rankDiff !== 0) return rankDiff
+        const aName = `${a?.last_name || ""} ${a?.first_name || ""}`.trim().toLowerCase()
+        const bName = `${b?.last_name || ""} ${b?.first_name || ""}`.trim().toLowerCase()
+        return aName.localeCompare(bName, "nl")
+      })
+  }, [crew])
+
   // Meldingen staan nu op de pagina /meldingen (en in de header-bel).
 
   // Prevent hydration errors
@@ -559,10 +622,28 @@ function DashboardContent() {
     );
   }
 
-  const userEmailLower = String(user?.email || "").toLowerCase()
-  const isNewsletterReadonlyUser = userEmailLower === "dunja@bamalite.com"
-  const showQuickActions =
-    role === "admin_full" || (isTaskOfficeUser(userEmailLower) && !isNewsletterReadonlyUser)
+  const handleSaveNogInTeDelenNote = async () => {
+    if (!selectedNogInTeDelen || !newNogInTeDelenNote.trim()) return
+    try {
+      setSavingNogInTeDelenNote(true)
+      await addNoteToCrew(String(selectedNogInTeDelen.id), newNogInTeDelenNote.trim())
+      setSelectedNogInTeDelen(null)
+      setNewNogInTeDelenNote("")
+      toast({
+        title: "Opmerking opgeslagen",
+        description: "De opmerking is toegevoegd aan het bemanningslid.",
+      })
+    } catch (error) {
+      console.error("Fout bij opslaan opmerking:", error)
+      toast({
+        title: "Opslaan mislukt",
+        description: "Kon de opmerking niet opslaan.",
+        variant: "destructive",
+      })
+    } finally {
+      setSavingNogInTeDelenNote(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -650,6 +731,110 @@ function DashboardContent() {
               </div>
             )}
           </div>}
+
+          {/* Nog in te delen bemanning */}
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Nog in te delen bemanning</h3>
+              <Badge className="bg-blue-100 text-blue-800 border border-blue-200">
+                {nogInTeDelenCrew.length} persoon{nogInTeDelenCrew.length === 1 ? "" : "en"}
+              </Badge>
+            </div>
+
+            {nogInTeDelenCrew.length === 0 ? (
+              <Card>
+                <CardContent className="p-4 text-sm text-gray-600">
+                  Geen bemanning met status "nog in te delen".
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {nogInTeDelenCrew.map((member: any) => {
+                  const name = `${member.first_name || ""} ${member.last_name || ""}`.trim() || "Onbekend"
+                  const age = calculateAge(member.birth_date)
+                  const isSick = String(member?.pool_availability_status || "").toLowerCase() === "ziek"
+                  return (
+                    <Card
+                      key={member.id}
+                      className={`hover:shadow-md transition-shadow cursor-pointer ${
+                        isSick ? "border-red-300 bg-red-50/40" : "border-blue-200 bg-blue-50/40"
+                      }`}
+                      onDoubleClick={() => {
+                        setSelectedNogInTeDelen(member)
+                        setNewNogInTeDelenNote("")
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-gray-900 truncate">{name}</div>
+                            <div className="text-xs text-gray-600 mt-1">Dubbelklik voor opmerking</div>
+                          </div>
+                          <Users className={`w-4 h-4 shrink-0 mt-0.5 ${isSick ? "text-red-600" : "text-blue-600"}`} />
+                        </div>
+
+                        <div className="mt-3 space-y-1 text-sm text-gray-700">
+                          <div><span className="text-gray-500">Nationaliteit:</span> {getNationalityFlag(member.nationality)}</div>
+                          <div><span className="text-gray-500">Leeftijd:</span> {age !== null ? `${age} jaar` : "Onbekend"}</div>
+                          <div><span className="text-gray-500">Functie:</span> {member.position || "Onbekend"}</div>
+                          <div><span className="text-gray-500">Startdatum:</span> {formatStartDate(member)}</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <Dialog
+            open={!!selectedNogInTeDelen}
+            onOpenChange={(open) => {
+              if (!open) {
+                setSelectedNogInTeDelen(null)
+                setNewNogInTeDelenNote("")
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Opmerking toevoegen</DialogTitle>
+                <DialogDescription>
+                  {selectedNogInTeDelen
+                    ? `Voor ${selectedNogInTeDelen.first_name || ""} ${selectedNogInTeDelen.last_name || ""}`
+                    : "Voeg een opmerking toe."}
+                </DialogDescription>
+              </DialogHeader>
+
+              <Textarea
+                placeholder="Schrijf hier je opmerking..."
+                value={newNogInTeDelenNote}
+                onChange={(e) => setNewNogInTeDelenNote(e.target.value)}
+                className="min-h-[120px]"
+              />
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedNogInTeDelen(null)
+                    setNewNogInTeDelenNote("")
+                  }}
+                  disabled={savingNogInTeDelenNote}
+                >
+                  Annuleren
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveNogInTeDelenNote}
+                  disabled={savingNogInTeDelenNote || !newNogInTeDelenNote.trim()}
+                >
+                  {savingNogInTeDelenNote ? "Opslaan..." : "Opslaan"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Schepen overzicht */}
           <ShipOverview />
