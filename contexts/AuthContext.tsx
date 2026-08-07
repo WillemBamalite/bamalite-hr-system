@@ -39,6 +39,7 @@ const NEWSLETTER_READONLY_EMAILS = new Set([
 const LIMITED_ALLOWED_EXACT = new Set([
   "/",
   "/schepen/overzicht",
+  "/schepen/klad",
   "/bemanning/overzicht",
   "/ziekte",
   "/ziekte-history",
@@ -50,6 +51,7 @@ const LIMITED_ALLOWED_EXACT = new Set([
 
 const LIMITED_ALLOWED_PREFIXES = [
   "/schepen/overzicht",
+  "/schepen/klad",
   "/ziekte",
   "/bemanning/leningen",
   "/firma-wisseling",

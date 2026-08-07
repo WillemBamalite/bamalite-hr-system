@@ -1,8 +1,10 @@
 "use client"
 
+import Link from "next/link"
 import { ShipOverview } from "@/components/ship-overview"
 import { DashboardButton } from "@/components/ui/dashboard-button"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
+import { Button } from "@/components/ui/button"
 
 export default function SchepenOverzichtPage() {
   return (
@@ -13,7 +15,12 @@ export default function SchepenOverzichtPage() {
             <h2 className="text-2xl font-bold text-gray-900">Schepen Overzicht</h2>
             <p className="text-gray-600">Overzicht van alle schepen</p>
           </div>
-          <DashboardButton />
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" asChild>
+              <Link href="/schepen/klad">Schepen klad</Link>
+            </Button>
+            <DashboardButton />
+          </div>
         </div>
 
         <ShipOverview />
