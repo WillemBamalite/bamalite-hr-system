@@ -283,7 +283,6 @@ function pruneDates(
   const next: Record<string, string> = {}
   for (const [id, date] of Object.entries(dates)) {
     if (!placements[id]) continue
-    if (placements[id].shipId === UNASSIGNED_KEY) continue
     next[id] = date
   }
   return next
@@ -314,6 +313,7 @@ function todayInputValue(): string {
 function CrewScratchCard({
   member,
   moved,
+  isUnassigned,
   onBoardFrom,
   healthOverride,
   ships,
@@ -324,6 +324,7 @@ function CrewScratchCard({
 }: {
   member: any
   moved: boolean
+  isUnassigned: boolean
   onBoardFrom?: string | null
   healthOverride?: KladHealthOverride | null
   ships: any[]
@@ -338,6 +339,7 @@ function CrewScratchCard({
   const isSick = isSickInKlad(member, healthOverridesForCheck)
   const crewId = String(member.id)
   const dateLabel = formatOnBoardFrom(onBoardFrom)
+  const dateCaption = isUnassigned ? "In te delen voor" : "Aan boord vanaf"
 
   const shipsByCompany = useMemo(() => {
     const groups: Record<string, any[]> = {}
@@ -362,16 +364,12 @@ function CrewScratchCard({
           onDragEnd={() => onDragStart("")}
           onDoubleClick={(e) => {
             e.stopPropagation()
-            if (moved) onEditOnBoardFrom(crewId)
+            onEditOnBoardFrom(crewId)
           }}
           className={`cursor-grab active:cursor-grabbing rounded border bg-white px-2 py-1.5 shadow-sm select-none ${
             moved ? "border-amber-400 ring-1 ring-amber-200" : "border-slate-200"
           } ${isSick ? "bg-red-50/70" : ""}`}
-          title={
-            moved
-              ? "Dubbelklik voor aan boord vanaf-datum · rechtermuisklik om te verplaatsen"
-              : "Sleep of rechtermuisklik om te verplaatsen"
-          }
+          title={`Dubbelklik voor ${dateCaption.toLowerCase()}-datum · rechtermuisklik om te verplaatsen`}
         >
           <div className="min-w-0">
             <div className="truncate text-[13px] font-semibold leading-tight text-slate-900">
@@ -383,9 +381,9 @@ function CrewScratchCard({
             {healthOverride === "ziek" && (
               <div className="mt-1 text-[10px] font-medium text-red-700">Ziek (klad)</div>
             )}
-            {moved && dateLabel && (
+            {dateLabel && (
               <div className="mt-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
-                Aan boord vanaf {dateLabel}
+                {dateCaption} {dateLabel}
               </div>
             )}
           </div>
@@ -539,6 +537,7 @@ function DropZone({
               key={member.id}
               member={member}
               moved={!placementsEqual(placements[String(member.id)], originals[String(member.id)])}
+              isUnassigned={false}
               onBoardFrom={onBoardFromDates[String(member.id)]}
               healthOverride={healthOverrides[String(member.id)]}
               ships={ships}
@@ -701,21 +700,10 @@ export default function SchepenKladPage() {
 
   const applyPlacement = useCallback((crewId: string, nextPlacement: Placement) => {
     if (!crewById.has(crewId)) return
-
     setPlacements((prev) => ({
       ...prev,
       [crewId]: nextPlacement,
     }))
-
-    if (nextPlacement.shipId === UNASSIGNED_KEY) {
-      setOnBoardFromDates((prev) => {
-        if (!(crewId in prev)) return prev
-        const copy = { ...prev }
-        delete copy[crewId]
-        return copy
-      })
-      setDateDialog(null)
-    }
   }, [crewById])
 
   const setHealthOverride = useCallback((crewId: string, health: KladHealthOverride) => {
@@ -730,16 +718,9 @@ export default function SchepenKladPage() {
         ...prev,
         [crewId]: { shipId: UNASSIGNED_KEY, column: "thuis" },
       }))
-      setOnBoardFromDates((prev) => {
-        if (!(crewId in prev)) return prev
-        const copy = { ...prev }
-        delete copy[crewId]
-        return copy
-      })
       setDateDialog(null)
-      return
     }
-    // beter: blijft in nog-in-te-delen (buiten het zieken-mapje)
+    // beter: blijft in nog-in-te-delen (buiten het zieken-mapje); datum mag blijven
   }, [crewById])
 
   const unassignedMembers = useMemo(() => membersFor(UNASSIGNED_KEY), [membersFor])
@@ -786,13 +767,22 @@ export default function SchepenKladPage() {
   }
 
   const dateDialogMember = dateDialog ? crewById.get(dateDialog.crewId) : null
+  const dateDialogPlacement = dateDialog ? placements[dateDialog.crewId] : null
+  const dateDialogIsUnassigned =
+    !dateDialogPlacement || dateDialogPlacement.shipId === UNASSIGNED_KEY
   const dateDialogShipName = (() => {
-    if (!dateDialog) return ""
-    const placement = placements[dateDialog.crewId]
-    if (!placement || placement.shipId === UNASSIGNED_KEY) return ""
-    const ship = realShips.find((s: any) => String(s.id) === placement.shipId)
+    if (!dateDialog || dateDialogIsUnassigned) return ""
+    const ship = realShips.find((s: any) => String(s.id) === dateDialogPlacement.shipId)
     return ship?.name || "schip"
   })()
+  const dateDialogTitle = dateDialogIsUnassigned ? "In te delen voor" : "Aan boord vanaf"
+  const dateDialogDescription = dateDialogMember
+    ? dateDialogIsUnassigned
+      ? `Wanneer moet ${memberName(dateDialogMember)} ingedeeld worden?`
+      : `Vanaf wanneer komt ${memberName(dateDialogMember)}${
+          dateDialogShipName ? ` op ${dateDialogShipName}` : ""
+        }?`
+    : "Kies de datum."
 
   if (loading) {
     return (
@@ -830,8 +820,8 @@ export default function SchepenKladPage() {
             )}
           </div>
           <p className="text-[11px] text-slate-500">
-            Sleep of rechtermuisklik → verplaatsen. Dubbelklik op verplaatste kaart → aan boord
-            vanaf. Klad blijft bewaard in deze browser.
+            Sleep of rechtermuisklik → verplaatsen. Dubbelklik → datum (in te delen voor / aan boord
+            vanaf). Klad blijft bewaard in deze browser.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -887,6 +877,7 @@ export default function SchepenKladPage() {
                   key={member.id}
                   member={member}
                   moved={!placementsEqual(placements[String(member.id)], originals[String(member.id)])}
+                  isUnassigned
                   onBoardFrom={onBoardFromDates[String(member.id)]}
                   healthOverride={healthOverrides[String(member.id)]}
                   ships={realShips}
@@ -929,6 +920,7 @@ export default function SchepenKladPage() {
                       key={member.id}
                       member={member}
                       moved={!placementsEqual(placements[String(member.id)], originals[String(member.id)])}
+                      isUnassigned
                       onBoardFrom={onBoardFromDates[String(member.id)]}
                       healthOverride={healthOverrides[String(member.id)]}
                       ships={realShips}
@@ -1050,14 +1042,8 @@ export default function SchepenKladPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Aan boord vanaf</DialogTitle>
-            <DialogDescription>
-              {dateDialogMember
-                ? `Vanaf wanneer komt ${memberName(dateDialogMember)}${
-                    dateDialogShipName ? ` op ${dateDialogShipName}` : ""
-                  }?`
-                : "Kies de datum."}
-            </DialogDescription>
+            <DialogTitle>{dateDialogTitle}</DialogTitle>
+            <DialogDescription>{dateDialogDescription}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
             <Label htmlFor="on-board-from">Datum</Label>
