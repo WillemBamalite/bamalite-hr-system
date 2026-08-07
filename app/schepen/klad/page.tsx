@@ -34,7 +34,7 @@ import {
   calculateCurrentStatus,
   isLocalDateAfterToday,
 } from "@/utils/regime-calculator"
-import { CheckCircle, Clock, Maximize2, RotateCcw, Ship, UserX, X } from "lucide-react"
+import { CheckCircle, ChevronDown, ChevronRight, Clock, Maximize2, RotateCcw, Ship, UserX, X } from "lucide-react"
 
 const UNASSIGNED_KEY = "__unassigned__"
 
@@ -565,6 +565,7 @@ export default function SchepenKladPage() {
   const [overKey, setOverKey] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
   const [kladSavedAt, setKladSavedAt] = useState<string | null>(null)
+  const [sickFolderOpen, setSickFolderOpen] = useState(false)
 
   const eligibleCrew = useMemo(
     () => (crew || []).filter((m: any) => isEligibleKladCrew(m)),
@@ -723,26 +724,37 @@ export default function SchepenKladPage() {
       ...prev,
       [crewId]: health,
     }))
-    setPlacements((prev) => {
-      const current = prev[crewId]
-      if (!current) return prev
-      if (health === "ziek") {
-        if (current.shipId === UNASSIGNED_KEY || current.column === "afwezig") return prev
-        return {
-          ...prev,
-          [crewId]: { ...current, column: "afwezig" },
-        }
-      }
-      // beter
-      if (current.shipId !== UNASSIGNED_KEY && current.column === "afwezig") {
-        return {
-          ...prev,
-          [crewId]: { ...current, column: "thuis" },
-        }
-      }
-      return prev
-    })
+    if (health === "ziek") {
+      // Zieken parkeren in het zieken-mapje (nog-in-te-delen pool, apart).
+      setPlacements((prev) => ({
+        ...prev,
+        [crewId]: { shipId: UNASSIGNED_KEY, column: "thuis" },
+      }))
+      setOnBoardFromDates((prev) => {
+        if (!(crewId in prev)) return prev
+        const copy = { ...prev }
+        delete copy[crewId]
+        return copy
+      })
+      setDateDialog(null)
+      return
+    }
+    // beter: blijft in nog-in-te-delen (buiten het zieken-mapje)
   }, [crewById])
+
+  const unassignedMembers = useMemo(() => membersFor(UNASSIGNED_KEY), [membersFor])
+  const unassignedAvailable = useMemo(
+    () => unassignedMembers.filter((m: any) => !isSickInKlad(m, healthOverrides)),
+    [unassignedMembers, healthOverrides]
+  )
+  const unassignedSick = useMemo(
+    () =>
+      sortUnassignedPool(
+        unassignedMembers.filter((m: any) => isSickInKlad(m, healthOverrides)),
+        healthOverrides
+      ),
+    [unassignedMembers, healthOverrides]
+  )
 
   const saveOnBoardFromDate = () => {
     if (!dateDialog?.crewId) return
@@ -847,7 +859,7 @@ export default function SchepenKladPage() {
           <div className="mb-1 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Nog in te delen</h2>
             <Badge variant="outline" className="text-[10px]">
-              {membersFor(UNASSIGNED_KEY).length}
+              {unassignedAvailable.length}
             </Badge>
           </div>
           <div
@@ -867,10 +879,10 @@ export default function SchepenKladPage() {
               handleDrop(UNASSIGNED_KEY, e.dataTransfer.getData("text/plain") || undefined)
             }}
           >
-            {membersFor(UNASSIGNED_KEY).length === 0 ? (
+            {unassignedAvailable.length === 0 ? (
               <div className="px-1 py-6 text-center text-[11px] text-slate-400">Sleep hierheen</div>
             ) : (
-              sortUnassignedPool(membersFor(UNASSIGNED_KEY), healthOverrides).map((member) => (
+              sortByRank(unassignedAvailable).map((member) => (
                 <CrewScratchCard
                   key={member.id}
                   member={member}
@@ -884,6 +896,50 @@ export default function SchepenKladPage() {
                   onSetHealth={setHealthOverride}
                 />
               ))
+            )}
+          </div>
+
+          <div className="mt-2 shrink-0 rounded-md border border-red-200 bg-red-50/40">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+              onClick={() => setSickFolderOpen((open) => !open)}
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-red-800">
+                {sickFolderOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+                Zieken
+              </span>
+              <Badge className="bg-red-100 text-red-800 border border-red-200 text-[10px]">
+                {unassignedSick.length}
+              </Badge>
+            </button>
+            {sickFolderOpen && (
+              <div className="max-h-[40vh] space-y-1.5 overflow-y-auto border-t border-red-200 p-1.5">
+                {unassignedSick.length === 0 ? (
+                  <div className="px-1 py-3 text-center text-[11px] text-red-400">
+                    Geen zieken in het klad
+                  </div>
+                ) : (
+                  unassignedSick.map((member) => (
+                    <CrewScratchCard
+                      key={member.id}
+                      member={member}
+                      moved={!placementsEqual(placements[String(member.id)], originals[String(member.id)])}
+                      onBoardFrom={onBoardFromDates[String(member.id)]}
+                      healthOverride={healthOverrides[String(member.id)]}
+                      ships={realShips}
+                      onDragStart={handleDragStartCard}
+                      onMove={applyPlacement}
+                      onEditOnBoardFrom={openOnBoardFromDialog}
+                      onSetHealth={setHealthOverride}
+                    />
+                  ))
+                )}
+              </div>
             )}
           </div>
         </aside>
