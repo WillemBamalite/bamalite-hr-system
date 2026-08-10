@@ -451,7 +451,8 @@ export default function ZiektePage() {
           status: "thuis",
           expected_start_date: recoveryDate, // Wacht tot deze datum om aan boord te gaan
           on_board_since: null, // Nog niet aan boord
-          thuis_sinds: today.toISOString().split('T')[0] // Thuis vanaf vandaag
+          thuis_sinds: today.toISOString().split('T')[0], // Thuis vanaf vandaag
+          pool_availability_status: null,
         })
       } else {
         // Terugkeerdatum vandaag of in het verleden: persoon gaat direct aan boord
@@ -460,7 +461,8 @@ export default function ZiektePage() {
           status: "thuis",
           on_board_since: recoveryDate, // Vanaf deze datum start de rotatie
           expected_start_date: null, // Geen wachtdatum
-          thuis_sinds: null // Rotatie is gestart
+          thuis_sinds: null, // Rotatie is gestart
+          pool_availability_status: null,
         })
       }
       

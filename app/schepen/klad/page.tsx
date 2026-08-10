@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
@@ -27,12 +27,17 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
+import {
+  fetchSchepenKlad,
+  saveSchepenKlad,
+  subscribeSchepenKlad,
+} from "@/lib/schepen-klad"
 import { isExcludedFromAssignmentPool } from "@/utils/crew-filters"
 import { getNationalityFlag } from "@/utils/nationality-display"
 import { isOverigPersoneelShipId } from "@/utils/ship-constants"
 import {
   calculateCurrentStatus,
-  isLocalDateAfterToday,
+  parseLocalDate,
 } from "@/utils/regime-calculator"
 import { CheckCircle, ChevronDown, ChevronRight, Clock, Maximize2, RotateCcw, Ship, UserX, X } from "lucide-react"
 
@@ -119,6 +124,15 @@ function sortUnassignedPool(
   })
 }
 
+function isDateAfterReference(dateString: string | null | undefined, referenceYmd: string): boolean {
+  if (!dateString) return false
+  try {
+    return parseLocalDate(dateString).getTime() > parseLocalDate(referenceYmd).getTime()
+  } catch {
+    return false
+  }
+}
+
 function isUnavailable(member: any, sickLeave: any[]): boolean {
   if (!member) return false
   if (member.status === "afwezig" || member.status === "ziek") return true
@@ -131,9 +145,11 @@ function isUnavailable(member: any, sickLeave: any[]): boolean {
   )
 }
 
-function getInitialColumn(member: any, sickLeave: any[]): ColumnKey {
+function getInitialColumn(member: any, sickLeave: any[], asOfDate: string): ColumnKey {
   if (isUnavailable(member, sickLeave)) return "afwezig"
-  if (member.expected_start_date && isLocalDateAfterToday(member.expected_start_date)) return "thuis"
+  if (member.expected_start_date && isDateAfterReference(member.expected_start_date, asOfDate)) {
+    return "thuis"
+  }
   if (!member.regime) {
     if (member.status === "aan-boord") return "aan-boord"
     return "thuis"
@@ -143,12 +159,17 @@ function getInitialColumn(member: any, sickLeave: any[]): ColumnKey {
     member.thuis_sinds || null,
     member.on_board_since || null,
     member.status === "ziek",
-    member.expected_start_date || null
+    member.expected_start_date || null,
+    asOfDate
   )
   return rotation.currentStatus === "aan-boord" ? "aan-boord" : "thuis"
 }
 
-function buildInitialPlacements(crew: any[], sickLeave: any[]): Record<string, Placement> {
+function buildInitialPlacements(
+  crew: any[],
+  sickLeave: any[],
+  asOfDate: string
+): Record<string, Placement> {
   const next: Record<string, Placement> = {}
   for (const member of crew) {
     if (!isEligibleKladCrew(member)) continue
@@ -156,7 +177,7 @@ function buildInitialPlacements(crew: any[], sickLeave: any[]): Record<string, P
     if (hasRealShip(member)) {
       next[id] = {
         shipId: String(member.ship_id),
-        column: getInitialColumn(member, sickLeave),
+        column: getInitialColumn(member, sickLeave, asOfDate),
       }
     } else {
       next[id] = {
@@ -187,9 +208,32 @@ const KLAD_STORAGE_KEY = "bamalite.schepen-klad.v1"
 
 type KladStoragePayload = {
   placements: Record<string, Placement>
+  originals?: Record<string, Placement>
   onBoardFromDates: Record<string, string>
   healthOverrides: Record<string, KladHealthOverride>
+  kladDate?: string
   savedAt: string
+}
+
+function isValidKladDate(value: any): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+/** Bij peildatum-wijziging: handmatige klad-moves behouden, rest volgt regime. */
+function rematerializeForDate(
+  prevPlacements: Record<string, Placement>,
+  prevOriginals: Record<string, Placement>,
+  newLive: Record<string, Placement>
+): Record<string, Placement> {
+  const next: Record<string, Placement> = {}
+  for (const id of Object.keys(newLive)) {
+    const wasMoved =
+      prevPlacements[id] &&
+      prevOriginals[id] &&
+      !placementsEqual(prevPlacements[id], prevOriginals[id])
+    next[id] = wasMoved ? prevPlacements[id] : newLive[id]
+  }
+  return next
 }
 
 function isValidPlacement(value: any): value is Placement {
@@ -210,11 +254,16 @@ function loadKladFromStorage(): KladStoragePayload | null {
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== "object") return null
     const placementsRaw = parsed.placements || {}
+    const originalsRaw = parsed.originals || {}
     const datesRaw = parsed.onBoardFromDates || {}
     const healthRaw = parsed.healthOverrides || {}
     const placements: Record<string, Placement> = {}
     for (const [id, value] of Object.entries(placementsRaw)) {
       if (isValidPlacement(value)) placements[id] = value
+    }
+    const originals: Record<string, Placement> = {}
+    for (const [id, value] of Object.entries(originalsRaw)) {
+      if (isValidPlacement(value)) originals[id] = value
     }
     const onBoardFromDates: Record<string, string> = {}
     for (const [id, value] of Object.entries(datesRaw)) {
@@ -228,8 +277,10 @@ function loadKladFromStorage(): KladStoragePayload | null {
     }
     return {
       placements,
+      originals,
       onBoardFromDates,
       healthOverrides,
+      kladDate: isValidKladDate(parsed.kladDate) ? parsed.kladDate : undefined,
       savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : "",
     }
   } catch {
@@ -239,15 +290,19 @@ function loadKladFromStorage(): KladStoragePayload | null {
 
 function saveKladToStorage(
   placements: Record<string, Placement>,
+  originals: Record<string, Placement>,
   onBoardFromDates: Record<string, string>,
-  healthOverrides: Record<string, KladHealthOverride>
+  healthOverrides: Record<string, KladHealthOverride>,
+  kladDate: string
 ) {
   if (typeof window === "undefined") return
   try {
     const payload: KladStoragePayload = {
       placements,
+      originals,
       onBoardFromDates,
       healthOverrides,
+      kladDate,
       savedAt: new Date().toISOString(),
     }
     window.localStorage.setItem(KLAD_STORAGE_KEY, JSON.stringify(payload))
@@ -559,12 +614,28 @@ export default function SchepenKladPage() {
   const [originals, setOriginals] = useState<Record<string, Placement>>({})
   const [onBoardFromDates, setOnBoardFromDates] = useState<Record<string, string>>({})
   const [healthOverrides, setHealthOverrides] = useState<Record<string, KladHealthOverride>>({})
+  const [kladDate, setKladDate] = useState<string>(() => todayInputValue())
   const [dateDialog, setDateDialog] = useState<{ crewId: string; date: string } | null>(null)
   const [dragCrewId, setDragCrewId] = useState<string | null>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
   const [kladSavedAt, setKladSavedAt] = useState<string | null>(null)
+  const [kladUpdatedBy, setKladUpdatedBy] = useState<string | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
   const [sickFolderOpen, setSickFolderOpen] = useState(false)
+  const originalsRef = useRef<Record<string, Placement>>({})
+  const skipNextSaveRef = useRef(false)
+  const lastSavedAtRef = useRef<string | null>(null)
+  const notifyRemoteRef = useRef<
+    ((meta: { updatedAt?: string | null; updatedBy?: string | null }) => Promise<void>) | null
+  >(null)
+  const applySharedRef = useRef<((shared: any, opts?: { fromRemote?: boolean }) => void) | null>(
+    null
+  )
+
+  useEffect(() => {
+    originalsRef.current = originals
+  }, [originals])
 
   const eligibleCrew = useMemo(
     () => (crew || []).filter((m: any) => isEligibleKladCrew(m)),
@@ -588,55 +659,145 @@ export default function SchepenKladPage() {
   }, [ships])
 
   const resetKlad = useCallback(() => {
-    const initial = buildInitialPlacements(eligibleCrew, sickLeave || [])
+    const initial = buildInitialPlacements(eligibleCrew, sickLeave || [], kladDate)
     clearKladStorage()
+    skipNextSaveRef.current = false
     setPlacements(initial)
     setOriginals(initial)
     setOnBoardFromDates({})
     setHealthOverrides({})
     setKladSavedAt(null)
+    setKladUpdatedBy(null)
     setDateDialog(null)
     setDragCrewId(null)
     setOverKey(null)
     setInitialized(true)
-  }, [eligibleCrew, sickLeave])
+  }, [eligibleCrew, sickLeave, kladDate])
+
+  const applySharedState = useCallback(
+    (
+      shared: {
+        placements: Record<string, Placement>
+        originals?: Record<string, Placement>
+        onBoardFromDates: Record<string, string>
+        healthOverrides: Record<string, KladHealthOverride>
+        kladDate?: string | null
+        updatedAt?: string | null
+        updatedBy?: string | null
+      },
+      opts?: { fromRemote?: boolean }
+    ) => {
+      const date =
+        shared.kladDate && isValidKladDate(shared.kladDate) ? shared.kladDate : todayInputValue()
+      const liveForDate = buildInitialPlacements(eligibleCrew, sickLeave || [], date)
+      const hasPlacements = Object.keys(shared.placements || {}).length > 0
+      const merged = !hasPlacements
+        ? liveForDate
+        : shared.originals && Object.keys(shared.originals).length > 0
+          ? rematerializeForDate(shared.placements, shared.originals, liveForDate)
+          : mergePlacementsWithLive(shared.placements, liveForDate)
+
+      if (opts?.fromRemote) skipNextSaveRef.current = true
+      setKladDate(date)
+      setPlacements(merged)
+      setOriginals(liveForDate)
+      setOnBoardFromDates(pruneDates(shared.onBoardFromDates || {}, merged))
+      setHealthOverrides(pruneHealthOverrides(shared.healthOverrides || {}, merged))
+      setKladSavedAt(shared.updatedAt || null)
+      setKladUpdatedBy(shared.updatedBy || null)
+      if (shared.updatedAt) lastSavedAtRef.current = shared.updatedAt
+    },
+    [eligibleCrew, sickLeave]
+  )
+
+  applySharedRef.current = applySharedState
+
+  const changeKladDate = useCallback(
+    (nextDate: string) => {
+      if (!isValidKladDate(nextDate) || nextDate === kladDate) return
+      const live = buildInitialPlacements(eligibleCrew, sickLeave || [], nextDate)
+      setPlacements((prev) => rematerializeForDate(prev, originals, live))
+      setOriginals(live)
+      setKladDate(nextDate)
+    },
+    [kladDate, eligibleCrew, sickLeave, originals]
+  )
 
   useEffect(() => {
-    if (loading) return
-    const live = buildInitialPlacements(eligibleCrew, sickLeave || [])
+    if (loading || initialized) return
+    let cancelled = false
 
-    if (!initialized) {
-      const stored = loadKladFromStorage()
-      if (stored && Object.keys(stored.placements).length > 0) {
-        const merged = mergePlacementsWithLive(stored.placements, live)
-        const dates = pruneDates(stored.onBoardFromDates, merged)
-        const health = pruneHealthOverrides(stored.healthOverrides || {}, merged)
-        setPlacements(merged)
+    ;(async () => {
+      const { payload, error: loadError } = await fetchSchepenKlad()
+      if (cancelled) return
+
+      if (loadError) setSyncError(loadError)
+      else setSyncError(null)
+
+      const local = loadKladFromStorage()
+      const sharedHasAny = payload && Object.keys(payload.placements || {}).length > 0
+      const localHasAny = local && Object.keys(local.placements || {}).length > 0
+
+      if (sharedHasAny) {
+        applySharedState(
+          {
+            placements: payload!.placements,
+            originals: payload!.originals,
+            onBoardFromDates: payload!.onBoardFromDates,
+            healthOverrides: payload!.healthOverrides,
+            kladDate: payload!.kladDate,
+            updatedAt: payload!.updatedAt,
+            updatedBy: payload!.updatedBy,
+          },
+          { fromRemote: true }
+        )
+      } else if (localHasAny) {
+        applySharedState(
+          {
+            placements: local!.placements,
+            originals: local!.originals,
+            onBoardFromDates: local!.onBoardFromDates,
+            healthOverrides: local!.healthOverrides,
+            kladDate: local!.kladDate,
+            updatedAt: local!.savedAt || new Date().toISOString(),
+            updatedBy: null,
+          },
+          { fromRemote: false }
+        )
+        clearKladStorage()
+      } else {
+        const date = todayInputValue()
+        const live = buildInitialPlacements(eligibleCrew, sickLeave || [], date)
+        skipNextSaveRef.current = true
+        setKladDate(date)
+        setPlacements(live)
         setOriginals(live)
-        setOnBoardFromDates(dates)
-        setHealthOverrides(health)
-        setKladSavedAt(stored.savedAt || null)
-        setInitialized(true)
-        return
+        setOnBoardFromDates({})
+        setHealthOverrides({})
+        setKladSavedAt(null)
+        setKladUpdatedBy(null)
       }
-      setPlacements(live)
-      setOriginals(live)
-      setOnBoardFromDates({})
-      setHealthOverrides({})
-      setKladSavedAt(null)
+
       setInitialized(true)
-      return
+    })()
+
+    return () => {
+      cancelled = true
     }
+  }, [loading, initialized, eligibleCrew, sickLeave, applySharedState])
 
-    setOriginals(live)
-
+  useEffect(() => {
+    if (loading || !initialized) return
+    const live = buildInitialPlacements(eligibleCrew, sickLeave || [], kladDate)
     setPlacements((prev) => {
-      const next = mergePlacementsWithLive(prev, live)
+      const next = rematerializeForDate(prev, originalsRef.current, live)
       const same =
         Object.keys(next).length === Object.keys(prev).length &&
         Object.keys(next).every((id) => placementsEqual(next[id], prev[id]))
       return same ? prev : next
     })
+    setOriginals(live)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, initialized, eligibleCrew, sickLeave])
 
   useEffect(() => {
@@ -659,15 +820,95 @@ export default function SchepenKladPage() {
 
   useEffect(() => {
     if (!initialized || loading) return
-    saveKladToStorage(placements, onBoardFromDates, healthOverrides)
-    setKladSavedAt(new Date().toISOString())
-  }, [placements, onBoardFromDates, healthOverrides, initialized, loading])
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false
+      return
+    }
 
-  const movedCount = useMemo(() => {
-    return Object.keys(placements).filter(
-      (id) => !placementsEqual(placements[id], originals[id])
-    ).length
-  }, [placements, originals])
+    const timer = window.setTimeout(async () => {
+      const { payload, error: saveError } = await saveSchepenKlad({
+        placements,
+        originals,
+        onBoardFromDates,
+        healthOverrides,
+        kladDate,
+      })
+      if (saveError) {
+        setSyncError(saveError)
+        return
+      }
+      setSyncError(null)
+      if (payload?.updatedAt) {
+        lastSavedAtRef.current = payload.updatedAt
+        setKladSavedAt(payload.updatedAt)
+        setKladUpdatedBy(payload.updatedBy || null)
+        await notifyRemoteRef.current?.({
+          updatedAt: payload.updatedAt,
+          updatedBy: payload.updatedBy,
+        })
+      }
+    }, 450)
+
+    return () => window.clearTimeout(timer)
+  }, [placements, originals, onBoardFromDates, healthOverrides, kladDate, initialized, loading])
+
+  useEffect(() => {
+    if (!initialized) return
+
+    const sub = subscribeSchepenKlad(async (meta) => {
+      if (meta.updatedAt && meta.updatedAt === lastSavedAtRef.current) return
+      const { payload, error: loadError } = await fetchSchepenKlad()
+      if (loadError || !payload) return
+      if (payload.updatedAt && payload.updatedAt === lastSavedAtRef.current) return
+      applySharedRef.current?.(
+        {
+          placements: payload.placements,
+          originals: payload.originals,
+          onBoardFromDates: payload.onBoardFromDates,
+          healthOverrides: payload.healthOverrides,
+          kladDate: payload.kladDate,
+          updatedAt: payload.updatedAt,
+          updatedBy: payload.updatedBy,
+        },
+        { fromRemote: true }
+      )
+    })
+
+    notifyRemoteRef.current = sub.notify
+
+    const pullIfChanged = async () => {
+      const { payload } = await fetchSchepenKlad()
+      if (!payload?.updatedAt) return
+      if (payload.updatedAt === lastSavedAtRef.current) return
+      applySharedRef.current?.(
+        {
+          placements: payload.placements,
+          originals: payload.originals,
+          onBoardFromDates: payload.onBoardFromDates,
+          healthOverrides: payload.healthOverrides,
+          kladDate: payload.kladDate,
+          updatedAt: payload.updatedAt,
+          updatedBy: payload.updatedBy,
+        },
+        { fromRemote: true }
+      )
+    }
+
+    const onFocus = () => {
+      void pullIfChanged()
+    }
+    window.addEventListener("focus", onFocus)
+    const poll = window.setInterval(() => {
+      void pullIfChanged()
+    }, 8000)
+
+    return () => {
+      notifyRemoteRef.current = null
+      sub.unsubscribe()
+      window.removeEventListener("focus", onFocus)
+      window.clearInterval(poll)
+    }
+  }, [initialized])
 
   const savedLabel = useMemo(() => {
     if (!kladSavedAt) return null
@@ -677,6 +918,12 @@ export default function SchepenKladPage() {
       return null
     }
   }, [kladSavedAt])
+
+  const updatedByLabel = useMemo(() => {
+    if (!kladUpdatedBy) return null
+    const local = kladUpdatedBy.split("@")[0] || kladUpdatedBy
+    return local.charAt(0).toUpperCase() + local.slice(1)
+  }, [kladUpdatedBy])
 
   const membersFor = useCallback(
     (shipId: string, column?: ColumnKey) => {
@@ -810,21 +1057,36 @@ export default function SchepenKladPage() {
             <Badge className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px]">
               {eligibleCrew.length} personen
             </Badge>
-            <Badge className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px]">
-              {movedCount} verplaatst
-            </Badge>
             {savedLabel && (
               <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px]">
-                bewaard {savedLabel}
+                gedeeld {savedLabel}
+                {updatedByLabel ? ` · ${updatedByLabel}` : ""}
+              </Badge>
+            )}
+            {syncError && (
+              <Badge className="bg-red-100 text-red-800 border border-red-200 text-[10px]">
+                sync: {syncError}
               </Badge>
             )}
           </div>
           <p className="text-[11px] text-slate-500">
-            Sleep of rechtermuisklik → verplaatsen. Dubbelklik → datum (in te delen voor / aan boord
-            vanaf). Klad blijft bewaard in deze browser.
+            Gedeelde klad: wijzigingen verschijnen ook bij Leo (en andersom). Peildatum bepaalt aan
+            boord / thuis via regimes.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
+            <Label htmlFor="klad-date" className="whitespace-nowrap text-[11px] text-slate-600">
+              Peildatum
+            </Label>
+            <Input
+              id="klad-date"
+              type="date"
+              value={kladDate}
+              onChange={(e) => changeKladDate(e.target.value)}
+              className="h-7 w-[140px] border-slate-200 bg-white px-1.5 text-xs"
+            />
+          </div>
           <Button type="button" size="sm" variant="outline" onClick={resetKlad}>
             <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
             Klad wissen
