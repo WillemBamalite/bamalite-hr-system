@@ -39,7 +39,18 @@ import {
   calculateCurrentStatus,
   parseLocalDate,
 } from "@/utils/regime-calculator"
-import { CheckCircle, ChevronDown, ChevronRight, Clock, Maximize2, RotateCcw, Ship, UserX, X } from "lucide-react"
+import {
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Maximize2,
+  Printer,
+  RotateCcw,
+  Ship,
+  UserX,
+  X,
+} from "lucide-react"
 
 const UNASSIGNED_KEY = "__unassigned__"
 
@@ -439,7 +450,7 @@ function CrewScratchCard({
             e.stopPropagation()
             onEditOnBoardFrom(crewId)
           }}
-          className={`cursor-grab active:cursor-grabbing rounded border bg-white px-2 py-1.5 shadow-sm select-none ${
+          className={`schepen-klad-print-card cursor-grab active:cursor-grabbing rounded border bg-white px-2 py-1.5 shadow-sm select-none ${
             moved ? "border-amber-400 ring-1 ring-amber-200" : "border-slate-200"
           } ${isSick ? "bg-red-50/70" : ""}`}
           title={`Dubbelklik voor ${dateCaption.toLowerCase()}-datum · rechtermuisklik om te verplaatsen`}
@@ -588,7 +599,7 @@ function DropZone({
         <Badge className={`${toneClasses.badge} text-[10px] px-1.5 py-0`}>{members.length}</Badge>
       </div>
       <div
-        className={`min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-md border border-dashed p-1.5 transition-colors ${
+        className={`schepen-klad-print-column min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-md border border-dashed p-1.5 transition-colors ${
           isOver ? toneClasses.over : toneClasses.idle
         }`}
         onDragOver={(e) => {
@@ -641,6 +652,7 @@ export default function SchepenKladPage() {
   const [kladUpdatedBy, setKladUpdatedBy] = useState<string | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [sickFolderOpen, setSickFolderOpen] = useState(false)
+  const [isPrinting, setIsPrinting] = useState(false)
   const originalsRef = useRef<Record<string, Placement>>({})
   const applyingRemoteRef = useRef(false)
   const dirtyRef = useRef(false)
@@ -663,6 +675,21 @@ export default function SchepenKladPage() {
   )
   const markDirty = useCallback(() => {
     dirtyRef.current = true
+  }, [])
+
+  const handlePrint = useCallback(() => {
+    window.print()
+  }, [])
+
+  useEffect(() => {
+    const beforePrint = () => setIsPrinting(true)
+    const afterPrint = () => setIsPrinting(false)
+    window.addEventListener("beforeprint", beforePrint)
+    window.addEventListener("afterprint", afterPrint)
+    return () => {
+      window.removeEventListener("beforeprint", beforePrint)
+      window.removeEventListener("afterprint", afterPrint)
+    }
   }, [])
 
   useEffect(() => {
@@ -1106,8 +1133,8 @@ export default function SchepenKladPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-slate-100">
-      <header className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
+    <div className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-slate-100 print:static print:inset-auto print:z-auto print:block print:overflow-visible print:bg-white">
+      <header className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 print:border-black print:px-0 print:pb-2 print:pt-0">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Maximize2 className="h-4 w-4 text-slate-500" />
@@ -1131,8 +1158,11 @@ export default function SchepenKladPage() {
             Gedeelde klad: wijzigingen verschijnen ook bij Leo (en andersom). Peildatum bepaalt aan
             boord / thuis via regimes.
           </p>
+          <p className="hidden text-xs font-semibold text-slate-900 print:block">
+            Printdatum: {format(new Date(), "dd-MM-yyyy HH:mm")} · Peildatum: {kladDate}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 print:hidden">
           <div className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
             <Label htmlFor="klad-date" className="whitespace-nowrap text-[11px] text-slate-600">
               Peildatum
@@ -1149,6 +1179,10 @@ export default function SchepenKladPage() {
             <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
             Klad wissen
           </Button>
+          <Button type="button" size="sm" variant="outline" onClick={handlePrint}>
+            <Printer className="mr-1.5 h-3.5 w-3.5" />
+            Print
+          </Button>
           <Button type="button" size="sm" variant="outline" asChild>
             <Link href="/schepen/overzicht">
               <Ship className="mr-1.5 h-3.5 w-3.5" />
@@ -1163,9 +1197,9 @@ export default function SchepenKladPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden print:block print:overflow-visible">
         {/* Sticky pool links */}
-        <aside className="flex w-[240px] shrink-0 flex-col border-r border-slate-200 bg-white p-2 md:w-[280px]">
+        <aside className="flex w-[240px] shrink-0 flex-col border-r border-slate-200 bg-white p-2 md:w-[280px] print:mb-4 print:w-full print:border-0 print:p-0">
           <div className="mb-1 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Nog in te delen</h2>
             <Badge variant="outline" className="text-[10px]">
@@ -1173,7 +1207,7 @@ export default function SchepenKladPage() {
             </Badge>
           </div>
           <div
-            className={`min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-md border border-dashed p-1.5 ${
+            className={`min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-md border border-dashed p-1.5 print:max-h-none print:overflow-visible ${
               overKey === UNASSIGNED_KEY
                 ? "border-slate-400 bg-slate-100"
                 : "border-slate-200 bg-slate-50"
@@ -1228,8 +1262,8 @@ export default function SchepenKladPage() {
                 {unassignedSick.length}
               </Badge>
             </button>
-            {sickFolderOpen && (
-              <div className="max-h-[40vh] space-y-1.5 overflow-y-auto border-t border-red-200 p-1.5">
+            {(sickFolderOpen || isPrinting) && (
+              <div className="max-h-[40vh] space-y-1.5 overflow-y-auto border-t border-red-200 p-1.5 print:max-h-none print:overflow-visible">
                 {unassignedSick.length === 0 ? (
                   <div className="px-1 py-3 text-center text-[11px] text-red-400">
                     Geen zieken in het klad
@@ -1257,8 +1291,8 @@ export default function SchepenKladPage() {
         </aside>
 
         {/* Horizontaal whiteboard met schepen */}
-        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-2">
-          <div className="flex h-full min-w-max gap-2">
+        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-2 print:overflow-visible print:p-0">
+          <div className="schepen-klad-print-grid flex h-full min-w-max gap-2 print:block print:min-w-0">
             {realShips.map((ship: any) => {
               const onBoardKey = `${ship.id}::aan-boord`
               const homeKey = `${ship.id}::thuis`
@@ -1267,7 +1301,7 @@ export default function SchepenKladPage() {
               return (
                 <section
                   key={ship.id}
-                  className="flex h-full w-[420px] shrink-0 flex-col rounded-lg border border-slate-200 bg-white shadow-sm"
+                  className="schepen-klad-print-ship flex h-full w-[420px] shrink-0 flex-col rounded-lg border border-slate-200 bg-white shadow-sm print:mb-3 print:w-full print:break-inside-avoid print:border-black print:shadow-none"
                 >
                   <div className="shrink-0 border-b border-slate-100 px-2.5 py-2">
                     <div className="flex items-start justify-between gap-2">
@@ -1285,7 +1319,7 @@ export default function SchepenKladPage() {
                       </Badge>
                     </div>
                   </div>
-                  <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
+                  <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 print:min-h-0">
                     <DropZone
                       dropKey={onBoardKey}
                       title="Aan boord"
@@ -1353,6 +1387,23 @@ export default function SchepenKladPage() {
           </div>
         </div>
       </div>
+
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 landscape;
+            margin: 10mm;
+          }
+          .schepen-klad-print-card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .schepen-klad-print-column {
+            max-height: none !important;
+            overflow: visible !important;
+          }
+        }
+      `}</style>
 
       <Dialog
         open={!!dateDialog}
