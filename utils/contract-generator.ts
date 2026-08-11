@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib'
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
 
@@ -137,12 +137,240 @@ function normalizeTextForPDF(text: string): string {
   return normalized.replace(/[^\x00-\x7F]/g, '')
 }
 
-/** Adobe Acrobat print vaak beter zonder object streams (pdf-lib default). */
-async function savePdfDocument(pdfDoc: PDFDocument): Promise<Uint8Array> {
-  return pdfDoc.save({
+/**
+ * Acrobat faalt vaak bij printen van pdf-lib form-flatten op deze contracttemplates.
+ * Oplossing: tekst stempelen op widget-posities en formuliervelden daarna verwijderen.
+ */
+function findWidgetPage(pdfDoc: PDFDocument, widget: any) {
+  const pages = pdfDoc.getPages()
+  try {
+    const pageRef = widget.P()
+    const idx = pages.findIndex((p) => p.ref === pageRef)
+    if (idx >= 0) return pages[idx]
+  } catch {
+    // ignore
+  }
+  return pages[0]
+}
+
+function buildContractFieldValues(
+  data: ContractData,
+  options: ContractOptions
+): Record<string, string> {
+  const companyNumber = getCompanyNumber(data.company)
+  const fullName = `${data.firstName} ${data.lastName}`
+  const address = `${data.address.street}, ${data.address.postalCode} ${data.address.city}, ${data.address.country}`
+  const currentDate = format(new Date(), 'dd-MM-yyyy', { locale: nl })
+  const isGermanContract = options.language === 'de'
+
+  return {
+    regel1: data.company,
+    regel2: fullName,
+    regel3: data.company,
+    regel4: companyNumber,
+    regel5: fullName,
+    regel6: formatDate(data.birthDate),
+    regel7: data.birthPlace || '',
+    regel8: address,
+    regel9: isGermanContract ? data.position : formatDate(data.in_dienst_vanaf),
+    regel10: isGermanContract ? data.shipName || '' : data.position,
+    regel11: isGermanContract ? formatDate(data.in_dienst_vanaf) : data.shipName || '',
+    regel12:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.in_dienst_tot
+          ? formatDate(data.in_dienst_tot)
+          : ''
+        : data.in_dienst_vanaf
+          ? calculateDatePlus3Months(data.in_dienst_vanaf)
+          : '',
+    regel13:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.in_dienst_vanaf
+          ? calculateDatePlus3Months(data.in_dienst_vanaf)
+          : ''
+        : data.basisSalaris || '',
+    regel14:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.in_dienst_tot
+          ? formatDate(data.in_dienst_tot)
+          : ''
+        : data.kledinggeld || '',
+    regel15:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.basisSalaris || ''
+        : data.reiskosten || '',
+    regel16:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.kledinggeld || ''
+        : options.language === 'de'
+          ? currentDate
+          : data.company,
+    regel17:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.reiskosten || ''
+        : options.language === 'de'
+          ? data.company
+          : currentDate,
+    regel18:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? data.company
+        : options.language === 'de'
+          ? fullName
+          : data.company,
+    regel19:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl'
+        ? currentDate
+        : options.language === 'nl'
+          ? fullName
+          : '',
+    regel20:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl' ? data.company : '',
+    regel21:
+      options.contractType === 'bepaalde_tijd' && options.language === 'nl' ? fullName : '',
+  }
+}
+
+async function stampAndStripFormFields(
+  pdfDoc: PDFDocument,
+  values: Record<string, string>
+): Promise<number> {
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+  const form = pdfDoc.getForm()
+  const fields = form.getFields()
+  let stamped = 0
+
+  for (const field of fields) {
+    let name = ''
+    try {
+      name = field.getName()
+    } catch {
+      continue
+    }
+    const raw = values[name] ?? values[name.toLowerCase()] ?? ''
+    const text = normalizeTextForPDF(String(raw || '')).trim()
+    if (!text) continue
+
+    let widgets: any[] = []
+    try {
+      widgets = field.acroField.getWidgets()
+    } catch {
+      widgets = []
+    }
+
+    for (const widget of widgets) {
+      try {
+        const page = findWidgetPage(pdfDoc, widget)
+        const rect = widget.getRectangle()
+        const fontSize = Math.max(8, Math.min(11, (rect.height || 12) * 0.72))
+        const plain = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+        const center = plain === 'regel1' || plain === 'regel2'
+        const textWidth = font.widthOfTextAtSize(text, fontSize)
+        const x = center
+          ? rect.x + Math.max(0, (rect.width - textWidth) / 2)
+          : rect.x + 2
+        const y = rect.y + Math.max(1, ((rect.height || 12) - fontSize) / 2)
+        page.drawText(text, {
+          x,
+          y,
+          size: fontSize,
+          font,
+          color: rgb(0, 0, 0),
+          maxWidth: Math.max(8, (rect.width || 100) - 4),
+        })
+        stamped++
+      } catch (error) {
+        console.warn(`Kon veld "${name}" niet stempelen:`, error)
+      }
+    }
+  }
+
+  // Formuliervelden weghalen zodat Acrobat geen kapotte AcroForm meer ziet
+  for (const field of [...form.getFields()]) {
+    try {
+      form.removeField(field)
+    } catch {
+      // ignore
+    }
+  }
+
+  return stamped
+}
+
+/**
+ * Acrobat faalt soms bij print/bewerken op PDF's die pdf-lib na form-flatten heeft opgeslagen.
+ * Pagina's naar een schone PDF kopiëren verwijdert kapotte AcroForm-resten.
+ */
+async function sanitizePdfForAcrobat(pdfDoc: PDFDocument): Promise<PDFDocument> {
+  const clean = await PDFDocument.create()
+  const copiedPages = await clean.copyPages(pdfDoc, pdfDoc.getPageIndices())
+  for (const page of copiedPages) {
+    clean.addPage(page)
+  }
+  return clean
+}
+
+/**
+ * Adobe Acrobat print beter zonder object streams.
+ * sanitize=true: pagina's naar schone PDF (na stamp/strip of flatten).
+ * sanitize=false: bewaar AcroForm — nodig als velden NIET geflattened zijn
+ * (pdf-lib flatten breekt Acrobat-print; zie github.com/Hopding/pdf-lib/issues/800).
+ */
+async function savePdfDocument(
+  pdfDoc: PDFDocument,
+  options: { sanitize?: boolean } = {}
+): Promise<Uint8Array> {
+  const shouldSanitize = options.sanitize === true
+  const doc = shouldSanitize ? await sanitizePdfForAcrobat(pdfDoc) : pdfDoc
+  return doc.save({
     useObjectStreams: false,
     addDefaultPage: false,
+    updateFieldAppearances: !shouldSanitize,
   })
+}
+
+/** Vul tekstvelden en maak ze read-only — zonder flatten (Acrobat-print-safe). */
+async function fillFieldsKeepEditableSafe(
+  pdfDoc: PDFDocument,
+  values: Record<string, string>
+): Promise<number> {
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+  const form = pdfDoc.getForm()
+  let filled = 0
+
+  for (const field of form.getFields()) {
+    let name = ''
+    try {
+      name = field.getName()
+    } catch {
+      continue
+    }
+    const raw = values[name] ?? values[name.toLowerCase()] ?? ''
+    const text = normalizeTextForPDF(String(raw || '')).trim()
+    if (!text) continue
+    try {
+      if (typeof (field as any).setText === 'function') {
+        ;(field as any).setText(text)
+        filled++
+      }
+      const plain = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+      if (typeof (field as any).setAlignment === 'function') {
+        ;(field as any).setAlignment(plain === 'regel1' || plain === 'regel2' ? 1 : 0)
+      }
+      if (typeof (field as any).enableReadOnly === 'function') {
+        ;(field as any).enableReadOnly()
+      }
+    } catch (error) {
+      console.warn(`Kon veld "${name}" niet invullen:`, error)
+    }
+  }
+
+  try {
+    form.updateFieldAppearances(font)
+  } catch (error) {
+    console.warn('updateFieldAppearances mislukt:', error)
+  }
+
+  return filled
 }
 
 async function embedFormFont(pdfDoc: PDFDocument) {
@@ -153,8 +381,26 @@ async function embedFormFont(pdfDoc: PDFDocument) {
   }
 }
 
-/** Werk veld-weergave bij vóór flatten — voorkomt lege/onprintbare PDF's in Acrobat. */
-function flattenPdfForm(form: { updateFieldAppearances?: (font: any) => void; flatten: () => void }, font?: any) {
+/** Werk veld-weergave bij — GEEN flatten (dat breekt Acrobat-print). */
+function finalizeFilledForm(
+  form: {
+    updateFieldAppearances?: (font: any) => void
+    getFields?: () => any[]
+  },
+  font?: any
+) {
+  try {
+    const fields = typeof form.getFields === 'function' ? form.getFields() : []
+    for (const field of fields) {
+      try {
+        if (typeof field.enableReadOnly === 'function') field.enableReadOnly()
+      } catch {
+        // ignore
+      }
+    }
+  } catch {
+    // ignore
+  }
   try {
     if (font && typeof form.updateFieldAppearances === 'function') {
       form.updateFieldAppearances(font)
@@ -162,7 +408,18 @@ function flattenPdfForm(form: { updateFieldAppearances?: (font: any) => void; fl
   } catch (error) {
     console.warn('updateFieldAppearances mislukt:', error)
   }
-  form.flatten()
+}
+
+/** @deprecated alias — flatten breekt Acrobat; doet nu alleen appearances + readonly */
+function flattenPdfForm(
+  form: {
+    updateFieldAppearances?: (font: any) => void
+    flatten?: () => void
+    getFields?: () => any[]
+  },
+  font?: any
+) {
+  finalizeFilledForm(form, font)
 }
 
 /**
@@ -217,141 +474,25 @@ export async function generateContract(
     
     // Laad het PDF document
     console.log('Loading PDF document with pdf-lib...')
-    const pdfDoc = await PDFDocument.load(templateBytes)
+    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true })
     console.log('✓ PDF document loaded successfully')
-    
-    // Probeer formuliervelden te krijgen
-    let fieldsFilled = false
-    let form: any = null
-    let fields: any[] = []
-    
-    try {
-      form = pdfDoc.getForm()
-      fields = form.getFields()
-      
-      console.log('=== PDF ANALYSE ===')
-      console.log('Aantal formuliervelden gevonden:', fields.length)
-      
-      if (fields.length > 0) {
-        console.log('Formuliervelden gevonden:')
-        fields.forEach((field: any, index: number) => {
-          try {
-            const fieldName = field.getName()
-            const fieldType = field.constructor.name
-            console.log(`  [${index + 1}] ${fieldName} (${fieldType})`)
-          } catch (e) {
-            console.log(`  [${index + 1}] <veld naam kon niet worden opgehaald> (${field.constructor.name})`)
-          }
-        })
-        
-        // Als er formuliervelden zijn, vul ze in
-        try {
-          console.log('=== START VELDEN INVULLEN ===')
-          // Embed bold font eerst zodat we het kunnen gebruiken
-          let helveticaBoldFont: any = null
-          try {
-            helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
-            console.log('✓ Helvetica-Bold font geëmbed')
-          } catch (fontError) {
-            console.warn('⚠️ Kon Helvetica-Bold font niet embedden:', fontError)
-          }
-          fillContractFields(form, contractData, options, helveticaBoldFont)
-          
-          // VERIFICATIE: Controleer of de velden daadwerkelijk zijn ingevuld (VOOR flatten)
-          console.log('=== VERIFICATIE VELDEN (voor flatten) ===')
-          let verifiedFilledCount = 0
-          fields.forEach((field: any) => {
-            try {
-              const isTextField = field.constructor.name === 'PDFTextField' || 
-                                  field.constructor.name === 'e' ||
-                                  typeof (field as any).setText === 'function'
-              if (isTextField) {
-                const fieldValue = field.getText()
-                const fieldName = field.getName()
-                if (fieldValue && fieldValue.trim() !== '') {
-                  verifiedFilledCount++
-                  console.log(`✓ [${verifiedFilledCount}] Veld "${fieldName}" heeft waarde: "${fieldValue}"`)
-                } else {
-                  console.warn(`⚠️ Veld "${fieldName}" is nog steeds leeg na invullen`)
-                }
-              }
-            } catch (e) {
-              console.warn(`⚠️ Kon waarde van veld niet ophalen:`, e)
-            }
-          })
-          
-          if (verifiedFilledCount > 0) {
-            fieldsFilled = true
-            console.log(`✓ ${verifiedFilledCount} velden zijn daadwerkelijk ingevuld (voor flatten)`)
-          } else {
-            console.error('❌ GEEN ENKEL VELD IS INGEVULD!')
-            console.error('Dit betekent dat fillContractFields() de velden niet heeft kunnen invullen')
-            fieldsFilled = false
-          }
-          
-          if (fieldsFilled) {
-            // Bold font is al ingesteld in fillContractFields, maar we kunnen het nog een keer proberen
-            // voor het geval dat sommige velden gemist zijn
-            try {
-              if (!helveticaBoldFont) {
-                helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
-              }
-              await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
-              console.log('✓ Bold font definitief ingesteld voor alle velden')
-            } catch (fontError) {
-              console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
-            }
-            
-            // Stel alignment expliciet in voor alle velden VOOR flattenen
-            // Dit moet gebeuren NA bold font instellen zodat beide behouden blijven
-            try {
-              await setAlignmentForAllFields(fields, helveticaBoldFont)
-              console.log('✓ Alignment definitief ingesteld voor alle velden (met behoud van bold font)')
-              
-              // Extra stap: forceer alignment opnieuw vlak voor flatten()
-              // Dit is belangrijk omdat sommige operaties de alignment kunnen resetten
-              await setAlignmentForAllFields(fields, helveticaBoldFont)
-              console.log('✓ Alignment opnieuw gecontroleerd en ingesteld vlak voor flatten()')
-            } catch (alignError) {
-              console.warn('⚠️ Kon alignment niet instellen:', alignError)
-            }
-            
-            flattenPdfForm(form, helveticaBoldFont)
-            console.log('✓ Contract ingevuld en geflattened')
-          }
-        } catch (fillError) {
-          console.error('❌ FOUT bij het invullen van formuliervelden:', fillError)
-          console.error('Error details:', {
-            message: fillError instanceof Error ? fillError.message : String(fillError),
-            stack: fillError instanceof Error ? fillError.stack : undefined
-          })
-          fieldsFilled = false
-        }
-      } else {
-        console.warn('⚠️ Geen formuliervelden gevonden in PDF')
-        console.warn('Dit betekent dat de PDF geen AcroForm velden heeft')
-        console.warn('De PDF moet formuliervelden hebben om automatisch ingevuld te worden')
-      }
-    } catch (error) {
-      console.error('❌ FOUT bij het ophalen van formuliervelden:', error)
-      console.error('Error details:', {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      })
-      fieldsFilled = false
+
+    // Acrobat-proof: velden invullen ZONDER flatten.
+    // pdf-lib flatten maakt "Het document kon niet worden afgedrukt" in Acrobat
+    // (github.com/Hopding/pdf-lib/issues/800). Lege template print wél; flatten niet.
+    const values = buildContractFieldValues(contractData, options)
+    const fieldCount = pdfDoc.getForm().getFields().length
+    if (fieldCount === 0) {
+      throw new Error('De PDF heeft geen formuliervelden. Zorg ervoor dat de PDF AcroForm velden bevat.')
     }
-    
-    // Als er geen velden zijn ingevuld, gooi een duidelijke error
-    if (!fieldsFilled) {
-      const errorMsg = fields.length === 0 
-        ? 'De PDF heeft geen formuliervelden. Zorg ervoor dat de PDF AcroForm velden bevat.'
-        : 'De formuliervelden konden niet worden ingevuld. Controleer de console logs voor details.'
-      
-      console.error('❌', errorMsg)
-      throw new Error(errorMsg)
+
+    const filled = await fillFieldsKeepEditableSafe(pdfDoc, values)
+    console.log(`✓ ${filled} veld(en) ingevuld (geen flatten — Acrobat print-safe)`)
+    if (filled === 0) {
+      throw new Error('Er konden geen contractvelden worden ingevuld. Controleer de PDF-template.')
     }
-    
-    const pdfBytes = await savePdfDocument(pdfDoc)
+
+    const pdfBytes = await savePdfDocument(pdfDoc, { sanitize: false })
     return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' })
   } catch (error) {
     console.error('Error generating contract:', error)
@@ -454,7 +595,7 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any, isAddendu
           
           // Stel Q (Quadding) in - dit bepaalt de tekstuitlijning
           // Dit is de belangrijkste stap voor alignment
-          acroField.dict.set('Q', alignmentValue)
+          // DISABLED Acrobat: acroField.dict.set('Q', alignmentValue)
           
           // Behoud de bestaande DA (Default Appearance) string - overschrijf alleen als nodig
           // Dit zorgt ervoor dat de bold font behouden blijft
@@ -477,13 +618,13 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any, isAddendu
               }
             }
             // Update DA string met behoud van font maar met juiste alignment via Q
-            acroField.dict.set('DA', `/${fontName} ${fontSize} Tf 0 g`)
+            // DISABLED Acrobat: acroField.dict.set('DA', `/${fontName} ${fontSize} Tf 0 g`)
             
             // Verifieer dat Q correct is ingesteld
             const verifyQ = acroField.dict.lookup('Q')
             if (!verifyQ || verifyQ.toString() !== alignmentValue.toString()) {
               console.warn(`⚠️ Q waarde niet correct voor "${originalFieldName}", opnieuw instellen...`)
-              acroField.dict.set('Q', alignmentValue)
+              // DISABLED Acrobat: acroField.dict.set('Q', alignmentValue)
             }
           } catch (daError) {
             console.warn(`Kon DA niet instellen voor veld "${originalFieldName}":`, daError)
@@ -524,7 +665,7 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any, isAddendu
             // Eerst: stel Q (Quadding) opnieuw in om zeker te zijn
             if (acroField && acroField.dict) {
               const alignmentValue = needsCenter ? 1 : 0
-              acroField.dict.set('Q', alignmentValue)
+              // DISABLED Acrobat: acroField.dict.set('Q', alignmentValue)
               
               // Update de appearance stream expliciet
               // Dit zorgt ervoor dat de alignment wordt toegepast in de visuele weergave
@@ -535,7 +676,7 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any, isAddendu
                 field.setText(currentValue) // Vul opnieuw in
                 
                 // Stel Q opnieuw in na setText (soms wordt het gereset)
-                acroField.dict.set('Q', alignmentValue)
+                // DISABLED Acrobat: acroField.dict.set('Q', alignmentValue)
                 
                 // Update appearance met bold font als beschikbaar
                 if (boldFont && typeof (field as any).updateAppearances === 'function') {
@@ -546,7 +687,7 @@ async function setAlignmentForAllFields(fields: any[], boldFont?: any, isAddendu
                 const verifyQ = acroField.dict.lookup('Q')
                 if (verifyQ && verifyQ.toString() !== alignmentValue.toString()) {
                   console.warn(`⚠️ Q waarde werd gereset voor "${originalFieldName}", opnieuw instellen...`)
-                  acroField.dict.set('Q', alignmentValue)
+                  // DISABLED Acrobat: acroField.dict.set('Q', alignmentValue)
                 }
               } catch (appearanceError) {
                 console.warn(`Kon appearance stream niet updaten voor "${originalFieldName}":`, appearanceError)
@@ -596,7 +737,7 @@ async function setBoldFontForAllFields(fields: any[], boldFont: any, pdfDoc: PDF
             
             // Stel DA (Default Appearance) in met bold font
             // Format: /FontName Size Tf Color
-            acroField.dict.set('DA', `/${fontName} ${fontSize} Tf 0 g`)
+            // DISABLED Acrobat: acroField.dict.set('DA', `/${fontName} ${fontSize} Tf 0 g`)
             
             // Probeer ook de appearance stream te updaten
             try {
@@ -903,7 +1044,7 @@ function fillContractFields(
                   }
                 }
                 // Stel DA in met bold font
-                acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                // DISABLED Acrobat: acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                 
                 // Forceer update van de appearance door de tekst opnieuw in te stellen
                 try {
@@ -959,7 +1100,7 @@ function fillContractFields(
                 const alignmentValue = needsCenter ? 1 : 0 // 0 = left, 1 = center, 2 = right
                 
                 // Stel Q (Quadding) in - dit bepaalt de tekstuitlijning
-                acroFieldAlign.dict.set('Q', alignmentValue)
+                // DISABLED Acrobat: acroFieldAlign.dict.set('Q', alignmentValue)
                 console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op ${needsCenter ? 'center' : 'links'} gezet (Q=${alignmentValue})`)
                 
                 // Behoud de bold font in DA string
@@ -972,7 +1113,7 @@ function fillContractFields(
                       // Update alleen als het nog geen bold font heeft
                       const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
                       const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 12
-                      acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                      // DISABLED Acrobat: acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                     }
                   }
                 } catch (daError) {
@@ -1071,7 +1212,7 @@ function fillContractFields(
                     }
                   }
                   // Stel DA in met bold font
-                  acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                  // DISABLED Acrobat: acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                 }
               } catch (fontError) {
                 console.warn(`Kon bold font niet instellen voor veld ${fieldName}:`, fontError)
@@ -1124,7 +1265,7 @@ function fillContractFields(
                 const acroFieldAlign = (field as any).acroField
                 if (acroFieldAlign && acroFieldAlign.dict) {
                   const alignmentValue = needsCenter ? 1 : 0
-                  acroFieldAlign.dict.set('Q', alignmentValue)
+                  // DISABLED Acrobat: acroFieldAlign.dict.set('Q', alignmentValue)
                   console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op ${needsCenter ? 'center' : 'links'} gezet (partial match, Q=${alignmentValue})`)
                   
                   // Behoud bold font in DA string
@@ -1135,7 +1276,7 @@ function fillContractFields(
                       if (!daString.includes('Helvetica-Bold')) {
                         const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
                         const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 12
-                        acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                        // DISABLED Acrobat: acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                       }
                     }
                   } catch (daError) {
@@ -1577,7 +1718,7 @@ export async function generateAddendum(
     
     // Laad het PDF document
     console.log('Loading PDF document with pdf-lib...')
-    const pdfDoc = await PDFDocument.load(templateBytes)
+    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true })
     console.log('✓ PDF document loaded successfully')
     
     // Probeer formuliervelden te krijgen
@@ -1651,35 +1792,26 @@ export async function generateAddendum(
           }
           
           if (fieldsFilled) {
-            // Bold font is al ingesteld in fillAddendumFields, maar we kunnen het nog een keer proberen
-            // voor het geval dat sommige velden gemist zijn
+            // Geen raw DA/Q dict-hacks: die maken Acrobat print stuk.
             try {
               if (!helveticaBoldFont) {
                 helveticaBoldFont = await pdfDoc.embedFont('Helvetica-Bold')
               }
-              await setBoldFontForAllFields(fields, helveticaBoldFont, pdfDoc)
-              console.log('✓ Bold font definitief ingesteld voor alle velden')
-            } catch (fontError) {
-              console.warn('⚠️ Kon bold font niet instellen, maar velden zijn wel ingevuld:', fontError)
+              for (const field of fields) {
+                try {
+                  if (typeof field.setAlignment === 'function') {
+                    field.setAlignment(0)
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+            } catch (styleError) {
+              console.warn('⚠️ Kon veilige veldstijl niet instellen:', styleError)
             }
-            
-            // Stel alignment expliciet in voor alle velden VOOR flattenen
-            // Dit moet gebeuren NA bold font instellen zodat beide behouden blijven
-            // Voor Addendum: alle velden links uitgelijnd
-            try {
-              await setAlignmentForAllFields(fields, helveticaBoldFont, true)
-              console.log('✓ Alignment definitief ingesteld voor alle velden (met behoud van bold font)')
-              
-              // Extra stap: forceer alignment opnieuw vlak voor flatten()
-              // Dit is belangrijk omdat sommige operaties de alignment kunnen resetten
-              await setAlignmentForAllFields(fields, helveticaBoldFont, true)
-              console.log('✓ Alignment opnieuw gecontroleerd en ingesteld vlak voor flatten()')
-            } catch (alignError) {
-              console.warn('⚠️ Kon alignment niet instellen:', alignError)
-            }
-            
+
             flattenPdfForm(form, helveticaBoldFont)
-            console.log('✓ Addendum ingevuld en geflattened')
+            console.log('✓ Addendum ingevuld zonder flatten (Acrobat print-safe)')
           }
         } catch (fillError) {
           console.error('❌ FOUT bij het invullen van formuliervelden:', fillError)
@@ -1746,7 +1878,7 @@ export async function generateOutOfServiceLetter(
       throw new Error('PDF template is leeg (0 bytes)')
     }
 
-    const pdfDoc = await PDFDocument.load(templateBytes)
+    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true })
     const form = pdfDoc.getForm()
 
     const fullName = `${data.firstName} ${data.lastName}`.trim()
@@ -1813,7 +1945,7 @@ export async function generateOfficialWarningLetter(
       throw new Error('PDF template is leeg (0 bytes)')
     }
 
-    const pdfDoc = await PDFDocument.load(templateBytes)
+    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true })
     const form = pdfDoc.getForm()
 
     const fullName = `${data.firstName} ${data.lastName}`.trim()
@@ -2015,7 +2147,7 @@ function fillAddendumFields(
                   }
                 }
                 // Stel DA in met bold font
-                acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                // DISABLED Acrobat: acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                 
                 // Forceer update van de appearance door de tekst opnieuw in te stellen
                 try {
@@ -2062,7 +2194,7 @@ function fillAddendumFields(
                 const alignmentValue = needsCenter ? 1 : 0 // 0 = left, 1 = center, 2 = right
                 
                 // Stel Q (Quadding) in - dit bepaalt de tekstuitlijning
-                acroFieldAlign.dict.set('Q', alignmentValue)
+                // DISABLED Acrobat: acroFieldAlign.dict.set('Q', alignmentValue)
                 console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op ${needsCenter ? 'center' : 'links'} gezet (Q=${alignmentValue})`)
                 
                 // Behoud de bold font in DA string
@@ -2075,7 +2207,7 @@ function fillAddendumFields(
                       // Update alleen als het nog geen bold font heeft
                       const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
                       const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 12
-                      acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                      // DISABLED Acrobat: acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                     }
                   }
                 } catch (daError) {
@@ -2168,7 +2300,7 @@ function fillAddendumFields(
                     }
                   }
                   // Stel DA in met bold font
-                  acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                  // DISABLED Acrobat: acroField.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                 }
               } catch (fontError) {
                 console.warn(`Kon bold font niet instellen voor veld ${fieldName}:`, fontError)
@@ -2212,7 +2344,7 @@ function fillAddendumFields(
                 const acroFieldAlign = (field as any).acroField
                 if (acroFieldAlign && acroFieldAlign.dict) {
                   const alignmentValue = needsCenter ? 1 : 0
-                  acroFieldAlign.dict.set('Q', alignmentValue)
+                  // DISABLED Acrobat: acroFieldAlign.dict.set('Q', alignmentValue)
                   console.log(`✓ Veld "${originalFieldName}" Q-uitlijning op ${needsCenter ? 'center' : 'links'} gezet (partial match, Q=${alignmentValue})`)
                   
                   // Behoud bold font in DA string
@@ -2223,7 +2355,7 @@ function fillAddendumFields(
                       if (!daString.includes('Helvetica-Bold')) {
                         const sizeMatch = daString.match(/(\d+(?:\.\d+)?)\s+Tf/)
                         const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 12
-                        acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
+                        // DISABLED Acrobat: acroFieldAlign.dict.set('DA', `/Helvetica-Bold ${fontSize} Tf 0 g`)
                       }
                     }
                   } catch (daError) {
