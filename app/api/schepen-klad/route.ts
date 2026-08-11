@@ -148,7 +148,14 @@ export async function GET(request: NextRequest) {
     const admin = createServerSupabase()
     await ensureBucket(admin)
     const stored = (await readStored(admin)) || emptyPayload()
-    return NextResponse.json({ success: true, data: stored })
+    return NextResponse.json(
+      { success: true, data: stored },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
+    )
   } catch (error: any) {
     console.error("schepen-klad GET:", error)
     return NextResponse.json(

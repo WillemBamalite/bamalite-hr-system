@@ -40,7 +40,11 @@ export async function fetchSchepenKlad(): Promise<{
 }> {
   try {
     const headers = await authHeaders()
-    const res = await fetch("/api/schepen-klad", { method: "GET", headers, cache: "no-store" })
+    const res = await fetch(`/api/schepen-klad?t=${Date.now()}`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
     const json = await res.json().catch(() => ({}))
     if (!res.ok || !json?.success) {
       return { payload: null, error: json?.error || `HTTP ${res.status}` }
@@ -76,10 +80,18 @@ export async function saveSchepenKlad(payload: {
 }
 
 export function subscribeSchepenKlad(
-  onPing: (meta: { updatedAt?: string | null; updatedBy?: string | null }) => void
+  onPing: (meta: {
+    updatedAt?: string | null
+    updatedBy?: string | null
+    clientId?: string | null
+  }) => void
 ): {
   unsubscribe: () => void
-  notify: (meta: { updatedAt?: string | null; updatedBy?: string | null }) => Promise<void>
+  notify: (meta: {
+    updatedAt?: string | null
+    updatedBy?: string | null
+    clientId?: string | null
+  }) => Promise<void>
 } {
   const channel = supabase
     .channel(CHANNEL_NAME)
@@ -87,6 +99,7 @@ export function subscribeSchepenKlad(
       onPing({
         updatedAt: message?.payload?.updatedAt || null,
         updatedBy: message?.payload?.updatedBy || null,
+        clientId: message?.payload?.clientId || null,
       })
     })
     .subscribe()
@@ -107,6 +120,7 @@ export function subscribeSchepenKlad(
           payload: {
             updatedAt: meta.updatedAt || null,
             updatedBy: meta.updatedBy || null,
+            clientId: meta.clientId || null,
           },
         })
       } catch {

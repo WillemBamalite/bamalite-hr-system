@@ -236,6 +236,24 @@ function rematerializeForDate(
   return next
 }
 
+/** Gedeelde klad-plaatsingen winnen; ontbrekende personen vullen vanuit live. */
+function mergeSharedPlacementsWithLive(
+  shared: Record<string, Placement>,
+  live: Record<string, Placement>
+): Record<string, Placement> {
+  const next: Record<string, Placement> = {}
+  for (const id of Object.keys(live)) {
+    next[id] = shared[id] || live[id]
+  }
+  return next
+}
+
+function isNewerTimestamp(candidate: string | null | undefined, current: string | null | undefined): boolean {
+  if (!candidate) return false
+  if (!current) return true
+  return candidate > current
+}
+
 function isValidPlacement(value: any): value is Placement {
   if (!value || typeof value !== "object") return false
   if (typeof value.shipId !== "string" || !value.shipId) return false
@@ -624,14 +642,28 @@ export default function SchepenKladPage() {
   const [syncError, setSyncError] = useState<string | null>(null)
   const [sickFolderOpen, setSickFolderOpen] = useState(false)
   const originalsRef = useRef<Record<string, Placement>>({})
-  const skipNextSaveRef = useRef(false)
+  const applyingRemoteRef = useRef(false)
+  const dirtyRef = useRef(false)
+  const saveSeqRef = useRef(0)
   const lastSavedAtRef = useRef<string | null>(null)
+  const clientIdRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `klad-${Date.now()}`
+  )
   const notifyRemoteRef = useRef<
-    ((meta: { updatedAt?: string | null; updatedBy?: string | null }) => Promise<void>) | null
+    ((meta: {
+      updatedAt?: string | null
+      updatedBy?: string | null
+      clientId?: string | null
+    }) => Promise<void>) | null
   >(null)
   const applySharedRef = useRef<((shared: any, opts?: { fromRemote?: boolean }) => void) | null>(
     null
   )
+  const markDirty = useCallback(() => {
+    dirtyRef.current = true
+  }, [])
 
   useEffect(() => {
     originalsRef.current = originals
@@ -661,7 +693,7 @@ export default function SchepenKladPage() {
   const resetKlad = useCallback(() => {
     const initial = buildInitialPlacements(eligibleCrew, sickLeave || [], kladDate)
     clearKladStorage()
-    skipNextSaveRef.current = false
+    markDirty()
     setPlacements(initial)
     setOriginals(initial)
     setOnBoardFromDates({})
@@ -672,7 +704,7 @@ export default function SchepenKladPage() {
     setDragCrewId(null)
     setOverKey(null)
     setInitialized(true)
-  }, [eligibleCrew, sickLeave, kladDate])
+  }, [eligibleCrew, sickLeave, kladDate, markDirty])
 
   const applySharedState = useCallback(
     (
@@ -687,17 +719,28 @@ export default function SchepenKladPage() {
       },
       opts?: { fromRemote?: boolean }
     ) => {
+      // Lokale unsaved edits nooit overschrijven met oudere cloud-stand
+      if (opts?.fromRemote && dirtyRef.current) return
+      if (
+        opts?.fromRemote &&
+        !isNewerTimestamp(shared.updatedAt, lastSavedAtRef.current)
+      ) {
+        return
+      }
+
       const date =
         shared.kladDate && isValidKladDate(shared.kladDate) ? shared.kladDate : todayInputValue()
       const liveForDate = buildInitialPlacements(eligibleCrew, sickLeave || [], date)
       const hasPlacements = Object.keys(shared.placements || {}).length > 0
-      const merged = !hasPlacements
-        ? liveForDate
-        : shared.originals && Object.keys(shared.originals).length > 0
-          ? rematerializeForDate(shared.placements, shared.originals, liveForDate)
-          : mergePlacementsWithLive(shared.placements, liveForDate)
+      // Vertrouw gedeelde placements; vul alleen nieuwe bemanning vanuit live
+      const merged = hasPlacements
+        ? mergeSharedPlacementsWithLive(shared.placements, liveForDate)
+        : liveForDate
 
-      if (opts?.fromRemote) skipNextSaveRef.current = true
+      if (opts?.fromRemote) {
+        applyingRemoteRef.current = true
+        dirtyRef.current = false
+      }
       setKladDate(date)
       setPlacements(merged)
       setOriginals(liveForDate)
@@ -716,11 +759,12 @@ export default function SchepenKladPage() {
     (nextDate: string) => {
       if (!isValidKladDate(nextDate) || nextDate === kladDate) return
       const live = buildInitialPlacements(eligibleCrew, sickLeave || [], nextDate)
+      markDirty()
       setPlacements((prev) => rematerializeForDate(prev, originals, live))
       setOriginals(live)
       setKladDate(nextDate)
     },
-    [kladDate, eligibleCrew, sickLeave, originals]
+    [kladDate, eligibleCrew, sickLeave, originals, markDirty]
   )
 
   useEffect(() => {
@@ -764,11 +808,13 @@ export default function SchepenKladPage() {
           },
           { fromRemote: false }
         )
+        markDirty()
         clearKladStorage()
       } else {
         const date = todayInputValue()
         const live = buildInitialPlacements(eligibleCrew, sickLeave || [], date)
-        skipNextSaveRef.current = true
+        applyingRemoteRef.current = true
+        dirtyRef.current = false
         setKladDate(date)
         setPlacements(live)
         setOriginals(live)
@@ -820,12 +866,16 @@ export default function SchepenKladPage() {
 
   useEffect(() => {
     if (!initialized || loading) return
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false
+    // Remote apply mag niet meteen terug-saven of als "dirty" tellen
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false
       return
     }
+    if (!dirtyRef.current) return
 
+    const seq = ++saveSeqRef.current
     const timer = window.setTimeout(async () => {
+      if (seq !== saveSeqRef.current) return
       const { payload, error: saveError } = await saveSchepenKlad({
         placements,
         originals,
@@ -833,6 +883,7 @@ export default function SchepenKladPage() {
         healthOverrides,
         kladDate,
       })
+      if (seq !== saveSeqRef.current) return
       if (saveError) {
         setSyncError(saveError)
         return
@@ -840,14 +891,16 @@ export default function SchepenKladPage() {
       setSyncError(null)
       if (payload?.updatedAt) {
         lastSavedAtRef.current = payload.updatedAt
+        dirtyRef.current = false
         setKladSavedAt(payload.updatedAt)
         setKladUpdatedBy(payload.updatedBy || null)
         await notifyRemoteRef.current?.({
           updatedAt: payload.updatedAt,
           updatedBy: payload.updatedBy,
+          clientId: clientIdRef.current,
         })
       }
-    }, 450)
+    }, 350)
 
     return () => window.clearTimeout(timer)
   }, [placements, originals, onBoardFromDates, healthOverrides, kladDate, initialized, loading])
@@ -855,11 +908,15 @@ export default function SchepenKladPage() {
   useEffect(() => {
     if (!initialized) return
 
-    const sub = subscribeSchepenKlad(async (meta) => {
-      if (meta.updatedAt && meta.updatedAt === lastSavedAtRef.current) return
-      const { payload, error: loadError } = await fetchSchepenKlad()
-      if (loadError || !payload) return
-      if (payload.updatedAt && payload.updatedAt === lastSavedAtRef.current) return
+    const applyRemotePayload = (payload: {
+      placements: Record<string, Placement>
+      originals: Record<string, Placement>
+      onBoardFromDates: Record<string, string>
+      healthOverrides: Record<string, KladHealthOverride>
+      kladDate: string | null
+      updatedAt: string | null
+      updatedBy: string | null
+    }) => {
       applySharedRef.current?.(
         {
           placements: payload.placements,
@@ -872,26 +929,24 @@ export default function SchepenKladPage() {
         },
         { fromRemote: true }
       )
+    }
+
+    const sub = subscribeSchepenKlad(async (meta) => {
+      if (meta.clientId && meta.clientId === clientIdRef.current) return
+      if (dirtyRef.current) return
+      if (!isNewerTimestamp(meta.updatedAt, lastSavedAtRef.current)) return
+      const { payload, error: loadError } = await fetchSchepenKlad()
+      if (loadError || !payload) return
+      applyRemotePayload(payload)
     })
 
     notifyRemoteRef.current = sub.notify
 
     const pullIfChanged = async () => {
+      if (dirtyRef.current) return
       const { payload } = await fetchSchepenKlad()
-      if (!payload?.updatedAt) return
-      if (payload.updatedAt === lastSavedAtRef.current) return
-      applySharedRef.current?.(
-        {
-          placements: payload.placements,
-          originals: payload.originals,
-          onBoardFromDates: payload.onBoardFromDates,
-          healthOverrides: payload.healthOverrides,
-          kladDate: payload.kladDate,
-          updatedAt: payload.updatedAt,
-          updatedBy: payload.updatedBy,
-        },
-        { fromRemote: true }
-      )
+      if (!payload) return
+      applyRemotePayload(payload)
     }
 
     const onFocus = () => {
@@ -900,7 +955,7 @@ export default function SchepenKladPage() {
     window.addEventListener("focus", onFocus)
     const poll = window.setInterval(() => {
       void pullIfChanged()
-    }, 8000)
+    }, 10000)
 
     return () => {
       notifyRemoteRef.current = null
@@ -947,14 +1002,16 @@ export default function SchepenKladPage() {
 
   const applyPlacement = useCallback((crewId: string, nextPlacement: Placement) => {
     if (!crewById.has(crewId)) return
+    markDirty()
     setPlacements((prev) => ({
       ...prev,
       [crewId]: nextPlacement,
     }))
-  }, [crewById])
+  }, [crewById, markDirty])
 
   const setHealthOverride = useCallback((crewId: string, health: KladHealthOverride) => {
     if (!crewById.has(crewId)) return
+    markDirty()
     setHealthOverrides((prev) => ({
       ...prev,
       [crewId]: health,
@@ -968,7 +1025,7 @@ export default function SchepenKladPage() {
       setDateDialog(null)
     }
     // beter: blijft in nog-in-te-delen (buiten het zieken-mapje); datum mag blijven
-  }, [crewById])
+  }, [crewById, markDirty])
 
   const unassignedMembers = useMemo(() => membersFor(UNASSIGNED_KEY), [membersFor])
   const unassignedAvailable = useMemo(
@@ -988,6 +1045,7 @@ export default function SchepenKladPage() {
     if (!dateDialog?.crewId) return
     const value = dateDialog.date.trim()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return
+    markDirty()
     setOnBoardFromDates((prev) => ({
       ...prev,
       [dateDialog.crewId]: value,
