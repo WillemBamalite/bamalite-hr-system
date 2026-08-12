@@ -131,7 +131,9 @@ const buildSalaryInfoFromRows = (rows: any[], crewMember: any) => {
     firstWithBaseSalary?.salary ??
     firstWithBaseSalary?.salaris ??
     null
+  const CLOTHING_ALLOWANCE = 25
   const baseSalaryFromRows = parseMoney(rowBaseValue)
+  const baseSalaryFromRowsIncl = baseSalaryFromRows > 0 ? baseSalaryFromRows + CLOTHING_ALLOWANCE : 0
   const travelFromRowsRaw =
     firstWithTravelAllowance?.travel_allowance ??
     firstWithTravelAllowance?.reiskosten ??
@@ -146,12 +148,12 @@ const buildSalaryInfoFromRows = (rows: any[], crewMember: any) => {
   return {
     iban: String(rowIbanValue || ibanFromMeta || crewIban || ""),
     baseSalary:
-      baseSalaryFromRows > 0
-        ? baseSalaryFromRows
+      baseSalaryFromRowsIncl > 0
+        ? baseSalaryFromRowsIncl
         : crewBaseIncl > 0
           ? crewBaseIncl
           : contractBaseFromNotes > 0
-            ? contractBaseFromNotes
+            ? contractBaseFromNotes + CLOTHING_ALLOWANCE
             : null,
     travelAllowance: travelFromRows || crewTravelAllowance || contractTravelFromNotes,
   }

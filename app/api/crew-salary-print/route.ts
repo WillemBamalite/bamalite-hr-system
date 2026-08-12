@@ -126,7 +126,9 @@ export async function POST(request: NextRequest) {
       return noteMatch ? parseMoney(noteMatch[1]) > 0 : false
     })()
     const ibanFromMeta = String(parseSalaryMetaFromReason(firstWithIbanMeta?.reason)?.iban || "").trim()
+    const CLOTHING_ALLOWANCE = 25
     const baseSalaryFromRows = parseMoney(firstWithBaseSalary?.base_salary)
+    const baseSalaryFromRowsIncl = baseSalaryFromRows > 0 ? baseSalaryFromRows + CLOTHING_ALLOWANCE : 0
     const travelFromRowsRaw = firstWithTravelAllowance?.travel_allowance
     const travelFromRows =
       typeof travelFromRowsRaw === "boolean"
@@ -138,12 +140,12 @@ export async function POST(request: NextRequest) {
       salary: {
         iban: String(firstWithIban?.iban || ibanFromMeta || crewIban || ""),
         baseSalary:
-          baseSalaryFromRows > 0
-            ? baseSalaryFromRows
+          baseSalaryFromRowsIncl > 0
+            ? baseSalaryFromRowsIncl
             : crewBaseIncl > 0
               ? crewBaseIncl
               : contractBaseFromNotes > 0
-                ? contractBaseFromNotes
+                ? contractBaseFromNotes + CLOTHING_ALLOWANCE
                 : null,
         travelAllowance: travelFromRows || crewTravelAllowance || contractTravelFromNotes,
       },
