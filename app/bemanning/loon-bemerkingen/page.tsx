@@ -1486,8 +1486,7 @@ export default function LoonBemerkingenPage() {
       baseSalaryExcl,
       divisorDays,
       workedDays,
-      sickBreakdown,
-      clothingAmount
+      sickBreakdown
     )
     const clothingInTotal = sickBreakdown.totalSickDays > 0 ? 0 : clothingAmount
     const travelAmount = getPayableTravelAmount(row.travel_amount)

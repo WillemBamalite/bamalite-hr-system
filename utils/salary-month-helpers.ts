@@ -241,25 +241,24 @@ export function isCnsUnpaidSickMonth(breakdown: SickDayBreakdown): boolean {
   return breakdown.totalSickDays > 0 && breakdown.days0 === breakdown.totalSickDays
 }
 
+/** Kledinggeld alleen in een maand zonder ziektedagen. */
 export function getPayableClothingAllowance(
   monthlyClothing: number,
   breakdown: SickDayBreakdown
 ): number {
   if (monthlyClothing <= 0) return 0
-  return isCnsUnpaidSickMonth(breakdown) ? 0 : monthlyClothing
+  if (breakdown.totalSickDays > 0) return 0
+  return monthlyClothing
 }
 
 export function applySickAdjustmentToSalary(
   fullMonthSalaryExcl: number,
   divisorDays: number,
   workedDaysInMonth: number | null,
-  breakdown: SickDayBreakdown,
-  monthlyClothing = 0
+  breakdown: SickDayBreakdown
 ): number {
-  const salaryForSickDaily =
-    breakdown.totalSickDays > 0 ? fullMonthSalaryExcl + monthlyClothing : fullMonthSalaryExcl
-
-  if (breakdown.totalSickDays <= 0 || divisorDays <= 0 || salaryForSickDaily <= 0) {
+  // Ziektepercentages (80/100/0) gaan altijd over salaris excl. kledinggeld.
+  if (breakdown.totalSickDays <= 0 || divisorDays <= 0 || fullMonthSalaryExcl <= 0) {
     if (workedDaysInMonth === null) return fullMonthSalaryExcl
     if (workedDaysInMonth <= 0) return 0
     // Cap op divisor: nooit meer dan een volle maand (31 dagen × 30-dagen-tarief).
@@ -279,7 +278,7 @@ export function applySickAdjustmentToSalary(
   const scaledDays80 = breakdown.days80 * sickScale
   const scaledDays100 = breakdown.days100 * sickScale
 
-  const daily = salaryForSickDaily / divisorDays
+  const daily = fullMonthSalaryExcl / divisorDays
   const effectiveSickDays = (scaledDays80 + scaledDays100)
   const healthyDays = Math.max(0, totalDaysInScope - effectiveSickDays)
   return healthyDays * daily + scaledDays80 * daily * 0.8 + scaledDays100 * daily
