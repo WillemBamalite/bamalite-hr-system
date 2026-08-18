@@ -10,12 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, ClipboardList, FileText, Printer, Ship } from "lucide-react"
+import { ArrowLeft, ClipboardList, Droplets, FileText, Printer, Ship } from "lucide-react"
 import { ShipFormsTab } from "@/components/schepen/ship-forms-tab"
+import { ShipSmeerlijstTab } from "@/components/schepen/ship-smeerlijst-tab"
 import { TabFullscreenShell } from "@/components/schepen/tab-fullscreen-shell"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
+import { getShipSmeerlijstByName, shipHasSmeerlijst } from "@/utils/ship-smeerlijst"
 import {
   GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY,
   SHIP_CERTIFICATE_WARNING_OPTIONS,
@@ -3377,11 +3379,13 @@ export default function ShipParticularsPage() {
   const [editingParticularKey, setEditingParticularKey] = useState<string | null>(null)
   const [editingParticularValue, setEditingParticularValue] = useState("")
   const [printDialogOpen, setPrintDialogOpen] = useState(false)
-  const [printDialogKind, setPrintDialogKind] = useState<"scheepsgegevens" | "certificaten" | null>(null)
+  const [printDialogKind, setPrintDialogKind] = useState<"scheepsgegevens" | "certificaten" | "smeerlijst" | null>(null)
   const [printCertificatesLayout, setPrintCertificatesLayout] = useState(false)
+  const [printSmeerlijstLayout, setPrintSmeerlijstLayout] = useState(false)
   const [selectedPrintShipIds, setSelectedPrintShipIds] = useState<string[]>([])
   const [printShipIds, setPrintShipIds] = useState<string[]>([])
   const [printCertificateShipIds, setPrintCertificateShipIds] = useState<string[]>([])
+  const [printSmeerlijstShipIds, setPrintSmeerlijstShipIds] = useState<string[]>([])
   const [toonNieuwCertificaatFormulier, setToonNieuwCertificaatFormulier] = useState(false)
   const [nieuwCertificaatNaam, setNieuwCertificaatNaam] = useState("")
   const [nieuwCertificaatDatum, setNieuwCertificaatDatum] = useState("")
@@ -3406,6 +3410,14 @@ export default function ShipParticularsPage() {
   const allCertificateShipIds = useMemo(
     () => shipsWithCertificatePrint.map((s: any) => String(s.id)),
     [shipsWithCertificatePrint]
+  )
+  const shipsWithSmeerlijstPrint = useMemo(
+    () => ships.filter((s: any) => shipHasSmeerlijst(String(s?.name || "").trim())),
+    [ships]
+  )
+  const allSmeerlijstShipIds = useMemo(
+    () => shipsWithSmeerlijstPrint.map((s: any) => String(s.id)),
+    [shipsWithSmeerlijstPrint]
   )
   const shipNameLower = String(ship?.name || "").trim().toLowerCase()
   const isApollo = shipNameLower === "apollo"
@@ -4170,6 +4182,8 @@ export default function ShipParticularsPage() {
       setActiveTab("certificaten")
     } else if (requestedTab === "formulieren") {
       setActiveTab("formulieren")
+    } else if (requestedTab === "smeerlijst") {
+      setActiveTab("smeerlijst")
     }
   }, [searchParams])
 
@@ -4234,20 +4248,31 @@ export default function ShipParticularsPage() {
   }, [ship?.id])
 
   const printCertificatesLayoutRef = useRef(false)
+  const printSmeerlijstLayoutRef = useRef(false)
   useEffect(() => {
     printCertificatesLayoutRef.current = printCertificatesLayout
   }, [printCertificatesLayout])
+  useEffect(() => {
+    printSmeerlijstLayoutRef.current = printSmeerlijstLayout
+  }, [printSmeerlijstLayout])
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return
     const onBeforePrint = () => {
-      if (!printCertificatesLayoutRef.current) return
-      document.documentElement.classList.add("certificate-print-mode")
-      document.body.classList.add("certificate-print-mode")
+      if (printCertificatesLayoutRef.current) {
+        document.documentElement.classList.add("certificate-print-mode")
+        document.body.classList.add("certificate-print-mode")
+      }
+      if (printSmeerlijstLayoutRef.current) {
+        document.documentElement.classList.add("smeerlijst-print-mode")
+        document.body.classList.add("smeerlijst-print-mode")
+      }
     }
     const onAfterPrint = () => {
       setPrintCertificatesLayout(false)
       setPrintCertificateShipIds([])
+      setPrintSmeerlijstLayout(false)
+      setPrintSmeerlijstShipIds([])
     }
     window.addEventListener("beforeprint", onBeforePrint)
     window.addEventListener("afterprint", onAfterPrint)
@@ -4268,11 +4293,20 @@ export default function ShipParticularsPage() {
       root.classList.remove("certificate-print-mode")
       body.classList.remove("certificate-print-mode")
     }
+    if (printSmeerlijstLayout) {
+      root.classList.add("smeerlijst-print-mode")
+      body.classList.add("smeerlijst-print-mode")
+    } else {
+      root.classList.remove("smeerlijst-print-mode")
+      body.classList.remove("smeerlijst-print-mode")
+    }
     return () => {
       root.classList.remove("certificate-print-mode")
       body.classList.remove("certificate-print-mode")
+      root.classList.remove("smeerlijst-print-mode")
+      body.classList.remove("smeerlijst-print-mode")
     }
-  }, [printCertificatesLayout])
+  }, [printCertificatesLayout, printSmeerlijstLayout])
 
   const setClassificationField = (key: keyof ClassificationEditableValues, value: string) => {
     const next = { ...classificationEditable, [key]: value }
@@ -4498,7 +4532,9 @@ export default function ShipParticularsPage() {
 
   const printScheepsgegevens = () => {
     setPrintCertificatesLayout(false)
+    setPrintSmeerlijstLayout(false)
     setPrintCertificateShipIds([])
+    setPrintSmeerlijstShipIds([])
     setPrintDialogKind("scheepsgegevens")
     setPrintDialogOpen(true)
   }
@@ -4514,12 +4550,31 @@ export default function ShipParticularsPage() {
       return
     }
     setPrintCertificatesLayout(false)
+    setPrintSmeerlijstLayout(false)
     setPrintDialogKind("certificaten")
     const currentId = String(ship.id)
     setSelectedPrintShipIds((prev) => {
       const filtered = prev.filter((id) => allCertificateShipIds.includes(id))
       if (filtered.length > 0) return filtered
       return allCertificateShipIds.includes(currentId) ? [currentId] : [allCertificateShipIds[0]]
+    })
+    setPrintDialogOpen(true)
+  }
+
+  const openPrintSmeerlijstDialog = () => {
+    if (typeof window === "undefined") return
+    if (allSmeerlijstShipIds.length === 0) {
+      alert("Er zijn geen schepen met een smeerlijst om te printen.")
+      return
+    }
+    setPrintCertificatesLayout(false)
+    setPrintSmeerlijstLayout(false)
+    setPrintDialogKind("smeerlijst")
+    const currentId = String(ship?.id || "")
+    setSelectedPrintShipIds((prev) => {
+      const filtered = prev.filter((id) => allSmeerlijstShipIds.includes(id))
+      if (filtered.length > 0) return filtered
+      return allSmeerlijstShipIds.includes(currentId) ? [currentId] : [allSmeerlijstShipIds[0]]
     })
     setPrintDialogOpen(true)
   }
@@ -4533,7 +4588,12 @@ export default function ShipParticularsPage() {
   }
 
   const handleToggleSelectAllPrintShips = (checked: boolean) => {
-    const ids = printDialogKind === "certificaten" ? allCertificateShipIds : allSupportedShipIds
+    const ids =
+      printDialogKind === "certificaten"
+        ? allCertificateShipIds
+        : printDialogKind === "smeerlijst"
+          ? allSmeerlijstShipIds
+          : allSupportedShipIds
     if (checked) {
       setSelectedPrintShipIds(ids)
       return
@@ -4547,7 +4607,9 @@ export default function ShipParticularsPage() {
       return
     }
     setPrintCertificatesLayout(false)
+    setPrintSmeerlijstLayout(false)
     setPrintCertificateShipIds([])
+    setPrintSmeerlijstShipIds([])
     setPrintShipIds(selectedPrintShipIds)
     setPrintDialogOpen(false)
     setPrintDialogKind(null)
@@ -4576,10 +4638,38 @@ export default function ShipParticularsPage() {
     window.setTimeout(() => window.print(), 380)
   }
 
+  const startPrintSelectedSmeerlijst = () => {
+    if (typeof window === "undefined") return
+    const chosen = selectedPrintShipIds.filter((id) => allSmeerlijstShipIds.includes(id))
+    if (chosen.length === 0) {
+      alert("Selecteer minimaal een schip met een smeerlijst.")
+      return
+    }
+    document.documentElement.classList.add("smeerlijst-print-mode")
+    document.body.classList.add("smeerlijst-print-mode")
+    setPrintSmeerlijstShipIds(chosen)
+    setPrintSmeerlijstLayout(true)
+    setPrintCertificatesLayout(false)
+    setPrintCertificateShipIds([])
+    setPrintDialogOpen(false)
+    setPrintDialogKind(null)
+    setActiveTab("smeerlijst")
+    setCertificateContextMenu({ visible: false, x: 0, y: 0, certificateIndex: null })
+    window.setTimeout(() => window.print(), 380)
+  }
+
   const dialogShipIdsForPrint =
-    printDialogKind === "certificaten" ? allCertificateShipIds : allSupportedShipIds
+    printDialogKind === "certificaten"
+      ? allCertificateShipIds
+      : printDialogKind === "smeerlijst"
+        ? allSmeerlijstShipIds
+        : allSupportedShipIds
   const dialogShipRowsForPrint =
-    printDialogKind === "certificaten" ? shipsWithCertificatePrint : supportedShipsForPrint
+    printDialogKind === "certificaten"
+      ? shipsWithCertificatePrint
+      : printDialogKind === "smeerlijst"
+        ? shipsWithSmeerlijstPrint
+        : supportedShipsForPrint
   const allDialogShipsSelected =
     dialogShipIdsForPrint.length > 0 &&
     dialogShipIdsForPrint.every((id) => selectedPrintShipIds.includes(id))
@@ -4687,6 +4777,12 @@ export default function ShipParticularsPage() {
                 Print certificaten
               </Button>
             ) : null}
+            {allSmeerlijstShipIds.length > 0 ? (
+              <Button variant="outline" size="sm" onClick={openPrintSmeerlijstDialog}>
+                <Droplets className="w-4 h-4 mr-2" />
+                Print smeerlijst
+              </Button>
+            ) : null}
           </div>
         </div>
         <Dialog
@@ -4701,7 +4797,9 @@ export default function ShipParticularsPage() {
               <DialogTitle>
                 {printDialogKind === "certificaten"
                   ? "Selecteer schepen voor certificaatprint"
-                  : "Selecteer te printen schepen"}
+                  : printDialogKind === "smeerlijst"
+                    ? "Selecteer schepen voor smeerlijstprint"
+                    : "Selecteer te printen schepen"}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
@@ -4741,7 +4839,9 @@ export default function ShipParticularsPage() {
                   onClick={() =>
                     printDialogKind === "certificaten"
                       ? startPrintSelectedCertificates()
-                      : startPrintSelectedShips()
+                      : printDialogKind === "smeerlijst"
+                        ? startPrintSelectedSmeerlijst()
+                        : startPrintSelectedShips()
                   }
                 >
                   Print selectie
@@ -4789,7 +4889,7 @@ export default function ShipParticularsPage() {
               <h1 className="text-xl font-bold text-gray-900">Scheepsgegevens - {ship?.name || "Onbekend schip"}</h1>
             </div>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full max-w-3xl grid-cols-3 mb-2 print:hidden">
+              <TabsList className="grid w-full max-w-4xl grid-cols-4 mb-2 print:hidden">
                 <TabsTrigger value="scheepsgegevens" className="text-base">
                   <Ship className="w-4 h-4 mr-2" />
                   Scheepsgegevens
@@ -4801,6 +4901,10 @@ export default function ShipParticularsPage() {
                 <TabsTrigger value="formulieren" className="text-base">
                   <ClipboardList className="w-4 h-4 mr-2" />
                   Formulieren
+                </TabsTrigger>
+                <TabsTrigger value="smeerlijst" className="text-base">
+                  <Droplets className="w-4 h-4 mr-2" />
+                  Smeerlijst
                 </TabsTrigger>
               </TabsList>
 
@@ -5221,12 +5325,25 @@ export default function ShipParticularsPage() {
                   <ShipFormsTab shipId={shipId} shipName={ship.name} />
                 </TabFullscreenShell>
               </TabsContent>
+
+              <TabsContent value="smeerlijst" className="print:hidden">
+                <TabFullscreenShell
+                  title={`Smeerlijst — ${ship.name}`}
+                  subtitle="Smeermiddelen per apparaat. Andere schepen kunnen later worden toegevoegd."
+                  enableSearch
+                  searchPlaceholder="Zoek apparaat of smeermiddel..."
+                >
+                  {(search) => (
+                    <ShipSmeerlijstTab shipName={ship.name} searchQuery={search.searchQuery} />
+                  )}
+                </TabFullscreenShell>
+              </TabsContent>
             </Tabs>
           </div>
         )}
         </div>
 
-        <div className={`hidden ${printCertificatesLayout ? "print:hidden" : "print:block"}`}>
+        <div className={`hidden ${printCertificatesLayout || printSmeerlijstLayout ? "print:hidden" : "print:block"}`}>
           {printShipIdsToRender.map((printId) => {
             const printShip = ships.find((s: any) => String(s.id) === String(printId))
             const printConfig = getShipParticularsConfigByName(printShip?.name || "")
@@ -5388,6 +5505,65 @@ export default function ShipParticularsPage() {
                           </tr>
                         )
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+
+        {printSmeerlijstLayout && printSmeerlijstShipIds.length > 0 ? (
+          <div className="hidden print:block">
+            {printSmeerlijstShipIds.map((smeerPrintShipId, shipIdx) => {
+              const printSmeerShip = ships.find((s: any) => String(s.id) === String(smeerPrintShipId))
+              if (!printSmeerShip?.name) return null
+              const rows = getShipSmeerlijstByName(printSmeerShip.name)
+              if (rows.length === 0) return null
+              const printedOn = new Date().toLocaleDateString("nl-NL", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })
+              const printColorStyle: CSSProperties = {
+                WebkitPrintColorAdjust: "exact",
+                printColorAdjust: "exact",
+              }
+              return (
+                <div
+                  key={`smeer-print-${smeerPrintShipId}`}
+                  className={shipIdx > 0 ? "print:break-before-page" : ""}
+                >
+                  <div className="mb-4 rounded-md bg-blue-700 px-4 py-3 text-white" style={printColorStyle}>
+                    <h1 className="text-2xl font-bold">Smeerlijst</h1>
+                    <p className="text-base font-semibold mt-1">Schip: {printSmeerShip.name}</p>
+                    <p className="text-sm text-blue-100 mt-1">Afgedrukt op {printedOn}</p>
+                  </div>
+                  <table className="w-full text-sm border-collapse" style={printColorStyle}>
+                    <thead>
+                      <tr className="bg-blue-600 text-white" style={printColorStyle}>
+                        <th className="border border-blue-800 px-3 py-2 text-left font-bold">Apparaat</th>
+                        <th className="border border-blue-800 px-3 py-2 text-left font-bold">Fabrikant</th>
+                        <th className="border border-blue-800 px-3 py-2 text-left font-bold">Type</th>
+                        <th className="border border-blue-800 px-3 py-2 text-left font-bold">Smeermiddel</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, index) => (
+                        <tr
+                          key={`print-smeer-${printSmeerShip.id}-${row.apparaat}-${row.smeermiddel}-${index}`}
+                          className={index % 2 === 0 ? "bg-white" : "bg-blue-50"}
+                          style={printColorStyle}
+                        >
+                          <td className="border border-blue-200 px-3 py-2 align-top font-semibold text-gray-900">
+                            {row.apparaat}
+                          </td>
+                          <td className="border border-blue-200 px-3 py-2 align-top text-gray-800">{row.fabrikant}</td>
+                          <td className="border border-blue-200 px-3 py-2 align-top text-gray-800">{row.type}</td>
+                          <td className="border border-blue-200 px-3 py-2 align-top text-gray-800">{row.smeermiddel}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

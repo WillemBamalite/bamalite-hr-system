@@ -284,7 +284,11 @@ body {
   html.certificate-print-mode .dashboard-header,
   html.certificate-print-mode .print-header,
   body.certificate-print-mode .dashboard-header,
-  body.certificate-print-mode .print-header {
+  body.certificate-print-mode .print-header,
+  html.smeerlijst-print-mode .dashboard-header,
+  html.smeerlijst-print-mode .print-header,
+  body.smeerlijst-print-mode .dashboard-header,
+  body.smeerlijst-print-mode .print-header {
     display: none !important;
   }
 
