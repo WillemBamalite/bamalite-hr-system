@@ -217,6 +217,33 @@ const SEPA_CCY = "EUR"
 const DEFAULT_SEPA_MESSAGE_PREFIX = "Salaris"
 const CLOTHING_ALLOWANCE_FIXED = 25
 
+/** Kantoorpersoneel: geen kledinggeld. */
+const NO_CLOTHING_ALLOWANCE_NAMES = [
+  "tania growen",
+  "lucie grognard",
+  "jos meijer",
+  "bart bruinsma",
+  "sandra rodrigues",
+]
+
+const normalizePersonName = (value: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+
+const getCrewFullName = (crewMember: any): string =>
+  normalizePersonName(`${crewMember?.first_name || ""} ${crewMember?.last_name || ""}`)
+
+const crewHasNoClothingAllowance = (crewMember: any): boolean => {
+  const fullName = getCrewFullName(crewMember)
+  if (fullName && NO_CLOTHING_ALLOWANCE_NAMES.includes(fullName)) return true
+  const email = String(crewMember?.email || "").trim().toLowerCase()
+  return email === "tanja@bamalite.com"
+}
+
 const parseMoney = (value: any): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
   if (typeof value !== "string") return 0
@@ -311,7 +338,7 @@ const getCrewBaseSalaryExclClothing = (crewMember: any): number => {
 }
 
 const getCrewClothingAllowance = (crewMember: any): number => {
-  // Bedrijfsregel: kledinggeld is voor iedereen altijd vast EUR 25 per maand.
+  if (crewHasNoClothingAllowance(crewMember)) return 0
   return CLOTHING_ALLOWANCE_FIXED
 }
 
@@ -326,7 +353,7 @@ const getContractBaseSalaryExclClothing = (crewMember: any): number | null => {
 
   const incl = getContractBaseSalaryInclClothing(crewMember)
   if (incl !== null && incl > 0) {
-    const clothing = getCrewClothingAllowance(crewMember) || CLOTHING_ALLOWANCE_FIXED
+    const clothing = getCrewClothingAllowance(crewMember)
     return Math.max(0, incl - clothing)
   }
   return null
@@ -338,7 +365,7 @@ const normalizeBaseSalaryExclClothingForCrew = (
   crewMember: any
 ): number | null => {
   if (typeof baseSalary !== "number" || !Number.isFinite(baseSalary)) return null
-  const clothing = getCrewClothingAllowance(crewMember) || CLOTHING_ALLOWANCE_FIXED
+  const clothing = getCrewClothingAllowance(crewMember)
   const crewExcl = getCrewBaseSalaryExclClothing(crewMember)
 
   const notesText = getCrewNotesText(crewMember)
@@ -1321,8 +1348,7 @@ export default function LoonBemerkingenPage() {
 
   const getRowClothingAllowance = (row: SalaryDraft) => {
     const crewMember = crewById.get(String(row.crew_id))
-    const fromContract = getCrewClothingAllowance(crewMember)
-    return fromContract > 0 ? fromContract : CLOTHING_ALLOWANCE_FIXED
+    return getCrewClothingAllowance(crewMember)
   }
 
   const getProratedBaseSalaryForMonth = (row: SalaryDraft, selectedMonthKey: string) => {
