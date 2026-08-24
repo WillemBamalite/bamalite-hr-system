@@ -10,6 +10,7 @@ import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useMemo, useState } from "react"
+import { resolveClothingAllowanceAmount } from "@/utils/clothing-allowance"
 
 interface Props {
   crewMemberId: string
@@ -43,8 +44,12 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
   const jsonPart = reason.slice(markerIndex + prefixLength).trim()
   if (!jsonPart) return null
   try {
-    const parsed = JSON.parse(jsonPart) as { iban?: string }
-    return { iban: String(parsed.iban || "") }
+    const parsed = JSON.parse(jsonPart) as { iban?: string; clothing_allowance?: boolean }
+    return {
+      iban: String(parsed.iban || ""),
+      clothing_allowance:
+        typeof parsed.clothing_allowance === "boolean" ? parsed.clothing_allowance : undefined,
+    }
   } catch {
     return null
   }
@@ -131,9 +136,12 @@ const buildSalaryInfoFromRows = (rows: any[], crewMember: any) => {
     firstWithBaseSalary?.salary ??
     firstWithBaseSalary?.salaris ??
     null
-  const CLOTHING_ALLOWANCE = 25
+  const clothingFromMeta = rows
+    .map((row: any) => parseSalaryMetaFromReason(row?.reason)?.clothing_allowance)
+    .find((v): v is boolean => typeof v === "boolean")
+  const clothingAmount = resolveClothingAllowanceAmount(crewMember, clothingFromMeta)
   const baseSalaryFromRows = parseMoney(rowBaseValue)
-  const baseSalaryFromRowsIncl = baseSalaryFromRows > 0 ? baseSalaryFromRows + CLOTHING_ALLOWANCE : 0
+  const baseSalaryFromRowsIncl = baseSalaryFromRows > 0 ? baseSalaryFromRows + clothingAmount : 0
   const travelFromRowsRaw =
     firstWithTravelAllowance?.travel_allowance ??
     firstWithTravelAllowance?.reiskosten ??

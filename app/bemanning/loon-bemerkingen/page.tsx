@@ -22,6 +22,11 @@ import {
 import { calculateOverwerkAmount } from "@/utils/overwerk-pay-rates"
 import { humanizeSalaryDisplayNote } from "@/utils/overwerk-settlement"
 import {
+  CLOTHING_ALLOWANCE_FIXED,
+  resolveClothingAllowanceAmount,
+  resolveClothingAllowanceEnabled,
+} from "@/utils/clothing-allowance"
+import {
   listConfiguredSepaCompanies,
   parseSepaDebtorsFromEnv,
   resolveSepaDebtorForCompany,
@@ -169,6 +174,8 @@ type SalaryDraft = {
   review_type: "opmerking" | "correctie"
   /** Handmatige override gewerkte dagen bij pro-rata; null = automatisch berekenen. */
   proration_worked_days: number | null
+  /** Ja = €25 kledinggeld, Nee = €0. */
+  clothing_allowance: boolean
 }
 
 const DEDUCTION_CATEGORY_OPTIONS = [
@@ -215,34 +222,6 @@ const formatEuro = (value: number) =>
 const formatCurrency = (value: number) => formatEuro(Number(value || 0))
 const SEPA_CCY = "EUR"
 const DEFAULT_SEPA_MESSAGE_PREFIX = "Salaris"
-const CLOTHING_ALLOWANCE_FIXED = 25
-
-/** Kantoorpersoneel: geen kledinggeld. */
-const NO_CLOTHING_ALLOWANCE_NAMES = [
-  "tania growen",
-  "lucie grognard",
-  "jos meijer",
-  "bart bruinsma",
-  "sandra rodrigues",
-]
-
-const normalizePersonName = (value: string) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-
-const getCrewFullName = (crewMember: any): string =>
-  normalizePersonName(`${crewMember?.first_name || ""} ${crewMember?.last_name || ""}`)
-
-const crewHasNoClothingAllowance = (crewMember: any): boolean => {
-  const fullName = getCrewFullName(crewMember)
-  if (fullName && NO_CLOTHING_ALLOWANCE_NAMES.includes(fullName)) return true
-  const email = String(crewMember?.email || "").trim().toLowerCase()
-  return email === "tanja@bamalite.com"
-}
 
 const parseMoney = (value: any): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
@@ -337,10 +316,8 @@ const getCrewBaseSalaryExclClothing = (crewMember: any): number => {
   return parseMoney(baseRaw)
 }
 
-const getCrewClothingAllowance = (crewMember: any): number => {
-  if (crewHasNoClothingAllowance(crewMember)) return 0
-  return CLOTHING_ALLOWANCE_FIXED
-}
+const getCrewClothingAllowance = (crewMember: any): number =>
+  resolveClothingAllowanceAmount(crewMember, undefined)
 
 const getContractBaseSalaryExclClothing = (crewMember: any): number | null => {
   const fromCrew = getCrewBaseSalaryExclClothing(crewMember)
@@ -528,6 +505,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       overtime_approval_karina_paid_at?: string
       proration_worked_days?: number | null
       travel_amount?: number
+      clothing_allowance?: boolean
     }
     const deductions = normalizeDeductionsFromMeta(
       {
@@ -575,6 +553,8 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
         typeof parsed.travel_amount === "number"
           ? normalizeTravelAmount(parsed.travel_amount)
           : undefined,
+      clothing_allowance:
+        typeof parsed.clothing_allowance === "boolean" ? parsed.clothing_allowance : undefined,
     }
   } catch {
     return null
@@ -966,6 +946,12 @@ export default function LoonBemerkingenPage() {
               typeof currentMeta?.proration_worked_days === "number"
                 ? currentMeta.proration_worked_days
                 : null,
+            clothing_allowance: resolveClothingAllowanceEnabled(
+              c,
+              current
+                ? currentMeta?.clothing_allowance
+                : previousMeta?.clothing_allowance
+            ),
           }
           draftRow.notes = stripAutoSickNotesFromManual(
             getNormalizedManualNote(draftRow.notes, getAutoProrationNote(draftRow, monthKey))
@@ -1031,6 +1017,10 @@ export default function LoonBemerkingenPage() {
           review_type: prevRow?.review_type === "correctie" ? "correctie" : (meta?.review_type || "opmerking"),
           proration_worked_days:
             typeof meta?.proration_worked_days === "number" ? meta.proration_worked_days : null,
+          clothing_allowance: resolveClothingAllowanceEnabled(
+            crewById.get(crewId),
+            meta?.clothing_allowance
+          ),
         }
       }
 
@@ -1348,7 +1338,7 @@ export default function LoonBemerkingenPage() {
 
   const getRowClothingAllowance = (row: SalaryDraft) => {
     const crewMember = crewById.get(String(row.crew_id))
-    return getCrewClothingAllowance(crewMember)
+    return resolveClothingAllowanceAmount(crewMember, row.clothing_allowance)
   }
 
   const getProratedBaseSalaryForMonth = (row: SalaryDraft, selectedMonthKey: string) => {
@@ -1755,6 +1745,7 @@ export default function LoonBemerkingenPage() {
               ? rowForPersist.proration_worked_days
               : null,
           travel_amount: rowForPersist.travel_amount ?? 0,
+          clothing_allowance: rowForPersist.clothing_allowance !== false,
         })}` +
         (String(rowForPersist.review_comment || "").trim()
           ? `\n${REVIEW_META_PREFIX}${JSON.stringify({
@@ -2322,6 +2313,10 @@ export default function LoonBemerkingenPage() {
               crewById.get(crewId)
             ) ?? (typeof item?.base_salary === "number" ? item.base_salary : 0),
           travel_amount: resolveTravelAmountFromRow(item, meta),
+          clothing_allowance: resolveClothingAllowanceEnabled(
+            crewById.get(crewId),
+            meta?.clothing_allowance
+          ),
           advance_enabled: (item?.advance_enabled ?? meta?.advance_enabled ?? false) === true,
           advance_amount: typeof item?.advance_amount === "number" ? item.advance_amount : (meta?.advance_amount || 0),
           deduction_category: meta?.deduction_category || "voorschot",
@@ -2347,6 +2342,16 @@ export default function LoonBemerkingenPage() {
           review_comment: String(item?.review_comment || ""),
           review_by: String(item?.review_by || ""),
           review_type: item?.review_type === "correctie" ? "correctie" : "opmerking",
+          proration_worked_days:
+            typeof meta?.proration_worked_days === "number" ? meta.proration_worked_days : null,
+          overtime_approval_leo: !!(item?.overtime_approval_leo ?? meta?.overtime_approval_leo),
+          overtime_approval_karina: !!(item?.overtime_approval_karina ?? meta?.overtime_approval_karina),
+          overtime_approval_leo_paid_at: String(
+            item?.overtime_approval_leo_paid_at ?? meta?.overtime_approval_leo_paid_at ?? ""
+          ),
+          overtime_approval_karina_paid_at: String(
+            item?.overtime_approval_karina_paid_at ?? meta?.overtime_approval_karina_paid_at ?? ""
+          ),
         }
         const totals = getSalaryTotals(row)
         return {
@@ -3463,30 +3468,48 @@ export default function LoonBemerkingenPage() {
                 <Label>IBAN</Label>
                 <Input value={editingRow.iban || ""} onChange={(e) => setCrewField(editingCrewId, { iban: e.target.value })} />
               </div>
-              <div>
-                <Label>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl. kledinggeld"}</Label>
-                <Input
-                  type="text"
-                  disabled={salaryEditingDisabled}
-                  inputMode="decimal"
-                  autoComplete="off"
-                  value={baseSalaryEditText}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\s/g, "")
-                    if (v !== "" && !/^[-\d.,]*$/.test(v)) return
-                    setBaseSalaryEditText(v)
-                  }}
-                  onBlur={() => {
-                    const parsed = parseSalaryMoneyInput(baseSalaryEditText.trim())
-                    const normalized =
-                      normalizeBaseSalaryExclClothingForCrew(
-                        parsed,
-                        crewById.get(editingCrewId)
-                      ) ?? parsed
-                    setCrewField(editingCrewId, { base_salary: normalized })
-                    setBaseSalaryEditText(formatSalaryInputFromNumber(normalized))
-                  }}
-                />
+              <div className="space-y-3">
+                <div>
+                  <Label>{isTanja ? "Grundgehalt exkl. Kleidungsgeld" : "Basissalaris excl. kledinggeld"}</Label>
+                  <Input
+                    type="text"
+                    disabled={salaryEditingDisabled}
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={baseSalaryEditText}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\s/g, "")
+                      if (v !== "" && !/^[-\d.,]*$/.test(v)) return
+                      setBaseSalaryEditText(v)
+                    }}
+                    onBlur={() => {
+                      const parsed = parseSalaryMoneyInput(baseSalaryEditText.trim())
+                      const normalized =
+                        normalizeBaseSalaryExclClothingForCrew(
+                          parsed,
+                          crewById.get(editingCrewId)
+                        ) ?? parsed
+                      setCrewField(editingCrewId, { base_salary: normalized })
+                      setBaseSalaryEditText(formatSalaryInputFromNumber(normalized))
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label>{isTanja ? "Kleidungsgeld" : "Kledinggeld"}</Label>
+                  <Select
+                    disabled={salaryEditingDisabled}
+                    value={editingRow.clothing_allowance === false ? "nee" : "ja"}
+                    onValueChange={(v) =>
+                      setCrewField(editingCrewId, { clothing_allowance: v === "ja" })
+                    }
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ja">{isTanja ? "Ja (€ 25)" : "Ja (€ 25)"}</SelectItem>
+                      <SelectItem value="nee">{isTanja ? "Nein" : "Nee"}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               {hasProrationInMonth(editingRow, editingRow.month_key || monthKey) && (
                 <div>
