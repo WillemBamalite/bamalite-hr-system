@@ -11,9 +11,12 @@ import {
 export type FirmaInvoiceInput = {
   fromCompany: string
   toCompany: string
+  /** Eén schip, of meerdere komma-gescheiden als de groep over schepen heen gaat. */
   shipName: string
+  /** Eén naam, of meerdere komma-gescheiden (factuur is per firma, niet per persoon). */
   employeeName: string
   monthKey: string
+  /** Som van de bruto bedragen van iedereen op deze factuur. */
   nettoAmount: number
   vatPercent: number
   invoiceNumber: string

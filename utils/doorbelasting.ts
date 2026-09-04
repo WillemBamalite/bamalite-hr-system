@@ -123,6 +123,80 @@ export function filterDoorbelastingByMonth(
   return rows.filter((r) => r.monthKey === monthKey)
 }
 
+export type DoorbelastingFirmaGroup = {
+  key: string
+  fromCompany: string
+  toCompany: string
+  monthKey: string
+  rows: DoorbelastingMonthRow[]
+}
+
+export function doorbelastingGroupKey(
+  fromCompany: string,
+  toCompany: string,
+  monthKey: string
+): string {
+  return `${fromCompany}|${toCompany}|${monthKey}`
+}
+
+/** Eén groep per eigen firma → ontvangende firma (binnen dezelfde maand). */
+export function groupDoorbelastingByFirma(
+  rows: DoorbelastingMonthRow[]
+): DoorbelastingFirmaGroup[] {
+  const map = new Map<string, DoorbelastingFirmaGroup>()
+  for (const row of rows) {
+    const key = doorbelastingGroupKey(row.fromCompany, row.toCompany, row.monthKey)
+    let group = map.get(key)
+    if (!group) {
+      group = {
+        key,
+        fromCompany: row.fromCompany,
+        toCompany: row.toCompany,
+        monthKey: row.monthKey,
+        rows: [],
+      }
+      map.set(key, group)
+    }
+    group.rows.push(row)
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    const from = a.fromCompany.localeCompare(b.fromCompany, "nl")
+    if (from !== 0) return from
+    return a.toCompany.localeCompare(b.toCompany, "nl")
+  })
+}
+
+export function uniqueShipNames(rows: DoorbelastingMonthRow[]): string[] {
+  const names: string[] = []
+  for (const row of rows) {
+    const name = String(row.shipName || "").trim()
+    if (name && !names.includes(name)) names.push(name)
+  }
+  return names
+}
+
+/** Factuurregel: "De Ruiter C., Mierek L.P." — past in het smalle naamveld. */
+export function formatInvoiceNameShort(lastName: string, firstName: string): string {
+  const last = String(lastName || "").trim()
+  const initials = String(firstName || "")
+    .trim()
+    .split(/[\s-]+/)
+    .map((part) => {
+      const letter = Array.from(part).find((ch) => /\p{L}/u.test(ch))
+      return letter ? `${letter.toUpperCase()}.` : ""
+    })
+    .filter(Boolean)
+    .join("")
+  return [last, initials].filter(Boolean).join(" ")
+}
+
+export function formatInvoiceNamesShort(rows: DoorbelastingMonthRow[]): string {
+  return rows
+    .map((row) => formatInvoiceNameShort(row.lastName, row.firstName))
+    .filter(Boolean)
+    .join(", ")
+}
+
 export function getAvailableDoorbelastingMonths(rows: DoorbelastingMonthRow[]): string[] {
   return Array.from(new Set(rows.map((r) => r.monthKey))).sort((a, b) => (a < b ? 1 : -1))
 }

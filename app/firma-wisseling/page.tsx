@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Fragment, Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
@@ -17,7 +17,11 @@ import {
   formatMonthKeyNl,
   getAvailableDoorbelastingMonths,
   getMonthKeyFromDate,
+  formatInvoiceNamesShort,
+  groupDoorbelastingByFirma,
   shiftMonthKey,
+  uniqueShipNames,
+  type DoorbelastingFirmaGroup,
   type DoorbelastingMonthRow,
 } from "@/utils/doorbelasting"
 import {
@@ -145,11 +149,13 @@ export default function FirmaWisselingPage() {
     invoiceBtn: isGermanFirmaUser ? "Rechnung" : "Factuur",
     invoiceAllBtn: isGermanFirmaUser ? "Rechnungen erstellen" : "Facturen maken",
     invoiceNeedAmount: isGermanFirmaUser
-      ? "Zuerst Bruttogehalt eintragen"
-      : "Eerst bruto bedrag invullen",
+      ? "Zuerst alle Bruttogehälter dieser Firmen eintragen"
+      : "Eerst alle bruto bedragen van deze firma's invullen",
     amountHint: isGermanFirmaUser
-      ? "Betrag bleibt in Folgemonaten stehen und kann angepasst werden."
-      : "Bedrag blijft in volgende maanden staan en is aanpasbaar.",
+      ? "Betrag bleibt in Folgemonaten stehen und kann angepasst werden. Rechnung gilt pro Firma, nicht pro Person."
+      : "Bedrag blijft in volgende maanden staan en is aanpasbaar. Factuur gaat per firma, niet per persoon.",
+    groupTotal: isGermanFirmaUser ? "Gesamt" : "Totaal",
+    groupPersons: isGermanFirmaUser ? "Personen" : "personen",
   }
 
   useEffect(() => {
@@ -188,6 +194,7 @@ export default function FirmaWisselingPage() {
     () => filterDoorbelastingByMonth(allDoorbelastingRows, doorbelastingMonth),
     [allDoorbelastingRows, doorbelastingMonth]
   )
+  const monthGroups = useMemo(() => groupDoorbelastingByFirma(monthRows), [monthRows])
 
   useEffect(() => {
     if (!availableMonths.includes(doorbelastingMonth) && availableMonths[0]) {
@@ -277,43 +284,56 @@ export default function FirmaWisselingPage() {
     if (next) setAmountsStore(next)
   }
 
-  const createInvoiceForRow = async (
-    row: DoorbelastingMonthRow,
+  const getGroupAmounts = (group: DoorbelastingFirmaGroup) => {
+    const amounts = group.rows.map((row) => getResolvedAmount(row))
+    const missing = amounts.some((a) => a === null || a <= 0)
+    const total = amounts.reduce<number>((sum, a) => sum + (a || 0), 0)
+    return { missing, total, ready: !missing && group.rows.length > 0 }
+  }
+
+  const createInvoiceForGroup = async (
+    group: DoorbelastingFirmaGroup,
     storeOverride?: DoorbelastingAmountsStore
   ): Promise<DoorbelastingAmountsStore | null> => {
     const workingStore = storeOverride || amountsStore
-    const amount = resolveDoorbelastingAmount(
-      workingStore,
-      row.crewId,
-      row.shipId,
-      row.fromCompany,
-      row.toCompany,
-      row.monthKey
+    const amounts = group.rows.map((row) =>
+      resolveDoorbelastingAmount(
+        workingStore,
+        row.crewId,
+        row.shipId,
+        row.fromCompany,
+        row.toCompany,
+        row.monthKey
+      )
     )
-    if (amount === null || amount <= 0) {
+    if (amounts.some((a) => a === null || a <= 0)) {
       alert(uiText.invoiceNeedAmount)
       return null
     }
-    const busy = draftKeyFor(row)
-    setInvoiceBusyKey(busy)
+    const nettoAmount = amounts.reduce<number>((sum, a) => sum + (a as number), 0)
+    setInvoiceBusyKey(group.key)
     try {
-      const { number, nextStore } = nextInvoiceNumber(workingStore, row.fromCompany, row.monthKey)
+      const { number, nextStore } = nextInvoiceNumber(
+        workingStore,
+        group.fromCompany,
+        group.monthKey
+      )
       setAmountsStore(nextStore)
+      const employeeName = formatInvoiceNamesShort(group.rows)
+      const shipName = uniqueShipNames(group.rows).join(", ")
       const blob = await generateFirmaDoorbelastingInvoice({
-        fromCompany: row.fromCompany,
-        toCompany: row.toCompany,
-        shipName: row.shipName,
-        employeeName: `${row.lastName} ${row.firstName}`.trim(),
-        monthKey: row.monthKey,
-        nettoAmount: amount,
+        fromCompany: group.fromCompany,
+        toCompany: group.toCompany,
+        shipName,
+        employeeName,
+        monthKey: group.monthKey,
+        nettoAmount,
         vatPercent,
         invoiceNumber: number,
       })
-      const safeName = `${row.lastName}_${row.firstName}`.replace(/[^\w\-]+/g, "_")
-      downloadFirmaInvoice(
-        blob,
-        `Factuur_${number}_${safeName}_${row.shipName.replace(/\s+/g, "_")}.pdf`
-      )
+      const safeFrom = group.fromCompany.replace(/[^\w\-]+/g, "_")
+      const safeTo = group.toCompany.replace(/[^\w\-]+/g, "_")
+      downloadFirmaInvoice(blob, `Factuur_${number}_${safeFrom}_${safeTo}.pdf`)
       return nextStore
     } catch (err: any) {
       alert(err?.message || "Factuur maken mislukt")
@@ -324,17 +344,14 @@ export default function FirmaWisselingPage() {
   }
 
   const createInvoicesForMonth = async () => {
-    const withAmount = monthRows.filter((row) => {
-      const a = getResolvedAmount(row)
-      return a !== null && a > 0
-    })
-    if (withAmount.length === 0) {
+    const readyGroups = monthGroups.filter((group) => getGroupAmounts(group).ready)
+    if (readyGroups.length === 0) {
       alert(uiText.invoiceNeedAmount)
       return
     }
     let store = amountsStore
-    for (const row of withAmount) {
-      const next = await createInvoiceForRow(row, store)
+    for (const group of readyGroups) {
+      const next = await createInvoiceForGroup(group, store)
       if (next) store = next
     }
   }
@@ -451,8 +468,16 @@ export default function FirmaWisselingPage() {
               font-weight: 600;
             }
             .doorbelasting-print-bruto {
+              font-variant-numeric: tabular-nums;
+              text-align: right;
               color: #94a3b8;
               font-style: italic;
+            }
+            .doorbelasting-print-group td {
+              background: #fff7ed !important;
+              font-size: 10pt;
+              padding: 8px 12px;
+              border-top: 1px solid #fed7aa;
             }
           }
           @media screen {
@@ -698,7 +723,11 @@ export default function FirmaWisselingPage() {
                       ))}
                     </select>
                     <span className="text-sm text-gray-500">
-                      ({monthRows.length} {isGermanFirmaUser ? "Personen" : "personen"})
+                      ({monthRows.length} {isGermanFirmaUser ? "Personen" : "personen"}
+                      {monthGroups.length > 0
+                        ? ` · ${monthGroups.length} ${isGermanFirmaUser ? "Rechnungen" : "facturen"}`
+                        : ""}
+                      )
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -763,66 +792,102 @@ export default function FirmaWisselingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {monthRows.map((row) => {
-                        const key = draftKeyFor(row)
-                        const resolved = getResolvedAmount(row)
-                        const draft =
-                          amountDrafts[key] !== undefined
-                            ? amountDrafts[key]
-                            : formatAmountInput(resolved)
-                        const busy = invoiceBusyKey === key
+                      {monthGroups.map((group) => {
+                        const { total, ready } = getGroupAmounts(group)
+                        const busy = invoiceBusyKey === group.key
                         return (
-                          <tr key={key} className="border-t border-gray-100">
-                            <td className="px-3 py-2">
-                              <div className="font-medium text-gray-900">
-                                {row.lastName} {row.firstName}
-                              </div>
-                              <div className="text-xs text-gray-500">{row.position}</div>
-                              {row.sinceDate && (
-                                <div className="text-xs text-gray-400">
-                                  {uiText.sinceLabel}:{" "}
-                                  {new Date(row.sinceDate).toLocaleDateString(
-                                    isGermanFirmaUser ? "de-DE" : "nl-NL"
-                                  )}
+                          <Fragment key={group.key}>
+                            <tr className="border-t border-orange-200 bg-orange-50/80">
+                              <td className="px-3 py-2" colSpan={6}>
+                                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                  <span className="font-semibold text-gray-900">
+                                    {group.fromCompany}
+                                    <span className="mx-1.5 text-orange-500">→</span>
+                                    <span className="text-orange-800">{group.toCompany}</span>
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {group.rows.length} {uiText.groupPersons}
+                                  </span>
+                                  <span className="text-sm font-medium text-gray-800">
+                                    {uiText.groupTotal}:{" "}
+                                    {ready || total > 0
+                                      ? `€ ${total.toLocaleString("nl-NL", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}`
+                                      : uiText.brutoEmpty}
+                                  </span>
                                 </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-gray-800">{row.fromCompany}</td>
-                            <td className="px-3 py-2 text-orange-700 font-medium">{row.toCompany}</td>
-                            <td className="px-3 py-2 text-gray-800">{row.shipName}</td>
-                            <td className="px-3 py-2 text-gray-800">
-                              {formatMonthKeyNl(row.monthKey, isGermanFirmaUser)}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Input
-                                className="h-8 w-32"
-                                inputMode="decimal"
-                                placeholder={uiText.brutoEmpty}
-                                value={draft}
-                                onChange={(e) =>
-                                  setAmountDrafts((prev) => ({ ...prev, [key]: e.target.value }))
-                                }
-                                onBlur={() => commitAmount(row, draft)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    ;(e.target as HTMLInputElement).blur()
-                                  }
-                                }}
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={!resolved || busy || !!invoiceBusyKey}
-                                onClick={() => void createInvoiceForRow(row)}
-                                title={resolved ? uiText.invoiceBtn : uiText.invoiceNeedAmount}
-                              >
-                                <FileText className="w-4 h-4 mr-1" />
-                                {busy ? "..." : uiText.invoiceBtn}
-                              </Button>
-                            </td>
-                          </tr>
+                              </td>
+                              <td className="px-3 py-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!ready || busy || !!invoiceBusyKey}
+                                  onClick={() => void createInvoiceForGroup(group)}
+                                  title={ready ? uiText.invoiceBtn : uiText.invoiceNeedAmount}
+                                >
+                                  <FileText className="w-4 h-4 mr-1" />
+                                  {busy ? "..." : uiText.invoiceBtn}
+                                </Button>
+                              </td>
+                            </tr>
+                            {group.rows.map((row) => {
+                              const key = draftKeyFor(row)
+                              const resolved = getResolvedAmount(row)
+                              const draft =
+                                amountDrafts[key] !== undefined
+                                  ? amountDrafts[key]
+                                  : formatAmountInput(resolved)
+                              return (
+                                <tr key={key} className="border-t border-gray-100">
+                                  <td className="px-3 py-2">
+                                    <div className="font-medium text-gray-900">
+                                      {row.lastName} {row.firstName}
+                                    </div>
+                                    <div className="text-xs text-gray-500">{row.position}</div>
+                                    {row.sinceDate && (
+                                      <div className="text-xs text-gray-400">
+                                        {uiText.sinceLabel}:{" "}
+                                        {new Date(row.sinceDate).toLocaleDateString(
+                                          isGermanFirmaUser ? "de-DE" : "nl-NL"
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-800">{row.fromCompany}</td>
+                                  <td className="px-3 py-2 text-orange-700 font-medium">
+                                    {row.toCompany}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-800">{row.shipName}</td>
+                                  <td className="px-3 py-2 text-gray-800">
+                                    {formatMonthKeyNl(row.monthKey, isGermanFirmaUser)}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      className="h-8 w-32"
+                                      inputMode="decimal"
+                                      placeholder={uiText.brutoEmpty}
+                                      value={draft}
+                                      onChange={(e) =>
+                                        setAmountDrafts((prev) => ({
+                                          ...prev,
+                                          [key]: e.target.value,
+                                        }))
+                                      }
+                                      onBlur={() => commitAmount(row, draft)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          ;(e.target as HTMLInputElement).blur()
+                                        }
+                                      }}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2" />
+                                </tr>
+                              )
+                            })}
+                          </Fragment>
                         )
                       })}
                     </tbody>
@@ -851,37 +916,61 @@ export default function FirmaWisselingPage() {
                 </tr>
               </thead>
               <tbody>
-                {monthRows.map((row) => {
-                  const amount = getResolvedAmount(row)
+                {monthGroups.map((group) => {
+                  const { total, ready } = getGroupAmounts(group)
                   return (
-                    <tr key={`print-${row.crewId}-${row.monthKey}-${row.shipId}`}>
-                      <td>
-                        <div className="doorbelasting-print-name">
-                          {row.lastName} {row.firstName}
-                        </div>
-                        <div className="doorbelasting-print-meta">{row.position}</div>
-                        {row.sinceDate && (
-                          <div className="doorbelasting-print-meta">
-                            {uiText.sinceLabel}:{" "}
-                            {new Date(row.sinceDate).toLocaleDateString(
-                              isGermanFirmaUser ? "de-DE" : "nl-NL"
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td>{row.fromCompany}</td>
-                      <td className="doorbelasting-print-to">{row.toCompany}</td>
-                      <td>{row.shipName}</td>
-                      <td>{formatMonthKeyNl(row.monthKey, isGermanFirmaUser)}</td>
-                      <td className="doorbelasting-print-bruto">
-                        {amount !== null
-                          ? `€ ${amount.toLocaleString("nl-NL", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}`
-                          : uiText.brutoEmpty}
-                      </td>
-                    </tr>
+                    <Fragment key={`print-${group.key}`}>
+                      <tr className="doorbelasting-print-group">
+                        <td colSpan={6}>
+                          <strong>
+                            {group.fromCompany} → {group.toCompany}
+                          </strong>
+                          {" · "}
+                          {group.rows.length} {uiText.groupPersons}
+                          {" · "}
+                          {uiText.groupTotal}:{" "}
+                          {ready || total > 0
+                            ? `€ ${total.toLocaleString("nl-NL", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`
+                            : uiText.brutoEmpty}
+                        </td>
+                      </tr>
+                      {group.rows.map((row) => {
+                        const amount = getResolvedAmount(row)
+                        return (
+                          <tr key={`print-${row.crewId}-${row.monthKey}-${row.shipId}`}>
+                            <td>
+                              <div className="doorbelasting-print-name">
+                                {row.lastName} {row.firstName}
+                              </div>
+                              <div className="doorbelasting-print-meta">{row.position}</div>
+                              {row.sinceDate && (
+                                <div className="doorbelasting-print-meta">
+                                  {uiText.sinceLabel}:{" "}
+                                  {new Date(row.sinceDate).toLocaleDateString(
+                                    isGermanFirmaUser ? "de-DE" : "nl-NL"
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td>{row.fromCompany}</td>
+                            <td className="doorbelasting-print-to">{row.toCompany}</td>
+                            <td>{row.shipName}</td>
+                            <td>{formatMonthKeyNl(row.monthKey, isGermanFirmaUser)}</td>
+                            <td className="doorbelasting-print-bruto">
+                              {amount !== null
+                                ? `€ ${amount.toLocaleString("nl-NL", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`
+                                : uiText.brutoEmpty}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </Fragment>
                   )
                 })}
               </tbody>
