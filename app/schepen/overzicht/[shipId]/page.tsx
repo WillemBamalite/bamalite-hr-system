@@ -19,6 +19,10 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import { supabase } from "@/lib/supabase"
 import { getShipSmeerlijstByName, shipHasSmeerlijst } from "@/utils/ship-smeerlijst"
 import {
+  generateShipFormsPrintPdf,
+  openShipFormsPrintPdf,
+} from "@/utils/ship-forms-print"
+import {
   GLOBAL_CUSTOM_CERTIFICATES_STORAGE_KEY,
   SHIP_CERTIFICATE_WARNING_OPTIONS,
   calculateCertificateExpiryDateIso,
@@ -3379,9 +3383,13 @@ export default function ShipParticularsPage() {
   const [editingParticularKey, setEditingParticularKey] = useState<string | null>(null)
   const [editingParticularValue, setEditingParticularValue] = useState("")
   const [printDialogOpen, setPrintDialogOpen] = useState(false)
-  const [printDialogKind, setPrintDialogKind] = useState<"scheepsgegevens" | "certificaten" | "smeerlijst" | null>(null)
+  const [printDialogKind, setPrintDialogKind] = useState<
+    "scheepsgegevens" | "certificaten" | "smeerlijst" | "formulieren" | null
+  >(null)
   const [printCertificatesLayout, setPrintCertificatesLayout] = useState(false)
   const [printSmeerlijstLayout, setPrintSmeerlijstLayout] = useState(false)
+  const [printFormsIncludeDocuments, setPrintFormsIncludeDocuments] = useState(true)
+  const [printFormsBusy, setPrintFormsBusy] = useState(false)
   const [selectedPrintShipIds, setSelectedPrintShipIds] = useState<string[]>([])
   const [printShipIds, setPrintShipIds] = useState<string[]>([])
   const [printCertificateShipIds, setPrintCertificateShipIds] = useState<string[]>([])
@@ -4579,6 +4587,26 @@ export default function ShipParticularsPage() {
     setPrintDialogOpen(true)
   }
 
+  const openPrintFormulierenDialog = () => {
+    if (typeof window === "undefined") return
+    if (!ships.length) {
+      alert("Er zijn geen schepen om te printen.")
+      return
+    }
+    setPrintCertificatesLayout(false)
+    setPrintSmeerlijstLayout(false)
+    setPrintDialogKind("formulieren")
+    setPrintFormsIncludeDocuments(true)
+    const allIds = ships.map((s: any) => String(s.id))
+    const currentId = String(ship?.id || "")
+    setSelectedPrintShipIds((prev) => {
+      const filtered = prev.filter((id) => allIds.includes(id))
+      if (filtered.length > 0) return filtered
+      return currentId && allIds.includes(currentId) ? [currentId] : [allIds[0]]
+    })
+    setPrintDialogOpen(true)
+  }
+
   const togglePrintShipId = (targetShipId: string, checked: boolean) => {
     if (checked) {
       setSelectedPrintShipIds((prev) => Array.from(new Set([...prev, targetShipId])))
@@ -4593,12 +4621,44 @@ export default function ShipParticularsPage() {
         ? allCertificateShipIds
         : printDialogKind === "smeerlijst"
           ? allSmeerlijstShipIds
-          : allSupportedShipIds
+          : printDialogKind === "formulieren"
+            ? ships.map((s: any) => String(s.id))
+            : allSupportedShipIds
     if (checked) {
       setSelectedPrintShipIds(ids)
       return
     }
     setSelectedPrintShipIds([])
+  }
+
+  const startPrintSelectedFormulieren = async () => {
+    if (typeof window === "undefined") return
+    const chosen = selectedPrintShipIds
+      .map((id) => {
+        const s = ships.find((row: any) => String(row.id) === String(id))
+        return s ? { id: String(s.id), name: String(s.name || "") } : null
+      })
+      .filter((s): s is { id: string; name: string } => !!s?.id && !!s?.name)
+
+    if (chosen.length === 0) {
+      alert("Selecteer minimaal een schip.")
+      return
+    }
+
+    setPrintFormsBusy(true)
+    try {
+      const blob = await generateShipFormsPrintPdf({
+        ships: chosen,
+        includeDocuments: printFormsIncludeDocuments,
+      })
+      setPrintDialogOpen(false)
+      setPrintDialogKind(null)
+      openShipFormsPrintPdf(blob)
+    } catch (e: any) {
+      alert(`Formulieren printen mislukt: ${e?.message || e || "onbekende fout"}`)
+    } finally {
+      setPrintFormsBusy(false)
+    }
   }
 
   const startPrintSelectedShips = () => {
@@ -4663,13 +4723,17 @@ export default function ShipParticularsPage() {
       ? allCertificateShipIds
       : printDialogKind === "smeerlijst"
         ? allSmeerlijstShipIds
-        : allSupportedShipIds
+        : printDialogKind === "formulieren"
+          ? ships.map((s: any) => String(s.id))
+          : allSupportedShipIds
   const dialogShipRowsForPrint =
     printDialogKind === "certificaten"
       ? shipsWithCertificatePrint
       : printDialogKind === "smeerlijst"
         ? shipsWithSmeerlijstPrint
-        : supportedShipsForPrint
+        : printDialogKind === "formulieren"
+          ? ships
+          : supportedShipsForPrint
   const allDialogShipsSelected =
     dialogShipIdsForPrint.length > 0 &&
     dialogShipIdsForPrint.every((id) => selectedPrintShipIds.includes(id))
@@ -4777,6 +4841,10 @@ export default function ShipParticularsPage() {
                 Print certificaten
               </Button>
             ) : null}
+            <Button variant="outline" size="sm" onClick={openPrintFormulierenDialog}>
+              <ClipboardList className="w-4 h-4 mr-2" />
+              Print formulieren
+            </Button>
             {allSmeerlijstShipIds.length > 0 ? (
               <Button variant="outline" size="sm" onClick={openPrintSmeerlijstDialog}>
                 <Droplets className="w-4 h-4 mr-2" />
@@ -4799,15 +4867,36 @@ export default function ShipParticularsPage() {
                   ? "Selecteer schepen voor certificaatprint"
                   : printDialogKind === "smeerlijst"
                     ? "Selecteer schepen voor smeerlijstprint"
-                    : "Selecteer te printen schepen"}
+                    : printDialogKind === "formulieren"
+                      ? "Selecteer schepen voor formulierenprint"
+                      : "Selecteer te printen schepen"}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
+              {printDialogKind === "formulieren" ? (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+                  <div className="text-sm font-medium text-gray-900">Formulieren meenemen?</div>
+                  <Select
+                    value={printFormsIncludeDocuments ? "met" : "zonder"}
+                    onValueChange={(v) => setPrintFormsIncludeDocuments(v === "met")}
+                    disabled={printFormsBusy}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="zonder">Zonder formulieren (alleen overzicht)</SelectItem>
+                      <SelectItem value="met">Met formulieren (overzicht + documenten in één PDF)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <div className="flex items-center space-x-2 border-b pb-3">
                 <Checkbox
                   id="print-select-all-ships"
                   checked={allDialogShipsSelected}
                   onCheckedChange={(checked) => handleToggleSelectAllPrintShips(Boolean(checked))}
+                  disabled={printFormsBusy}
                 />
                 <label htmlFor="print-select-all-ships" className="text-sm font-medium text-gray-900 cursor-pointer">
                   Select all
@@ -4822,6 +4911,7 @@ export default function ShipParticularsPage() {
                       <Checkbox
                         id={`print-ship-${optionId}`}
                         checked={checked}
+                        disabled={printFormsBusy}
                         onCheckedChange={(value) => togglePrintShipId(optionId, Boolean(value))}
                       />
                       <label htmlFor={`print-ship-${optionId}`} className="text-sm text-gray-800 cursor-pointer">
@@ -4832,19 +4922,34 @@ export default function ShipParticularsPage() {
                 })}
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setPrintDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  disabled={printFormsBusy}
+                  onClick={() => setPrintDialogOpen(false)}
+                >
                   Annuleren
                 </Button>
                 <Button
-                  onClick={() =>
-                    printDialogKind === "certificaten"
-                      ? startPrintSelectedCertificates()
-                      : printDialogKind === "smeerlijst"
-                        ? startPrintSelectedSmeerlijst()
-                        : startPrintSelectedShips()
-                  }
+                  disabled={printFormsBusy}
+                  onClick={() => {
+                    if (printDialogKind === "certificaten") {
+                      startPrintSelectedCertificates()
+                      return
+                    }
+                    if (printDialogKind === "smeerlijst") {
+                      startPrintSelectedSmeerlijst()
+                      return
+                    }
+                    if (printDialogKind === "formulieren") {
+                      void startPrintSelectedFormulieren()
+                      return
+                    }
+                    startPrintSelectedShips()
+                  }}
                 >
-                  Print selectie
+                  {printFormsBusy && printDialogKind === "formulieren"
+                    ? "PDF maken..."
+                    : "Print selectie"}
                 </Button>
               </div>
             </div>
