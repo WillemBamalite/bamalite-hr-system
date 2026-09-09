@@ -162,67 +162,78 @@ async function drawOverviewForShip(
   page.drawText(`Formulieren — ${shipName}`, {
     x: MARGIN,
     y,
-    size: 16,
+    size: 20,
     font: bold,
     color: rgb(0.08, 0.12, 0.2),
   })
-  y -= 22
+  y -= 28
   page.drawText(`Afgedrukt: ${new Date().toLocaleDateString("nl-NL")}`, {
     x: MARGIN,
     y,
-    size: 9,
+    size: 11,
     font,
     color: rgb(0.4, 0.4, 0.45),
   })
-  y -= 20
+  y -= 28
 
   const colForm = MARGIN
-  const colDate = MARGIN + 280
-  const colDoc = MARGIN + 380
+  const colDate = A4_WIDTH - MARGIN - 110
+  const rowSize = 14
+  const rowGap = 22
 
-  page.drawText("Formulier", { x: colForm, y, size: 10, font: bold })
-  page.drawText("Datum", { x: colDate, y, size: 10, font: bold })
-  page.drawText("Document", { x: colDoc, y, size: 10, font: bold })
-  y -= 6
+  page.drawText("Formulier", { x: colForm, y, size: 12, font: bold })
+  page.drawText("Datum", { x: colDate, y, size: 12, font: bold })
+  y -= 8
   page.drawLine({
     start: { x: MARGIN, y },
     end: { x: A4_WIDTH - MARGIN, y },
-    thickness: 0.8,
+    thickness: 1,
     color: rgb(0.7, 0.7, 0.75),
   })
-  y -= 14
+  y -= rowGap
 
   for (const form of forms) {
-    if (y < MARGIN + 40) {
+    if (y < MARGIN + 36) {
       page = merged.addPage([A4_WIDTH, A4_HEIGHT])
       y = A4_HEIGHT - MARGIN
       page.drawText(`Formulieren — ${shipName} (vervolg)`, {
         x: MARGIN,
         y,
-        size: 13,
+        size: 16,
         font: bold,
       })
-      y -= 24
+      y -= 28
+      page.drawText("Formulier", { x: colForm, y, size: 12, font: bold })
+      page.drawText("Datum", { x: colDate, y, size: 12, font: bold })
+      y -= 8
+      page.drawLine({
+        start: { x: MARGIN, y },
+        end: { x: A4_WIDTH - MARGIN, y },
+        thickness: 1,
+        color: rgb(0.7, 0.7, 0.75),
+      })
+      y -= rowGap
     }
 
     const record = recordsByKey[form.key]
     const dateLabel = formatDateNl(record?.form_date)
-    const docLabel = record?.file_name
-      ? String(record.file_name).slice(0, 28)
-      : record?.file_path
-        ? "Ja"
-        : "Nee"
+    const label = String(form.label || form.key)
 
-    page.drawText(String(form.label || form.key).slice(0, 42), {
+    page.drawText(label.slice(0, 48), {
       x: colForm,
       y,
-      size: 9,
+      size: rowSize,
       font,
-      color: rgb(0.15, 0.15, 0.2),
+      color: rgb(0.12, 0.12, 0.18),
     })
-    page.drawText(dateLabel, { x: colDate, y, size: 9, font })
-    page.drawText(docLabel, { x: colDoc, y, size: 9, font })
-    y -= 13
+    page.drawText(dateLabel, {
+      x: colDate,
+      y,
+      size: rowSize,
+      font,
+      color: rgb(0.12, 0.12, 0.18),
+    })
+    y -= rowGap
   }
 }
 
