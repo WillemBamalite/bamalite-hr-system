@@ -336,6 +336,12 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
       {variant === 'single' && (
         <style dangerouslySetInnerHTML={{__html: `
           @media print {
+            html, body {
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: white !important;
+            }
             body * {
               visibility: hidden;
             }
@@ -345,16 +351,47 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
             }
             .crew-print-content {
               position: absolute;
-              left: 0;
-              top: 0;
-              width: 210mm;
-              min-height: 297mm;
-              padding: 20mm;
+              left: 0 !important;
+              top: 0 !important;
+              right: 0 !important;
+              width: 100% !important;
+              max-width: none !important;
+              min-height: auto !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              box-sizing: border-box !important;
               background: white;
-              font-family: 'Arial', sans-serif;
-              font-size: 11pt;
-              line-height: 1.5;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 12.5pt;
+              line-height: 1.55;
               page-break-after: always;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .crew-print-content h1 {
+              font-size: 28pt !important;
+              line-height: 1.2 !important;
+            }
+            .crew-print-content h2 {
+              font-size: 14pt !important;
+            }
+            .crew-print-content .text-2xl {
+              font-size: 16pt !important;
+            }
+            .crew-print-content .text-sm {
+              font-size: 12pt !important;
+            }
+            .crew-print-content .text-base {
+              font-size: 12.5pt !important;
+            }
+            .crew-print-content .text-xs {
+              font-size: 10pt !important;
+            }
+            .crew-print-content .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+              margin-top: 1.35rem !important;
+            }
+            .crew-print-content .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+              margin-top: 0.45rem !important;
             }
             .no-print,
             header,
@@ -369,8 +406,8 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
             }
           }
           @page {
-            size: A4;
-            margin: 0;
+            size: A4 portrait;
+            margin: 12mm;
           }
         `}} />
       )}
