@@ -338,251 +338,474 @@ export function CrewMemberPrint({ crewMemberId, language, variant = 'single' }: 
           @media print {
             html, body {
               width: 100% !important;
+              height: auto !important;
               margin: 0 !important;
               padding: 0 !important;
-              background: white !important;
+              background: #fff !important;
             }
-            body * {
-              visibility: hidden;
-            }
-            .crew-print-content,
-            .crew-print-content * {
-              visibility: visible;
+            .dashboard-header,
+            .print-header,
+            .app-container > .dashboard-header,
+            .print\\:hidden {
+              display: none !important;
             }
             .crew-print-content {
-              position: absolute;
-              left: 0 !important;
-              top: 0 !important;
-              right: 0 !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: flex-start !important;
+              box-sizing: border-box !important;
               width: 100% !important;
               max-width: none !important;
-              min-height: auto !important;
+              min-height: 277mm !important;
+              height: 277mm !important;
               margin: 0 !important;
-              padding: 0 !important;
-              box-sizing: border-box !important;
-              background: white;
-              font-family: Arial, Helvetica, sans-serif;
-              font-size: 12.5pt;
-              line-height: 1.55;
-              page-break-after: always;
+              padding: 2mm 0 !important;
+              background: #fff !important;
+              color: #111 !important;
+              font-family: Arial, Helvetica, sans-serif !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
-            .crew-print-content h1 {
-              font-size: 28pt !important;
-              line-height: 1.2 !important;
+            .crew-print-top {
+              flex: 0 0 auto;
+              margin-bottom: 8mm;
             }
-            .crew-print-content h2 {
-              font-size: 14pt !important;
+            .crew-print-header {
+              display: flex !important;
+              justify-content: space-between !important;
+              align-items: flex-start !important;
+              gap: 8mm !important;
             }
-            .crew-print-content .text-2xl {
-              font-size: 16pt !important;
+            .crew-print-header-main {
+              flex: 1 1 auto;
+              min-width: 0;
             }
-            .crew-print-content .text-sm {
+            .crew-print-header-meta {
+              flex: 0 0 auto;
+              text-align: right;
+              white-space: nowrap;
               font-size: 12pt !important;
+              color: #555 !important;
             }
-            .crew-print-content .text-base {
-              font-size: 12.5pt !important;
+            .crew-print-title {
+              margin: 0 0 2mm 0 !important;
+              font-size: 34pt !important;
+              line-height: 1.1 !important;
+              font-weight: 700 !important;
+              color: #111 !important;
             }
-            .crew-print-content .text-xs {
+            .crew-print-matricule {
+              margin: 0 0 2mm 0 !important;
+              font-size: 16pt !important;
+              font-weight: 700 !important;
+              color: #dc2626 !important;
+            }
+            .crew-print-subtitle {
+              margin: 0 !important;
+              font-size: 14pt !important;
+              color: #374151 !important;
+            }
+            .crew-print-body {
+              flex: 1 1 auto;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: space-evenly !important;
+              gap: 0 !important;
+              min-height: 0;
+            }
+            .crew-print-section {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .crew-print-section-title {
+              margin: 0 0 3mm 0 !important;
+              padding-bottom: 1.5mm !important;
+              border-bottom: 1.5pt solid #93c5fd !important;
+              font-size: 16pt !important;
+              font-weight: 700 !important;
+              color: #2563eb !important;
+            }
+            .crew-print-rows {
+              display: flex;
+              flex-direction: column;
+              gap: 2.8mm;
+            }
+            .crew-print-row {
+              display: flex !important;
+              justify-content: space-between !important;
+              align-items: baseline !important;
+              gap: 8mm !important;
+              font-size: 14pt !important;
+              line-height: 1.35 !important;
+            }
+            .crew-print-label {
+              color: #4b5563 !important;
+              font-weight: 600 !important;
+            }
+            .crew-print-value {
+              color: #111 !important;
+              text-align: right !important;
+            }
+            .crew-print-address {
+              margin: 0 !important;
+              font-size: 14pt !important;
+              line-height: 1.45 !important;
+              color: #111 !important;
+            }
+            .crew-print-badges {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 2.5mm;
+            }
+            .crew-print-badge {
+              display: inline-block;
+              padding: 1.5mm 3mm;
+              border: 1pt solid #93c5fd;
+              border-radius: 2mm;
+              background: #eff6ff;
+              color: #1d4ed8;
+              font-size: 12pt;
+              font-weight: 600;
+            }
+            .crew-print-footer {
+              flex: 0 0 auto;
+              margin-top: 6mm;
+              padding-top: 3mm;
+              border-top: 1pt solid #d1d5db;
+              text-align: center;
               font-size: 10pt !important;
-            }
-            .crew-print-content .space-y-6 > :not([hidden]) ~ :not([hidden]) {
-              margin-top: 1.35rem !important;
-            }
-            .crew-print-content .space-y-2 > :not([hidden]) ~ :not([hidden]) {
-              margin-top: 0.45rem !important;
-            }
-            .no-print,
-            header,
-            nav,
-            button {
-              display: none !important;
+              color: #6b7280 !important;
             }
           }
           @media screen {
             .crew-print-content {
-              display: none;
+              display: none !important;
             }
           }
           @page {
             size: A4 portrait;
-            margin: 12mm;
+            margin: 10mm;
           }
         `}} />
       )}
-      
+
       <div className={variant === 'single' ? "crew-print-content" : "crew-print-page"}>
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-1">
-                {crewMember.first_name} {crewMember.last_name}
-              </h1>
-              {(() => {
-                const matricule = (crewMember as any).matricule
-                if (matricule && matricule.toString().trim() !== '') {
-                  return (
-                    <p className="text-red-600 text-2xl font-semibold mb-2">
-                      ({translations.matriculeNumber} {matricule})
-                    </p>
-                  )
-                }
-                return null
-              })()}
-              <div className="flex items-center gap-2 text-base text-gray-700">
-                <span>{getNationalityFlag(crewMember.nationality)}</span>
-                <span>•</span>
-                <span>{crewMember.position}</span>
+        {variant === 'single' ? (
+          <>
+            <div className="crew-print-top">
+              <div className="crew-print-header">
+                <div className="crew-print-header-main">
+                  <h1 className="crew-print-title">
+                    {crewMember.first_name} {crewMember.last_name}
+                  </h1>
+                  {(crewMember as any).matricule &&
+                    String((crewMember as any).matricule).trim() !== "" && (
+                      <p className="crew-print-matricule">
+                        ({translations.matriculeNumber} {(crewMember as any).matricule})
+                      </p>
+                    )}
+                  <p className="crew-print-subtitle">
+                    {getNationalityFlag(crewMember.nationality)} • {crewMember.position}
+                  </p>
+                </div>
+                <div className="crew-print-header-meta">
+                  <div>{translations.printedOn}</div>
+                  <div>
+                    {format(new Date(), "dd-MM-yyyy HH:mm", { locale: dateLocale })}
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm text-gray-500">{translations.printedOn}</div>
-              <div className="font-semibold">{format(new Date(), 'dd-MM-yyyy HH:mm', { locale: dateLocale })}</div>
-            </div>
-          </div>
-        </div>
 
-        {/* Main Content - Vertical Layout */}
-        <div className="space-y-6">
-          {/* Persoonlijke Gegevens */}
-          <div>
-            <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
-              {translations.personalDetails}
-            </h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600 font-medium">{translations.birthDate}</span>
-                <span>{formatDate(crewMember.birth_date)}</span>
+            <div className="crew-print-body">
+              <div className="crew-print-section">
+                <h2 className="crew-print-section-title">{translations.personalDetails}</h2>
+                <div className="crew-print-rows">
+                  <div className="crew-print-row">
+                    <span className="crew-print-label">{translations.birthDate}</span>
+                    <span className="crew-print-value">{formatDate(crewMember.birth_date)}</span>
+                  </div>
+                  {(crewMember as any).birth_place ? (
+                    <div className="crew-print-row">
+                      <span className="crew-print-label">{translations.birthPlace}</span>
+                      <span className="crew-print-value">{(crewMember as any).birth_place}</span>
+                    </div>
+                  ) : null}
+                  <div className="crew-print-row">
+                    <span className="crew-print-label">{translations.nationality}</span>
+                    <span className="crew-print-value">
+                      {getNationalityFlag(crewMember.nationality)}
+                    </span>
+                  </div>
+                  <div className="crew-print-row">
+                    <span className="crew-print-label">{translations.phone}</span>
+                    <span className="crew-print-value">
+                      {crewMember.phone || translations.notFilled}
+                    </span>
+                  </div>
+                  {crewMember.email ? (
+                    <div className="crew-print-row">
+                      <span className="crew-print-label">{translations.email}</span>
+                      <span className="crew-print-value">{crewMember.email}</span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-              {(crewMember as any).birth_place && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">{translations.birthPlace}</span>
-                  <span>{(crewMember as any).birth_place}</span>
+
+              <div className="crew-print-section">
+                <h2 className="crew-print-section-title">{translations.address}</h2>
+                <p className="crew-print-address">{fullAddress}</p>
+              </div>
+
+              {crewMember.diplomas && crewMember.diplomas.length > 0 ? (
+                <div className="crew-print-section">
+                  <h2 className="crew-print-section-title">{translations.diplomas}</h2>
+                  <div className="crew-print-badges">
+                    {crewMember.diplomas.map((diploma: string, index: number) => (
+                      <span key={index} className="crew-print-badge">
+                        {diploma}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="crew-print-section">
+                <h2 className="crew-print-section-title">{translations.workDetails}</h2>
+                <div className="crew-print-rows">
+                  <div className="crew-print-row">
+                    <span className="crew-print-label">{translations.function}</span>
+                    <span className="crew-print-value">{crewMember.position}</span>
+                  </div>
+                  <div className="crew-print-row">
+                    <span className="crew-print-label">{translations.regime}</span>
+                    <span className="crew-print-value">
+                      {crewMember.regime || translations.notFilled}
+                    </span>
+                  </div>
+                  <div className="crew-print-row">
+                    <span className="crew-print-label">{translations.currentShip}</span>
+                    <span className="crew-print-value">{getShipName(crewMember.ship_id)}</span>
+                  </div>
+                  {(crewMember as any).company ? (
+                    <div className="crew-print-row">
+                      <span className="crew-print-label">{translations.company}</span>
+                      <span className="crew-print-value">{(crewMember as any).company}</span>
+                    </div>
+                  ) : null}
+                  {(crewMember as any).in_dienst_vanaf ? (
+                    <div className="crew-print-row">
+                      <span className="crew-print-label">{translations.inServiceFrom}</span>
+                      <span className="crew-print-value">
+                        {formatDate((crewMember as any).in_dienst_vanaf)}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {showSalarySection ? (
+                <div className="crew-print-section">
+                  <h2 className="crew-print-section-title">{translations.salary}</h2>
+                  <div className="crew-print-rows">
+                    <div className="crew-print-row">
+                      <span className="crew-print-label">{translations.bankAccount}</span>
+                      <span className="crew-print-value">
+                        {salaryInfo?.iban || translations.notFilled}
+                      </span>
+                    </div>
+                    <div className="crew-print-row">
+                      <span className="crew-print-label">{translations.baseSalaryInclClothing}</span>
+                      <span className="crew-print-value">
+                        {typeof salaryInfo?.baseSalary === "number"
+                          ? euroFormatter.format(salaryInfo.baseSalary)
+                          : translations.notFilled}
+                      </span>
+                    </div>
+                    <div className="crew-print-row">
+                      <span className="crew-print-label">{translations.travelAllowance}</span>
+                      <span className="crew-print-value">
+                        {salaryInfo?.travelAllowance
+                          ? translations.yesWithAmount
+                          : translations.no}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="crew-print-footer">
+              {translations.crewProfile} - {crewMember.first_name} {crewMember.last_name} -{" "}
+              {translations.printedOn}{" "}
+              {format(new Date(), "dd-MM-yyyy", { locale: dateLocale })}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="mb-8">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h1 className="text-4xl font-bold text-gray-900 mb-1">
+                    {crewMember.first_name} {crewMember.last_name}
+                  </h1>
+                  {(() => {
+                    const matricule = (crewMember as any).matricule
+                    if (matricule && matricule.toString().trim() !== "") {
+                      return (
+                        <p className="text-red-600 text-2xl font-semibold mb-2">
+                          ({translations.matriculeNumber} {matricule})
+                        </p>
+                      )
+                    }
+                    return null
+                  })()}
+                  <div className="flex items-center gap-2 text-base text-gray-700">
+                    <span>{getNationalityFlag(crewMember.nationality)}</span>
+                    <span>•</span>
+                    <span>{crewMember.position}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-gray-500">{translations.printedOn}</div>
+                  <div className="font-semibold">
+                    {format(new Date(), "dd-MM-yyyy HH:mm", { locale: dateLocale })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
+                  {translations.personalDetails}
+                </h2>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-medium">{translations.birthDate}</span>
+                    <span>{formatDate(crewMember.birth_date)}</span>
+                  </div>
+                  {(crewMember as any).birth_place && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 font-medium">{translations.birthPlace}</span>
+                      <span>{(crewMember as any).birth_place}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-medium">{translations.nationality}</span>
+                    <span>{getNationalityFlag(crewMember.nationality)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-medium">{translations.phone}</span>
+                    <span>{crewMember.phone || translations.notFilled}</span>
+                  </div>
+                  {crewMember.email && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 font-medium">{translations.email}</span>
+                      <span>{crewMember.email}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
+                  {translations.address}
+                </h2>
+                <div className="text-sm">
+                  <p className="text-gray-900">{fullAddress}</p>
+                </div>
+              </div>
+
+              {crewMember.diplomas && crewMember.diplomas.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
+                    {translations.diplomas}
+                  </h2>
+                  <div className="flex flex-wrap gap-2">
+                    {crewMember.diplomas.map((diploma: string, index: number) => (
+                      <span
+                        key={index}
+                        className="inline-block px-3 py-1 bg-blue-50 border border-blue-200 rounded text-sm font-medium text-blue-700"
+                      >
+                        {diploma}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-gray-600 font-medium">{translations.nationality}</span>
-                <span>{getNationalityFlag(crewMember.nationality)}</span>
+
+              <div>
+                <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
+                  {translations.workDetails}
+                </h2>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-medium">{translations.function}</span>
+                    <span>{crewMember.position}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-medium">{translations.regime}</span>
+                    <span>{crewMember.regime || translations.notFilled}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-medium">{translations.currentShip}</span>
+                    <span>{getShipName(crewMember.ship_id)}</span>
+                  </div>
+                  {(crewMember as any).company && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 font-medium">{translations.company}</span>
+                      <span>{(crewMember as any).company}</span>
+                    </div>
+                  )}
+                  {(crewMember as any).in_dienst_vanaf && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 font-medium">{translations.inServiceFrom}</span>
+                      <span>{formatDate((crewMember as any).in_dienst_vanaf)}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 font-medium">{translations.phone}</span>
-                <span>{crewMember.phone || translations.notFilled}</span>
-              </div>
-              {crewMember.email && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">{translations.email}</span>
-                  <span>{crewMember.email}</span>
+
+              {showSalarySection && (
+                <div>
+                  <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
+                    {translations.salary}
+                  </h2>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 font-medium">{translations.bankAccount}</span>
+                      <span>{salaryInfo?.iban || translations.notFilled}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 font-medium">{translations.baseSalaryInclClothing}</span>
+                      <span>
+                        {typeof salaryInfo?.baseSalary === "number"
+                          ? euroFormatter.format(salaryInfo.baseSalary)
+                          : translations.notFilled}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 font-medium">{translations.travelAllowance}</span>
+                      <span>
+                        {salaryInfo?.travelAllowance
+                          ? translations.yesWithAmount
+                          : translations.no}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Datums */}
-          {(crewMember as any).in_dienst_vanaf && (
-            <div>
-              <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
-                {translations.dates}
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">{translations.inServiceFrom}</span>
-                  <span>{formatDate((crewMember as any).in_dienst_vanaf)}</span>
-                </div>
-              </div>
+            <div className="mt-8 pt-4 border-t border-gray-300 text-xs text-gray-500 text-center">
+              {translations.crewProfile} - {crewMember.first_name} {crewMember.last_name} -{" "}
+              {translations.printedOn}{" "}
+              {format(new Date(), "dd-MM-yyyy", { locale: dateLocale })}
             </div>
-          )}
-
-          {/* Adres */}
-          <div>
-            <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
-              {translations.address}
-            </h2>
-            <div className="text-sm">
-              <p className="text-gray-900">{fullAddress}</p>
-            </div>
-          </div>
-
-          {/* Diploma's */}
-          {crewMember.diplomas && crewMember.diplomas.length > 0 && (
-            <div>
-              <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
-                {translations.diplomas}
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {crewMember.diplomas.map((diploma: string, index: number) => (
-                  <span
-                    key={index}
-                    className="inline-block px-3 py-1 bg-blue-50 border border-blue-200 rounded text-sm font-medium text-blue-700"
-                  >
-                    {diploma}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Werkgegevens */}
-          <div>
-            <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
-              {translations.workDetails}
-            </h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600 font-medium">{translations.function}</span>
-                <span>{crewMember.position}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 font-medium">{translations.regime}</span>
-                <span>{crewMember.regime || translations.notFilled}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 font-medium">{translations.currentShip}</span>
-                <span>{getShipName(crewMember.ship_id)}</span>
-              </div>
-              {(crewMember as any).company && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">{translations.company}</span>
-                  <span>{(crewMember as any).company}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {showSalarySection && (
-            <div>
-              <h2 className="text-lg font-bold text-blue-600 mb-3 border-b border-blue-200 pb-1">
-                {translations.salary}
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">{translations.bankAccount}</span>
-                  <span>{salaryInfo?.iban || translations.notFilled}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">{translations.baseSalaryInclClothing}</span>
-                  <span>
-                    {typeof salaryInfo?.baseSalary === "number"
-                      ? euroFormatter.format(salaryInfo.baseSalary)
-                      : translations.notFilled}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-medium">{translations.travelAllowance}</span>
-                  <span>
-                    {salaryInfo?.travelAllowance ? translations.yesWithAmount : translations.no}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-8 pt-4 border-t border-gray-300 text-xs text-gray-500 text-center">
-          {translations.crewProfile} - {crewMember.first_name} {crewMember.last_name} - {translations.printedOn} {format(new Date(), 'dd-MM-yyyy', { locale: dateLocale })}
-        </div>
+          </>
+        )}
       </div>
     </>
   )

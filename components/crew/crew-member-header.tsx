@@ -7,19 +7,22 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
 import { calculateCurrentStatus } from "@/utils/regime-calculator"
 import { BackButton } from "@/components/ui/back-button"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useAuth } from "@/contexts/AuthContext"
+import { supabase } from "@/lib/supabase"
+import {
+  generateCrewProfilePdf,
+  openCrewProfilePdfForPrint,
+  type CrewProfilePrintLang,
+} from "@/utils/crew-profile-print"
 
 interface Props {
   crewMemberId: string
 }
 
 export function CrewMemberHeader({ crewMemberId }: Props) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
   const { user } = useAuth()
   const { crew, ships, tasks, loading } = useSupabaseData()
   const userEmailLower = String(user?.email || "").toLowerCase()
@@ -28,9 +31,39 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
     userEmailLower === "karina@bamalite.com" ||
     userEmailLower === "lucie@bamalite.com" ||
     userEmailLower === "dunja@bamalite.com"
-  
+  const showSalaryOnPrint = userEmailLower === "willem@bamalite.com"
+
   // Haal data uit Supabase
   const crewMember = crew.find((c: any) => c.id === crewMemberId)
+
+  const printProfile = async (language: CrewProfilePrintLang) => {
+    if (!crewMember) return
+    try {
+      let salaryRows: any[] = []
+      if (showSalaryOnPrint) {
+        const { data, error } = await supabase
+          .from("loon_bemerkingen")
+          .select("month_key, base_salary, travel_allowance, reason")
+          .eq("crew_id", crewMemberId)
+          .order("month_key", { ascending: false })
+          .limit(48)
+        if (error) throw error
+        salaryRows = Array.isArray(data) ? data : []
+      }
+
+      const shipForPrint = ships.find((s: any) => String(s.id) === String(crewMember.ship_id))
+      const blob = await generateCrewProfilePdf({
+        crewMember,
+        shipName: shipForPrint?.name || "",
+        language,
+        showSalary: showSalaryOnPrint,
+        salaryRows,
+      })
+      openCrewProfilePdfForPrint(blob)
+    } catch (e: any) {
+      alert(`Profiel printen mislukt: ${e?.message || e || "onbekende fout"}`)
+    }
+  }
   
   if (loading) {
     return (
@@ -186,8 +219,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                 <div className="space-y-1">
                   <button
                     onClick={() => {
-                      router.push(`/bemanning/${crewMemberId}?print=true&lang=nl`)
-                      setTimeout(() => window.print(), 900)
+                      void printProfile("nl")
                     }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
                   >
@@ -195,8 +227,7 @@ export function CrewMemberHeader({ crewMemberId }: Props) {
                   </button>
                   <button
                     onClick={() => {
-                      router.push(`/bemanning/${crewMemberId}?print=true&lang=de`)
-                      setTimeout(() => window.print(), 900)
+                      void printProfile("de")
                     }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
                   >
