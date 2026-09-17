@@ -22,6 +22,7 @@ import { ContractDialog } from "@/components/crew/contract-dialog";
 import type { ContractData } from "@/utils/contract-generator";
 import { FileText, MessageSquare } from "lucide-react";
 import { isExcludedFromAssignmentPool } from "@/utils/crew-filters";
+import { parseWhatsAppCandidateText } from "@/utils/whatsapp-candidate-parse";
 
 /** Vaste id voor de opmerking uit deze pagina (dubbelklik); zichtbaar voor iedereen via Supabase active_notes. */
 const RECRUITMENT_QUICK_NOTE_ID = "recruitment-quick-note";
@@ -39,6 +40,9 @@ export default function NogInTeDelenPage() {
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [newSubStatus, setNewSubStatus] = useState<string>("");
   const [showNewCandidateDialog, setShowNewCandidateDialog] = useState(false);
+  const [showWhatsAppDialog, setShowWhatsAppDialog] = useState(false);
+  const [whatsAppPaste, setWhatsAppPaste] = useState("");
+  const [whatsAppImportActive, setWhatsAppImportActive] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingMember, setEditingMember] = useState<any>(null);
   const [showContractDialog, setShowContractDialog] = useState(false);
@@ -716,6 +720,58 @@ export default function NogInTeDelenPage() {
     }
   };
 
+  const emptyCandidateForm = {
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+    position: "",
+    nationality: "NL",
+    diplomas: [] as string[],
+    notes: "",
+    contactVia: "",
+    geplaatstDoor: "",
+    isStudent: false,
+    educationType: "",
+    smoking: false,
+    drivingLicense: false,
+    residence: "",
+    birthDate: "",
+    startMogelijkheid: "",
+    datumGeplaatst: ""
+  };
+
+  const applyWhatsAppPaste = () => {
+    const raw = whatsAppPaste.trim();
+    if (!raw) {
+      alert("Plak eerst de WhatsApp-tekst.");
+      return;
+    }
+
+    const parsed = parseWhatsAppCandidateText(raw);
+    const today = new Date().toISOString().split("T")[0];
+
+    setCandidateForm({
+      ...emptyCandidateForm,
+      firstName: parsed.firstName,
+      lastName: parsed.lastName,
+      phone: parsed.phone,
+      email: parsed.email,
+      position: parsed.position || "Onbekend",
+      nationality: parsed.nationality || "NL",
+      notes: parsed.notes,
+      contactVia: "WhatsApp",
+      drivingLicense: parsed.drivingLicense,
+      residence: parsed.residence,
+      birthDate: parsed.birthDate,
+      startMogelijkheid: parsed.startMogelijkheid,
+      datumGeplaatst: today,
+    });
+    setWhatsAppImportActive(true);
+    setShowWhatsAppDialog(false);
+    setShowNewCandidateDialog(true);
+  };
+
   const addCandidate = async () => {
     if (!candidateForm.firstName || !candidateForm.lastName) {
       alert("Vul minimaal voor- en achternaam in");
@@ -737,7 +793,7 @@ export default function NogInTeDelenPage() {
         notes: candidateForm.notes ? [candidateForm.notes] : [],
         diplomas: candidateForm.diplomas,
         created_at: new Date().toISOString(),
-        contact_via: candidateForm.contactVia || null,
+        contact_via: candidateForm.contactVia || (whatsAppImportActive ? "WhatsApp" : null),
         geplaatst_door: candidateForm.geplaatstDoor || null,
         is_student: candidateForm.isStudent || false,
         education_type: candidateForm.isStudent ? candidateForm.educationType : null,
@@ -768,26 +824,9 @@ export default function NogInTeDelenPage() {
       // Candidate added - no alert needed
       
       setShowNewCandidateDialog(false);
-      setCandidateForm({
-        firstName: "",
-        lastName: "",
-        phone: "",
-        email: "",
-        position: "",
-        nationality: "NL",
-        diplomas: [],
-        notes: "",
-        contactVia: "",
-        geplaatstDoor: "",
-        isStudent: false,
-        educationType: "",
-        smoking: false,
-        drivingLicense: false,
-        residence: "",
-        birthDate: "",
-        startMogelijkheid: "",
-        datumGeplaatst: ""
-      });
+      setWhatsAppImportActive(false);
+      setWhatsAppPaste("");
+      setCandidateForm({ ...emptyCandidateForm });
     } catch (error) {
       console.error("Fout bij toevoegen kandidaat:", error);
       console.error("Error type:", typeof error);
@@ -817,10 +856,24 @@ export default function NogInTeDelenPage() {
           <h1 className="text-3xl font-bold text-gray-900">{t('newPersonnel')}</h1>
           <p className="text-gray-600">Kandidaten en aangenomen personeel zonder toewijzing</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
+          <Button
+            variant="outline"
+            className="border-green-600 text-green-700 hover:bg-green-50"
+            onClick={() => {
+              setWhatsAppPaste("");
+              setShowWhatsAppDialog(true);
+            }}
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Uit WhatsApp plakken
+          </Button>
           <Button 
             className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => setShowNewCandidateDialog(true)}
+            onClick={() => {
+              setWhatsAppImportActive(false);
+              setShowNewCandidateDialog(true);
+            }}
           >
             <span className="mr-2">👤</span>
             Nieuwe Kandidaat
@@ -1488,17 +1541,69 @@ export default function NogInTeDelenPage() {
           )}
         </div>
 
+      {/* WhatsApp paste dialog */}
+      <Dialog
+        open={showWhatsAppDialog}
+        onOpenChange={(open) => {
+          setShowWhatsAppDialog(open);
+          if (!open) setWhatsAppPaste("");
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Uit WhatsApp plakken</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Kopieer in WhatsApp de chattekst (naam, telefoon, functie, enz.) en plak die hier.
+              Daarna kun je de herkende gegevens nog controleren vóór je opslaat.
+            </p>
+            <Textarea
+              value={whatsAppPaste}
+              onChange={(e) => setWhatsAppPaste(e.target.value)}
+              placeholder={"Voorbeeld:\nJan de Vries\n+31 6 12345678\njan@email.nl\nSolliciteert als matroos\nWoonplaats Rotterdam"}
+              className="min-h-[220px] font-mono text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowWhatsAppDialog(false)}>
+              Annuleren
+            </Button>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={applyWhatsAppPaste}>
+              Gegevens herkennen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* New Candidate Dialog */}
-      <Dialog open={showNewCandidateDialog} onOpenChange={setShowNewCandidateDialog}>
+      <Dialog
+        open={showNewCandidateDialog}
+        onOpenChange={(open) => {
+          setShowNewCandidateDialog(open);
+          if (!open) setWhatsAppImportActive(false);
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Nieuwe Kandidaat Toevoegen</DialogTitle>
+            <DialogTitle>
+              {whatsAppImportActive ? "WhatsApp-kandidaat controleren" : "Nieuwe Kandidaat Toevoegen"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-blue-50 p-3 rounded-lg mb-4">
-              <p className="text-sm text-blue-800">
-                💡 <strong>Snel formulier</strong> voor kandidaten die ons benaderd hebben. 
-                Alleen naam is verplicht, rest is optioneel. Later kun je meer details toevoegen.
+            <div className={`${whatsAppImportActive ? "bg-green-50" : "bg-blue-50"} p-3 rounded-lg mb-4`}>
+              <p className={`text-sm ${whatsAppImportActive ? "text-green-800" : "text-blue-800"}`}>
+                {whatsAppImportActive ? (
+                  <>
+                    <strong>Uit WhatsApp</strong> — controleer of vul aan wat mist (minimaal voor- en achternaam).
+                    Bij opslaan komt de kandidaat bij <strong>Nog te benaderen</strong>.
+                  </>
+                ) : (
+                  <>
+                    💡 <strong>Snel formulier</strong> voor kandidaten die ons benaderd hebben.
+                    Alleen naam is verplicht, rest is optioneel. Later kun je meer details toevoegen.
+                  </>
+                )}
               </p>
             </div>
 
