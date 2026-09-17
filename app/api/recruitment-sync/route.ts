@@ -18,6 +18,7 @@ type ParsedCandidate = {
   position: string
   birthDate: string | null
   residence: string | null
+  availableFrom: string | null
   drivingLicense: boolean
   diplomas: string[]
   languages: string[]
@@ -84,7 +85,7 @@ function extractBestMailText(parsed: any): string {
   const textNormalized = normalizeText(textRaw)
   const hasUsefulText =
     textNormalized.length > 20 &&
-    /(voornaam|achternaam|email|telefoon|solliciteren)/i.test(textNormalized)
+    /(voornaam|achternaam|\bnaam\b|e-?mail|telefoon|sollicitat|functie)/i.test(textNormalized)
 
   if (hasUsefulText) {
     return textNormalized
@@ -108,28 +109,53 @@ function collapseWhitespace(value: string): string {
 const KNOWN_FIELD_LABELS = [
   "Voornaam",
   "Achternaam",
+  "Naam",
+  "Functie",
+  "Beschikbaar vanaf",
   "Woonplaats",
+  "Land",
   "Geboorte datum",
   "Geboortedatum",
   "Email",
   "E-mail",
+  "E-mailadres",
   "Telefoon nummer",
   "Telefoonnummer",
+  "CV",
   "Rijbewijs",
   "Nationaliteit",
+  "Voorkeur contact",
+  "Vaargebieden & patenten",
+  "Vaargebieden en patenten",
+  "Vaarbewijzen & certificaten",
+  "Vaarbewijzen en certificaten",
+  "ADN",
+  "Tankvaartervaring",
+  "Ervaring in de binnenvaart",
+  "Opleiding",
+  "Werkervaring",
+  "Opmerkingen",
   "Ik wil graag solliciteren voor de functie",
   "Ik ben in het bezit van de volgende papieren",
   "Jullie kunnen op de volgende manier contact met mij opnemen",
   "In onze organisatie werken we samen",
   "Aanvullende opmerkingen",
+  "SOLLICITATIE OVERZICHT",
+  "PERSOONLIJKE GEGEVENS",
+  "TALEN",
+  "PAPIEREN & CERTIFICATEN",
+  "ERVARING & ACHTERGROND",
+  "AANVULLENDE INFORMATIE",
 ]
 
 function stripTrailingKnownLabels(value: string): string {
   let result = value
   for (const label of KNOWN_FIELD_LABELS) {
-    const idx = result.toLowerCase().indexOf(label.toLowerCase())
-    if (idx > 0) {
-      result = result.slice(0, idx).trim()
+    // Alleen knippen bij echte volgende veldlabels ("Label:"), niet bij woorden in de waarde (bijv. "ADN Basis").
+    const re = new RegExp(`\\s+${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:`, "i")
+    const match = re.exec(result)
+    if (match && match.index > 0) {
+      result = result.slice(0, match.index).trim()
     }
   }
   return collapseWhitespace(result)
@@ -204,17 +230,18 @@ function extractBlockUntilNextLabel(
 
 function parseBirthDate(value: string | null): string | null {
   if (!value) return null
+  const cleaned = collapseWhitespace(value).replace(/[./]/g, "-")
 
-  // dd-mm-yyyy
-  const dmy = value.match(/^(\d{2})-(\d{2})-(\d{4})$/)
+  // dd-mm-yyyy (also after converting dd.mm.yyyy / dd/mm/yyyy)
+  const dmy = cleaned.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
   if (dmy) {
     const [, dd, mm, yyyy] = dmy
-    return `${yyyy}-${mm}-${dd}`
+    return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`
   }
 
   // yyyy-mm-dd
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    return cleaned
   }
 
   return null
@@ -223,17 +250,18 @@ function parseBirthDate(value: string | null): string | null {
 function mapNationality(raw: string | null): string {
   const value = (raw || "").toLowerCase()
   if (value.includes("neder")) return "NL"
-  if (value.includes("pool")) return "PO"
-  if (value.includes("tsje")) return "CZ"
-  if (value.includes("slowa")) return "SLK"
-  if (value.includes("serv")) return "SERV"
-  if (value.includes("hong")) return "HUN"
+  if (value.includes("pool") || value.includes("polish")) return "PO"
+  if (value.includes("tsje") || value.includes("czech")) return "CZ"
+  if (value.includes("slowa") || value.includes("slovak")) return "SLK"
+  if (value.includes("serv") || value.includes("serb")) return "SERV"
+  if (value.includes("hong") || value.includes("hungar")) return "HUN"
   if (value.includes("belg")) return "BE"
   if (value.includes("fran")) return "FR"
-  if (value.includes("duits")) return "DE"
+  if (value.includes("duits") || value.includes("german")) return "DE"
   if (value.includes("lux")) return "LUX"
-  if (value.includes("roeme")) return "RO"
+  if (value.includes("roeme") || value.includes("romanian")) return "RO"
   if (value.includes("egy")) return "EG"
+  if (value.includes("oosten") || value.includes("austria") || value.includes("öster")) return "AT"
   return "NL"
 }
 
@@ -249,7 +277,57 @@ function parseYesNo(value: string | null): boolean {
   return ["ja", "yes", "y", "true"].includes(normalized)
 }
 
-function buildNotes(parsed: ParsedCandidate, source: { from: string; subject: string }) {
+function splitFullName(fullName: string | null): { firstName: string; lastName: string } | null {
+  if (!fullName) return null
+  const parts = collapseWhitespace(fullName).split(" ").filter(Boolean)
+  if (parts.length < 2) return null
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  }
+}
+
+function parseNameFromSubject(subject: string): { firstName: string; lastName: string } | null {
+  // Nieuw: "BAMALITE | Sollicitatie | Stuurman | Mateusz Dziadul"
+  const parts = subject.split("|").map((p) => collapseWhitespace(p)).filter(Boolean)
+  if (parts.length >= 4 && /sollicitatie/i.test(parts[1] || "")) {
+    return splitFullName(parts[parts.length - 1])
+  }
+  return null
+}
+
+function parsePositionFromSubject(subject: string): string | null {
+  const parts = subject.split("|").map((p) => collapseWhitespace(p)).filter(Boolean)
+  if (parts.length >= 3 && /sollicitatie/i.test(parts[1] || "")) {
+    return parts[2] || null
+  }
+  return null
+}
+
+function isRecruitmentSubject(subject: string): boolean {
+  const s = subject.toLowerCase()
+  const envKeyword = (process.env.RECRUITMENT_SUBJECT_KEYWORD || "").toLowerCase().trim()
+  if (envKeyword && s.includes(envKeyword)) return true
+  // Oud websiteformulier
+  if (s.includes("sollicitatie bij bamalite")) return true
+  // Nieuw websiteformulier: "BAMALITE | Sollicitatie | ..."
+  if (s.includes("sollicitatie") && s.includes("bamalite")) return true
+  return false
+}
+
+function pushNote(lines: string[], label: string, value: string | null | undefined) {
+  const cleaned = collapseWhitespace(value || "")
+  if (!cleaned) return
+  // Skip empty placeholders / only "CV filename" noise elsewhere
+  if (/^(n\.?v\.?t\.?|-|—|geen)$/i.test(cleaned)) return
+  lines.push(`${label}: ${cleaned}`)
+}
+
+function buildNotes(
+  parsed: ParsedCandidate,
+  source: { from: string; subject: string },
+  extras: Record<string, string | null>
+) {
   const lines: string[] = []
 
   if (parsed.diplomas.length) {
@@ -261,6 +339,13 @@ function buildNotes(parsed: ParsedCandidate, source: { from: string; subject: st
   if (parsed.contactVia) {
     lines.push(`Contact voorkeur: ${parsed.contactVia}`)
   }
+  pushNote(lines, "Beschikbaar vanaf", extras.availableFromRaw)
+  pushNote(lines, "Land", extras.country)
+  pushNote(lines, "Tankvaartervaring", extras.tankExperience)
+  pushNote(lines, "Ervaring binnenvaart", extras.inlandExperience)
+  pushNote(lines, "Opleiding", extras.education)
+  pushNote(lines, "Werkervaring", extras.workExperience)
+  pushNote(lines, "Opmerkingen", extras.remarks)
   lines.push(`Bron e-mail: ${source.subject}`)
   lines.push(`Afzender: ${source.from}`)
 
@@ -270,21 +355,66 @@ function buildNotes(parsed: ParsedCandidate, source: { from: string; subject: st
 function parseCandidateFromMail(text: string, subject: string, from: string): ParsedCandidate | null {
   const normalized = normalizeText(text)
 
-  const firstName = extractSingleField(normalized, ["Voornaam"])
-  const lastName = extractSingleField(normalized, ["Achternaam"])
+  let firstName = extractSingleField(normalized, ["Voornaam"])
+  let lastName = extractSingleField(normalized, ["Achternaam"])
+
+  if (!firstName || !lastName) {
+    const fromFullName = splitFullName(extractSingleField(normalized, ["Naam"]))
+    if (fromFullName) {
+      firstName = firstName || fromFullName.firstName
+      lastName = lastName || fromFullName.lastName
+    }
+  }
+
+  if (!firstName || !lastName) {
+    const fromSubject = parseNameFromSubject(subject)
+    if (fromSubject) {
+      firstName = firstName || fromSubject.firstName
+      lastName = lastName || fromSubject.lastName
+    }
+  }
+
   if (!firstName || !lastName) {
     return null
   }
 
-  const email = extractSingleField(normalized, ["Email", "E-mail"])
+  const email = extractSingleField(normalized, ["E-mailadres", "Email", "E-mail"])
   const phone = extractSingleField(normalized, ["Telefoon nummer", "Telefoonnummer"])
   const residence = extractSingleField(normalized, ["Woonplaats"])
   const birthDateRaw = extractSingleField(normalized, ["Geboorte datum", "Geboortedatum"])
   const nationalityRaw = extractSingleField(normalized, ["Nationaliteit"])
-  const positionRaw = extractSingleField(normalized, ["Ik wil graag solliciteren voor de functie"])
+  const positionRaw =
+    extractSingleField(normalized, ["Functie", "Ik wil graag solliciteren voor de functie"]) ||
+    parsePositionFromSubject(subject)
   const drivingLicenseRaw = extractSingleField(normalized, ["Rijbewijs"])
-  const contactVia = extractSingleField(normalized, ["Jullie kunnen op de volgende manier contact met mij opnemen"])
+  const contactVia = extractSingleField(normalized, [
+    "Voorkeur contact",
+    "Jullie kunnen op de volgende manier contact met mij opnemen",
+  ])
+  const availableFromRaw = extractSingleField(normalized, ["Beschikbaar vanaf"])
+  const country = extractSingleField(normalized, ["Land"])
+  const tankExperience = extractSingleField(normalized, ["Tankvaartervaring"])
+  const inlandExperience = extractSingleField(normalized, ["Ervaring in de binnenvaart"])
+  const education = extractSingleField(normalized, ["Opleiding"])
+  const workExperience = extractBlockUntilNextLabel(
+    normalized,
+    ["Werkervaring"],
+    ["Opmerkingen", "Aanvullende opmerkingen", "AANVULLENDE INFORMATIE", "Rijbewijs"]
+  )
+  const remarks =
+    extractBlockUntilNextLabel(normalized, ["Opmerkingen", "Aanvullende opmerkingen"], []) ||
+    extractSingleField(normalized, ["Opmerkingen", "Aanvullende opmerkingen"])
 
+  // Nieuw format: aparte papier-velden
+  const paperFields = [
+    extractSingleField(normalized, ["Vaargebieden & patenten", "Vaargebieden en patenten"]),
+    extractSingleField(normalized, ["Vaarbewijzen & certificaten", "Vaarbewijzen en certificaten"]),
+    extractSingleField(normalized, ["ADN"]),
+  ]
+    .map((v) => collapseWhitespace(v || ""))
+    .filter(Boolean)
+
+  // Oud format: blok "Ik ben in het bezit van de volgende papieren"
   const papersBlock = extractBlockUntilNextLabel(
     normalized,
     ["Ik ben in het bezit van de volgende papieren"],
@@ -294,21 +424,39 @@ function parseCandidateFromMail(text: string, subject: string, from: string): Pa
       "Aanvullende opmerkingen",
     ]
   )
-  const diplomas = papersBlock
+  const oldDiplomas = papersBlock
     .split("\n")
     .map((line) => collapseWhitespace(line))
     .filter(Boolean)
     .filter((line) => !line.toLowerCase().includes("ik ben in het bezit"))
 
-  const languageBlock = extractBlockUntilNextLabel(
+  const diplomas = [...paperFields, ...oldDiplomas].filter(
+    (v, i, arr) => arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i
+  )
+
+  // Nieuw: sectie TALEN met komma-gescheiden waarden; oud: regels "Engels - ..."
+  const languageBlockNew = extractBlockUntilNextLabel(
+    normalized,
+    ["TALEN"],
+    ["PAPIEREN & CERTIFICATEN", "PAPIEREN EN CERTIFICATEN", "Vaargebieden", "ADN", "ERVARING"]
+  )
+  const languageBlockOld = extractBlockUntilNextLabel(
     normalized,
     ["In onze organisatie werken we samen"],
     ["Jullie kunnen op de volgende manier contact met mij opnemen", "Aanvullende opmerkingen"]
   )
-  const languages = languageBlock
+  const languagesFromNew = languageBlockNew
+    .split(/[\n,;/]+/)
+    .map((line) => collapseWhitespace(line))
+    .filter(Boolean)
+    .filter((line) => !/^talen$/i.test(line))
+  const languagesFromOld = languageBlockOld
     .split("\n")
     .map((line) => collapseWhitespace(line))
-    .filter((line) => /^engels\s*-/i.test(line))
+    .filter((line) => /^engels\s*-/i.test(line) || /^duits\s*-/i.test(line) || /^nederlands\s*-/i.test(line))
+  const languages = (languagesFromNew.length ? languagesFromNew : languagesFromOld).filter(
+    (v, i, arr) => arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i
+  )
 
   const parsed: ParsedCandidate = {
     firstName,
@@ -319,6 +467,7 @@ function parseCandidateFromMail(text: string, subject: string, from: string): Pa
     position: mapPosition(positionRaw),
     birthDate: parseBirthDate(birthDateRaw),
     residence: residence || null,
+    availableFrom: parseBirthDate(availableFromRaw),
     drivingLicense: parseYesNo(drivingLicenseRaw),
     diplomas,
     languages,
@@ -326,7 +475,19 @@ function parseCandidateFromMail(text: string, subject: string, from: string): Pa
     notes: [],
   }
 
-  parsed.notes = buildNotes(parsed, { from, subject })
+  parsed.notes = buildNotes(
+    parsed,
+    { from, subject },
+    {
+      availableFromRaw,
+      country,
+      tankExperience,
+      inlandExperience,
+      education,
+      workExperience: collapseWhitespace(workExperience) || null,
+      remarks: collapseWhitespace(remarks || "") || null,
+    }
+  )
   return parsed
 }
 
@@ -392,7 +553,7 @@ async function insertCandidate(candidate: ParsedCandidate) {
     driving_license: candidate.drivingLicense,
     residence: candidate.residence,
     birth_date: candidate.birthDate,
-    start_mogelijkheid: null,
+    start_mogelijkheid: candidate.availableFrom,
     datum_geplaatst: today,
   }
 
@@ -410,7 +571,6 @@ async function processRecruitmentMails(
   const { simpleParser } = await import("mailparser")
   const { user, pass } = getCredentials()
 
-  const subjectKeyword = (process.env.RECRUITMENT_SUBJECT_KEYWORD || "Sollicitatie bij Bamalite S.A.").toLowerCase()
   const host = process.env.RECRUITMENT_IMAP_HOST || "imap.gmail.com"
   const port = Number(process.env.RECRUITMENT_IMAP_PORT || "993")
 
@@ -456,7 +616,7 @@ async function processRecruitmentMails(
 
           stats.processed += 1
 
-          if (!subject.toLowerCase().includes(subjectKeyword)) {
+          if (!isRecruitmentSubject(subject)) {
             stats.skipped += 1
             if (debug) {
               debugItems.push({
