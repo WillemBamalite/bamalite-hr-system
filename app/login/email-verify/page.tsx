@@ -172,6 +172,23 @@ export default function EmailVerifyPage() {
     await requestOtp("manual")
   }
 
+  const handleBackToLogin = async () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("pending_email_verify")
+      window.sessionStorage.removeItem("pending_email_verify_email")
+      window.sessionStorage.removeItem("email_verify_otp_requested")
+      window.sessionStorage.removeItem("email_verify_last_request_at")
+      window.sessionStorage.removeItem("email_verify_retry_after_until")
+      window.sessionStorage.removeItem("salary_page_verified")
+    }
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      // negeren: we gaan sowieso naar login
+    }
+    router.push("/login")
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
@@ -224,6 +241,16 @@ export default function EmailVerifyPage() {
                 : cooldownSeconds > 0
                   ? `Code sturen (${cooldownSeconds}s)`
                   : "Code sturen"}
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-gray-600"
+              onClick={() => void handleBackToLogin()}
+              disabled={loading || resendLoading}
+            >
+              Terug naar login
             </Button>
           </form>
         </CardContent>

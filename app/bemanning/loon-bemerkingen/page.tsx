@@ -621,10 +621,10 @@ export default function LoonBemerkingenPage() {
   const isKarinaUser = currentUserEmail === KARINA_EMAIL
   const isLeoUser = currentUserEmail === LEO_EMAIL
   const canDownloadSepa = isLeoUser || isKarinaUser
-  const canSetLeoApproval = isLeoUser
-  const canSetKarinaApproval = isLeoUser || isKarinaUser
-  const canBulkApproveLeo = isLeoUser
-  const canBulkApproveKarina = isLeoUser || isKarinaUser
+  const canSetLeoApproval = canUserSetSalaryApproval(currentUserEmail, "approval_leo")
+  const canSetKarinaApproval = canUserSetSalaryApproval(currentUserEmail, "approval_karina")
+  const canBulkApproveLeo = canSetLeoApproval
+  const canBulkApproveKarina = canSetKarinaApproval
   const isSalaryPasswordAdmin = SALARY_PASSWORD_ADMIN_EMAILS.has(currentUserEmail)
   const overtimeCalendarReadOnlyUser = isTanja || isKarinaUser
 
@@ -1610,19 +1610,17 @@ export default function LoonBemerkingenPage() {
       [crewId]: {
         ...prev[crewId],
         ...patch,
+        // Karina mag opnieuw moeten kijken na inhoudingswijziging.
+        // Leo-vinkje is bindend (vaak = betaald): nooit automatisch uitzetten.
         ...(shouldResetSalaryApprovals
           ? {
-              approval_leo: false,
               approval_karina: false,
-              approval_leo_paid_at: "",
               approval_karina_paid_at: "",
             }
           : {}),
         ...(shouldResetOvertimeApprovals
           ? {
-              overtime_approval_leo: false,
               overtime_approval_karina: false,
-              overtime_approval_leo_paid_at: "",
               overtime_approval_karina_paid_at: "",
             }
           : {}),
@@ -1961,6 +1959,18 @@ export default function LoonBemerkingenPage() {
       alert(isTanja ? "Dieser Monat ist abgeschlossen en niet meer bewerkbaar." : "Deze maand is afgesloten en niet meer aanpasbaar.")
       return
     }
+    if (!canUserSetSalaryApproval(currentUserEmail, field)) {
+      alert(
+        field === "approval_leo"
+          ? isTanja
+            ? "Nur Leo kann dieses Häkchen ändern."
+            : "Alleen Leo kan dit vinkje wijzigen."
+          : isTanja
+            ? "Nur Karina oder Leo können dieses Häkchen ändern."
+            : "Alleen Karina of Leo kunnen dit vinkje wijzigen."
+      )
+      return
+    }
     if (!value) {
       void applyApprovalToggle(crewId, field, false, "", sourceMonthKey)
       return
@@ -2111,8 +2121,8 @@ export default function LoonBemerkingenPage() {
           raise_amount: Number((existingRaise - existingInflation + inflationAmount).toFixed(2)),
           inflation_adjustment: inflationAmount,
           inflation_batch_id: batchId,
-          approval_leo: false,
           approval_karina: false,
+          approval_karina_paid_at: "",
           notes: String(row.notes || "").trim()
             ? `${String(row.notes || "").trim()} | Inflatiecorrectie ${percent}%`
             : `Inflatiecorrectie ${percent}%`,
@@ -2169,8 +2179,8 @@ export default function LoonBemerkingenPage() {
           raise_enabled: Number((existingRaise - existingInflation).toFixed(2)) !== 0,
           inflation_adjustment: 0,
           inflation_batch_id: "",
-          approval_leo: false,
           approval_karina: false,
+          approval_karina_paid_at: "",
         }
       })
       setRowsByCrewId((prev) => {
@@ -3278,7 +3288,7 @@ export default function LoonBemerkingenPage() {
                                 checked={!!r.approval_leo}
                                 onChange={(e) => handleApprovalToggle(String(r.crew_id), "approval_leo", e.target.checked)}
                                 disabled={monthIsClosed || !canSetLeoApproval || savingCrewId === String(r.crew_id)}
-                                title={!canSetLeoApproval ? (isTanja ? "Nur Leo kann dieses Häkchen setzen." : "Alleen Leo kan dit vinkje zetten.") : ""}
+                                title={!canSetLeoApproval ? (isTanja ? "Nur Leo kann dieses Häkchen ändern." : "Alleen Leo kan dit vinkje wijzigen.") : ""}
                               />
                             </td>
                             <td className="px-3 py-2">

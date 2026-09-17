@@ -478,7 +478,7 @@ export function canUserSetSalaryApproval(userEmail: string, field: SalaryApprova
   return false
 }
 
-/** Leo/Karina (Leo ook Karina-kolom) mogen hun vinkje wijzigen; anderen behouden bestaande waarden. */
+/** Leo/Karina mogen alleen hun eigen vinkje wijzigen; Leo-vinkje is bindend voor niet-Leo. */
 export function applyApprovalOwnership<T extends {
   approval_leo: boolean
   approval_karina: boolean
@@ -503,6 +503,7 @@ export function applyApprovalOwnership<T extends {
   } | null
 ): T {
   const next = { ...row }
+  // Niet-Leo: Leo-status + betaaldatum altijd uit bestaande DB behouden (voorkomt per ongeluk unchecken).
   if (!canUserSetSalaryApproval(userEmail, "approval_leo")) {
     next.approval_leo = existing?.approval_leo === true
     next.approval_leo_paid_at = String(existing?.approval_leo_paid_at || "")
