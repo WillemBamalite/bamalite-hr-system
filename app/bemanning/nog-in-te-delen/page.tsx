@@ -23,6 +23,13 @@ import type { ContractData } from "@/utils/contract-generator";
 import { FileText, MessageSquare } from "lucide-react";
 import { isExcludedFromAssignmentPool } from "@/utils/crew-filters";
 import { parseWhatsAppCandidateText } from "@/utils/whatsapp-candidate-parse";
+import {
+  extractWhatsAppBody,
+  looksNonDutch,
+  replaceNotesWithDutchTranslation,
+} from "@/utils/note-translate";
+import { CollapsibleCandidateNotes } from "@/components/crew/collapsible-candidate-notes";
+import { supabase } from "@/lib/supabase";
 
 /** Vaste id voor de opmerking uit deze pagina (dubbelklik); zichtbaar voor iedereen via Supabase active_notes. */
 const RECRUITMENT_QUICK_NOTE_ID = "recruitment-quick-note";
@@ -741,7 +748,7 @@ export default function NogInTeDelenPage() {
     datumGeplaatst: ""
   };
 
-  const applyWhatsAppPaste = () => {
+  const applyWhatsAppPaste = async () => {
     const raw = whatsAppPaste.trim();
     if (!raw) {
       alert("Plak eerst de WhatsApp-tekst.");
@@ -750,6 +757,32 @@ export default function NogInTeDelenPage() {
 
     const parsed = parseWhatsAppCandidateText(raw);
     const today = new Date().toISOString().split("T")[0];
+    let notes = parsed.notes;
+
+    // Engels/Duits automatisch naar NL vertalen en onder de originele chat zetten.
+    const body = extractWhatsAppBody(notes) || raw;
+    if (looksNonDutch(body)) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        if (accessToken) {
+          const res = await fetch("/api/translate-to-nl", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ text: body }),
+          });
+          const json = await res.json();
+          if (res.ok && json?.success && json?.translated && json?.detectedLang !== "nl") {
+            notes = replaceNotesWithDutchTranslation(notes, json.translated);
+          }
+        }
+      } catch (e) {
+        console.warn("WhatsApp auto-vertaling mislukt:", e);
+      }
+    }
 
     setCandidateForm({
       ...emptyCandidateForm,
@@ -759,7 +792,7 @@ export default function NogInTeDelenPage() {
       email: parsed.email,
       position: parsed.position || "Onbekend",
       nationality: parsed.nationality || "NL",
-      notes: parsed.notes,
+      notes,
       contactVia: "WhatsApp",
       drivingLicense: parsed.drivingLicense,
       residence: parsed.residence,
@@ -1101,10 +1134,13 @@ export default function NogInTeDelenPage() {
                           const noteText = typeof firstNote === "string" ? firstNote : (firstNote?.content || "");
                           if (!noteText) return null;
                           return (
-                            <div className="text-sm text-gray-600">
-                              <span className="font-medium">Notities:</span>
-                              <p className="italic mt-1">{noteText}</p>
-                            </div>
+                            <CollapsibleCandidateNotes
+                              notesText={noteText}
+                              memberId={member.id}
+                              onNotesUpdated={async (nextNotes) => {
+                                await updateCrew(member.id, { notes: [nextNotes] });
+                              }}
+                            />
                           );
                         })()}
 
@@ -1569,7 +1605,7 @@ export default function NogInTeDelenPage() {
             <Button variant="outline" onClick={() => setShowWhatsAppDialog(false)}>
               Annuleren
             </Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={applyWhatsAppPaste}>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={() => void applyWhatsAppPaste()}>
               Gegevens herkennen
             </Button>
           </DialogFooter>
