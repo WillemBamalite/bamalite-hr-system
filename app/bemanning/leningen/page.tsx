@@ -19,6 +19,8 @@ import { DashboardButton } from '@/components/ui/dashboard-button'
 import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { isRealCrewMember } from '@/utils/crew-filters'
+import { isOpenStudyDebt } from '@/utils/study-debt'
+import { StudiesPanel } from '@/components/studies/studies-panel'
 import { 
   Plus, 
   CheckCircle, 
@@ -35,8 +37,22 @@ import {
 } from 'lucide-react'
 
 export default function LeningenPage() {
-  const { crew, loans, addLoan, updateLoan, completeLoan, deleteLoan, makePayment, applyPendingLoanInstallments, loading } =
-    useSupabaseData()
+  const {
+    crew,
+    loans,
+    studyDebts,
+    studyDebtsUnavailable,
+    addLoan,
+    addStudyDebt,
+    updateStudyDebt,
+    deleteStudyDebt,
+    updateLoan,
+    completeLoan,
+    deleteLoan,
+    makePayment,
+    applyPendingLoanInstallments,
+    loading,
+  } = useSupabaseData()
   const { t } = useLanguage()
   const [newLoanDialog, setNewLoanDialog] = useState(false)
   const [completeLoanDialog, setCompleteLoanDialog] = useState<{ isOpen: boolean; loanId: string; loanName: string }>({
@@ -315,6 +331,10 @@ export default function LeningenPage() {
     return crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : 'Onbekend'
   }
 
+  const openStudyCount = (studyDebts || []).filter((study: any) =>
+    isOpenStudyDebt(study, crew.find((member: any) => member.id === study.crew_id))
+  ).length
+
   const openLoans = loans.filter(loan => loan.status === 'open')
   const completedLoans = loans.filter(loan => loan.status === 'voltooid')
   const totalAmount = loans.reduce((sum, loan) => sum + loan.amount, 0)
@@ -333,6 +353,15 @@ export default function LeningenPage() {
     <div className="max-w-6xl mx-auto py-8 px-2">
       <MobileHeaderNav />
       <DashboardButton />
+
+      <Tabs defaultValue="leningen" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+          <TabsTrigger value="leningen">Leningen</TabsTrigger>
+          <TabsTrigger value="studies">
+            Studies{openStudyCount > 0 ? ` (${openStudyCount})` : ""}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="leningen">
       
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
@@ -1166,6 +1195,18 @@ export default function LeningenPage() {
           </div>
         </DialogContent>
       </Dialog>
+        </TabsContent>
+        <TabsContent value="studies">
+          <StudiesPanel
+            crew={crew}
+            studyDebts={studyDebts || []}
+            studyDebtsUnavailable={studyDebtsUnavailable}
+            addStudyDebt={addStudyDebt}
+            updateStudyDebt={updateStudyDebt}
+            deleteStudyDebt={deleteStudyDebt}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 } 

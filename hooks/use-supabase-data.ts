@@ -871,6 +871,8 @@ export function useSupabaseData() {
   const [sickLeave, setSickLeave] = useState<any[]>([])
   const [standBackRecords, setStandBackRecords] = useState<any[]>([])
   const [loans, setLoans] = useState<any[]>([])
+  const [studyDebts, setStudyDebts] = useState<any[]>([])
+  const [studyDebtsUnavailable, setStudyDebtsUnavailable] = useState(false)
   const [trips, setTrips] = useState<any[]>([])
   const [vasteDienstRecords, setVasteDienstRecords] = useState<any[]>([])
   const [vasteDienstMindagen, setVasteDienstMindagen] = useState<any[]>([])
@@ -1014,6 +1016,21 @@ export function useSupabaseData() {
       } else {
         console.log('Loans loaded:', loansData?.length || 0)
         setLoans(loansData || [])
+      }
+
+      const { data: studyDebtsData, error: studyDebtsError } = await supabase
+        .from('study_debts')
+        .select('*')
+        .order('paid_on', { ascending: false })
+
+      if (studyDebtsError) {
+        const msg = (studyDebtsError as any)?.message || JSON.stringify(studyDebtsError)
+        console.warn('Skipping study_debts (table missing or no access):', msg)
+        setStudyDebts([])
+        setStudyDebtsUnavailable(true)
+      } else {
+        setStudyDebts(studyDebtsData || [])
+        setStudyDebtsUnavailable(false)
       }
 
             // Load trips
@@ -1234,6 +1251,13 @@ export function useSupabaseData() {
       })
       .subscribe()
 
+    const studyDebtsSubscription = supabase
+      .channel('study-debts-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'study_debts' }, () => {
+        loadData()
+      })
+      .subscribe()
+
     // Subscribe to trips changes
     const tripsSubscription = supabase
       .channel('trips-changes')
@@ -1264,6 +1288,7 @@ export function useSupabaseData() {
       sickLeaveSubscription.unsubscribe()
       standBackSubscription.unsubscribe()
       loansSubscription.unsubscribe()
+      studyDebtsSubscription.unsubscribe()
       tripsSubscription.unsubscribe()
       tasksSubscription.unsubscribe()
       incidentsSubscription.unsubscribe()
@@ -1689,6 +1714,57 @@ export function useSupabaseData() {
       return data
     } catch (err) {
       console.error('Error adding loan:', err)
+      throw err
+    }
+  }
+
+  const addStudyDebt = async (studyData: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('study_debts')
+        .insert([studyData])
+        .select()
+      if (error) {
+        const msg = error.message || 'Studie opslaan is mislukt.'
+        if (/study_debts|relation|schema cache/i.test(msg)) {
+          throw new Error('De studietabel ontbreekt nog. Voer scripts/create-study-debts-table.sql uit in Supabase.')
+        }
+        throw new Error(msg)
+      }
+      await loadData()
+      return data
+    } catch (err) {
+      console.error('Error adding study debt:', err)
+      throw err
+    }
+  }
+
+  const updateStudyDebt = async (studyId: string, updates: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('study_debts')
+        .update(updates)
+        .eq('id', studyId)
+        .select()
+      if (error) throw new Error(error.message || 'Studie bijwerken is mislukt.')
+      await loadData()
+      return data
+    } catch (err) {
+      console.error('Error updating study debt:', err)
+      throw err
+    }
+  }
+
+  const deleteStudyDebt = async (studyId: string) => {
+    try {
+      const { error } = await supabase
+        .from('study_debts')
+        .delete()
+        .eq('id', studyId)
+      if (error) throw new Error(error.message || 'Studie verwijderen is mislukt.')
+      await loadData()
+    } catch (err) {
+      console.error('Error deleting study debt:', err)
       throw err
     }
   }
@@ -2617,6 +2693,8 @@ export function useSupabaseData() {
     sickLeave,
     standBackRecords,
     loans,
+    studyDebts,
+    studyDebtsUnavailable,
     trips,
     tasks,
     incidents,
@@ -2673,6 +2751,9 @@ export function useSupabaseData() {
     addStandBackRecord,
     updateStandBackRecord,
     addLoan,
+    addStudyDebt,
+    updateStudyDebt,
+    deleteStudyDebt,
     updateLoan,
     completeLoan,
     deleteLoan,

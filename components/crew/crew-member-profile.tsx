@@ -23,6 +23,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { generateOutOfServiceLetter, downloadContract } from "@/utils/contract-generator"
+import { formatEuro, openLoanRemaining, studyAsOfDate, studyDebtSnapshot } from "@/utils/study-debt"
 import Link from "next/link"
 
 const POSITION_OPTIONS = [
@@ -95,7 +96,7 @@ interface Props {
 }
 
 export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = false }: Props) {
-  const { crew, ships, trips, loading, error, updateCrew } = useSupabaseData()
+  const { crew, ships, trips, loans, studyDebts, loading, error, updateCrew } = useSupabaseData()
   const { visits } = useShipVisits()
   const { t } = useLanguage()
   const { role, user } = useAuth()
@@ -327,6 +328,35 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
       })
     }
   }, [crewMember])
+
+  const outOfServiceWarnings = useMemo(() => {
+    const asOf = studyAsOfDate(crewMember, new Date(), outDate || undefined)
+    const loanWarnings = (loans || [])
+      .filter((loan: any) => loan.crew_id === crewMemberId && loan.status === "open")
+      .map((loan: any) => ({
+        id: String(loan.id),
+        kind: "lening" as const,
+        label: String(loan.name || "Lening"),
+        amount: openLoanRemaining(loan),
+      }))
+      .filter((item) => item.amount > 0.009)
+
+    const studyWarnings = (studyDebts || [])
+      .filter((study: any) => study.crew_id === crewMemberId && !study.settled_at)
+      .map((study: any) => {
+        const snapshot = studyDebtSnapshot(Number(study.amount || 0), String(study.paid_on || ""), asOf)
+        return {
+          id: String(study.id),
+          kind: "studie" as const,
+          label: String(study.name || "Studie"),
+          amount: snapshot.remaining,
+          years: snapshot.yearsInServiceAfterPayment,
+        }
+      })
+      .filter((item) => item.amount > 0.009)
+
+    return [...loanWarnings, ...studyWarnings]
+  }, [crewMember, crewMemberId, loans, studyDebts, outDate])
 
   // Don't render until mounted
   if (!mounted) {
@@ -1470,6 +1500,25 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
             <label className="text-sm font-medium text-gray-700">Reden</label>
             <Textarea value={outReason} onChange={(e) => setOutReason(e.target.value)} placeholder="Bijv. einde contract, eigen verzoek, etc." />
           </div>
+          {outOfServiceWarnings.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 space-y-2">
+              <p className="font-medium">Let op: deze persoon heeft nog een studieschuld of lening.</p>
+              <ul className="space-y-1">
+                {outOfServiceWarnings.map((item) => (
+                  <li key={`${item.kind}-${item.id}`}>
+                    {item.kind === "lening" ? "Lening" : "Studie"} “{item.label}”: nog {formatEuro(item.amount)}
+                    {item.kind === "studie"
+                      ? ` (${item.years === 1 ? "1 jaar" : `${item.years} jaar`} in dienst na betaling)`
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs">
+                Het studiebedrag is gerekend tot {outDate ? "de gekozen uit-dienstdatum" : "vandaag"}. Een open
+                studieschuld kan op het laatste salaris worden ingehouden.
+              </p>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowOutDialog(false)}>{t('cancel')}</Button>
