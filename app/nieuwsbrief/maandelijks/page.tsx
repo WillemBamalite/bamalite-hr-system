@@ -15,7 +15,7 @@ import { NewsletterPaper } from "@/components/newsletter/NewsletterPaper"
 import { buildNewsletterEvents } from "@/utils/newsletter-events"
 
 export default function MonthlyNewsletterPage() {
-  const { crew, ships, loading, error } = useSupabaseData()
+  const { crew, ships, incidents, loading, error } = useSupabaseData()
   const [selectedMonth, setSelectedMonth] = useState(() => startOfMonth(new Date()))
   const [showPreview, setShowPreview] = useState(false)
   const editionId = format(selectedMonth, "yyyy-MM")
@@ -97,7 +97,7 @@ export default function MonthlyNewsletterPage() {
         </p>
 
         {ready ? (
-          <NewsletterForm content={content} setContent={setContent} crew={crew || []} ships={ships || []} events={events} month={selectedMonth} />
+          <NewsletterForm content={content} setContent={setContent} crew={crew || []} ships={ships || []} incidents={incidents || []} events={events} month={selectedMonth} />
         ) : null}
       </main>
 

@@ -28,9 +28,14 @@ export const parseFlexibleDate = (value: unknown): Date | null => {
   const raw = value.trim()
   if (!raw) return null
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const d = new Date(raw)
-    return isNaN(d.getTime()) ? null : d
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    const [ys, ms, ds] = raw.slice(0, 10).split("-")
+    const year = Number(ys)
+    const month = Number(ms) - 1
+    const day = Number(ds)
+    const d = new Date(year, month, day)
+    if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day && !isNaN(d.getTime())) return d
+    return null
   }
 
   const m = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/)

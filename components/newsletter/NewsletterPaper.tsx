@@ -119,6 +119,79 @@ function filledWorkshop(items: WorkshopEntry[] | undefined) {
   return (items || []).filter((item) => item.name.trim())
 }
 
+function ManualOfficePaper({
+  rubric,
+  meta,
+  logoSrc,
+  logoAlt,
+  joining,
+  birthdays,
+  anniversaries,
+  news,
+}: {
+  rubric: string
+  meta: string
+  logoSrc: string
+  logoAlt: string
+  joining: WorkshopEntry[]
+  birthdays: WorkshopEntry[]
+  anniversaries: WorkshopEntry[]
+  news: string
+}) {
+  return (
+    <section className="np-block">
+      <div className="np-workshop-head">
+        <div>
+          <div className="np-rubric">{rubric}</div>
+          <div className="np-meta">{meta}</div>
+        </div>
+        <img src={logoSrc} alt={logoAlt} className="np-workshop-logo" />
+      </div>
+      {joining.length > 0 ? (
+        <div className="np-block">
+          <span className="np-label">Nieuw in dienst</span>
+          {joining.map((person) => (
+            <div key={person.id} className="np-person">
+              <div className="np-person-name">{person.name}</div>
+              <div className="np-person-meta">
+                {[person.role, person.date ? `in dienst vanaf ${workshopDate(person.date)}` : ""].filter(Boolean).join(" • ")}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {birthdays.length > 0 ? (
+        <div className="np-block">
+          <span className="np-label">Verjaardagen</span>
+          {birthdays.map((person) => (
+            <div key={person.id} className="np-person">
+              <div className="np-person-name">{person.name}</div>
+              {person.date ? <div className="np-person-meta">jarig op {workshopDate(person.date)}</div> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {anniversaries.length > 0 ? (
+        <div className="np-block">
+          <span className="np-label">Dienstjubilea</span>
+          {anniversaries.map((person) => (
+            <div key={person.id} className="np-person">
+              <div className="np-person-name">
+                {person.years.trim() ? `${person.years.trim()} jaar — ` : ""}
+                {person.name}
+              </div>
+              <div className="np-person-meta">
+                {[person.role, person.date ? workshopDate(person.date) : ""].filter(Boolean).join(" • ")}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {news.trim() ? <p className="np-plain">{news.trim()}</p> : null}
+    </section>
+  )
+}
+
 function agendaParts(date: string) {
   if (!date) return null
   const parsed = parseFlexibleDate(date)
@@ -142,12 +215,13 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
   const spotlightPhotos = (spotlight.photos?.length ? spotlight.photos : spotlight.photoDataUrl ? [spotlight.photoDataUrl] : []).filter(Boolean)
   const spotlightBits = [spotlight.intro, spotlight.functie, spotlight.special, spotlight.fact, spotlight.quote, spotlightName, ...spotlightPhotos]
     .some((value) => String(value || "").trim())
-  const bftItems = content.opsItems.filter((item) => item.category === "vetting" && (item.period.trim() || item.note.trim()))
   const opsItems = OPS_ORDER.filter((category) => category !== "vetting").flatMap((category) =>
     content.opsItems.filter((item) => item.category === category && (item.shipId || item.period.trim() || item.note.trim())),
   )
   const showChart = chartPoints(content.chart).length > 0 && Boolean(content.chart.title.trim())
   const showSafety = Boolean(content.safety.title.trim() || content.safety.text.trim() || content.safety.photoDataUrl)
+  const lesson = content.lesson || { title: "", text: "", incidentId: "", incidentLabel: "" }
+  const showLesson = Boolean(lesson.title.trim() || lesson.text.trim())
   const photos = content.photos.filter((photo) => photo.imageDataUrl)
   const feature = photos[0]
   const gallery = photos.slice(1)
@@ -170,8 +244,8 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
   const birthdays = events.birthdays.filter((person) => !hiddenPeople.has(person.id))
   const anniversaries = events.anniversaries.filter((person) => !hiddenPeople.has(person.id))
   const showOffice = Boolean(content.officeUpdates.trim() || content.officeClosing.trim())
-  const showPeople = birthdays.length > 0 || anniversaries.length > 0
-  const showFleet = Boolean(content.opsUpdate.trim()) || opsItems.length > 0 || bftItems.length > 0 || showChart || showSafety
+  const showPeople = joining.length > 0 || birthdays.length > 0 || anniversaries.length > 0
+  const showFleet = Boolean(content.opsUpdate.trim()) || opsItems.length > 0 || showChart || showSafety
   const showFromShips = photos.length > 0 || agenda.length > 0 || showOffice
   const birthdayColumns = birthdays.length >= 9 ? 3 : birthdays.length >= 4 ? 2 : 1
 
@@ -228,12 +302,27 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
       margin: 0 0 1.5mm; font-size: 12pt; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.25;
       color: #9c7c45; font-weight: 700; break-after: avoid; page-break-after: avoid;
     }
+    .np-blurb {
+      margin: 0 0 2.5mm; font-family: var(--font-news-display), Georgia, serif;
+      font-style: italic; font-size: 11pt; line-height: 1.4; color: #10243f;
+    }
     .np-h { margin: 0 0 2mm; font-size: 16pt; line-height: 1.15; color: #10243f; font-weight: 700; }
     .np-lead {
       margin: 0 0 4.5mm; font-family: var(--font-news-display), Georgia, serif;
       font-size: 12.5pt; line-height: 1.55; color: #1c1915;
     }
     .np-block { margin: 0 0 4.5mm; }
+    .np-sheet > .np-block + .np-block:not(.np-chart),
+    .np-sheet > .np-spot + .np-block:not(.np-chart),
+    .np-sheet > .np-block + .np-spot,
+    .np-sheet > .np-lead + .np-spot,
+    .np-sheet > .np-mast + .np-spot,
+    .np-sheet > .np-safety + .np-block:not(.np-chart),
+    .np-sheet > .np-safety + .np-spot {
+      margin-top: 1.5mm;
+      padding-top: 4mm;
+      border-top: 1px solid #d9d1c3;
+    }
     .np-keep, .np-person, .np-bday, .np-jubilee, .np-ops, .np-agenda, .np-kpi, figure {
       break-inside: avoid; page-break-inside: avoid;
     }
@@ -251,7 +340,6 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
     }
     .np-spot.no-photo { grid-template-columns: 1fr; }
     .np-spot-photos { display: flex; flex-direction: column; gap: 2.5mm; }
-    .np-spot-copy { border-top: 2px solid #10243f; padding-top: 2.5mm; }
     .np-spot-name { font-size: 20pt; margin: 0 0 1.5mm; color: #10243f; line-height: 1.05; }
     .np-spot-role { margin: -0.5mm 0 2mm; font-size: 9pt; letter-spacing: 0.12em; text-transform: uppercase; color: #5c6570; }
     .np-spot p { margin: 0 0 2mm; }
@@ -304,6 +392,11 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
     .np-safety .np-h, .np-safety p { color: white; }
     .np-safety p { margin: 0; font-size: 11pt; line-height: 1.45; }
     .np-safety img { max-height: 48mm; background: #0c1c33; }
+    .np-lesson {
+      padding: 3.5mm 4mm; background: #f7f4ee; border-left: 3px solid #9c7c45;
+      break-inside: avoid; page-break-inside: avoid;
+    }
+    .np-lesson-ref { margin: 2mm 0 0; font-size: 9.5pt; color: #3d4a5c; }
     .np-feature { margin: 0 0 3mm; }
     .np-feature img { max-height: 92mm; }
     .np-feature-kicker { margin-top: 2mm; }
@@ -427,9 +520,16 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
           </section>
         ) : null}
 
+        {showPeople ? <div className="np-part">Onze mensen</div> : null}
+
         {joining.length > 0 ? (
           <section className="np-block">
             <div className="np-rubric">Welkom aan boord</div>
+            <p className="np-blurb">
+              {joining.length === 1
+                ? "Wij verwelkomen onze nieuwe collega aan boord. Veel succes en welkom in het team."
+                : "Wij verwelkomen onze nieuwe collega’s aan boord. Veel succes en welkom in het team."}
+            </p>
             <div className={joining.length >= 4 ? "np-cols-2" : ""}>
               {joining.map((person) => (
                 <div key={person.id} className="np-person">
@@ -443,11 +543,14 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
           </section>
         ) : null}
 
-        {showPeople ? <div className="np-part">Onze mensen</div> : null}
-
         {birthdays.length > 0 ? (
           <section className="np-block">
             <div className="np-rubric">Verjaardagen</div>
+            <p className="np-blurb">
+              {birthdays.length === 1
+                ? "Wij feliciteren onze jarige van deze maand."
+                : "Wij feliciteren iedereen die deze maand jarig is."}
+            </p>
             <div className="np-bdays" style={{ columnCount: birthdayColumns }}>
               {birthdays.map((person) => (
                 <div key={person.id} className="np-bday">
@@ -462,6 +565,11 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
         {anniversaries.length > 0 ? (
           <section className="np-block">
             <div className="np-rubric">Dienstjubilea</div>
+            <p className="np-blurb">
+              {anniversaries.length === 1
+                ? "Wij feliciteren onze collega met dit dienstjubileum."
+                : "Wij feliciteren onze collega’s met hun dienstjubileum."}
+            </p>
             <div className={anniversaries.length > 1 ? "np-jubilees" : ""}>
               {anniversaries.map((person) => (
                 <article key={person.id} className="np-jubilee">
@@ -513,18 +621,6 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
           </section>
         ) : null}
 
-        {bftItems.length > 0 ? (
-          <section className="np-block">
-            <div className="np-rubric">Bevrachtingskantoor BFT</div>
-            {bftItems.map((item) => (
-              <article key={item.id} className="np-ops">
-                {item.period.trim() ? <div className="np-ops-meta">{item.period.trim()}</div> : null}
-                {item.note.trim() ? <p>{item.note.trim()}</p> : null}
-              </article>
-            ))}
-          </section>
-        ) : null}
-
         {showChart ? (
           <section className="np-block np-chart np-keep">
             <div className="np-rubric">Vloot in cijfers</div>
@@ -542,6 +638,17 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
             </div>
             {content.safety.photoDataUrl ? (
               <img src={content.safety.photoDataUrl} alt={content.safety.title.trim() || "Veiligheidsmoment"} />
+            ) : null}
+          </section>
+        ) : null}
+
+        {showLesson ? (
+          <section className="np-block np-lesson np-keep">
+            <div className="np-rubric">Lesson learned van de maand</div>
+            {lesson.title.trim() ? <h2 className="np-display np-h">{lesson.title.trim()}</h2> : null}
+            {lesson.text.trim() ? <p className="np-plain">{lesson.text.trim()}</p> : null}
+            {lesson.incidentLabel.trim() ? (
+              <p className="np-lesson-ref">Naar aanleiding van het incident: {lesson.incidentLabel.trim()}</p>
             ) : null}
           </section>
         ) : null}
@@ -578,56 +685,32 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
         ) : null}
 
         {showWorkshop ? (
-          <section className="np-block">
-            <div className="np-workshop-head">
-              <div>
-                <div className="np-rubric">Nieuws vanuit de werkplaats</div>
-                <div className="np-meta">AM Bruinsma BV</div>
-              </div>
-              <img src="/am-bruinsma-logo.png.png" alt="AM Bruinsma" className="np-workshop-logo" />
-            </div>
-            {workshopJoining.length > 0 ? (
-              <div className="np-block">
-                <span className="np-label">Nieuw in dienst</span>
-                {workshopJoining.map((person) => (
-                  <div key={person.id} className="np-person">
-                    <div className="np-person-name">{person.name}</div>
-                    <div className="np-person-meta">
-                      {[person.role, person.date ? `in dienst vanaf ${workshopDate(person.date)}` : ""].filter(Boolean).join(" • ")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {workshopBirthdays.length > 0 ? (
-              <div className="np-block">
-                <span className="np-label">Verjaardagen</span>
-                {workshopBirthdays.map((person) => (
-                  <div key={person.id} className="np-person">
-                    <div className="np-person-name">{person.name}</div>
-                    {person.date ? <div className="np-person-meta">jarig op {workshopDate(person.date)}</div> : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {workshopAnniversaries.length > 0 ? (
-              <div className="np-block">
-                <span className="np-label">Dienstjubilea</span>
-                {workshopAnniversaries.map((person) => (
-                  <div key={person.id} className="np-person">
-                    <div className="np-person-name">
-                      {person.years.trim() ? `${person.years.trim()} jaar — ` : ""}
-                      {person.name}
-                    </div>
-                    <div className="np-person-meta">
-                      {[person.role, person.date ? workshopDate(person.date) : ""].filter(Boolean).join(" • ")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {(content.workshopNews || "").trim() ? <p className="np-plain">{content.workshopNews.trim()}</p> : null}
-          </section>
+          <ManualOfficePaper
+            rubric="Nieuws vanuit de werkplaats"
+            meta="AM Bruinsma BV"
+            logoSrc="/am-bruinsma-logo.png.png"
+            logoAlt="AM Bruinsma"
+            joining={workshopJoining}
+            birthdays={workshopBirthdays}
+            anniversaries={workshopAnniversaries}
+            news={content.workshopNews || ""}
+          />
+        ) : null}
+
+        {(filledWorkshop(content.bftBirthdays).length ||
+          filledWorkshop(content.bftJoining).length ||
+          filledWorkshop(content.bftAnniversaries).length ||
+          (content.bftNews || "").trim()) ? (
+          <ManualOfficePaper
+            rubric="Bevrachtingskantoor BFT"
+            meta="BFT Tanker Logistics"
+            logoSrc="/bft-logo.png"
+            logoAlt="BFT Tanker Logistics"
+            joining={filledWorkshop(content.bftJoining)}
+            birthdays={filledWorkshop(content.bftBirthdays)}
+            anniversaries={filledWorkshop(content.bftAnniversaries)}
+            news={content.bftNews || ""}
+          />
         ) : null}
 
         {agenda.length > 0 ? (

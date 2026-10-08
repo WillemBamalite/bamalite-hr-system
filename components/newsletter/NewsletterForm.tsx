@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type Dispatch, type SetStateAction } from "react"
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
 import { figuresMonthLabel, type NewsletterEvents, type NewsletterPerson } from "@/utils/newsletter-events"
 import { compressImageFile } from "@/utils/compress-image"
 import {
@@ -17,6 +17,7 @@ import {
   type OpsItem,
   type SpotlightContent,
   type WorkshopEntry,
+  type LessonLearned,
 } from "@/utils/newsletter-content"
 
 type Props = {
@@ -24,12 +25,168 @@ type Props = {
   setContent: Dispatch<SetStateAction<NewsletterContent>>
   crew: any[]
   ships: any[]
+  incidents: any[]
   events: NewsletterEvents
   month: Date
 }
 
 const inputClass = "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
 const areaClass = `${inputClass} min-h-[88px]`
+
+function toDutchDate(value: string) {
+  const iso = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return `${iso[3]}-${iso[2]}-${iso[1]}`
+  return value.trim()
+}
+
+function toIsoDate(value: string) {
+  const dutch = value.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/)
+  if (!dutch) return ""
+  return `${dutch[3]}-${dutch[2]}-${dutch[1]}`
+}
+
+function DutchDateInput({ value, onChange, className }: { value: string; onChange: (value: string) => void; className?: string }) {
+  const [text, setText] = useState(() => toDutchDate(value))
+  const [focused, setFocused] = useState(false)
+  useEffect(() => {
+    if (!focused) setText(toDutchDate(value))
+  }, [value, focused])
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      lang="nl-NL"
+      placeholder="dd-mm-jjjj"
+      value={text}
+      onFocus={() => setFocused(true)}
+      onChange={(event) => {
+        const next = event.target.value
+        setText(next)
+        if (!next.trim()) onChange("")
+        else if (/^\d{2}-\d{2}-\d{4}$/.test(next.trim())) onChange(toIsoDate(next))
+      }}
+      onBlur={() => {
+        setFocused(false)
+        if (!text.trim()) {
+          onChange("")
+          setText("")
+          return
+        }
+        const iso = toIsoDate(text)
+        if (iso) {
+          onChange(iso)
+          setText(toDutchDate(iso))
+        }
+      }}
+      className={className}
+    />
+  )
+}
+
+function incidentMoment(incident: any) {
+  const raw = incident?.incident_date || incident?.created_at || ""
+  const parsed = raw ? new Date(raw) : null
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : 0
+}
+
+function latestIncident(incidents: any[]) {
+  return [...(incidents || [])]
+    .filter((item) => item && item.status !== "geannuleerd")
+    .sort((a, b) => incidentMoment(b) - incidentMoment(a))[0] || null
+}
+
+function incidentSummary(incident: any, ships: any[]) {
+  const raw = String(incident?.incident_date || incident?.created_at || "")
+  const dateMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const date = dateMatch
+    ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`
+    : incidentMoment(incident)
+      ? new Intl.DateTimeFormat("nl-NL", { timeZone: "Europe/Amsterdam", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(incidentMoment(incident)))
+      : ""
+  const ship = (ships || []).find((item) => String(item.id) === String(incident?.related_ship_id || ""))
+  const shipName = ship?.name ? String(ship.name) : ""
+  const title = String(incident?.title || "").trim()
+  return [date, shipName, title].filter(Boolean).join(" · ")
+}
+
+function LessonFields({
+  content,
+  patch,
+  ships,
+  incidents,
+}: {
+  content: NewsletterContent
+  patch: (partial: Partial<NewsletterContent>) => void
+  ships: any[]
+  incidents: any[]
+}) {
+  const lesson = content.lesson || { title: "", text: "", incidentId: "", incidentLabel: "" }
+  const latest = latestIncident(incidents)
+  const latestLabel = latest ? incidentSummary(latest, ships) : ""
+  const setLesson = (partial: Partial<LessonLearned>) => patch({ lesson: { ...lesson, ...partial } })
+  const linkedToLatest = Boolean(latest && lesson.incidentId && String(latest.id) === lesson.incidentId)
+
+  return (
+    <div className="space-y-3">
+      <Field label="Titel">
+        <input
+          value={lesson.title}
+          onChange={(event) => setLesson({ title: event.target.value })}
+          placeholder="Bijvoorbeeld: lijnen goed vastzetten bij het afmeren"
+          className={inputClass}
+        />
+      </Field>
+      <Field label="De les">
+        <textarea
+          value={lesson.text}
+          onChange={(event) => setLesson({ text: event.target.value })}
+          placeholder="Wat nemen we mee naar de volgende maand?"
+          className={areaClass}
+        />
+      </Field>
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+        <div className="text-sm font-medium text-[#10243f]">Laatste incident</div>
+        {latest ? (
+          <>
+            <p className="mt-1 text-sm text-slate-700">{latestLabel}</p>
+            {latest.description ? <p className="mt-1 line-clamp-3 text-sm text-slate-500">{latest.description}</p> : null}
+          </>
+        ) : (
+          <p className="mt-1 text-sm text-slate-500">Er staat nog geen incident in de lijst.</p>
+        )}
+        {lesson.incidentLabel && !linkedToLatest ? (
+          <p className="mt-2 text-sm text-slate-600">In deze editie gekoppeld: {lesson.incidentLabel}</p>
+        ) : null}
+        <label className="mt-2 flex items-start gap-2 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={Boolean(lesson.incidentId)}
+            disabled={!latest && !lesson.incidentId}
+            onChange={(event) => {
+              if (!event.target.checked) {
+                setLesson({ incidentId: "", incidentLabel: "" })
+                return
+              }
+              if (!latest) return
+              setLesson({ incidentId: String(latest.id), incidentLabel: latestLabel })
+            }}
+          />
+          <span>Vermeld het laatste incident bij deze lesson learned</span>
+        </label>
+        {latest && lesson.incidentId && !linkedToLatest ? (
+          <button
+            type="button"
+            className="mt-2 text-sm font-medium text-[#10243f]"
+            onClick={() => setLesson({ incidentId: String(latest.id), incidentLabel: latestLabel })}
+          >
+            Vervang door het laatste incident
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
 
 function Section({ kicker, title, hint, children }: { kicker: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -53,7 +210,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function NewsletterForm({ content, setContent, crew, ships, events, month }: Props) {
+export function NewsletterForm({ content, setContent, crew, ships, incidents, events, month }: Props) {
   const [photoShip, setPhotoShip] = useState("")
   const [photoLocation, setPhotoLocation] = useState("")
   const [photoCaption, setPhotoCaption] = useState("")
@@ -157,13 +314,15 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
     patchSpotlight({ photos, photoDataUrl: photos[0] || "" })
   }
 
-  const addWorkshop = (key: "workshopBirthdays" | "workshopJoining" | "workshopAnniversaries") => {
+  const addManualList = (
+    key: "workshopBirthdays" | "workshopJoining" | "workshopAnniversaries" | "bftBirthdays" | "bftJoining" | "bftAnniversaries",
+  ) => {
     const item: WorkshopEntry = { id: newsletterUid("ws"), name: "", role: "", date: "", years: "" }
     patch({ [key]: [...(content[key] || []), item] })
   }
 
-  const updateWorkshop = (
-    key: "workshopBirthdays" | "workshopJoining" | "workshopAnniversaries",
+  const updateManualList = (
+    key: "workshopBirthdays" | "workshopJoining" | "workshopAnniversaries" | "bftBirthdays" | "bftJoining" | "bftAnniversaries",
     id: string,
     partial: Partial<WorkshopEntry>,
   ) => {
@@ -172,7 +331,10 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
     })
   }
 
-  const removeWorkshop = (key: "workshopBirthdays" | "workshopJoining" | "workshopAnniversaries", id: string) => {
+  const removeManualList = (
+    key: "workshopBirthdays" | "workshopJoining" | "workshopAnniversaries" | "bftBirthdays" | "bftJoining" | "bftAnniversaries",
+    id: string,
+  ) => {
     patch({ [key]: (content[key] || []).filter((item) => item.id !== id) })
   }
 
@@ -495,7 +657,7 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
           />
         </Field>
         <div className="mt-4 space-y-4">
-          {OPS_CATEGORIES.map((category) => {
+          {OPS_CATEGORIES.filter((category) => category.id !== "vetting").map((category) => {
             const items = content.opsItems.filter((item) => item.category === category.id)
             return (
               <div key={category.id} className="rounded-md border border-slate-200 p-3">
@@ -512,22 +674,20 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
                 <div className="space-y-3">
                   {items.map((item) => (
                     <div key={item.id} className="grid grid-cols-1 gap-2 rounded-md bg-slate-50 p-3 md:grid-cols-2">
-                      {category.id === "vetting" ? null : (
-                        <Field label="Schip">
-                          <select
-                            value={item.shipId}
-                            onChange={(event) => updateOps(item.id, { shipId: event.target.value })}
-                            className={inputClass}
-                          >
-                            <option value="">Kies schip...</option>
-                            {shipOptions.map((ship) => (
-                              <option key={ship.id} value={ship.id}>
-                                {ship.name}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                      )}
+                      <Field label="Schip">
+                        <select
+                          value={item.shipId}
+                          onChange={(event) => updateOps(item.id, { shipId: event.target.value })}
+                          className={inputClass}
+                        >
+                          <option value="">Kies schip...</option>
+                          {shipOptions.map((ship) => (
+                            <option key={ship.id} value={ship.id}>
+                              {ship.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
                       <Field label="Datum of periode, optioneel">
                         <input
                           value={item.period}
@@ -537,11 +697,10 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
                         />
                       </Field>
                       <div className="md:col-span-2">
-                        <Field label={category.id === "vetting" ? "Nieuwtje" : "Korte toelichting, optioneel"}>
+                        <Field label="Korte toelichting, optioneel">
                           <textarea
                             value={item.note}
                             onChange={(event) => updateOps(item.id, { note: event.target.value })}
-                            placeholder={category.id === "vetting" ? "Wat is er te melden vanuit BFT?" : undefined}
                             className={areaClass}
                           />
                         </Field>
@@ -604,6 +763,14 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
             </div>
           ) : null}
         </div>
+      </Section>
+
+      <Section
+        kicker="Veiligheid"
+        title="Lesson learned van de maand"
+        hint="Alleen zichtbaar in de krant als je iets invult. Koppel het laatste incident als de les daarover gaat."
+      >
+        <LessonFields content={content} patch={patch} ships={ships} incidents={incidents} />
       </Section>
 
       <Section kicker="Beelden" title="Foto's vanaf de schepen" hint="De bovenste foto wordt Foto van de maand. Maximaal 8.">
@@ -683,56 +850,45 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
         title="Nieuws vanuit de werkplaats"
         hint="Zelf invullen, dit komt niet uit de bemanningslijst. Een leeg blok verdwijnt uit de krant."
       >
-        <img src="/am-bruinsma-logo.png.png" alt="AM Bruinsma" className="mb-4 h-14 w-auto object-contain" />
-        <div className="space-y-4">
-          <WorkshopList
-            title="Verjaardagen"
-            addLabel="+ Verjaardag"
-            items={content.workshopBirthdays || []}
-            onAdd={() => addWorkshop("workshopBirthdays")}
-            onChange={(id, partial) => updateWorkshop("workshopBirthdays", id, partial)}
-            onRemove={(id) => removeWorkshop("workshopBirthdays", id)}
-            fields={[
-              { key: "name", label: "Naam", placeholder: "Stefan Hooimeijer" },
-              { key: "date", label: "Jarig op", type: "date" },
-            ]}
-          />
-          <WorkshopList
-            title="Nieuw in dienst"
-            addLabel="+ Medewerker"
-            items={content.workshopJoining || []}
-            onAdd={() => addWorkshop("workshopJoining")}
-            onChange={(id, partial) => updateWorkshop("workshopJoining", id, partial)}
-            onRemove={(id) => removeWorkshop("workshopJoining", id)}
-            fields={[
-              { key: "name", label: "Naam", placeholder: "Brian de Boer" },
-              { key: "role", label: "Functie", placeholder: "Mechanisch monteur" },
-              { key: "date", label: "In dienst vanaf", type: "date" },
-            ]}
-          />
-          <WorkshopList
-            title="Dienstjubilea"
-            addLabel="+ Jubileum"
-            items={content.workshopAnniversaries || []}
-            onAdd={() => addWorkshop("workshopAnniversaries")}
-            onChange={(id, partial) => updateWorkshop("workshopAnniversaries", id, partial)}
-            onRemove={(id) => removeWorkshop("workshopAnniversaries", id)}
-            fields={[
-              { key: "name", label: "Naam", placeholder: "Naam" },
-              { key: "years", label: "Aantal jaar", placeholder: "10" },
-              { key: "role", label: "Functie, optioneel", placeholder: "Elektricien" },
-              { key: "date", label: "Datum", type: "date" },
-            ]}
-          />
-          <Field label="Nieuwtjes">
-            <textarea
-              value={content.workshopNews || ""}
-              onChange={(event) => patch({ workshopNews: event.target.value })}
-              placeholder="Vrij nieuws vanuit de werkplaats."
-              className={areaClass}
-            />
-          </Field>
-        </div>
+        <ManualOfficeFields
+          logoSrc="/am-bruinsma-logo.png.png"
+          logoAlt="AM Bruinsma"
+          birthdays={content.workshopBirthdays || []}
+          joining={content.workshopJoining || []}
+          anniversaries={content.workshopAnniversaries || []}
+          news={content.workshopNews || ""}
+          newsPlaceholder="Vrij nieuws vanuit de werkplaats."
+          onAdd={addManualList}
+          onChange={updateManualList}
+          onRemove={removeManualList}
+          birthdayKey="workshopBirthdays"
+          joiningKey="workshopJoining"
+          anniversaryKey="workshopAnniversaries"
+          onNews={(value) => patch({ workshopNews: value })}
+        />
+      </Section>
+
+      <Section
+        kicker="BFT"
+        title="Bevrachtingskantoor BFT"
+        hint="Zelf invullen, dit komt niet uit de bemanningslijst. Een leeg blok verdwijnt uit de krant."
+      >
+        <ManualOfficeFields
+          logoSrc="/bft-logo.png"
+          logoAlt="BFT Tanker Logistics"
+          birthdays={content.bftBirthdays || []}
+          joining={content.bftJoining || []}
+          anniversaries={content.bftAnniversaries || []}
+          news={content.bftNews || ""}
+          newsPlaceholder="Vrij nieuws vanuit BFT."
+          onAdd={addManualList}
+          onChange={updateManualList}
+          onRemove={removeManualList}
+          birthdayKey="bftBirthdays"
+          joiningKey="bftJoining"
+          anniversaryKey="bftAnniversaries"
+          onNews={(value) => patch({ bftNews: value })}
+        />
       </Section>
 
       <Section kicker="Vooruitblik" title="Wat komt eraan?">
@@ -740,11 +896,10 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
           {content.agenda.map((item) => (
             <div key={item.id} className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 p-3 md:grid-cols-2">
               <Field label="Datum">
-                <input
-                  type="date"
+                <DutchDateInput
                   value={item.date}
-                  onChange={(event) =>
-                    patch({ agenda: content.agenda.map((row) => (row.id === item.id ? { ...row, date: event.target.value } : row)) })
+                  onChange={(date) =>
+                    patch({ agenda: content.agenda.map((row) => (row.id === item.id ? { ...row, date } : row)) })
                   }
                   className={inputClass}
                 />
@@ -823,6 +978,101 @@ export function NewsletterForm({ content, setContent, crew, ships, events, month
   )
 }
 
+type ManualListKey =
+  | "workshopBirthdays"
+  | "workshopJoining"
+  | "workshopAnniversaries"
+  | "bftBirthdays"
+  | "bftJoining"
+  | "bftAnniversaries"
+
+function ManualOfficeFields({
+  logoSrc,
+  logoAlt,
+  birthdays,
+  joining,
+  anniversaries,
+  news,
+  newsPlaceholder,
+  birthdayKey,
+  joiningKey,
+  anniversaryKey,
+  onAdd,
+  onChange,
+  onRemove,
+  onNews,
+}: {
+  logoSrc: string
+  logoAlt: string
+  birthdays: WorkshopEntry[]
+  joining: WorkshopEntry[]
+  anniversaries: WorkshopEntry[]
+  news: string
+  newsPlaceholder: string
+  birthdayKey: ManualListKey
+  joiningKey: ManualListKey
+  anniversaryKey: ManualListKey
+  onAdd: (key: ManualListKey) => void
+  onChange: (key: ManualListKey, id: string, partial: Partial<WorkshopEntry>) => void
+  onRemove: (key: ManualListKey, id: string) => void
+  onNews: (value: string) => void
+}) {
+  return (
+    <>
+      <img src={logoSrc} alt={logoAlt} className="mb-4 h-14 w-auto object-contain" />
+      <div className="space-y-4">
+        <WorkshopList
+          title="Verjaardagen"
+          addLabel="+ Verjaardag"
+          items={birthdays}
+          onAdd={() => onAdd(birthdayKey)}
+          onChange={(id, partial) => onChange(birthdayKey, id, partial)}
+          onRemove={(id) => onRemove(birthdayKey, id)}
+          fields={[
+            { key: "name", label: "Naam", placeholder: "Stefan Hooimeijer" },
+            { key: "date", label: "Jarig op", type: "date" },
+          ]}
+        />
+        <WorkshopList
+          title="Nieuw in dienst"
+          addLabel="+ Medewerker"
+          items={joining}
+          onAdd={() => onAdd(joiningKey)}
+          onChange={(id, partial) => onChange(joiningKey, id, partial)}
+          onRemove={(id) => onRemove(joiningKey, id)}
+          fields={[
+            { key: "name", label: "Naam", placeholder: "Brian de Boer" },
+            { key: "role", label: "Functie", placeholder: "Mechanisch monteur" },
+            { key: "date", label: "In dienst vanaf", type: "date" },
+          ]}
+        />
+        <WorkshopList
+          title="Dienstjubilea"
+          addLabel="+ Jubileum"
+          items={anniversaries}
+          onAdd={() => onAdd(anniversaryKey)}
+          onChange={(id, partial) => onChange(anniversaryKey, id, partial)}
+          onRemove={(id) => onRemove(anniversaryKey, id)}
+          fields={[
+            { key: "name", label: "Naam", placeholder: "Naam" },
+            { key: "years", label: "Aantal jaar", placeholder: "10" },
+            { key: "role", label: "Functie, optioneel", placeholder: "Elektricien" },
+            { key: "date", label: "Datum", type: "date" },
+          ]}
+        />
+        <Field label="Nieuwtjes">
+          <textarea
+            value={news}
+            onChange={(event) => onNews(event.target.value)}
+            placeholder={newsPlaceholder}
+            className={areaClass}
+          />
+        </Field>
+      </div>
+    </>
+  )
+}
+
 function WorkshopList({
   title,
   addLabel,
@@ -854,13 +1104,21 @@ function WorkshopList({
           <div key={item.id} className="grid grid-cols-1 gap-2 rounded-md bg-slate-50 p-3 md:grid-cols-2">
             {fields.map((field) => (
               <Field key={field.key} label={field.label}>
-                <input
-                  type={field.type || "text"}
-                  value={item[field.key]}
-                  placeholder={field.placeholder}
-                  onChange={(event) => onChange(item.id, { [field.key]: event.target.value })}
-                  className={inputClass}
-                />
+                {field.type === "date" ? (
+                  <DutchDateInput
+                    value={item[field.key]}
+                    onChange={(date) => onChange(item.id, { [field.key]: date })}
+                    className={inputClass}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={item[field.key]}
+                    placeholder={field.placeholder}
+                    onChange={(event) => onChange(item.id, { [field.key]: event.target.value })}
+                    className={inputClass}
+                  />
+                )}
               </Field>
             ))}
             <button type="button" className="text-left text-sm text-red-700" onClick={() => onRemove(item.id)}>

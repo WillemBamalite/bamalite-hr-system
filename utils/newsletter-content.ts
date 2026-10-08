@@ -106,6 +106,13 @@ export type SafetyMoment = {
   photoDataUrl: string
 }
 
+export type LessonLearned = {
+  title: string
+  text: string
+  incidentId: string
+  incidentLabel: string
+}
+
 export type FleetPhoto = {
   id: string
   shipName: string
@@ -139,11 +146,16 @@ export type NewsletterContent = {
   opsUpdate: string
   opsItems: OpsItem[]
   safety: SafetyMoment
+  lesson: LessonLearned
   photos: FleetPhoto[]
   workshopNews: string
   workshopBirthdays: WorkshopEntry[]
   workshopJoining: WorkshopEntry[]
   workshopAnniversaries: WorkshopEntry[]
+  bftNews: string
+  bftBirthdays: WorkshopEntry[]
+  bftJoining: WorkshopEntry[]
+  bftAnniversaries: WorkshopEntry[]
   agenda: AgendaItem[]
   officeUpdates: string
   officeClosing: string
@@ -193,11 +205,16 @@ export function emptyContent(editionId: string): NewsletterContent {
     opsUpdate: "",
     opsItems: [],
     safety: { title: "", text: "", photoDataUrl: "" },
+    lesson: { title: "", text: "", incidentId: "", incidentLabel: "" },
     photos: [],
     workshopNews: "",
     workshopBirthdays: [],
     workshopJoining: [],
     workshopAnniversaries: [],
+    bftNews: "",
+    bftBirthdays: [],
+    bftJoining: [],
+    bftAnniversaries: [],
     agenda: [],
     officeUpdates: "",
     officeClosing: "",
@@ -363,6 +380,13 @@ function normalizeAgenda(raw: unknown): AgendaItem[] {
 export function normalizeContent(raw: unknown, editionId: string): NewsletterContent {
   const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {}
   const safety = row.safety && typeof row.safety === "object" ? (row.safety as Record<string, unknown>) : {}
+  const lesson = row.lesson && typeof row.lesson === "object" ? (row.lesson as Record<string, unknown>) : {}
+  const opsItems = normalizeOps(row.opsItems)
+  const carriedBftNews = opsItems
+    .filter((item) => item.category === "vetting" && item.note.trim())
+    .map((item) => item.note.trim())
+    .join("\n\n")
+  const bftNews = asText(row.bftNews) || carriedBftNews
   return {
     editionId,
     intro: asText(row.intro),
@@ -370,17 +394,27 @@ export function normalizeContent(raw: unknown, editionId: string): NewsletterCon
     chart: normalizeChart(row.chart),
     spotlight: normalizeSpotlight(row.spotlight),
     opsUpdate: asText(row.opsUpdate),
-    opsItems: normalizeOps(row.opsItems),
+    opsItems: opsItems.filter((item) => item.category !== "vetting"),
     safety: {
       title: asText(safety.title),
       text: asText(safety.text),
       photoDataUrl: asText(safety.photoDataUrl),
+    },
+    lesson: {
+      title: asText(lesson.title),
+      text: asText(lesson.text),
+      incidentId: asText(lesson.incidentId),
+      incidentLabel: asText(lesson.incidentLabel),
     },
     photos: normalizePhotos(row.photos),
     workshopNews: asText(row.workshopNews),
     workshopBirthdays: normalizeWorkshop(row.workshopBirthdays),
     workshopJoining: normalizeWorkshop(row.workshopJoining),
     workshopAnniversaries: normalizeWorkshop(row.workshopAnniversaries),
+    bftNews,
+    bftBirthdays: normalizeWorkshop(row.bftBirthdays),
+    bftJoining: normalizeWorkshop(row.bftJoining),
+    bftAnniversaries: normalizeWorkshop(row.bftAnniversaries),
     agenda: normalizeAgenda(row.agenda),
     officeUpdates: asText(row.officeUpdates),
     officeClosing: asText(row.officeClosing),
