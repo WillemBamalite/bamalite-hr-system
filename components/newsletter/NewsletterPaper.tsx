@@ -115,6 +115,19 @@ function workshopDate(value: string) {
   return format(parsed, "dd-MM-yyyy")
 }
 
+function workshopDayMonth(value: string) {
+  const raw = value.trim()
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return `${iso[3]}-${iso[2]}`
+  const dutch = raw.match(/^(\d{1,2})-(\d{1,2})(?:-\d{4})?$/)
+  if (dutch) {
+    return `${dutch[1].padStart(2, "0")}-${dutch[2].padStart(2, "0")}`
+  }
+  const parsed = parseFlexibleDate(raw)
+  if (!parsed) return raw
+  return format(parsed, "dd-MM")
+}
+
 function filledWorkshop(items: WorkshopEntry[] | undefined) {
   return (items || []).filter((item) => item.name.trim())
 }
@@ -166,7 +179,7 @@ function ManualOfficePaper({
           {birthdays.map((person) => (
             <div key={person.id} className="np-person">
               <div className="np-person-name">{person.name}</div>
-              {person.date ? <div className="np-person-meta">jarig op {workshopDate(person.date)}</div> : null}
+              {person.date ? <div className="np-person-meta">jarig op {workshopDayMonth(person.date)}</div> : null}
             </div>
           ))}
         </div>

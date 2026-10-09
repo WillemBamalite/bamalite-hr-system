@@ -45,6 +45,61 @@ function toIsoDate(value: string) {
   return `${dutch[3]}-${dutch[2]}-${dutch[1]}`
 }
 
+function toDayMonth(value: string) {
+  const raw = value.trim()
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    const day = Number(iso[3])
+    const month = Number(iso[2])
+    if (day < 1 || day > 31 || month < 1 || month > 12) return ""
+    return `${iso[3]}-${iso[2]}`
+  }
+  const dutch = raw.match(/^(\d{1,2})-(\d{1,2})(?:-\d{4})?$/)
+  if (!dutch) return raw
+  const day = Number(dutch[1])
+  const month = Number(dutch[2])
+  if (day < 1 || day > 31 || month < 1 || month > 12) return ""
+  return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}`
+}
+
+function DutchDayMonthInput({ value, onChange, className }: { value: string; onChange: (value: string) => void; className?: string }) {
+  const [text, setText] = useState(() => toDayMonth(value))
+  const [focused, setFocused] = useState(false)
+  useEffect(() => {
+    if (!focused) setText(toDayMonth(value))
+  }, [value, focused])
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      lang="nl-NL"
+      placeholder="dd-mm"
+      value={text}
+      onFocus={() => setFocused(true)}
+      onChange={(event) => {
+        const next = event.target.value
+        setText(next)
+        if (!next.trim()) onChange("")
+        else if (/^\d{2}-\d{2}$/.test(next.trim()) && toDayMonth(next) === next.trim()) onChange(next.trim())
+      }}
+      onBlur={() => {
+        setFocused(false)
+        if (!text.trim()) {
+          onChange("")
+          setText("")
+          return
+        }
+        const dayMonth = toDayMonth(text)
+        if (/^\d{2}-\d{2}$/.test(dayMonth)) {
+          onChange(dayMonth)
+          setText(dayMonth)
+        }
+      }}
+      className={className}
+    />
+  )
+}
+
 function DutchDateInput({ value, onChange, className }: { value: string; onChange: (value: string) => void; className?: string }) {
   const [text, setText] = useState(() => toDutchDate(value))
   const [focused, setFocused] = useState(false)
@@ -1038,7 +1093,7 @@ function ManualOfficeFields({
           onRemove={(id) => onRemove(birthdayKey, id)}
           fields={[
             { key: "name", label: "Naam", placeholder: "Stefan Hooimeijer" },
-            { key: "date", label: "Jarig op", type: "date" },
+            { key: "date", label: "Jarig op", type: "daymonth" },
           ]}
         />
         <WorkshopList
@@ -1093,7 +1148,7 @@ function WorkshopList({
   title: string
   addLabel: string
   items: WorkshopEntry[]
-  fields: { key: "name" | "role" | "date" | "years"; label: string; placeholder?: string; type?: "date" }[]
+  fields: { key: "name" | "role" | "date" | "years"; label: string; placeholder?: string; type?: "date" | "daymonth" }[]
   onAdd: () => void
   onChange: (id: string, partial: Partial<WorkshopEntry>) => void
   onRemove: (id: string) => void
@@ -1112,12 +1167,20 @@ function WorkshopList({
           <div key={item.id} className="grid grid-cols-1 gap-2 rounded-md bg-slate-50 p-3 md:grid-cols-2">
             {fields.map((field) => (
               <Field key={field.key} label={field.label}>
-                {field.type === "date" ? (
-                  <DutchDateInput
-                    value={item[field.key]}
-                    onChange={(date) => onChange(item.id, { [field.key]: date })}
-                    className={inputClass}
-                  />
+                {field.type === "date" || field.type === "daymonth" ? (
+                  field.type === "daymonth" ? (
+                    <DutchDayMonthInput
+                      value={item[field.key]}
+                      onChange={(date) => onChange(item.id, { [field.key]: date })}
+                      className={inputClass}
+                    />
+                  ) : (
+                    <DutchDateInput
+                      value={item[field.key]}
+                      onChange={(date) => onChange(item.id, { [field.key]: date })}
+                      className={inputClass}
+                    />
+                  )
                 ) : (
                   <input
                     type="text"
