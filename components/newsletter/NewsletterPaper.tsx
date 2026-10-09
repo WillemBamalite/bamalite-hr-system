@@ -374,7 +374,8 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
     .np-ops-ship { font-size: 12pt; font-weight: 700; color: #10243f; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.25; }
     .np-ops-meta { font-size: 12pt; letter-spacing: 0.08em; text-transform: uppercase; color: #9c7c45; font-weight: 700; line-height: 1.25; }
     .np-ops p, .np-plain { margin: 0.8mm 0 0; }
-    .np-chart { background: #f7f4ee; border-top: 2px solid #9c7c45; padding: 3mm 3mm 1mm; }
+    .np-chart { background: #f7f4ee; border-top: 2px solid #9c7c45; padding: 3mm 3mm 2mm; }
+    .np-chart-note { margin: 1.5mm 1mm 0; color: #3d4a5c; font-size: 10.5pt; line-height: 1.45; white-space: pre-wrap; }
     .np-chart-svg { width: 100%; height: auto; display: block; }
     .np-chart-base { stroke: #d9d1c3; stroke-width: 1; }
     .np-chart-bar { fill: #10243f; }
@@ -626,6 +627,7 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
             <div className="np-rubric">Vloot in cijfers</div>
             <h2 className="np-display np-h">{content.chart.title.trim()}</h2>
             <FleetChart chart={content.chart} />
+            {content.chart.note.trim() ? <p className="np-chart-note">{content.chart.note.trim()}</p> : null}
           </section>
         ) : null}
 

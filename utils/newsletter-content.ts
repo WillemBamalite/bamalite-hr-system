@@ -19,6 +19,8 @@ export type NewsletterChart = {
   /** Eén regel per punt: "mei 3". Dit is wat je in het formulier typt. */
   lines: string
   points: ChartPoint[]
+  /** Vrije toelichting direct onder de grafiek. Leeg = niet in de krant. */
+  note: string
 }
 
 export function parseChartLines(text: string): ChartPoint[] {
@@ -189,7 +191,7 @@ export function emptyContent(editionId: string): NewsletterContent {
     editionId,
     intro: "",
     kpis: emptyKpis(),
-    chart: { title: "", type: "bar", lines: "", points: [] },
+    chart: { title: "", type: "bar", lines: "", points: [], note: "" },
     spotlight: {
       type: "crew",
       crewId: "",
@@ -264,6 +266,7 @@ function normalizeChart(raw: unknown): NewsletterChart {
     type: chart.type === "line" ? "line" : "bar",
     lines,
     points: lines.trim() ? parseChartLines(lines) : pointsFromStore,
+    note: asText(chart.note),
   }
 }
 

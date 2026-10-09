@@ -511,6 +511,14 @@ export function NewsletterForm({ content, setContent, crew, ships, incidents, ev
               )
             })}
           </div>
+          <Field label="Toelichting onder de grafiek, optioneel">
+            <textarea
+              value={content.chart.note || ""}
+              onChange={(event) => patch({ chart: { ...content.chart, note: event.target.value } })}
+              placeholder="Korte uitleg bij de cijfers, bijvoorbeeld wat de getallen betekenen."
+              className={areaClass}
+            />
+          </Field>
         </div>
       </Section>
 
