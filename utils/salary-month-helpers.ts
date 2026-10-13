@@ -277,9 +277,11 @@ export function applySickAdjustmentToSalary(
       : 1
   const scaledDays80 = breakdown.days80 * sickScale
   const scaledDays100 = breakdown.days100 * sickScale
+  const scaledDays0 = breakdown.days0 * sickScale
 
   const daily = fullMonthSalaryExcl / divisorDays
-  const effectiveSickDays = (scaledDays80 + scaledDays100)
+  // 0%-dagen (handmatig onbetaald of CNS) vallen buiten het betaalde loon.
+  const effectiveSickDays = scaledDays80 + scaledDays100 + scaledDays0
   const healthyDays = Math.max(0, totalDaysInScope - effectiveSickDays)
   return healthyDays * daily + scaledDays80 * daily * 0.8 + scaledDays100 * daily
 }
