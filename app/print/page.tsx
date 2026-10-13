@@ -778,7 +778,7 @@ export default function PrintPage() {
               </div>
               <div>
                 <span style="color: #666;">Salaris:</span>
-                <div style="font-weight: 500; margin-top: 2px;">${record.salary_percentage || 100}%</div>
+                <div style="font-weight: 500; margin-top: 2px;">${record.salary_percentage ?? 100}%</div>
               </div>
               <div>
                 <span style="color: #666;">Betaald door:</span>

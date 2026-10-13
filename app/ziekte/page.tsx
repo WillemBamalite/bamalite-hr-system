@@ -654,7 +654,7 @@ export default function ZiektePage() {
               <span className="text-gray-500">{uiText.salary}</span>
               <div className="flex items-center space-x-1 mt-1">
                 <Euro className="w-3 h-3 text-gray-400" />
-                <span className="font-medium">{record.salary_percentage || 100}%</span>
+                <span className="font-medium">{record.salary_percentage ?? 100}%</span>
               </div>
             </div>
             <div>
@@ -927,7 +927,7 @@ export default function ZiektePage() {
                 </div>
                 <div>
                     <span className="text-gray-500">{uiText.salary}</span>
-                    <p className="font-medium mt-1">{record.salary_percentage || 100}%</p>
+                    <p className="font-medium mt-1">{record.salary_percentage ?? 100}%</p>
                 </div>
 
                 <div>
