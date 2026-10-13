@@ -1,6 +1,7 @@
 import { format, parseISO } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { calculateWorkDays } from "@/hooks/use-supabase-data"
+import { firstNonEmptyIban } from "@/utils/salary-month-helpers"
 import {
   getRecordOutstandingDays,
   getRecordReturnedDays,
@@ -194,6 +195,45 @@ export interface ProcessOverwerkSettlementResult {
   settlementType: OverwerkSettlementType
 }
 
+async function resolveKnownSalaryIban(
+  crewId: string,
+  monthKey: string,
+  existing: { iban?: string | null; reason?: string | null } | null,
+  meta: Record<string, unknown> | null
+): Promise<string> {
+  const own = firstNonEmptyIban(existing?.iban, meta?.iban)
+  if (own) return own
+
+  const { data: older, error: olderError } = await supabase
+    .from("loon_bemerkingen")
+    .select("*")
+    .eq("crew_id", crewId)
+    .lt("month_key", monthKey)
+    .order("month_key", { ascending: false })
+  if (olderError) throw olderError
+
+  for (const row of older || []) {
+    const rowMeta = parseSalaryMeta(row?.reason)
+    const iban = firstNonEmptyIban(row?.iban, rowMeta?.iban)
+    if (iban) return iban
+  }
+
+  const { data: crewRow, error: crewError } = await supabase
+    .from("crew")
+    .select("iban")
+    .eq("id", crewId)
+    .maybeSingle()
+  if (crewError) {
+    const msg = String(crewError.message || "").toLowerCase()
+    const missingIbanColumn =
+      msg.includes("could not find the 'iban' column") ||
+      (msg.includes("column") && msg.includes("iban") && msg.includes("does not exist"))
+    if (missingIbanColumn) return ""
+    throw crewError
+  }
+  return firstNonEmptyIban(crewRow?.iban)
+}
+
 async function upsertSalaryOvertime(params: {
   crewId: string
   company: string | null
@@ -219,11 +259,13 @@ async function upsertSalaryOvertime(params: {
   const newNote = prevNote ? `${prevNote}; ${overtimeNote}` : overtimeNote
 
   const reasonBase = stripSalaryMeta(existing?.reason)
+  const knownIban = await resolveKnownSalaryIban(crewId, monthKey, existing, meta)
   const mergedMeta = {
     ...(meta || {}),
     overtime_enabled: true,
     overtime_days: newDays,
     overtime_note: newNote,
+    ...(knownIban ? { iban: knownIban } : {}),
   }
   const reasonWithMeta = `${reasonBase}\n${SALARY_META_PREFIX}${JSON.stringify(mergedMeta)}`
 
@@ -237,6 +279,7 @@ async function upsertSalaryOvertime(params: {
     reason: reasonWithMeta,
     notes: buildSalaryNotesFromOverwerk(overtimeNote, existing?.notes),
     updated_at: new Date().toISOString(),
+    ...(knownIban ? { iban: knownIban } : {}),
   }
 
   if (existing?.id) {

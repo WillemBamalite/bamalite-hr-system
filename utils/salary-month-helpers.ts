@@ -14,6 +14,15 @@ export type SalaryDeduction = {
   category: SalaryDeductionCategory
 }
 
+/** Eerste ingevulde IBAN. Een lege waarde telt niet als rekeningnummer. */
+export function firstNonEmptyIban(...values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value ?? "").trim()
+    if (text) return text
+  }
+  return ""
+}
+
 export const shiftMonthKey = (monthKey: string, deltaMonths: number) => {
   const [yearStr, monthStr] = (monthKey || "").split("-")
   const year = parseInt(yearStr || "0", 10)

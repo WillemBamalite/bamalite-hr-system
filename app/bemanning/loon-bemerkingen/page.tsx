@@ -37,6 +37,7 @@ import {
   canUserSetSalaryApproval,
   collectOverigeBetalingenForMonth,
   buildSepaExtraWorkMessage,
+  firstNonEmptyIban,
   getOvertimePayoutMonthKey,
   getPayableClothingAllowance,
   getSalaryPaymentDateForMonth,
@@ -753,11 +754,16 @@ export default function LoonBemerkingenPage() {
       ;(currentRows || []).forEach((r: any) => currentByCrew.set(String(r.crew_id), r))
 
       const latestPreviousByCrew = new Map<string, any>()
+      const inheritedIbanByCrew = new Map<string, string>()
       ;(olderRows || []).forEach((r: any) => {
         const key = String(r.crew_id)
         if (!latestPreviousByCrew.has(key)) {
           latestPreviousByCrew.set(key, r)
         }
+        if (inheritedIbanByCrew.has(key)) return
+        const olderMeta = parseSalaryMetaFromReason(r?.reason)
+        const olderIban = firstNonEmptyIban(r?.iban, olderMeta?.iban)
+        if (olderIban) inheritedIbanByCrew.set(key, olderIban)
       })
 
       const nextRowsByCrew: Record<string, SalaryDraft> = {}
@@ -827,14 +833,12 @@ export default function LoonBemerkingenPage() {
             month_key: monthKey,
             in_service_from: c?.in_dienst_vanaf || null,
             out_of_service_date: c?.out_of_service_date || null,
-            iban: String(
-              current?.iban ??
-              currentMeta?.iban ??
-              previous?.iban ??
-              previousMeta?.iban ??
-              c?.iban ??
-              rowsByCrewId[crewId]?.iban ??
-              ""
+            iban: firstNonEmptyIban(
+              current?.iban,
+              currentMeta?.iban,
+              inheritedIbanByCrew.get(crewId),
+              c?.iban,
+              rowsByCrewId[crewId]?.iban
             ),
             base_salary:
               typeof current?.base_salary === "number"
@@ -971,7 +975,12 @@ export default function LoonBemerkingenPage() {
           month_key: prevMonthKey,
           in_service_from: crewById.get(crewId)?.in_dienst_vanaf || null,
           out_of_service_date: crewById.get(crewId)?.out_of_service_date || null,
-          iban: String(prevRow?.iban ?? meta?.iban ?? ""),
+          iban: firstNonEmptyIban(
+            prevRow?.iban,
+            meta?.iban,
+            inheritedIbanByCrew.get(crewId),
+            crewById.get(crewId)?.iban
+          ),
           base_salary: typeof prevRow?.base_salary === "number" ? prevRow.base_salary : 0,
           travel_amount: resolveTravelAmountFromRow(prevRow, meta),
           advance_enabled: legacyAdvance.advance_enabled,
@@ -1659,22 +1668,25 @@ export default function LoonBemerkingenPage() {
       })
     }
 
+    // Leeg veld wist het rekeningnummer op de persoon niet. Alleen een ingevuld nummer wordt bewaard.
     // IBAN in crew is optioneel: sommige databases hebben (nog) geen `iban` kolom.
-    // In dat geval blokkeren we het opslaan van salarissen niet.
-    const { error: crewUpdateError } = await supabase
-      .from("crew")
-      .update({
-        iban: rowForPersist.iban?.trim() ? rowForPersist.iban.trim() : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", crewId)
-    if (crewUpdateError) {
-      const msg = String(crewUpdateError.message || "").toLowerCase()
-      const missingIbanColumn =
-        msg.includes("could not find the 'iban' column") ||
-        (msg.includes("column") && msg.includes("iban") && msg.includes("does not exist"))
-      if (!missingIbanColumn) {
-        throw crewUpdateError
+    const ibanToStore = String(rowForPersist.iban || "").trim()
+    if (ibanToStore) {
+      const { error: crewUpdateError } = await supabase
+        .from("crew")
+        .update({
+          iban: ibanToStore,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", crewId)
+      if (crewUpdateError) {
+        const msg = String(crewUpdateError.message || "").toLowerCase()
+        const missingIbanColumn =
+          msg.includes("could not find the 'iban' column") ||
+          (msg.includes("column") && msg.includes("iban") && msg.includes("does not exist"))
+        if (!missingIbanColumn) {
+          throw crewUpdateError
+        }
       }
     }
 
