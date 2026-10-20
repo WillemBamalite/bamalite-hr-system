@@ -548,13 +548,52 @@ export default function NogInTeDelenPage() {
     }
   };
 
-  const handleNoInterest = async (memberId: string, memberName: string) => {
-    if (!confirm(`Weet je zeker dat je ${memberName} op 'Geen interesse' wilt zetten?`)) {
+  const sendOutcomeMail = async (
+    member: any,
+    kind: "later-terugkomen" | "geen-interesse",
+    memberName: string
+  ) => {
+    const email = String(member.email || "").trim();
+    if (!email) return;
+
+    const failText =
+      kind === "later-terugkomen"
+        ? `${memberName} staat bij Later terugkomen, maar de mail is niet verstuurd.`
+        : `${memberName} staat op Geen interesse, maar de afwijzingsmail is niet verstuurd.`;
+
+    try {
+      const res = await fetch("/api/send-recruitment-outcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind,
+          firstName: member.first_name || "kandidaat",
+          email,
+          nationality: member.nationality,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        alert(data?.error ? `${failText}\n\n${data.error}` : failText);
+      }
+    } catch (mailErr) {
+      console.error("Recruitmentmail mislukt:", mailErr);
+      alert(failText);
+    }
+  };
+
+  const handleNoInterest = async (member: any) => {
+    const memberName = `${member.first_name || ""} ${member.last_name || ""}`.trim() || "deze kandidaat";
+    const email = String(member.email || "").trim();
+    const mailLine = email
+      ? `Er gaat een afwijzingsmail naar ${email}.`
+      : "Er is geen e-mailadres, dus er gaat geen mail uit.";
+    if (!confirm(`Weet je zeker dat je ${memberName} op 'Geen interesse' wilt zetten?\n\n${mailLine}`)) {
       return;
     }
 
     try {
-      await updateCrew(memberId, {
+      await updateCrew(member.id, {
         recruitment_status: "geen-interesse",
         sub_status: "geen-interesse",
         status: "nog-in-te-delen",
@@ -562,10 +601,22 @@ export default function NogInTeDelenPage() {
     } catch (error) {
       console.error("Fout bij opslaan geen interesse:", error);
       alert("Er is een fout opgetreden.");
+      return;
     }
+
+    await sendOutcomeMail(member, "geen-interesse", memberName);
   };
 
   const handleLaterTerugkomen = async (member: any) => {
+    const memberName = `${member.first_name || ""} ${member.last_name || ""}`.trim() || "deze kandidaat";
+    const email = String(member.email || "").trim();
+    const mailLine = email
+      ? `Er gaat een mail naar ${email} dat we momenteel geen plaats hebben en later terugkomen.`
+      : "Er is geen e-mailadres, dus er gaat geen mail uit.";
+    if (!confirm(`${memberName} verplaatsen naar Later terugkomen?\n\n${mailLine}`)) {
+      return;
+    }
+
     try {
       await updateCrew(member.id, {
         sub_status: "later-terugkomen"
@@ -573,7 +624,10 @@ export default function NogInTeDelenPage() {
     } catch (error) {
       console.error("Fout bij verplaatsen naar later terugkomen:", error);
       alert("Er is een fout opgetreden.");
+      return;
     }
+
+    await sendOutcomeMail(member, "later-terugkomen", memberName);
   };
 
   const setContactStage = async (
@@ -1191,7 +1245,7 @@ export default function NogInTeDelenPage() {
                               size="sm"
                               variant="outline"
                               className="text-red-600 border-red-200 hover:bg-red-50 flex-1 min-w-[140px]"
-                              onClick={() => handleNoInterest(member.id, `${member.first_name} ${member.last_name}`)}
+                              onClick={() => handleNoInterest(member)}
                             >
                               <span className="mr-1">✕</span>
                               {t('noInterest')}
