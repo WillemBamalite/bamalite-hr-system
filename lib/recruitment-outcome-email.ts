@@ -64,15 +64,19 @@ Dies ist eine automatisch versendete Nachricht.`,
       subject: "Je sollicitatie bij Bamalite S.A.",
       html: `
         <p>Beste ${safeName},</p>
-        <p>Bedankt voor je interesse in Bamalite S.A.</p>
-        <p>We gaan op dit moment niet verder met je sollicitatie. We wensen je veel succes verder.</p>
+        <p>Bedankt voor je interesse in Bamalite S.A. en de moeite die je hebt genomen om bij ons te solliciteren.</p>
+        <p>Na het bekijken van je sollicitatie hebben we besloten om op dit moment niet verder te gaan met je sollicitatie.</p>
+        <p>We bedanken je voor je interesse en wensen je veel succes bij het vinden van een passende baan.</p>
         <p>Met vriendelijke groet,<br/>Team Nautic - Bamalite S.A.</p>
         <p style="font-size:12px;color:#666;">Dit is een automatisch verzonden bericht.</p>
       `,
       text: `Beste ${firstName},
 
-Bedankt voor je interesse in Bamalite S.A.
-We gaan op dit moment niet verder met je sollicitatie. We wensen je veel succes verder.
+Bedankt voor je interesse in Bamalite S.A. en de moeite die je hebt genomen om bij ons te solliciteren.
+
+Na het bekijken van je sollicitatie hebben we besloten om op dit moment niet verder te gaan met je sollicitatie.
+
+We bedanken je voor je interesse en wensen je veel succes bij het vinden van een passende baan.
 
 Met vriendelijke groet,
 Team Nautic - Bamalite S.A.
@@ -83,17 +87,21 @@ Dit is een automatisch verzonden bericht.`,
 
   return {
     subject: "Ihre Bewerbung bei Bamalite S.A.",
-    html: `
-      <p>Guten Tag ${safeName},</p>
-      <p>vielen Dank für Ihr Interesse an Bamalite S.A.</p>
-      <p>Wir können Ihre Bewerbung derzeit leider nicht weiter berücksichtigen. Wir wünschen Ihnen für die Zukunft alles Gute.</p>
-      <p>Mit freundlichen Grüßen,<br/>Team Nautic - Bamalite S.A.</p>
-      <p style="font-size:12px;color:#666;">Dies ist eine automatisch versendete Nachricht.</p>
-    `,
-    text: `Guten Tag ${firstName},
+      html: `
+        <p>Guten Tag ${safeName},</p>
+        <p>vielen Dank für Ihr Interesse an Bamalite S.A. und die Mühe, die Sie sich mit Ihrer Bewerbung gemacht haben.</p>
+        <p>Nach Prüfung Ihrer Bewerbung haben wir entschieden, diese derzeit nicht weiter zu verfolgen.</p>
+        <p>Wir danken Ihnen für Ihr Interesse und wünschen Ihnen viel Erfolg bei der Suche nach einer passenden Stelle.</p>
+        <p>Mit freundlichen Grüßen,<br/>Team Nautic - Bamalite S.A.</p>
+        <p style="font-size:12px;color:#666;">Dies ist eine automatisch versendete Nachricht.</p>
+      `,
+      text: `Guten Tag ${firstName},
 
-vielen Dank für Ihr Interesse an Bamalite S.A.
-Wir können Ihre Bewerbung derzeit leider nicht weiter berücksichtigen. Wir wünschen Ihnen für die Zukunft alles Gute.
+vielen Dank für Ihr Interesse an Bamalite S.A. und die Mühe, die Sie sich mit Ihrer Bewerbung gemacht haben.
+
+Nach Prüfung Ihrer Bewerbung haben wir entschieden, diese derzeit nicht weiter zu verfolgen.
+
+Wir danken Ihnen für Ihr Interesse und wünschen Ihnen viel Erfolg bei der Suche nach einer passenden Stelle.
 
 Mit freundlichen Grüßen,
 Team Nautic - Bamalite S.A.
