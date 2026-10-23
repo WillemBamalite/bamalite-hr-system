@@ -20,6 +20,12 @@ import { useSupabaseData } from '@/hooks/use-supabase-data'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { isRealCrewMember } from '@/utils/crew-filters'
 import { isOpenStudyDebt } from '@/utils/study-debt'
+import {
+  draftScheduleToRows,
+  formatLoanSchedulePreview,
+  isVariableLoanSchedule,
+  parseLoanInstallmentSchedule,
+} from '@/utils/loan-installments'
 import { StudiesPanel } from '@/components/studies/studies-panel'
 import { 
   Plus, 
@@ -35,6 +41,125 @@ import {
   Trash2,
   Printer
 } from 'lucide-react'
+
+type InstallmentDialogState = {
+  open: boolean
+  loan: any | null
+  enabled: boolean
+  deductFromSalary: boolean
+  monthly: string
+  startMonth: string
+  periodType: "month" | "year"
+  amountMode: "fixed" | "schedule"
+  schedule: { period: string; amount: string }[]
+}
+
+function blankInstallmentDialog(): InstallmentDialogState {
+  return {
+    open: false,
+    loan: null,
+    enabled: false,
+    deductFromSalary: false,
+    monthly: "",
+    startMonth: "",
+    periodType: "month",
+    amountMode: "fixed",
+    schedule: [],
+  }
+}
+
+const SCHEDULE_COLUMN_MESSAGE =
+  "Wisselende maandbedragen kunnen nog niet worden opgeslagen. Voer eerst scripts/add-loan-installment-schedule.sql uit in de Supabase SQL Editor, en probeer daarna opnieuw."
+
+function missingScheduleColumn(error: unknown) {
+  const message = String((error as { message?: string })?.message || error || "").toLowerCase()
+  return message.includes("installment_amount_mode") || message.includes("installment_schedule")
+}
+
+function withoutScheduleColumns(payload: Record<string, unknown>) {
+  const rest = { ...payload }
+  delete rest.installment_amount_mode
+  delete rest.installment_schedule
+  return rest
+}
+
+function nextScheduleMonth(period: string) {
+  if (!/^\d{4}-\d{2}$/.test(period)) return new Date().toISOString().slice(0, 7)
+  const [year, month] = period.split("-").map(Number)
+  const date = new Date(year, month, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+}
+
+function InstallmentScheduleEditor({
+  rows,
+  disabled,
+  onChange,
+}: {
+  rows: { period: string; amount: string }[]
+  disabled?: boolean
+  onChange: (rows: { period: string; amount: string }[]) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>Bedragen vooruit invullen</Label>
+      {rows.map((row, index) => (
+        <div key={`${row.period}-${index}`} className="flex items-center gap-2">
+          <Input
+            type="month"
+            disabled={disabled}
+            value={row.period}
+            aria-label={`Maand ${index + 1}`}
+            onChange={(e) => {
+              const next = [...rows]
+              next[index] = { ...row, period: e.target.value }
+              onChange(next)
+            }}
+          />
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            disabled={disabled}
+            value={row.amount}
+            placeholder="0.00"
+            aria-label={`Bedrag maand ${index + 1}`}
+            onChange={(e) => {
+              const next = [...rows]
+              next[index] = { ...row, amount: e.target.value }
+              onChange(next)
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled || rows.length <= 1}
+            onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}
+          >
+            Wis
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={disabled}
+        onClick={() =>
+          onChange([
+            ...rows,
+            { period: nextScheduleMonth(rows[rows.length - 1]?.period || ""), amount: "" },
+          ])
+        }
+      >
+        Maand toevoegen
+      </Button>
+      <p className="text-xs text-gray-500">
+        Alleen ingevulde maanden worden ingehouden en op de lening afgeboekt. Een maand zonder regel slaat het systeem over.
+      </p>
+    </div>
+  )
+}
 
 export default function LeningenPage() {
   const {
@@ -84,6 +209,8 @@ export default function LeningenPage() {
     installment_amount: "",
     installment_start_month: new Date().toISOString().slice(0, 7),
     installment_period_type: "month" as "month" | "year",
+    installment_amount_mode: "fixed" as "fixed" | "schedule",
+    installment_schedule: [] as { period: string; amount: string }[],
   })
   const [newLoanData, setNewLoanData] = useState(() => defaultNewLoanData())
   const [completeNotes, setCompleteNotes] = useState("")
@@ -91,28 +218,20 @@ export default function LeningenPage() {
     amount: "",
     note: ""
   })
-  const [installmentDialog, setInstallmentDialog] = useState<{
-    open: boolean
-    loan: any | null
-    enabled: boolean
-    deductFromSalary: boolean
-    monthly: string
-    startMonth: string
-    periodType: "month" | "year"
-  }>({
-    open: false,
-    loan: null,
-    enabled: false,
-    deductFromSalary: false,
-    monthly: "",
-    startMonth: "",
-    periodType: "month",
-  })
+  const [installmentDialog, setInstallmentDialog] = useState<InstallmentDialogState>(() => blankInstallmentDialog())
   const [savingInstallment, setSavingInstallment] = useState(false)
   const selectableCrew = crew.filter((member: any) => isRealCrewMember(member))
 
   const openInstallmentDialog = (loan: any) => {
     const ym = new Date().toISOString().slice(0, 7)
+    const periodType =
+      String(loan.installment_period_type || "month").toLowerCase() === "year" ? "year" : "month"
+    const amountMode =
+      periodType === "month" && isVariableLoanSchedule(loan) ? "schedule" : "fixed"
+    const schedule = parseLoanInstallmentSchedule(loan.installment_schedule).map((row) => ({
+      period: row.period,
+      amount: String(row.amount),
+    }))
     setInstallmentDialog({
       open: true,
       loan,
@@ -123,16 +242,21 @@ export default function LeningenPage() {
           ? String(loan.monthly_installment_amount)
           : "",
       startMonth: typeof loan.installment_start_period === "string" ? loan.installment_start_period : ym,
+      periodType,
+      amountMode,
+      schedule: schedule.length > 0 ? schedule : [{ period: ym, amount: "" }],
     })
   }
 
   const handleSaveInstallment = async () => {
     if (!installmentDialog.loan) return
-    const { loan, enabled, deductFromSalary, monthly, startMonth, periodType } = installmentDialog
+    const { loan, enabled, deductFromSalary, monthly, startMonth, periodType, amountMode, schedule } = installmentDialog
+    const useSchedule = enabled && periodType !== "year" && amountMode === "schedule"
     setSavingInstallment(true)
     try {
       const parsed = parseFloat(monthly.replace(",", "."))
-      if (enabled) {
+      const scheduleResult = useSchedule ? draftScheduleToRows(schedule) : null
+      if (enabled && !useSchedule) {
         if (!Number.isFinite(parsed) || parsed <= 0) {
           alert("Vul een geldig termijnbedrag in.")
           setSavingInstallment(false)
@@ -144,38 +268,54 @@ export default function LeningenPage() {
           return
         }
       }
+      if (scheduleResult && !scheduleResult.ok) {
+        alert(scheduleResult.message)
+        setSavingInstallment(false)
+        return
+      }
       const prevStart = loan.installment_start_period
       const prevType =
         String(loan.installment_period_type || "month").toLowerCase() === "year" ? "year" : "month"
-      const updates: Record<string, unknown> = {
-        auto_installment_enabled: enabled,
-        auto_deduct_salary: enabled ? deductFromSalary : false,
-        monthly_installment_amount: enabled ? parsed : null,
-        installment_start_period: enabled ? startMonth : null,
-        installment_period_type: enabled ? periodType : "month",
-      }
-      if (enabled && (startMonth !== prevStart || periodType !== prevType)) {
+      const scheduleRows = scheduleResult && scheduleResult.ok ? scheduleResult.rows : []
+      const updates: Record<string, unknown> = useSchedule
+        ? {
+            auto_installment_enabled: true,
+            auto_deduct_salary: deductFromSalary,
+            monthly_installment_amount: null,
+            installment_start_period: scheduleRows[0]?.period || null,
+            installment_period_type: "month",
+            installment_amount_mode: "schedule",
+            installment_schedule: scheduleRows,
+          }
+        : {
+            auto_installment_enabled: enabled,
+            auto_deduct_salary: enabled ? deductFromSalary : false,
+            monthly_installment_amount: enabled ? parsed : null,
+            installment_start_period: enabled ? startMonth : null,
+            installment_period_type: enabled ? periodType : "month",
+            installment_amount_mode: "fixed",
+            installment_schedule: [],
+          }
+      if (!useSchedule && enabled && (startMonth !== prevStart || periodType !== prevType)) {
         updates.last_installment_period = null
       }
       if (!enabled) {
         updates.last_installment_period = null
       }
-      await updateLoan(loan.id, updates)
-      setInstallmentDialog({
-        open: false,
-        loan: null,
-        enabled: false,
-        deductFromSalary: false,
-        monthly: "",
-        startMonth: "",
-        periodType: "month",
-      })
+      try {
+        await updateLoan(loan.id, updates)
+      } catch (error) {
+        if (!missingScheduleColumn(error)) throw error
+        if (useSchedule) throw new Error(SCHEDULE_COLUMN_MESSAGE)
+        await updateLoan(loan.id, withoutScheduleColumns(updates))
+      }
+      setInstallmentDialog(blankInstallmentDialog())
       await applyPendingLoanInstallments()
     } catch (e) {
       console.error(e)
-      alert(
-        "Opslaan van de aflossingsregeling mislukt. Controleer of de database-migratie is uitgevoerd (scripts/add-loan-monthly-installment.sql)."
-      )
+      alert(e instanceof Error && e.message === SCHEDULE_COLUMN_MESSAGE
+        ? e.message
+        : "Opslaan van de aflossingsregeling mislukt. Controleer of de database-migratie is uitgevoerd (scripts/add-loan-monthly-installment.sql en scripts/add-loan-installment-schedule.sql).")
     } finally {
       setSavingInstallment(false)
     }
@@ -219,7 +359,12 @@ export default function LeningenPage() {
         return
       }
 
-      if (newLoanData.installment_enabled) {
+      const useSchedule =
+        newLoanData.installment_enabled &&
+        newLoanData.installment_period_type !== "year" &&
+        newLoanData.installment_amount_mode === "schedule"
+      const scheduleResult = useSchedule ? draftScheduleToRows(newLoanData.installment_schedule) : null
+      if (newLoanData.installment_enabled && !useSchedule) {
         const parsedInst = parseFloat(newLoanData.installment_amount.replace(",", "."))
         if (!Number.isFinite(parsedInst) || parsedInst <= 0) {
           alert("Vul een geldig termijnbedrag in voor de automatische aflossing, of schakel die uit.")
@@ -229,6 +374,10 @@ export default function LeningenPage() {
           alert("Kies een geldige startmaand voor de automatische aflossing.")
           return
         }
+      }
+      if (scheduleResult && !scheduleResult.ok) {
+        alert(scheduleResult.message)
+        return
       }
 
       const payload: Record<string, unknown> = {
@@ -243,13 +392,24 @@ export default function LeningenPage() {
         status: "open",
       }
 
-      if (newLoanData.installment_enabled) {
+      if (useSchedule && scheduleResult?.ok) {
+        payload.auto_installment_enabled = true
+        payload.auto_deduct_salary = !!newLoanData.installment_deduct_from_salary
+        payload.monthly_installment_amount = null
+        payload.installment_start_period = scheduleResult.rows[0]?.period || null
+        payload.installment_period_type = "month"
+        payload.installment_amount_mode = "schedule"
+        payload.installment_schedule = scheduleResult.rows
+        payload.last_installment_period = null
+      } else if (newLoanData.installment_enabled) {
         const parsedInst = parseFloat(newLoanData.installment_amount.replace(",", "."))
         payload.auto_installment_enabled = true
         payload.auto_deduct_salary = !!newLoanData.installment_deduct_from_salary
         payload.monthly_installment_amount = parsedInst
         payload.installment_start_period = newLoanData.installment_start_month
         payload.installment_period_type = newLoanData.installment_period_type
+        payload.installment_amount_mode = "fixed"
+        payload.installment_schedule = []
         payload.last_installment_period = null
       } else {
         payload.auto_installment_enabled = false
@@ -257,17 +417,25 @@ export default function LeningenPage() {
         payload.monthly_installment_amount = null
         payload.installment_start_period = null
         payload.installment_period_type = "month"
+        payload.installment_amount_mode = "fixed"
+        payload.installment_schedule = []
         payload.last_installment_period = null
       }
 
-      await addLoan(payload)
+      try {
+        await addLoan(payload)
+      } catch (error) {
+        if (!missingScheduleColumn(error)) throw error
+        if (useSchedule) throw new Error(SCHEDULE_COLUMN_MESSAGE)
+        await addLoan(withoutScheduleColumns(payload))
+      }
 
       setNewLoanDialog(false)
       setNewLoanData(defaultNewLoanData())
       // Loan added - no alert needed
     } catch (error) {
       console.error("Error adding loan:", error)
-      const message = error instanceof Error ? error.message : 'Fout bij het toevoegen van de lening'
+      const message = error instanceof Error ? error.message : "Fout bij het toevoegen van de lening"
       alert(message)
     }
   }
@@ -546,8 +714,15 @@ export default function LeningenPage() {
                           <Badge className="bg-emerald-100 text-emerald-900 border border-emerald-300">
                             {String(loan.installment_period_type || "month").toLowerCase() === "year"
                               ? `Jaarregeling €${Number(loan.monthly_installment_amount || 0).toFixed(2)}/jaar`
-                              : `Maandregeling €${Number(loan.monthly_installment_amount || 0).toFixed(2)}/mnd`}
+                              : isVariableLoanSchedule(loan)
+                                ? "Wisselend per maand"
+                                : `Maandregeling €${Number(loan.monthly_installment_amount || 0).toFixed(2)}/mnd`}
                           </Badge>
+                        )}
+                        {loan.status === 'open' && loan.auto_installment_enabled && isVariableLoanSchedule(loan) && (
+                          <p className="w-full text-xs text-gray-600 text-right">
+                            {formatLoanSchedulePreview(loan.installment_schedule)}
+                          </p>
                         )}
                         {loan.status === 'open' && loan.auto_installment_enabled && loan.auto_deduct_salary && (
                           <Badge className="bg-amber-100 text-amber-900 border border-amber-300">
@@ -772,7 +947,7 @@ export default function LeningenPage() {
 
       {/* New Loan Dialog */}
       <Dialog open={newLoanDialog} onOpenChange={setNewLoanDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nieuwe Lening Toevoegen</DialogTitle>
           </DialogHeader>
@@ -850,8 +1025,8 @@ export default function LeningenPage() {
             <div className="border-t pt-4 space-y-3">
               <p className="text-sm font-medium text-gray-800">Automatische aflossing (optioneel)</p>
               <p className="text-xs text-gray-500">
-                Zelfde werking als bij een bestaande lening: bij bezoek aan deze pagina worden openstaande
-                termijnen automatisch geboekt tot en met de huidige maand.
+                Kies een vast bedrag, of vul per maand een eigen bedrag vooruit in. Bij een bezoek aan deze
+                pagina worden openstaande termijnen geboekt. Een maand zonder bedrag slaat het systeem over.
               </p>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -899,37 +1074,74 @@ export default function LeningenPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="new-installment-amount">
-                  {newLoanData.installment_period_type === "year"
-                    ? "Bedrag per jaar (€)"
-                    : "Bedrag per maand (€)"}
-                </Label>
-                <Input
-                  id="new-installment-amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
+              {newLoanData.installment_period_type === "month" && (
+                <div>
+                  <Label htmlFor="new-installment-amount-mode">Bedrag</Label>
+                  <Select
+                    value={newLoanData.installment_amount_mode}
+                    onValueChange={(v) =>
+                      setNewLoanData((s) => ({
+                        ...s,
+                        installment_amount_mode: v as "fixed" | "schedule",
+                        installment_schedule:
+                          v === "schedule" && s.installment_schedule.length === 0
+                            ? [{ period: s.installment_start_month || new Date().toISOString().slice(0, 7), amount: "" }]
+                            : s.installment_schedule,
+                      }))
+                    }
+                    disabled={!newLoanData.installment_enabled}
+                  >
+                    <SelectTrigger id="new-installment-amount-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fixed">Vast bedrag elke maand</SelectItem>
+                      <SelectItem value="schedule">Elke maand een ander bedrag</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {newLoanData.installment_period_type === "month" && newLoanData.installment_amount_mode === "schedule" ? (
+                <InstallmentScheduleEditor
+                  rows={newLoanData.installment_schedule}
                   disabled={!newLoanData.installment_enabled}
-                  value={newLoanData.installment_amount}
-                  onChange={(e) =>
-                    setNewLoanData({ ...newLoanData, installment_amount: e.target.value })
-                  }
-                  placeholder="0.00"
+                  onChange={(rows) => setNewLoanData((s) => ({ ...s, installment_schedule: rows }))}
                 />
-              </div>
-              <div>
-                <Label htmlFor="new-installment-start">Eerste maand van de regeling</Label>
-                <Input
-                  id="new-installment-start"
-                  type="month"
-                  disabled={!newLoanData.installment_enabled}
-                  value={newLoanData.installment_start_month}
-                  onChange={(e) =>
-                    setNewLoanData({ ...newLoanData, installment_start_month: e.target.value })
-                  }
-                />
-              </div>
+              ) : (
+                <>
+                  <div>
+                    <Label htmlFor="new-installment-amount">
+                      {newLoanData.installment_period_type === "year"
+                        ? "Bedrag per jaar (€)"
+                        : "Bedrag per maand (€)"}
+                    </Label>
+                    <Input
+                      id="new-installment-amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      disabled={!newLoanData.installment_enabled}
+                      value={newLoanData.installment_amount}
+                      onChange={(e) =>
+                        setNewLoanData({ ...newLoanData, installment_amount: e.target.value })
+                      }
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="new-installment-start">Eerste maand van de regeling</Label>
+                    <Input
+                      id="new-installment-start"
+                      type="month"
+                      disabled={!newLoanData.installment_enabled}
+                      value={newLoanData.installment_start_month}
+                      onChange={(e) =>
+                        setNewLoanData({ ...newLoanData, installment_start_month: e.target.value })
+                      }
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end space-x-2">
@@ -1065,27 +1277,18 @@ export default function LeningenPage() {
       <Dialog
         open={installmentDialog.open}
         onOpenChange={(open) => {
-          if (!open) {
-            setInstallmentDialog({
-              open: false,
-              loan: null,
-              enabled: false,
-              monthly: "",
-              startMonth: "",
-              periodType: "month",
-            })
-          }
+          if (!open) setInstallmentDialog(blankInstallmentDialog())
         }}
       >
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Automatische aflossing</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Voor leningen met een vast termijnbedrag: bij het openen van deze pagina worden openstaande
-              termijnen automatisch als betaling geboekt (maandelijks elke maand, of jaarlijks eens per jaar
-              in de gekozen startmaand). Handmatige betalingen blijven mogelijk.
+              Kies een vast bedrag elke maand, of vul per maand een eigen bedrag vooruit in. Bij het openen
+              van deze pagina worden openstaande termijnen als betaling geboekt. Een maand zonder bedrag
+              slaat het systeem over. Handmatige betalingen blijven mogelijk.
             </p>
             {installmentDialog.loan && (
               <p className="text-sm font-medium text-gray-900">
@@ -1138,33 +1341,70 @@ export default function LeningenPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="installment-monthly">
-                {installmentDialog.periodType === "year"
-                  ? "Bedrag per jaar (€)"
-                  : "Bedrag per maand (€)"}
-              </Label>
-              <Input
-                id="installment-monthly"
-                type="number"
-                min="0"
-                step="0.01"
+            {installmentDialog.periodType === "month" && (
+              <div>
+                <Label htmlFor="installment-amount-mode">Bedrag</Label>
+                <Select
+                  value={installmentDialog.amountMode}
+                  onValueChange={(v) =>
+                    setInstallmentDialog((s) => ({
+                      ...s,
+                      amountMode: v as "fixed" | "schedule",
+                      schedule:
+                        v === "schedule" && s.schedule.length === 0
+                          ? [{ period: s.startMonth || new Date().toISOString().slice(0, 7), amount: "" }]
+                          : s.schedule,
+                    }))
+                  }
+                  disabled={!installmentDialog.enabled}
+                >
+                  <SelectTrigger id="installment-amount-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">Vast bedrag elke maand</SelectItem>
+                    <SelectItem value="schedule">Elke maand een ander bedrag</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {installmentDialog.periodType === "month" && installmentDialog.amountMode === "schedule" ? (
+              <InstallmentScheduleEditor
+                rows={installmentDialog.schedule}
                 disabled={!installmentDialog.enabled}
-                value={installmentDialog.monthly}
-                onChange={(e) => setInstallmentDialog((s) => ({ ...s, monthly: e.target.value }))}
-                placeholder="0.00"
+                onChange={(rows) => setInstallmentDialog((s) => ({ ...s, schedule: rows }))}
               />
-            </div>
-            <div>
-              <Label htmlFor="installment-start">Eerste maand van de regeling</Label>
-              <Input
-                id="installment-start"
-                type="month"
-                disabled={!installmentDialog.enabled}
-                value={installmentDialog.startMonth}
-                onChange={(e) => setInstallmentDialog((s) => ({ ...s, startMonth: e.target.value }))}
-              />
-            </div>
+            ) : (
+              <>
+                <div>
+                  <Label htmlFor="installment-monthly">
+                    {installmentDialog.periodType === "year"
+                      ? "Bedrag per jaar (€)"
+                      : "Bedrag per maand (€)"}
+                  </Label>
+                  <Input
+                    id="installment-monthly"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={!installmentDialog.enabled}
+                    value={installmentDialog.monthly}
+                    onChange={(e) => setInstallmentDialog((s) => ({ ...s, monthly: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="installment-start">Eerste maand van de regeling</Label>
+                  <Input
+                    id="installment-start"
+                    type="month"
+                    disabled={!installmentDialog.enabled}
+                    value={installmentDialog.startMonth}
+                    onChange={(e) => setInstallmentDialog((s) => ({ ...s, startMonth: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
             {installmentDialog.loan?.last_installment_period && (
               <p className="text-xs text-gray-500">
                 Laatste automatisch geboekte termijn (maand):{" "}
@@ -1174,17 +1414,7 @@ export default function LeningenPage() {
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() =>
-                  setInstallmentDialog({
-                    open: false,
-                    loan: null,
-                    enabled: false,
-                    deductFromSalary: false,
-                    monthly: "",
-                    startMonth: "",
-                    periodType: "month",
-                  })
-                }
+                onClick={() => setInstallmentDialog(blankInstallmentDialog())}
               >
                 Annuleren
               </Button>

@@ -20,6 +20,7 @@ import {
   parseCrewDate,
 } from "@/utils/crew-filters"
 import { calculateOverwerkAmount } from "@/utils/overwerk-pay-rates"
+import { isVariableLoanSchedule, scheduleAmountForMonth } from "@/utils/loan-installments"
 import { humanizeSalaryDisplayNote } from "@/utils/overwerk-settlement"
 import {
   CLOTHING_ALLOWANCE_FIXED,
@@ -1376,11 +1377,22 @@ export default function LoonBemerkingenPage() {
     if (relevant.length === 0) return 0
     let total = 0
     for (const loan of relevant) {
+      const remaining = Number(loan.amount_remaining ?? loan.amount ?? 0)
+      if (!Number.isFinite(remaining) || remaining <= 0) continue
+
+      if (isVariableLoanSchedule(loan)) {
+        if (loan.status !== "open") continue
+        if (loan.auto_installment_enabled !== true) continue
+        if (loan.auto_deduct_salary !== true) continue
+        const installment = scheduleAmountForMonth(loan, selectedMonthKey)
+        if (!Number.isFinite(installment) || installment <= 0) continue
+        total += Math.min(installment, remaining)
+        continue
+      }
+
       if (!isLoanInstallmentDueForMonth(loan, selectedMonthKey)) continue
       const installment = Number(loan.monthly_installment_amount || 0)
-      const remaining = Number(loan.amount_remaining ?? loan.amount ?? 0)
       if (!Number.isFinite(installment) || installment <= 0) continue
-      if (!Number.isFinite(remaining) || remaining <= 0) continue
       total += Math.min(installment, remaining)
     }
     return Number(total.toFixed(2))

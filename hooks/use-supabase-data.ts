@@ -11,6 +11,7 @@ import {
   parseLocalDate,
 } from '@/utils/regime-calculator'
 import { hasOutOfServiceStatus, parseCrewDate } from '@/utils/crew-filters'
+import { parseLoanInstallmentSchedule } from '@/utils/loan-installments'
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
 export function calculateWorkDaysVasteDienst(startDate: string, startTime: string, endDate: string, endTime: string): number {
@@ -2015,6 +2016,34 @@ export function useSupabaseData() {
     }
     const curYm = loanInstallmentCutoffYm()
     for (const loan of rows || []) {
+      const isSchedule = String(loan.installment_amount_mode || "fixed").toLowerCase() === "schedule"
+      if (isSchedule) {
+        const schedule = parseLoanInstallmentSchedule(loan.installment_schedule).filter((row) => row.period <= curYm)
+        for (const scheduled of schedule) {
+          const { data: fresh, error: ferr } = await supabase.from("loans").select("*").eq("id", loan.id).single()
+          if (ferr || !fresh || fresh.status !== "open") break
+          const note = `Automatische maandtermijn (${scheduled.period})`
+          const alreadyBookedForYm = Array.isArray(fresh.payment_history)
+            ? fresh.payment_history.some((entry: any) => String(entry?.note || "").trim() === note)
+            : false
+          if (alreadyBookedForYm) continue
+          const paid = Number(fresh.amount_paid || 0)
+          const total = Number(fresh.amount)
+          const remaining = Number(
+            fresh.amount_remaining != null ? fresh.amount_remaining : total - paid
+          )
+          if (remaining <= 0) break
+          const pay = Math.min(scheduled.amount, remaining)
+          await makePayment(loan.id, pay, note, {
+            setInstallmentPeriodYm: scheduled.period,
+            skipReload: true,
+            paymentDate: loanPaymentDateForYm(scheduled.period),
+          })
+          changed = true
+        }
+        continue
+      }
+
       const perPeriod = Number(loan.monthly_installment_amount)
       if (!Number.isFinite(perPeriod) || perPeriod <= 0) continue
       const startStr = loan.installment_start_period as string | undefined
