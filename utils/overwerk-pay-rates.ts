@@ -56,3 +56,9 @@ export function calculateOverwerkAmount(
   if (baseSalaryExcl <= 0) return 0
   return (baseSalaryExcl / 15) * overtimeDays
 }
+
+/** Mindagen inhouden op salaris: basissalaris excl. kleding / 15, afgerond op centen. */
+export function calculateMindagenDeductionAmount(baseSalaryExcl: number, days: number): number {
+  if (baseSalaryExcl <= 0 || days <= 0) return 0
+  return Math.round((baseSalaryExcl / 15) * days * 100) / 100
+}

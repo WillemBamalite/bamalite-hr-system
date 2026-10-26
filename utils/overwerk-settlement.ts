@@ -1,7 +1,7 @@
 import { format, parseISO } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { calculateWorkDays } from "@/hooks/use-supabase-data"
-import { firstNonEmptyIban } from "@/utils/salary-month-helpers"
+import { firstNonEmptyIban, syncLegacyAdvanceFields, type SalaryDeduction } from "@/utils/salary-month-helpers"
 import {
   getRecordOutstandingDays,
   getRecordReturnedDays,
@@ -149,11 +149,24 @@ function parseSalaryMeta(reason: string | null | undefined) {
   const text = String(reason || "")
   const idx = text.lastIndexOf(SALARY_META_PREFIX)
   if (idx < 0) return null
-  try {
-    return JSON.parse(text.slice(idx + SALARY_META_PREFIX.length).trim()) as Record<string, unknown>
-  } catch {
-    return null
+  const slice = text.slice(idx + SALARY_META_PREFIX.length)
+  const start = slice.indexOf("{")
+  if (start < 0) return null
+  let depth = 0
+  for (let i = start; i < slice.length; i++) {
+    if (slice[i] === "{") depth += 1
+    else if (slice[i] === "}") {
+      depth -= 1
+      if (depth === 0) {
+        try {
+          return JSON.parse(slice.slice(start, i + 1)) as Record<string, unknown>
+        } catch {
+          return null
+        }
+      }
+    }
   }
+  return null
 }
 
 function stripSalaryMeta(reason: string | null | undefined): string {
@@ -254,9 +267,28 @@ async function upsertSalaryOvertime(params: {
 
   const meta = parseSalaryMeta(existing?.reason)
   const prevDays = Number(existing?.overtime_days ?? meta?.overtime_days ?? 0)
-  const newDays = Math.round((prevDays + workDays) * 10) / 10
+  const newDays = Math.max(0, Math.round((prevDays + workDays) * 10) / 10)
   const prevNote = String(existing?.overtime_note ?? meta?.overtime_note ?? "").trim()
-  const newNote = prevNote ? `${prevNote}; ${overtimeNote}` : overtimeNote
+  const noteToRemove = String(overtimeNote || "").trim()
+  const noteParts = prevNote.split(";").map((part) => part.trim()).filter(Boolean)
+  const alreadyHasNote = noteParts.some((part) => part.toLowerCase() === noteToRemove.toLowerCase())
+  const newNote =
+    workDays > 0
+      ? !noteToRemove
+        ? prevNote
+        : alreadyHasNote
+          ? prevNote
+          : prevNote
+            ? `${prevNote}; ${noteToRemove}`
+            : noteToRemove
+      : noteParts
+          .filter((part) => {
+            const lower = part.toLowerCase()
+            if (lower.startsWith("uitbetaald")) return false
+            if (newDays === 0 && noteToRemove && lower === noteToRemove.toLowerCase()) return false
+            return true
+          })
+          .join("; ")
 
   const reasonBase = stripSalaryMeta(existing?.reason)
   const knownIban = await resolveKnownSalaryIban(crewId, monthKey, existing, meta)
@@ -329,6 +361,155 @@ async function upsertSalaryOvertime(params: {
     return { newDays, prevDays, usedMetaFallback: true }
   }
   throw insertError
+}
+
+/** Tel overwerkdagen op of af op de salarismaand. Negatief draait een uitbetaling terug. */
+export async function adjustSalaryOvertimeDays(params: {
+  crewId: string
+  company: string | null
+  monthKey: string
+  deltaDays: number
+  overtimeNote: string
+}): Promise<{ ok: true; newDays: number; prevDays: number } | { ok: false; reason: "closed" }> {
+  const { crewId, company, monthKey, deltaDays, overtimeNote } = params
+  const { data: existing } = await supabase
+    .from("loon_bemerkingen")
+    .select("id, month_closed, reason")
+    .eq("crew_id", crewId)
+    .eq("month_key", monthKey)
+    .maybeSingle()
+
+  const meta = parseSalaryMeta(existing?.reason)
+  const monthClosed =
+    (existing as { month_closed?: boolean } | null)?.month_closed === true ||
+    meta?.month_closed === true
+  if (monthClosed) return { ok: false, reason: "closed" }
+
+  const { newDays, prevDays } = await upsertSalaryOvertime({
+    crewId,
+    company,
+    monthKey,
+    workDays: deltaDays,
+    overtimeNote,
+  })
+  return { ok: true, newDays, prevDays }
+}
+
+function replaceSalaryMeta(
+  reason: string | null | undefined,
+  mutate: (meta: Record<string, unknown>) => void
+): string {
+  const text = String(reason || "")
+  const idx = text.lastIndexOf(SALARY_META_PREFIX)
+  if (idx < 0) {
+    const meta: Record<string, unknown> = {}
+    mutate(meta)
+    const base = text.trim() || "Salarisadministratie"
+    return `${base}\n${SALARY_META_PREFIX}${JSON.stringify(meta)}`
+  }
+  const jsonStart = text.indexOf("{", idx)
+  if (jsonStart < 0) throw new Error("Salarisgegevens zijn niet leesbaar.")
+  let depth = 0
+  let end = -1
+  for (let i = jsonStart; i < text.length; i++) {
+    if (text[i] === "{") depth += 1
+    else if (text[i] === "}") {
+      depth -= 1
+      if (depth === 0) {
+        end = i + 1
+        break
+      }
+    }
+  }
+  if (end < 0) throw new Error("Salarisgegevens zijn niet leesbaar.")
+  let meta: Record<string, unknown>
+  try {
+    meta = JSON.parse(text.slice(jsonStart, end))
+  } catch {
+    throw new Error("Salarisgegevens zijn niet leesbaar.")
+  }
+  mutate(meta)
+  const before = text.slice(0, idx).trimEnd()
+  const after = text.slice(end)
+  return `${before}\n${SALARY_META_PREFIX}${JSON.stringify(meta)}${after}`
+}
+
+/** Zet mindagen als inhouding op de salarismaand, of haal die inhouding er weer af. */
+export async function adjustSalaryMindagenDeduction(params: {
+  crewId: string
+  company: string | null
+  monthKey: string
+  deductionId: string
+  amountEur: number
+  remove?: boolean
+}): Promise<{ ok: true } | { ok: false; reason: "closed" }> {
+  const { crewId, company, monthKey, deductionId, amountEur, remove } = params
+  const { data: existing, error: loadError } = await supabase
+    .from("loon_bemerkingen")
+    .select("*")
+    .eq("crew_id", crewId)
+    .eq("month_key", monthKey)
+    .maybeSingle()
+  if (loadError) throw loadError
+
+  const meta = parseSalaryMeta(existing?.reason)
+  const monthClosed =
+    (existing as { month_closed?: boolean } | null)?.month_closed === true ||
+    meta?.month_closed === true
+  if (monthClosed) return { ok: false, reason: "closed" }
+
+  let legacy: ReturnType<typeof syncLegacyAdvanceFields> | null = null
+  const reason = replaceSalaryMeta(existing?.reason, (next) => {
+    const current = Array.isArray(next.mindagen_deductions) ? next.mindagen_deductions : []
+    next.mindagen_deductions = remove
+      ? current.filter((item: any) => String(item?.id || "") !== deductionId)
+      : [
+          ...current.filter((item: any) => String(item?.id || "") !== deductionId),
+          { id: deductionId, amount: amountEur },
+        ]
+    if (Array.isArray(next.deductions)) {
+      const filtered = (next.deductions as SalaryDeduction[]).filter((item) => item?.id !== deductionId)
+      if (filtered.length !== (next.deductions as SalaryDeduction[]).length) {
+        next.deductions = filtered
+        legacy = syncLegacyAdvanceFields(filtered)
+        Object.assign(next, legacy)
+      }
+    }
+  })
+
+  const notes = String(existing?.notes || "").trim()
+  const nextNotes = !remove && !notes ? "mindagen" : String(existing?.notes || "")
+
+  const payload: Record<string, unknown> = {
+    reason,
+    notes: nextNotes,
+    updated_at: new Date().toISOString(),
+    ...(legacy
+      ? {
+          advance_enabled: legacy.advance_enabled,
+          advance_amount: legacy.advance_amount,
+        }
+      : {}),
+  }
+
+  if (existing?.id) {
+    const { error } = await supabase.from("loon_bemerkingen").update(payload).eq("id", existing.id)
+    if (error) throw error
+    return { ok: true }
+  }
+
+  if (remove) return { ok: true }
+
+  const { error: insertError } = await supabase.from("loon_bemerkingen").insert([
+    {
+      crew_id: crewId,
+      company: company ?? null,
+      month_key: monthKey,
+      ...payload,
+    },
+  ])
+  if (insertError) throw insertError
+  return { ok: true }
 }
 
 export async function processOverwerkSettlement(params: {

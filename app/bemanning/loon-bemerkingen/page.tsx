@@ -186,11 +186,26 @@ const DEDUCTION_CATEGORY_OPTIONS = [
   { value: "kleding", label: "Kleding" },
   { value: "opleidingskosten", label: "Opleidingskosten" },
   { value: "boetes", label: "Boetes" },
+  { value: "mindagen", label: "Mindagen" },
   { value: "overig", label: "Overig" },
 ] as const
 
 const getDeductionCategoryLabel = (value: string) => {
   return DEDUCTION_CATEGORY_OPTIONS.find((o) => o.value === value)?.label || "Overig"
+}
+
+const appendMindagenDeductions = (
+  deductions: SalaryDeduction[],
+  meta: { mindagen_deductions?: Array<{ id?: string; amount?: number }> } | null
+): SalaryDeduction[] => {
+  const extras = (meta?.mindagen_deductions || [])
+    .filter((item) => Number(item?.amount) > 0 && item?.id && !deductions.some((d) => d.id === String(item.id)))
+    .map((item) => ({
+      id: String(item.id),
+      amount: Number(item.amount) || 0,
+      category: "mindagen" as SalaryDeductionCategory,
+    }))
+  return extras.length > 0 ? [...deductions, ...extras] : deductions
 }
 
 const formatDateTime = (value: string | null | undefined) => {
@@ -475,8 +490,24 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
   const prefixLength = salaryMarkerIndex >= 0 ? SALARY_META_PREFIX.length : REVIEW_META_PREFIX.length
   const jsonPart = reason.slice(markerIndex + prefixLength).trim()
   if (!jsonPart) return null
+  const jsonStart = jsonPart.indexOf("{")
+  let jsonEnd = -1
+  if (jsonStart >= 0) {
+    let depth = 0
+    for (let i = jsonStart; i < jsonPart.length; i++) {
+      if (jsonPart[i] === "{") depth += 1
+      else if (jsonPart[i] === "}") {
+        depth -= 1
+        if (depth === 0) {
+          jsonEnd = i + 1
+          break
+        }
+      }
+    }
+  }
+  const jsonText = jsonEnd > jsonStart ? jsonPart.slice(jsonStart, jsonEnd) : jsonPart
   try {
-    const parsed = JSON.parse(jsonPart) as {
+    const parsed = JSON.parse(jsonText) as {
       iban?: string
       review_comment?: string
       review_by?: string
@@ -485,6 +516,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       advance_amount?: number
       deduction_category?: SalaryDeductionCategory
       deductions?: SalaryDeduction[]
+      mindagen_deductions?: Array<{ id?: string; amount?: number }>
       raise_enabled?: boolean
       raise_amount?: number
       overtime_enabled?: boolean
@@ -528,6 +560,7 @@ const parseSalaryMetaFromReason = (reasonValue: any) => {
       advance_amount: legacyAdvance.advance_amount,
       deduction_category: legacyAdvance.deduction_category,
       deductions,
+      mindagen_deductions: Array.isArray(parsed.mindagen_deductions) ? parsed.mindagen_deductions : [],
       raise_enabled: parsed.raise_enabled === true,
       raise_amount: typeof parsed.raise_amount === "number" ? parsed.raise_amount : 0,
       overtime_enabled: parsed.overtime_enabled === true,
@@ -796,7 +829,10 @@ export default function LoonBemerkingenPage() {
             !hasManualCurrentDeduction && autoLoanDeduction > 0
               ? [{ id: "auto-loan", amount: autoLoanDeduction, category: "lening" }]
               : []
-          const deductions = manualDeductions.length > 0 ? manualDeductions : autoLoanDeductions
+          const deductions = appendMindagenDeductions(
+            manualDeductions.length > 0 ? manualDeductions : autoLoanDeductions,
+            currentMeta
+          )
           const legacyAdvance = syncLegacyAdvanceFields(deductions)
           const previousRaiseEnabled =
             currentMeta?.raise_enabled === true
@@ -967,7 +1003,7 @@ export default function LoonBemerkingenPage() {
       for (const prevRow of prevMonthRows || []) {
         const crewId = String(prevRow.crew_id)
         const meta = parseSalaryMetaFromReason(prevRow?.reason)
-        const deductions = normalizeDeductionsFromMeta(meta, prevRow)
+        const deductions = appendMindagenDeductions(normalizeDeductionsFromMeta(meta, prevRow), meta)
         const legacyAdvance = syncLegacyAdvanceFields(deductions)
         nextPrevMonthRows[crewId] = {
           id: prevRow?.id,
@@ -1863,6 +1899,7 @@ export default function LoonBemerkingenPage() {
     const overtimeManualAmount = row.overtime_enabled ? Number(row.overtime_manual_amount || 0) : 0
     const overtimeNotes = String(row.overtime_note || "").toLowerCase()
     const hasFromToRangeInNotes = overtimeNotes.includes("van") && overtimeNotes.includes("tot")
+    const payoutNoteOnly = overtimeNotes.trim() === "overwerk"
 
     if (row.overtime_enabled && overtimeMode === "amount") {
       if (overtimeManualAmount <= 0) {
@@ -1874,7 +1911,7 @@ export default function LoonBemerkingenPage() {
         return false
       }
     } else if (row.overtime_enabled && overtimeDays > 0) {
-      if (!String(row.overtime_note || "").trim() || !hasFromToRangeInNotes) {
+      if (!String(row.overtime_note || "").trim() || (!hasFromToRangeInNotes && !payoutNoteOnly)) {
         alert(
           isTanja
             ? "Bei Überstunden ist ein Hinweis mit Zeitraum Pflicht (von ... bis ...)."

@@ -36,6 +36,8 @@ import {
   formatHistoryPeriodLabel,
   getRecordOutstandingDays,
   getRecordReturnedDays,
+  isPayoutHistoryEntry,
+  isSalaryDeductionHistoryEntry,
   isReturnedHistoryEntry,
   isTegoedHistoryEntry,
   isTegoedStandBackRecord,
@@ -43,6 +45,8 @@ import {
   sumCreditDaysFromHistory,
   sumReturnedDaysFromHistory,
 } from "@/utils/stand-back-balance"
+import { adjustSalaryMindagenDeduction, adjustSalaryOvertimeDays } from "@/utils/overwerk-settlement"
+import { calculateMindagenDeductionAmount, calculateOverwerkAmount, getOverwerkDayRateEur } from "@/utils/overwerk-pay-rates"
 
 function reconcileRecordFieldsFromHistory(record: any) {
   if (isTegoedStandBackRecord(record)) {
@@ -76,6 +80,14 @@ export function StandBackManagement() {
     Record<string, "open" | "ingehaald" | null>
   >({})
   const [deletingHistoryKey, setDeletingHistoryKey] = useState<string | null>(null)
+  const [payoutTarget, setPayoutTarget] = useState<any>(null)
+  const [payoutDaysInput, setPayoutDaysInput] = useState("")
+  const [payoutSaving, setPayoutSaving] = useState(false)
+  const [payoutBaseSalary, setPayoutBaseSalary] = useState(0)
+  const [deductTarget, setDeductTarget] = useState<any>(null)
+  const [deductDaysInput, setDeductDaysInput] = useState("")
+  const [deductSaving, setDeductSaving] = useState(false)
+  const [deductBaseSalary, setDeductBaseSalary] = useState(0)
   
   // New record form state
   const [newRecord, setNewRecord] = useState({
@@ -190,6 +202,12 @@ export function StandBackManagement() {
       { bold: true }
     )
     drawText(`Saldo: ${formatStandBackSaldo(group.netSaldo ?? 0)} dagen`, { bold: true })
+    if ((group.payoutDays ?? 0) > 0) {
+      drawText(`Uitbetaald: ${group.payoutDays} dagen`)
+    }
+    if ((group.salaryDeductionDays ?? 0) > 0) {
+      drawText(`Ingehouden: ${group.salaryDeductionDays} dagen`)
+    }
 
     y -= 4
     drawText("Opgebouwde mindagen", { bold: true, size: 11 })
@@ -369,6 +387,8 @@ export function StandBackManagement() {
       (g: any) =>
         (g.totalRequired ?? 0) > 0 ||
         (g.totalIngehaald ?? 0) > 0 ||
+        (g.payoutDays ?? 0) > 0 ||
+        (g.salaryDeductionDays ?? 0) > 0 ||
         (g.netSaldo ?? 0) !== 0
     )
     .sort(
@@ -603,6 +623,246 @@ export function StandBackManagement() {
     }
   }
 
+  const currentSalaryMonthKey = () => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  }
+
+  const formatMonthLabel = (monthKey: string) => {
+    const [year, month] = monthKey.split("-").map(Number)
+    if (!year || !month) return monthKey
+    return new Date(year, month - 1, 1).toLocaleDateString("nl-NL", { month: "long", year: "numeric" })
+  }
+
+  const formatEuro = (amount: number) =>
+    amount.toLocaleString("nl-NL", { style: "currency", currency: "EUR" })
+
+  const openPayoutDialog = async (group: any) => {
+    if ((group.netSaldo ?? 0) <= 0) return
+    setPayoutTarget(group)
+    setPayoutDaysInput(String(group.netSaldo))
+    setPayoutBaseSalary(0)
+    if (getOverwerkDayRateEur(group.crewMember?.position) != null) return
+    const { data } = await supabase
+      .from("loon_bemerkingen")
+      .select("base_salary, month_key")
+      .eq("crew_id", group.crewMemberId)
+      .order("month_key", { ascending: false })
+      .limit(8)
+    const withSalary = (data || []).find((row: any) => Number(row?.base_salary) > 0)
+    if (withSalary) setPayoutBaseSalary(Number(withSalary.base_salary))
+  }
+
+  const handlePayoutSaldo = async () => {
+    if (!payoutTarget || payoutSaving) return
+    const maxDays = Number(payoutTarget.netSaldo ?? 0)
+    const days = Number(String(payoutDaysInput).replace(",", "."))
+    if (!Number.isFinite(days) || days <= 0) {
+      alert("Vul een aantal dagen groter dan 0 in.")
+      return
+    }
+    if (days > maxDays + 0.001) {
+      alert(`Je kunt maximaal ${maxDays} dagen uitbetalen.`)
+      return
+    }
+
+    const roundedDays = Math.round(days * 10) / 10
+    const monthKey = currentSalaryMonthKey()
+    const position = payoutTarget.crewMember?.position
+    const amount = calculateOverwerkAmount(position, roundedDays, payoutBaseSalary)
+    const crewRow = crew.find((member: any) => member.id === payoutTarget.crewMemberId)
+    const note = amount > 0
+      ? `Uitbetaald ${formatEuro(amount)} (${formatMonthLabel(monthKey)})`
+      : `Uitbetaald ${roundedDays} dagen (${formatMonthLabel(monthKey)})`
+
+    setPayoutSaving(true)
+    try {
+      const salary = await adjustSalaryOvertimeDays({
+        crewId: payoutTarget.crewMemberId,
+        company: crewRow?.company ?? null,
+        monthKey,
+        deltaDays: roundedDays,
+        overtimeNote: "overwerk",
+      })
+      if (!salary.ok) {
+        alert(`Salarismaand ${formatMonthLabel(monthKey)} is afgesloten. De dagen zijn niet uitbetaald.`)
+        return
+      }
+
+      const historyEntry = {
+        date: new Date().toISOString(),
+        daysCompleted: roundedDays,
+        note,
+        completedBy: "Uitbetaling",
+        payout: true,
+        payoutMonthKey: monthKey,
+        payoutAmountEur: amount > 0 ? amount : null,
+      }
+      const records = payoutTarget.records || []
+      const target = records.find((record: any) => isTegoedStandBackRecord(record)) || records[0]
+      try {
+        if (!target) {
+          const today = new Date().toISOString().slice(0, 10)
+          await addStandBackRecord({
+            crew_member_id: payoutTarget.crewMemberId,
+            start_date: today,
+            end_date: today,
+            days_count: 0,
+            description: "Tegoed overwerk (vooruit ingehaald)",
+            reason: OVERWERK_TEGOED_REASON,
+            stand_back_days_required: 0,
+            stand_back_days_completed: 0,
+            stand_back_days_remaining: 0,
+            stand_back_status: "openstaand",
+            stand_back_history: [historyEntry],
+          })
+        } else {
+          await updateStandBackRecord(target.id, {
+            stand_back_history: [...(target.standBackHistory || []), historyEntry],
+          })
+        }
+      } catch (historyError) {
+        await adjustSalaryOvertimeDays({
+          crewId: payoutTarget.crewMemberId,
+          company: crewRow?.company ?? null,
+          monthKey,
+          deltaDays: -roundedDays,
+          overtimeNote: "overwerk",
+        }).catch(() => {})
+        throw historyError
+      }
+
+      const amountText = amount > 0 ? ` (${formatEuro(amount)})` : ""
+      alert(`${roundedDays} dagen uitbetaald op het loon van ${formatMonthLabel(monthKey)}${amountText}.`)
+      setPayoutTarget(null)
+      setPayoutDaysInput("")
+      await loadData()
+    } catch (error) {
+      console.error("Error paying out stand-back saldo:", error)
+      alert("Uitbetalen is mislukt. Probeer het opnieuw.")
+    } finally {
+      setPayoutSaving(false)
+    }
+  }
+
+  const openDeductDialog = async (group: any) => {
+    if ((group.netSaldo ?? 0) >= 0) return
+    setDeductTarget(group)
+    setDeductDaysInput(String(Math.abs(Number(group.netSaldo) || 0)))
+    setDeductBaseSalary(0)
+    const { data } = await supabase
+      .from("loon_bemerkingen")
+      .select("base_salary, month_key")
+      .eq("crew_id", group.crewMemberId)
+      .order("month_key", { ascending: false })
+      .limit(8)
+    const withSalary = (data || []).find((row: any) => Number(row?.base_salary) > 0)
+    if (withSalary) {
+      setDeductBaseSalary(Number(withSalary.base_salary))
+      return
+    }
+    const crewRow = crew.find((member: any) => member.id === group.crewMemberId)
+    const fallback = Number(
+      crewRow?.basis_salaris ?? crewRow?.basissalaris ?? crewRow?.basisSalaris ?? crewRow?.salary ?? 0
+    )
+    if (fallback > 0) setDeductBaseSalary(fallback)
+  }
+
+  const handleDeductMindagen = async () => {
+    if (!deductTarget || deductSaving) return
+    const maxDays = Math.abs(Number(deductTarget.netSaldo ?? 0))
+    const days = Number(String(deductDaysInput).replace(",", "."))
+    if (!Number.isFinite(days) || days <= 0) {
+      alert("Vul een aantal dagen groter dan 0 in.")
+      return
+    }
+    if (days > maxDays + 0.001) {
+      alert(`Je kunt maximaal ${maxDays} dagen inhouden.`)
+      return
+    }
+    const roundedDays = Math.round(days * 10) / 10
+    const amount = calculateMindagenDeductionAmount(deductBaseSalary, roundedDays)
+    if (amount <= 0) {
+      alert("Er is geen basissalaris gevonden. Het bedrag kan niet worden berekend.")
+      return
+    }
+
+    const monthKey = currentSalaryMonthKey()
+    const crewRow = crew.find((member: any) => member.id === deductTarget.crewMemberId)
+    const deductionId = `mindagen-${crypto.randomUUID()}`
+    const note = `Ingehouden ${formatEuro(amount)} (${formatMonthLabel(monthKey)})`
+
+    setDeductSaving(true)
+    try {
+      const salary = await adjustSalaryMindagenDeduction({
+        crewId: deductTarget.crewMemberId,
+        company: crewRow?.company ?? null,
+        monthKey,
+        deductionId,
+        amountEur: amount,
+      })
+      if (!salary.ok) {
+        alert(`Salarismaand ${formatMonthLabel(monthKey)} is afgesloten. De dagen zijn niet ingehouden.`)
+        return
+      }
+
+      const historyEntry = {
+        date: new Date().toISOString(),
+        daysCompleted: roundedDays,
+        note,
+        completedBy: "Inhouding",
+        salaryDeduction: true,
+        salaryMonthKey: monthKey,
+        salaryDeductionId: deductionId,
+        payoutAmountEur: amount,
+      }
+      const records = deductTarget.records || []
+      const target = records.find((record: any) => !isTegoedStandBackRecord(record)) || records[0]
+      try {
+        if (!target) {
+          const today = new Date().toISOString().slice(0, 10)
+          await addStandBackRecord({
+            crew_member_id: deductTarget.crewMemberId,
+            start_date: today,
+            end_date: today,
+            days_count: 0,
+            description: "Mindagen ingehouden op salaris",
+            reason: "overig",
+            stand_back_days_required: 0,
+            stand_back_days_completed: 0,
+            stand_back_days_remaining: 0,
+            stand_back_status: "openstaand",
+            stand_back_history: [historyEntry],
+          })
+        } else {
+          await updateStandBackRecord(target.id, {
+            stand_back_history: [...(target.standBackHistory || []), historyEntry],
+          })
+        }
+      } catch (historyError) {
+        await adjustSalaryMindagenDeduction({
+          crewId: deductTarget.crewMemberId,
+          company: crewRow?.company ?? null,
+          monthKey,
+          deductionId,
+          amountEur: amount,
+          remove: true,
+        }).catch(() => {})
+        throw historyError
+      }
+
+      alert(`${roundedDays} dagen ingehouden op het loon van ${formatMonthLabel(monthKey)} (${formatEuro(amount)}).`)
+      setDeductTarget(null)
+      setDeductDaysInput("")
+      await loadData()
+    } catch (error) {
+      console.error("Error deducting stand-back days from salary:", error)
+      alert("Inhouden is mislukt. Probeer het opnieuw.")
+    } finally {
+      setDeductSaving(false)
+    }
+  }
+
   const handleCreateNewRecord = async () => {
     if (isCreatingRecord) return
     if (!newRecord.crewMemberId || !newRecord.startDate || !newRecord.endDate || !newRecord.daysCount) {
@@ -769,6 +1029,7 @@ export function StandBackManagement() {
         return history
           .map((entry: any, historyIndex: number) => ({ entry, historyIndex }))
           .filter(({ entry }) => {
+            if (isPayoutHistoryEntry(entry) || isSalaryDeductionHistoryEntry(entry)) return false
             const days =
               typeof entry?.daysCompleted === "number"
                 ? entry.daysCompleted
@@ -789,12 +1050,61 @@ export function StandBackManagement() {
             periodStart: entry?.periodStart,
             periodEnd: entry?.periodEnd,
             tripId: entry?.tripId,
+            payoutMonthKey: entry?.payoutMonthKey,
             type: "overwerk" as const,
           }))
       })
       .filter((e) => e.daysCompleted > 0)
 
-    return consolidateIngehaaldHistoryForDisplay([...debtEntries, ...tegoedEntries])
+    const payoutEntries = (group.records || []).flatMap((rec: any) => {
+      const history = Array.isArray(rec.standBackHistory) ? rec.standBackHistory : []
+      return history
+        .map((entry: any, historyIndex: number) => ({ entry, historyIndex }))
+        .filter(({ entry }) => isPayoutHistoryEntry(entry))
+        .map(({ entry, historyIndex }) => ({
+          recordId: rec.id,
+          historyIndex,
+          date: entry?.date,
+          daysCompleted:
+            typeof entry?.daysCompleted === "number"
+              ? entry.daysCompleted
+              : Number(entry?.daysCompleted || 0),
+          note: formatHistoryNoteLabel(entry),
+          returnedPeriod: formatHistoryPeriodLabel(entry, rec),
+          completedBy: entry?.completedBy,
+          payoutMonthKey: entry?.payoutMonthKey,
+          type: "uitbetaling" as const,
+        }))
+    })
+
+    const deductionEntries = (group.records || []).flatMap((rec: any) => {
+      const history = Array.isArray(rec.standBackHistory) ? rec.standBackHistory : []
+      return history
+        .map((entry: any, historyIndex: number) => ({ entry, historyIndex }))
+        .filter(({ entry }) => isSalaryDeductionHistoryEntry(entry))
+        .map(({ entry, historyIndex }) => ({
+          recordId: rec.id,
+          historyIndex,
+          date: entry?.date,
+          daysCompleted:
+            typeof entry?.daysCompleted === "number"
+              ? entry.daysCompleted
+              : Number(entry?.daysCompleted || 0),
+          note: formatHistoryNoteLabel(entry),
+          returnedPeriod: formatHistoryPeriodLabel(entry, rec),
+          completedBy: entry?.completedBy,
+          salaryMonthKey: entry?.salaryMonthKey,
+          salaryDeductionId: entry?.salaryDeductionId,
+          type: "inhouding" as const,
+        }))
+    })
+
+    return consolidateIngehaaldHistoryForDisplay([
+      ...debtEntries,
+      ...tegoedEntries,
+      ...payoutEntries,
+      ...deductionEntries,
+    ])
   }
 
   const handleDeleteIngehaaldHistoryEntry = async (
@@ -814,15 +1124,64 @@ export function StandBackManagement() {
         ? entry.sourceEntries
         : [{ recordId: entry.recordId, historyIndex: entry.historyIndex }]
 
-    const typeLabel = entry.type === "overwerk" ? "Overwerk" : "Teruggestaan"
+    const typeLabel =
+      entry.type === "uitbetaling"
+        ? "Uitbetaling"
+        : entry.type === "inhouding"
+          ? "Inhouding"
+          : entry.type === "overwerk"
+            ? "Overwerk"
+            : "Teruggestaan"
     const confirmMsg =
       `Weet je zeker dat je deze regel wilt verwijderen?\n\n` +
       `${entry.daysCompleted} dag(en) (${typeLabel})\n` +
       `Periode: ${entry.returnedPeriod}\n` +
       `${entry.note}\n\n` +
-      `De telling (saldo) wordt opnieuw berekend.`
+      (entry.type === "uitbetaling"
+        ? "De dagen gaan terug op het saldo en van het loon af, als die maand nog open is."
+        : entry.type === "inhouding"
+          ? "De dagen komen terug op het saldo en het bedrag wordt niet meer ingehouden, als die maand nog open is."
+          : "De telling (saldo) wordt opnieuw berekend.")
 
     if (!confirm(confirmMsg)) return
+
+    if (entry.type === "uitbetaling") {
+      const monthKey = String((entry as { payoutMonthKey?: string }).payoutMonthKey || "")
+      if (monthKey) {
+        const crewRow = crew.find((member: any) => member.id === group.crewMemberId)
+        const salary = await adjustSalaryOvertimeDays({
+          crewId: group.crewMemberId,
+          company: crewRow?.company ?? null,
+          monthKey,
+          deltaDays: -Number(entry.daysCompleted || 0),
+          overtimeNote: "overwerk",
+        })
+        if (!salary.ok) {
+          alert(`Salarismaand ${formatMonthLabel(monthKey)} is afgesloten. Deze uitbetaling kan niet meer worden teruggedraaid.`)
+          return
+        }
+      }
+    }
+
+    if (entry.type === "inhouding") {
+      const monthKey = String((entry as { salaryMonthKey?: string }).salaryMonthKey || "")
+      const deductionId = String((entry as { salaryDeductionId?: string }).salaryDeductionId || "")
+      if (monthKey && deductionId) {
+        const crewRow = crew.find((member: any) => member.id === group.crewMemberId)
+        const salary = await adjustSalaryMindagenDeduction({
+          crewId: group.crewMemberId,
+          company: crewRow?.company ?? null,
+          monthKey,
+          deductionId,
+          amountEur: 0,
+          remove: true,
+        })
+        if (!salary.ok) {
+          alert(`Salarismaand ${formatMonthLabel(monthKey)} is afgesloten. Deze inhouding kan niet meer worden teruggedraaid.`)
+          return
+        }
+      }
+    }
 
     const key =
       targets.length > 1
@@ -1147,16 +1506,32 @@ export function StandBackManagement() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge
-                          variant="outline"
-                          className={`text-sm border ${
-                            (group.netSaldo ?? 0) > 0
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                              : "bg-orange-50 text-orange-800 border-orange-200"
-                          }`}
-                        >
-                          Saldo: {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
-                        </Badge>
+                        {(group.netSaldo ?? 0) > 0 ? (
+                          <button type="button" onClick={() => void openPayoutDialog(group)}>
+                            <Badge
+                              variant="outline"
+                              className="text-sm border bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                            >
+                              Saldo: {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                            </Badge>
+                          </button>
+                        ) : (group.netSaldo ?? 0) < 0 ? (
+                          <button type="button" onClick={() => void openDeductDialog(group)}>
+                            <Badge
+                              variant="outline"
+                              className="text-sm border bg-orange-50 text-orange-800 border-orange-200 hover:bg-orange-100 cursor-pointer"
+                            >
+                              Saldo: {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                            </Badge>
+                          </button>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-sm border bg-gray-50 text-gray-800 border-gray-200"
+                          >
+                            Saldo: {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-2">
@@ -1391,31 +1766,49 @@ export function StandBackManagement() {
                             dagen
                           </div>
                         </button>
-                        <div
-                          className={`rounded px-3 py-2 border ${
-                            (group.netSaldo ?? 0) > 0
-                              ? "bg-emerald-50 border-emerald-100"
-                              : (group.netSaldo ?? 0) < 0
-                                ? "bg-orange-50 border-orange-100"
-                                : "bg-gray-50 border-gray-100"
-                          }`}
-                        >
-                          <span className="text-gray-600">Saldo</span>
-                          <div
-                            className={`font-semibold ${
-                              (group.netSaldo ?? 0) > 0
-                                ? "text-emerald-800"
-                                : (group.netSaldo ?? 0) < 0
-                                  ? "text-orange-800"
-                                  : "text-gray-800"
-                            }`}
+                        {(group.netSaldo ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => void openPayoutDialog(group)}
+                            className="text-left rounded px-3 py-2 border bg-emerald-50 border-emerald-100 hover:bg-emerald-100 transition"
                           >
-                            {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                            <span className="text-gray-600">Saldo</span>
+                            <div className="font-semibold text-emerald-800">
+                              {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                            </div>
+                            <p className="text-xs text-emerald-700 mt-0.5">Klik om uit te betalen</p>
+                            {(group.payoutDays ?? 0) > 0 ? (
+                              <p className="text-xs text-gray-500">Al uitbetaald: {group.payoutDays} dagen</p>
+                            ) : null}
+                          </button>
+                        ) : (group.netSaldo ?? 0) < 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => void openDeductDialog(group)}
+                            className="text-left rounded px-3 py-2 border bg-orange-50 border-orange-100 hover:bg-orange-100 transition"
+                          >
+                            <span className="text-gray-600">Saldo</span>
+                            <div className="font-semibold text-orange-800">
+                              {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                            </div>
+                            <p className="text-xs text-orange-700 mt-0.5">Klik om in te houden</p>
+                            {(group.salaryDeductionDays ?? 0) > 0 ? (
+                              <p className="text-xs text-gray-500">Al ingehouden: {group.salaryDeductionDays} dagen</p>
+                            ) : null}
+                          </button>
+                        ) : (
+                          <div className="rounded px-3 py-2 border bg-gray-50 border-gray-100">
+                            <span className="text-gray-600">Saldo</span>
+                            <div className="font-semibold text-gray-800">
+                              {formatStandBackSaldo(group.netSaldo ?? 0)} dagen
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {formatStandBackSaldoHint(group.netSaldo ?? 0)}
+                              {(group.payoutDays ?? 0) > 0 ? ` · uitbetaald ${group.payoutDays} dagen` : ""}
+                              {(group.salaryDeductionDays ?? 0) > 0 ? ` · ingehouden ${group.salaryDeductionDays} dagen` : ""}
+                            </p>
                           </div>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {formatStandBackSaldoHint(group.netSaldo ?? 0)}
-                          </p>
-                        </div>
+                        )}
                       </div>
 
                       {expandedDetailByMember[group.crewMemberId] === "open" &&
@@ -1512,7 +1905,13 @@ export function StandBackManagement() {
                                         : "-"}
                                     </td>
                                     <td className="border px-2 py-1">
-                                      {entry.type === "overwerk" ? "Overwerk" : "Teruggestaan"}
+                                      {entry.type === "uitbetaling"
+                                        ? "Uitbetaling"
+                                        : entry.type === "inhouding"
+                                          ? "Inhouding"
+                                          : entry.type === "overwerk"
+                                            ? "Overwerk"
+                                            : "Teruggestaan"}
                                     </td>
                                     <td className="border px-2 py-1 text-right font-medium">
                                       {entry.daysCompleted}
@@ -1753,6 +2152,154 @@ export function StandBackManagement() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={!!payoutTarget}
+        onOpenChange={(open) => {
+          if (!open && !payoutSaving) {
+            setPayoutTarget(null)
+            setPayoutDaysInput("")
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Saldo uitbetalen
+              {payoutTarget
+                ? ` — ${payoutTarget.crewMember?.firstName || ""} ${payoutTarget.crewMember?.lastName || ""}`
+                : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {payoutTarget && (() => {
+            const maxDays = Number(payoutTarget.netSaldo ?? 0)
+            const days = Number(String(payoutDaysInput).replace(",", "."))
+            const safeDays = Number.isFinite(days) && days > 0 ? Math.min(days, maxDays) : 0
+            const position = payoutTarget.crewMember?.position
+            const dayRate = getOverwerkDayRateEur(position)
+            const amount = calculateOverwerkAmount(position, safeDays, payoutBaseSalary)
+            const monthLabel = formatMonthLabel(currentSalaryMonthKey())
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Er staan {formatStandBackSaldo(maxDays)} dagen vooruit. Die dagen gaan van het saldo af en op het loon van {monthLabel}.
+                </p>
+                <div>
+                  <Label htmlFor="payout-days">Aantal dagen</Label>
+                  <Input
+                    id="payout-days"
+                    type="number"
+                    min="0.5"
+                    max={maxDays}
+                    step="0.5"
+                    value={payoutDaysInput}
+                    onChange={(e) => setPayoutDaysInput(e.target.value)}
+                  />
+                </div>
+                <div className="rounded-md bg-emerald-50 border border-emerald-100 px-3 py-2 text-sm text-emerald-900">
+                  <p>
+                    Tarief: {dayRate != null ? `${formatEuro(dayRate)} per dag` : "basissalaris / 15 per dag"}
+                    {position ? ` (${position})` : ""}
+                  </p>
+                  <p className="font-semibold mt-1">
+                    {amount > 0
+                      ? `${safeDays} dagen = ${formatEuro(amount)}`
+                      : `${safeDays} dagen worden op het loon gezet`}
+                  </p>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={payoutSaving}
+                    onClick={() => {
+                      setPayoutTarget(null)
+                      setPayoutDaysInput("")
+                    }}
+                  >
+                    Annuleren
+                  </Button>
+                  <Button disabled={payoutSaving} onClick={() => void handlePayoutSaldo()}>
+                    {payoutSaving ? "Bezig…" : "Uitbetalen"}
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!deductTarget}
+        onOpenChange={(open) => {
+          if (!open && !deductSaving) {
+            setDeductTarget(null)
+            setDeductDaysInput("")
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Mindagen inhouden
+              {deductTarget
+                ? ` — ${deductTarget.crewMember?.firstName || ""} ${deductTarget.crewMember?.lastName || ""}`
+                : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {deductTarget && (() => {
+            const maxDays = Math.abs(Number(deductTarget.netSaldo ?? 0))
+            const days = Number(String(deductDaysInput).replace(",", "."))
+            const safeDays = Number.isFinite(days) && days > 0 ? Math.min(days, maxDays) : 0
+            const dayRate = deductBaseSalary > 0 ? deductBaseSalary / 15 : 0
+            const amount = calculateMindagenDeductionAmount(deductBaseSalary, safeDays)
+            const monthLabel = formatMonthLabel(currentSalaryMonthKey())
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Er staan {formatStandBackSaldo(-maxDays)} mindagen. Vul in hoeveel dagen je van het salaris van {monthLabel} afhaalt.
+                </p>
+                <div>
+                  <Label htmlFor="deduct-days">Aantal dagen</Label>
+                  <Input
+                    id="deduct-days"
+                    type="number"
+                    min="0.5"
+                    max={maxDays}
+                    step="0.5"
+                    value={deductDaysInput}
+                    onChange={(e) => setDeductDaysInput(e.target.value)}
+                  />
+                </div>
+                <div className="rounded-md bg-orange-50 border border-orange-100 px-3 py-2 text-sm text-orange-950">
+                  {deductBaseSalary > 0 ? (
+                    <>
+                      <p>Basissalaris {formatEuro(deductBaseSalary)} / 15 = {formatEuro(dayRate)} per dag</p>
+                      <p className="font-semibold mt-1">{safeDays} dagen = {formatEuro(amount)}</p>
+                    </>
+                  ) : (
+                    <p>Geen basissalaris gevonden. Het bedrag kan niet worden berekend.</p>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={deductSaving}
+                    onClick={() => {
+                      setDeductTarget(null)
+                      setDeductDaysInput("")
+                    }}
+                  >
+                    Annuleren
+                  </Button>
+                  <Button disabled={deductSaving || amount <= 0} onClick={() => void handleDeductMindagen()}>
+                    {deductSaving ? "Bezig…" : "Inhouden"}
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

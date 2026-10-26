@@ -6,6 +6,7 @@ export type SalaryDeductionCategory =
   | "kleding"
   | "opleidingskosten"
   | "boetes"
+  | "mindagen"
   | "overig"
 
 export type SalaryDeduction = {

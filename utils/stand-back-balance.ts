@@ -88,11 +88,28 @@ export function isTegoedHistoryEntry(entry: any): boolean {
   return note.includes("tegoed")
 }
 
+/** Dagen uit het plus-saldo die als geld zijn uitbetaald. */
+export function isPayoutHistoryEntry(entry: any): boolean {
+  if (!entry || typeof entry !== "object") return false
+  if (entry.payout === true) return true
+  if (entry.completedBy === "Uitbetaling") return true
+  return String(entry.note || "").toLowerCase().startsWith("uitbetaald")
+}
+
+/** Mindagen die van het salaris zijn afgehaald. */
+export function isSalaryDeductionHistoryEntry(entry: any): boolean {
+  if (!entry || typeof entry !== "object") return false
+  if (entry.salaryDeduction === true) return true
+  if (entry.completedBy === "Inhouding") return true
+  return String(entry.note || "").toLowerCase().startsWith("ingehouden")
+}
+
 /** Alleen echte terug-staan (geen tegoed-regels in history). */
 export function isReturnedHistoryEntry(entry: any): boolean {
   const raw = entry?.daysCompleted
   const days = typeof raw === "number" ? raw : Number(raw || 0)
   if (!Number.isFinite(days) || days <= 0) return false
+  if (isPayoutHistoryEntry(entry) || isSalaryDeductionHistoryEntry(entry)) return false
   return !isTegoedHistoryEntry(entry)
 }
 
@@ -142,9 +159,38 @@ export function sumCreditDaysFromHistory(record: {
     return Math.max(0, -rem)
   }
   return history.reduce((sum: number, entry: any) => {
+    if (isPayoutHistoryEntry(entry) || isSalaryDeductionHistoryEntry(entry)) return sum
     const raw = entry?.daysCompleted
     const value = typeof raw === "number" ? raw : Number(raw || 0)
     return value > 0 ? sum + value : sum
+  }, 0)
+}
+
+export function sumPayoutDaysFromHistory(record: {
+  stand_back_history?: unknown
+  standBackHistory?: unknown
+}): number {
+  const history = getStandBackHistoryArray(record)
+  if (!history) return 0
+  return history.reduce((sum: number, entry: any) => {
+    if (!isPayoutHistoryEntry(entry)) return sum
+    const raw = entry?.daysCompleted
+    const value = typeof raw === "number" ? raw : Number(raw || 0)
+    return sum + (Number.isFinite(value) && value > 0 ? value : 0)
+  }, 0)
+}
+
+export function sumSalaryDeductionDaysFromHistory(record: {
+  stand_back_history?: unknown
+  standBackHistory?: unknown
+}): number {
+  const history = getStandBackHistoryArray(record)
+  if (!history) return 0
+  return history.reduce((sum: number, entry: any) => {
+    if (!isSalaryDeductionHistoryEntry(entry)) return sum
+    const raw = entry?.daysCompleted
+    const value = typeof raw === "number" ? raw : Number(raw || 0)
+    return sum + (Number.isFinite(value) && value > 0 ? value : 0)
   }, 0)
 }
 
@@ -280,7 +326,12 @@ export function computeMemberStandBackTotals(
     .reduce((sum, r) => sum + getRecordCreditDays(r), 0)
   const grossOutstanding = Math.max(0, totalRequired - totalReturned)
   const totalIngehaald = totalReturned + grossCredit
-  const netSaldo = totalIngehaald - totalRequired
+  const payoutDays = records.reduce((sum, record) => sum + sumPayoutDaysFromHistory(record), 0)
+  const salaryDeductionDays = records.reduce(
+    (sum, record) => sum + sumSalaryDeductionDaysFromHistory(record),
+    0
+  )
+  const netSaldo = totalIngehaald - totalRequired - payoutDays + salaryDeductionDays
 
   return {
     totalRequired,
@@ -289,6 +340,8 @@ export function computeMemberStandBackTotals(
     netSaldo,
     grossOutstanding,
     grossCredit,
+    payoutDays,
+    salaryDeductionDays,
     totalOutstanding: Math.max(0, -netSaldo),
     totalCredit: Math.max(0, netSaldo),
   }
