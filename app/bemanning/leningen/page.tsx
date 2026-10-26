@@ -661,28 +661,28 @@ export default function LeningenPage() {
             return (
               <Card key={loan.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-6">
-                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
                     {/* Left side: Details */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
-                      <div>
+                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-w-0">
+                      <div className="min-w-0">
                         <div className="flex items-center space-x-2 mb-1">
                           <User className="w-4 h-4 text-gray-400" />
-                          <h4 className="font-medium text-gray-900">
+                          <h4 className="font-medium text-gray-900 min-w-0 break-words">
                             {crewMember ? `${crewMember.first_name} ${crewMember.last_name}` : 'Onbekend'}
                           </h4>
                         </div>
-                        <p className="text-sm text-gray-600">{loan.name}</p>
+                        <p className="text-sm text-gray-600 break-words">{loan.name}</p>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center space-x-2 mb-1">
-                          <Calendar className="w-4 h-4 text-gray-400" />
+                          <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
                           <span className="text-sm font-medium text-gray-700">Periode</span>
                         </div>
-                        <p className="text-sm text-gray-600">{loan.period}</p>
+                        <p className="text-sm text-gray-600 break-words">{loan.period}</p>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center space-x-2 mb-1">
-                          <Euro className="w-4 h-4 text-gray-400" />
+                          <Euro className="w-4 h-4 text-gray-400 shrink-0" />
                           <span className="text-sm font-medium text-gray-700">Totaal Bedrag</span>
                         </div>
                         <p className="text-sm font-semibold text-gray-900">€{loan.amount.toFixed(2)}</p>
@@ -693,17 +693,17 @@ export default function LeningenPage() {
                           </>
                         )}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center space-x-2 mb-1">
-                          <FileText className="w-4 h-4 text-gray-400" />
+                          <FileText className="w-4 h-4 text-gray-400 shrink-0" />
                           <span className="text-sm font-medium text-gray-700">Reden</span>
                         </div>
-                        <p className="text-sm text-gray-600">{loan.reason}</p>
+                        <p className="text-sm text-gray-600 break-words">{loan.reason}</p>
                       </div>
                     </div>
                     
                     {/* Right side: Status & Actions */}
-                    <div className="flex flex-col items-end space-y-2 md:min-w-[280px]">
+                    <div className="flex flex-col items-stretch sm:items-end gap-2 w-full lg:w-72 lg:shrink-0">
                       <div className="flex flex-wrap gap-1 justify-end">
                         <Badge 
                           className={loan.status === 'open' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}
@@ -718,11 +718,6 @@ export default function LeningenPage() {
                                 ? "Wisselend per maand"
                                 : `Maandregeling €${Number(loan.monthly_installment_amount || 0).toFixed(2)}/mnd`}
                           </Badge>
-                        )}
-                        {loan.status === 'open' && loan.auto_installment_enabled && isVariableLoanSchedule(loan) && (
-                          <p className="w-full text-xs text-gray-600 text-right">
-                            {formatLoanSchedulePreview(loan.installment_schedule)}
-                          </p>
                         )}
                         {loan.status === 'open' && loan.auto_installment_enabled && loan.auto_deduct_salary && (
                           <Badge className="bg-amber-100 text-amber-900 border border-amber-300">
@@ -758,6 +753,12 @@ export default function LeningenPage() {
                       )}
                     </div>
                   </div>
+
+                  {loan.status === 'open' && loan.auto_installment_enabled && isVariableLoanSchedule(loan) && (
+                    <p className="text-xs text-gray-600 mb-3 break-words">
+                      {formatLoanSchedulePreview(loan.installment_schedule)}
+                    </p>
+                  )}
                   
                   {/* Progress Bar */}
                   {loan.status === 'open' && (
