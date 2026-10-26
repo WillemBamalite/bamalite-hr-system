@@ -10,6 +10,7 @@ export type CrewExportFieldId =
   | "address"
   | "regime"
   | "in_dienst_vanaf"
+  | "dienstjaren"
 
 export type CrewExportField = {
   id: CrewExportFieldId
@@ -29,6 +30,7 @@ export const CREW_EXPORT_FIELDS: CrewExportField[] = [
   { id: "address", label: "Adres", defaultSelected: false },
   { id: "regime", label: "Regime", defaultSelected: false },
   { id: "in_dienst_vanaf", label: "In dienst vanaf", defaultSelected: false },
+  { id: "dienstjaren", label: "Jaren", defaultSelected: false },
 ]
 
 export const RANK_ORDER = [
@@ -88,6 +90,46 @@ function formatStatus(status: string): string {
   }
 }
 
+function parseServiceStart(value: unknown): Date | null {
+  const raw = String(value || "").trim()
+  if (!raw) return null
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    const year = Number(iso[1])
+    const month = Number(iso[2]) - 1
+    const day = Number(iso[3])
+    const date = new Date(year, month, day)
+    if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) return date
+  }
+
+  const dmy = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (dmy) {
+    const day = Number(dmy[1])
+    const month = Number(dmy[2]) - 1
+    const year = Number(dmy[3])
+    const date = new Date(year, month, day)
+    if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) return date
+  }
+
+  return null
+}
+
+export function getServiceYears(value: unknown, today = new Date()): number | null {
+  const start = parseServiceStart(value)
+  if (!start) return null
+  let years = today.getFullYear() - start.getFullYear()
+  const monthDiff = today.getMonth() - start.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < start.getDate())) years -= 1
+  return Math.max(0, years)
+}
+
+function formatServiceYears(value: unknown): string {
+  const years = getServiceYears(value)
+  if (years == null) return "-"
+  return `${years} jaar`
+}
+
 function formatDate(value: unknown): string {
   const raw = String(value || "").trim()
   if (!raw) return "-"
@@ -140,12 +182,43 @@ export function getCrewExportFieldValue(
       return String(member.regime || "-")
     case "in_dienst_vanaf":
       return formatDate(member.in_dienst_vanaf)
+    case "dienstjaren":
+      return formatServiceYears(member.in_dienst_vanaf)
     default:
       return "-"
   }
 }
 
-export function sortOverviewCrew(members: any[]): any[] {
+function compareCrewNames(a: any, b: any): number {
+  const last = String(a.last_name || a.lastName || "").localeCompare(
+    String(b.last_name || b.lastName || ""),
+    "nl",
+    { sensitivity: "base" }
+  )
+  if (last !== 0) return last
+  return String(a.first_name || a.firstName || "").localeCompare(
+    String(b.first_name || b.firstName || ""),
+    "nl",
+    { sensitivity: "base" }
+  )
+}
+
+export function sortOverviewCrew(members: any[], options?: { byServiceYears?: boolean }): any[] {
+  if (options?.byServiceYears) {
+    return [...members].sort((a, b) => {
+      const yearsA = getServiceYears(a.in_dienst_vanaf)
+      const yearsB = getServiceYears(b.in_dienst_vanaf)
+      if (yearsA == null && yearsB == null) return compareCrewNames(a, b)
+      if (yearsA == null) return 1
+      if (yearsB == null) return -1
+      if (yearsA !== yearsB) return yearsB - yearsA
+      const startA = parseServiceStart(a.in_dienst_vanaf)?.getTime() || 0
+      const startB = parseServiceStart(b.in_dienst_vanaf)?.getTime() || 0
+      if (startA !== startB) return startA - startB
+      return compareCrewNames(a, b)
+    })
+  }
+
   const rankIndex = (position: string) => {
     const i = RANK_ORDER.indexOf(position as (typeof RANK_ORDER)[number])
     return i >= 0 ? i : RANK_ORDER.length
@@ -154,16 +227,6 @@ export function sortOverviewCrew(members: any[]): any[] {
     const ra = rankIndex(String(a.position || ""))
     const rb = rankIndex(String(b.position || ""))
     if (ra !== rb) return ra - rb
-    const la = String(a.last_name || a.lastName || "").localeCompare(
-      String(b.last_name || b.lastName || ""),
-      "nl",
-      { sensitivity: "base" }
-    )
-    if (la !== 0) return la
-    return String(a.first_name || a.firstName || "").localeCompare(
-      String(b.first_name || b.firstName || ""),
-      "nl",
-      { sensitivity: "base" }
-    )
+    return compareCrewNames(a, b)
   })
 }

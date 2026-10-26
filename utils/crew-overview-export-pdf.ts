@@ -25,13 +25,19 @@ export type CrewOverviewPdfOptions = {
 
 export async function generateCrewOverviewPdf(options: CrewOverviewPdfOptions): Promise<Blob> {
   const { members, ships, fieldIds } = options
-  const effectiveFields = fieldIds.includes("name") ? fieldIds : (["name", ...fieldIds] as CrewExportFieldId[])
+  const withName = fieldIds.includes("name") ? fieldIds : (["name", ...fieldIds] as CrewExportFieldId[])
+  const effectiveFields = [...withName]
+  if (effectiveFields.includes("in_dienst_vanaf") && !effectiveFields.includes("dienstjaren")) {
+    effectiveFields.splice(effectiveFields.indexOf("in_dienst_vanaf") + 1, 0, "dienstjaren")
+  }
   const labels = effectiveFields.map(
     (id) => CREW_EXPORT_FIELDS.find((f) => f.id === id)?.label || id
   )
 
   const shipNameById = new Map(ships.map((s) => [s.id, s.name]))
-  const sorted = sortOverviewCrew(members)
+  const sorted = sortOverviewCrew(members, {
+    byServiceYears: effectiveFields.includes("in_dienst_vanaf") || effectiveFields.includes("dienstjaren"),
+  })
 
   const pdfDoc = await PDFDocument.create()
   pdfDoc.setTitle("Bemanningscontactoverzicht")
@@ -92,10 +98,17 @@ export async function generateCrewOverviewPdf(options: CrewOverviewPdfOptions): 
     if (id === "address") return Math.floor(innerW * 0.18)
     if (id === "email") return Math.floor(innerW * 0.14)
     if (id === "phone") return Math.floor(innerW * 0.1)
+    if (id === "in_dienst_vanaf") return 110
+    if (id === "dienstjaren") return 72
     return Math.floor(innerW / colCount)
   })
   const totalW = colWidths.reduce((a, b) => a + b, 0)
-  if (totalW < innerW) colWidths[colWidths.length - 1] += innerW - totalW
+  if (totalW < innerW) {
+    const growIdx = effectiveFields.includes("dienstjaren")
+      ? Math.max(0, effectiveFields.indexOf("name"))
+      : colWidths.length - 1
+    colWidths[growIdx] += innerW - totalW
+  }
   else if (totalW > innerW) {
     const scale = innerW / totalW
     for (let i = 0; i < colWidths.length; i++) colWidths[i] = Math.floor(colWidths[i] * scale)

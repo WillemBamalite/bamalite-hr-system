@@ -71,9 +71,15 @@ export function CrewOverviewExportDialog({
 
   const toggleField = (id: CrewExportFieldId, on: boolean) => {
     setSelectedFields((prev) => {
-      if (on) return Array.from(new Set([...prev, id]))
       if (id === "name") return prev
-      return prev.filter((x) => x !== id)
+      if (id === "dienstjaren" && !on && prev.includes("in_dienst_vanaf")) return prev
+      if (!on) return prev.filter((x) => x !== id)
+      const next = prev.includes(id) ? [...prev] : [...prev, id]
+      if (id === "in_dienst_vanaf" && !next.includes("dienstjaren")) {
+        const dateIndex = next.indexOf("in_dienst_vanaf")
+        next.splice(dateIndex + 1, 0, "dienstjaren")
+      }
+      return next
     })
   }
 
@@ -188,24 +194,28 @@ export function CrewOverviewExportDialog({
                 </label>
               </div>
             </div>
+            <p className="text-xs text-gray-500 mb-2">
+              Bij In dienst vanaf komt het aantal jaren erachter. De lijst staat dan van de meeste jaren naar de minste.
+            </p>
             <ScrollArea className="h-[180px]">
               <div className="space-y-2 pr-2">
                 {CREW_EXPORT_FIELDS.map((field) => {
-                  const locked = field.id === "name"
+                  const locked = field.id === "name" || (field.id === "dienstjaren" && selectedFields.includes("in_dienst_vanaf"))
+                  const checked = selectedFields.includes(field.id) || (field.id === "dienstjaren" && selectedFields.includes("in_dienst_vanaf"))
                   return (
                     <div key={field.id} className="flex items-center gap-2">
                       <Checkbox
                         id={`crew-field-${field.id}`}
-                        checked={selectedFields.includes(field.id)}
+                        checked={checked}
                         disabled={locked}
                         onCheckedChange={(v) => toggleField(field.id, Boolean(v))}
                       />
                       <label
                         htmlFor={`crew-field-${field.id}`}
-                        className={`text-sm cursor-pointer ${locked ? "text-gray-500" : ""}`}
+                        className={`text-sm cursor-pointer ${field.id === "name" ? "text-gray-500" : ""}`}
                       >
                         {field.label}
-                        {locked ? " (altijd)" : ""}
+                        {field.id === "name" ? " (altijd)" : ""}
                       </label>
                     </div>
                   )
