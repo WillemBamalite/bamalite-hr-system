@@ -176,6 +176,24 @@ function stripSalaryMeta(reason: string | null | undefined): string {
   return text.slice(0, idx).trim() || "Salarisadministratie"
 }
 
+/** Afstap om 12:00 of later: laatste dag telt. Vóór 12:00 telt die dag niet. */
+const OVERWERK_END_DAY_CUTOFF_MINUTES = 12 * 60
+
+function minutesFromClock(time: string | null | undefined): number | null {
+  const match = String(time || "").trim().match(/^(\d{1,2}):(\d{2})/)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
+  return hours * 60 + minutes
+}
+
+/**
+ * Overwerkdagen: kalenderdagen van start t/m eind, inclusief.
+ * De instapdag telt altijd (instaptijd is alleen administratie).
+ * Een latere afstapdag telt alleen mee bij vertrek om 12:00 of later.
+ */
 export function computeOverwerkWorkDays(
   trip: {
     start_datum?: string | null
@@ -192,12 +210,19 @@ export function computeOverwerkWorkDays(
   const endOnly = normalizeTripDate(eindDatum || trip.eind_datum || trip.end_date)
   if (!startOnly || !endOnly || endOnly < startOnly) return 0
 
-  const startTijd = trip.start_tijd || "08:00"
   const endTime = eindTijd || "17:00"
-  let days = calculateWorkDays(startOnly, startTijd, endOnly, endTime)
+  let days = calculateWorkDays(startOnly, "00:00", endOnly, "00:00")
   if (days <= 0 && startOnly <= endOnly) {
     days = 1
   }
+
+  if (endOnly > startOnly) {
+    const endMinutes = minutesFromClock(endTime)
+    if (endMinutes != null && endMinutes < OVERWERK_END_DAY_CUTOFF_MINUTES) {
+      days = Math.max(1, days - 1)
+    }
+  }
+
   return days
 }
 

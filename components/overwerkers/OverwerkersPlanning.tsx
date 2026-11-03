@@ -96,6 +96,7 @@ export interface OverwerkersPlanningProps {
     start_datum?: string | null
     start_tijd?: string | null
     eind_datum?: string | null
+    eind_tijd?: string | null
     notes?: string | null
     trip_name?: string | null
   }>
@@ -118,7 +119,8 @@ export interface OverwerkersPlanningProps {
     shipId: string,
     startDate: string,
     endDate?: string,
-    settlement?: OverwerkSettlementType
+    settlement?: OverwerkSettlementType,
+    startTijd?: string
   ) => Promise<void>
   onEndAssignment: (
     tripId: string,
@@ -183,6 +185,7 @@ export function OverwerkersPlanning({
   const [assignDialog, setAssignDialog] = useState<{ memberId: string; name: string } | null>(null)
   const [assignShipId, setAssignShipId] = useState("")
   const [assignStartDate, setAssignStartDate] = useState(today)
+  const [assignStartTijd, setAssignStartTijd] = useState(nowTime)
   const [assignSettlement, setAssignSettlement] = useState<OverwerkSettlementType>("none")
   const [assigning, setAssigning] = useState(false)
   const [endDialog, setEndDialog] = useState<{
@@ -440,11 +443,13 @@ export function OverwerkersPlanning({
         assignShipId,
         assignStartDate,
         undefined,
-        assignSettlement
+        assignSettlement,
+        assignStartTijd || undefined
       )
       setAssignDialog(null)
       setAssignShipId("")
       setAssignStartDate(planningDate)
+      setAssignStartTijd(format(new Date(), "HH:mm"))
       setAssignSettlement("none")
     } catch {
       alert("Fout bij toewijzen aan schip")
@@ -564,8 +569,11 @@ export function OverwerkersPlanning({
             <p className="text-xs text-blue-800 flex items-center gap-1">
               <Ship className="w-3 h-3 shrink-0" />
               {status.activeTrip.shipName}
+              {activeTripRow?.start_tijd
+                ? ` · aan boord ${activeTripRow.start_tijd.slice(0, 5)}`
+                : ""}
               {status.activeTrip.to
-                ? ` t/m ${formatDateDDMMYYYY(status.activeTrip.to)}`
+                ? ` · t/m ${formatDateDDMMYYYY(status.activeTrip.to)}`
                 : ""}
             </p>
           )}
@@ -611,6 +619,7 @@ export function OverwerkersPlanning({
                   setAssignDialog({ memberId: member.id, name })
                   setAssignShipId(ships[0]?.id || "")
                   setAssignStartDate(planningDate)
+                  setAssignStartTijd(format(new Date(), "HH:mm"))
                   setAssignSettlement("none")
                 }}
               >
@@ -953,7 +962,9 @@ export function OverwerkersPlanning({
                           <Ship className="w-3.5 h-3.5 shrink-0" />
                           {shipName}
                           {from ? ` · ${from}` : ""}
+                          {trip.start_tijd ? ` ${trip.start_tijd.slice(0, 5)}` : ""}
                           {to ? ` t/m ${to}` : ""}
+                          {trip.eind_tijd ? ` ${trip.eind_tijd.slice(0, 5)}` : ""}
                         </p>
                         {trip.trip_name && (
                           <p className="text-xs text-gray-500">{trip.trip_name}</p>
@@ -1025,15 +1036,6 @@ export function OverwerkersPlanning({
                   Afstapdatum ligt vóór de startdatum van deze reis.
                 </p>
               )}
-              {previewEndWorkDays && !previewEndWorkDays.invalid && (
-                <p className="text-sm font-medium text-blue-700 mt-1.5">
-                  Gewerkte overwerkdagen:{" "}
-                  {previewEndWorkDays.days === Math.floor(previewEndWorkDays.days)
-                    ? previewEndWorkDays.days
-                    : previewEndWorkDays.days}{" "}
-                  {previewEndWorkDays.days === 1 ? "dag" : "dagen"}
-                </p>
-              )}
             </div>
             <div>
               <Label htmlFor="end-tijd">Afgestapt om *</Label>
@@ -1043,6 +1045,15 @@ export function OverwerkersPlanning({
                 value={endTijd}
                 onChange={(e) => setEndTijd(e.target.value)}
               />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Vóór 12:00 telt de afstapdag niet mee. Om 12:00 of later telt die dag wel. De instapdag telt altijd.
+              </p>
+              {previewEndWorkDays && !previewEndWorkDays.invalid && (
+                <p className="text-sm font-medium text-blue-700 mt-1.5">
+                  Gewerkte overwerkdagen: {previewEndWorkDays.days}{" "}
+                  {previewEndWorkDays.days === 1 ? "dag" : "dagen"}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="end-opmerking">Opmerking (optioneel)</Label>
@@ -1145,13 +1156,16 @@ export function OverwerkersPlanning({
               />
             </div>
             <div>
-              <Label htmlFor="edit-start-tijd">Starttijd</Label>
+              <Label htmlFor="edit-start-tijd">Tijd aan boord</Label>
               <Input
                 id="edit-start-tijd"
                 type="time"
                 value={editStartTijd}
                 onChange={(e) => setEditStartTijd(e.target.value)}
               />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Alleen voor de administratie. Het aantal overwerkdagen verandert hier niet door.
+              </p>
             </div>
             <div>
               <Label htmlFor="edit-end">Einddatum (optioneel)</Label>
@@ -1210,6 +1224,18 @@ export function OverwerkersPlanning({
                 value={assignStartDate}
                 onChange={(e) => setAssignStartDate(e.target.value)}
               />
+            </div>
+            <div>
+              <Label htmlFor="assign-start-tijd">Tijd aan boord</Label>
+              <Input
+                id="assign-start-tijd"
+                type="time"
+                value={assignStartTijd}
+                onChange={(e) => setAssignStartTijd(e.target.value)}
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Alleen voor de administratie. De eerste overwerkdag telt altijd, ongeacht dit tijdstip.
+              </p>
             </div>
             <div>
               <Label className="mb-2 block">Verrekening na afloop</Label>

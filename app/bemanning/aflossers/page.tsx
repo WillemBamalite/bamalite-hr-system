@@ -700,7 +700,8 @@ export default function ReizenAflossersPage() {
     shipId: string,
     startDate: string,
     endDate?: string,
-    settlement: OverwerkSettlementType = "none"
+    settlement: OverwerkSettlementType = "none",
+    startTijd?: string
   ) => {
     const member = crew.find((c: any) => c.id === memberId)
     if (member && isAflosserCrewMember(member)) {
@@ -729,7 +730,7 @@ export default function ReizenAflossersPage() {
         status: "actief",
         aflosser_id: memberId,
         start_datum: startDate,
-        start_tijd: "08:00",
+        start_tijd: startTijd || "08:00",
       })
 
       if (typeof window !== "undefined") {
