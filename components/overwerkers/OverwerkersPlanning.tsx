@@ -59,6 +59,12 @@ const COLUMN_META: Record<
     headerClass: "bg-blue-50 text-blue-900 border-blue-200",
     borderClass: "border-blue-200",
   },
+  ingepland: {
+    title: "Ingepland",
+    subtitle: "Toegewezen, start later — staat al op het schip",
+    headerClass: "bg-violet-50 text-violet-950 border-violet-200",
+    borderClass: "border-violet-200",
+  },
   echt_beschikbaar: {
     title: "Nu beschikbaar",
     subtitle: "Expliciete beschikbaarheidsperiode op deze datum",
@@ -251,6 +257,7 @@ export function OverwerkersPlanning({
       typeof rows
     > = {
       aan_boord: [],
+      ingepland: [],
       echt_beschikbaar: [],
       mogelijk_beschikbaar: [],
     }
@@ -275,6 +282,7 @@ export function OverwerkersPlanning({
   const planningCounts = useMemo(
     () => ({
       aan_boord: planningByColumn.aan_boord.length,
+      ingepland: planningByColumn.ingepland.length,
       echt_beschikbaar: planningByColumn.echt_beschikbaar.length,
       mogelijk_beschikbaar: planningByColumn.mogelijk_beschikbaar.length,
     }),
@@ -513,7 +521,8 @@ export function OverwerkersPlanning({
     const homeShip = member.ship_id ? getShipName(member.ship_id) : null
     const canAssign =
       column === "echt_beschikbaar" || column === "mogelijk_beschikbaar"
-    const hasActiveTrip = column === "aan_boord" && status.activeTrip
+    const hasActiveTrip = (column === "aan_boord" || column === "ingepland") && status.activeTrip
+    const canSendHome = column === "aan_boord" && status.activeTrip
     const activeTripRow = status.activeTrip
       ? trips.find((t) => t.id === status.activeTrip!.id)
       : null
@@ -629,21 +638,23 @@ export function OverwerkersPlanning({
             )}
             {hasActiveTrip && activeTripRow && (
               <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 text-xs"
-                  onClick={() =>
-                    openEndDialog(
-                      status.activeTrip!.id,
-                      name,
-                      status.activeTrip!.shipName
-                    )
-                  }
-                >
-                  <Home className="w-3 h-3 mr-1" />
-                  Naar huis
-                </Button>
+                {canSendHome && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 text-xs"
+                    onClick={() =>
+                      openEndDialog(
+                        status.activeTrip!.id,
+                        name,
+                        status.activeTrip!.shipName
+                      )
+                    }
+                  >
+                    <Home className="w-3 h-3 mr-1" />
+                    Naar huis
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -726,6 +737,9 @@ export function OverwerkersPlanning({
               <Badge className="bg-blue-100 text-blue-800">
                 {planningCounts.aan_boord} aan boord
               </Badge>
+              <Badge className="bg-violet-100 text-violet-900">
+                {planningCounts.ingepland} ingepland
+              </Badge>
               <Badge className="bg-green-100 text-green-800">
                 {planningCounts.echt_beschikbaar} beschikbaar
               </Badge>
@@ -759,8 +773,9 @@ export function OverwerkersPlanning({
         </TabsList>
 
         <TabsContent value="planning" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {renderPlanningColumn("aan_boord")}
+            {renderPlanningColumn("ingepland")}
             {renderPlanningColumn("echt_beschikbaar")}
             {renderPlanningColumn("mogelijk_beschikbaar")}
           </div>
@@ -862,20 +877,22 @@ export function OverwerkersPlanning({
                       >
                         {activeTripRow && (
                           <>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() =>
-                                openEndDialog(
-                                  status.activeTrip!.id,
-                                  name,
-                                  status.activeTrip!.shipName
-                                )
-                              }
-                            >
-                              <Home className="w-4 h-4 mr-1" />
-                              Naar huis
-                            </Button>
+                            {status.planningColumn === "aan_boord" && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                  openEndDialog(
+                                    status.activeTrip!.id,
+                                    name,
+                                    status.activeTrip!.shipName
+                                  )
+                                }
+                              >
+                                <Home className="w-4 h-4 mr-1" />
+                                Naar huis
+                              </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="outline"
@@ -940,7 +957,8 @@ export function OverwerkersPlanning({
               const settlement = parseOverwerkSettlement(trip)
               const from = formatDateDDMMYYYY(trip.start_datum || trip.start_date || null)
               const to = formatDateDDMMYYYY(trip.end_date || trip.eind_datum || null)
-              const canEnd = trip.status === "actief"
+              const tripStart = normalizeTripDate(trip.start_datum || trip.start_date)
+              const canEnd = trip.status === "actief" && (!tripStart || tripStart <= today)
               const canEdit = trip.status === "actief" || trip.status === "ingedeeld" || trip.status === "gepland"
 
               return (

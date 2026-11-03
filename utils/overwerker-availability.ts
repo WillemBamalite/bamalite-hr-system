@@ -20,6 +20,7 @@ export type OverwerkerAvailabilityLevel =
 /** Kolom op de Overwerkers-planningpagina voor de gekozen datum. */
 export type OverwerkerPlanningColumn =
   | "aan_boord"
+  | "ingepland"
   | "echt_beschikbaar"
   | "mogelijk_beschikbaar"
   | null
@@ -260,6 +261,30 @@ export function evaluateOverwerkerOnDate(
     }
   }
 
+  const upcomingTrip = getUpcomingOverwerkTripForMember(member.id, dateStr, trips)
+  if (upcomingTrip) {
+    const { from, to } = getTripDateRange(upcomingTrip)
+    const startLabel = from ? formatNl(from) : "onbekend"
+    const tripShipName = upcomingTrip.ship_id && getShipName ? getShipName(upcomingTrip.ship_id) : undefined
+    return {
+      level: "ingedeeld",
+      planningColumn: "ingepland",
+      reason: `Ingepland${tripShipName ? ` op ${tripShipName}` : ""} vanaf ${startLabel}`,
+      regimeStatus: null,
+      nextHomeDate: null,
+      nextOnBoardDate: null,
+      activeTrip: {
+        id: upcomingTrip.id,
+        shipId: upcomingTrip.ship_id || "",
+        shipName: tripShipName,
+        status: upcomingTrip.status || "",
+        from: from!,
+        to: to || null,
+      },
+      matchingPeriod: null,
+    }
+  }
+
   const explicitPeriods = periods.filter((p) => p.type !== "vrije_weken" && p.from && p.to)
   const hasVrijeWeken = periods.some((p) => p.type === "vrije_weken")
   const matchingPeriod = explicitPeriods.find((p) => dayBetween(day, p.from, p.to)) || null
@@ -439,6 +464,34 @@ export function isOverwerkTripEndDatePassed(
   return ref > endDay
 }
 
+/** Toegewezen, maar de startdatum ligt nog na de peildatum. */
+export function isOverwerkTripUpcoming(
+  trip: {
+    aflosser_id?: string | null
+    ship_id?: string | null
+    status?: string
+    start_datum?: string | null
+    start_date?: string | null
+    end_date?: string | null
+    eind_datum?: string | null
+    notes?: string | null
+    trip_name?: string | null
+  },
+  referenceDate?: string
+): boolean {
+  if (!trip.aflosser_id || !trip.ship_id) return false
+  if (!isOverwerkTrip(trip)) return false
+  if (!trip.status || trip.status === "voltooid" || trip.status === "geannuleerd") return false
+  if (!ACTIVE_TRIP_STATUSES.has(trip.status)) return false
+  if (isOverwerkTripEndDatePassed(trip, referenceDate)) return false
+
+  const startStr = toTripDateOnly(trip.start_datum || trip.start_date)
+  if (!startStr) return false
+  const ref = referenceDate ? parseDay(referenceDate) : new Date()
+  ref.setHours(0, 0, 0, 0)
+  return parseDay(startStr) > ref
+}
+
 /** Zichtbaar op gast-schip: actieve overwerk-reis, startdatum bereikt, einddatum niet verstreken. */
 export function isOverwerkTripVisibleOnShip(
   trip: {
@@ -526,6 +579,62 @@ export function getActiveOverwerkTripOnShip(
   return matches[0]
 }
 
+type OverwerkTripMatch = Parameters<typeof getActiveOverwerkTripOnShip>[2][number]
+
+function sortTripsByStart(trips: OverwerkTripMatch[], direction: "asc" | "desc" = "desc") {
+  return [...trips].sort((a, b) => {
+    const aStart = a.start_datum || a.start_date || ""
+    const bStart = b.start_datum || b.start_date || ""
+    return direction === "asc" ? aStart.localeCompare(bStart) : bStart.localeCompare(aStart)
+  })
+}
+
+/** Eerstvolgende overwerk-reis die op de peildatum nog niet begonnen is. */
+export function getUpcomingOverwerkTripForMember(
+  memberId: string,
+  referenceDate: string,
+  trips: Parameters<typeof getActiveOverwerkTripOnShip>[2]
+) {
+  const matches = trips.filter(
+    (trip) =>
+      String(trip.aflosser_id) === String(memberId) &&
+      isOverwerkTripUpcoming(trip, referenceDate)
+  )
+  return sortTripsByStart(matches, "asc")[0] || null
+}
+
+/** Toekomstige overwerk-reis op dit schip (nog niet aan boord). */
+export function getUpcomingOverwerkTripOnShip(
+  memberId: string,
+  shipId: string,
+  trips: Parameters<typeof getActiveOverwerkTripOnShip>[2],
+  referenceDate?: string
+) {
+  const matches = trips.filter(
+    (trip) =>
+      String(trip.aflosser_id) === String(memberId) &&
+      String(trip.ship_id) === String(shipId) &&
+      isOverwerkTripUpcoming(trip, referenceDate)
+  )
+  return sortTripsByStart(matches, "asc")[0] || null
+}
+
+/** Toekomstige overwerk-reis op een ander schip dan het vaste schip. */
+export function getUpcomingOverwerkTripAwayFromHomeShip(
+  memberId: string,
+  homeShipId: string,
+  trips: Parameters<typeof getActiveOverwerkTripOnShip>[2],
+  referenceDate?: string
+) {
+  const matches = trips.filter(
+    (trip) =>
+      String(trip.aflosser_id) === String(memberId) &&
+      String(trip.ship_id) !== String(homeShipId) &&
+      isOverwerkTripUpcoming(trip, referenceDate)
+  )
+  return sortTripsByStart(matches, "asc")[0] || null
+}
+
 /** Overwerkt tijdelijk op een ander schip (vast schip blijft ship_id). */
 export function getActiveOverwerkTripAwayFromHomeShip(
   memberId: string,
@@ -561,6 +670,19 @@ export function formatOverwerkUntilDate(trip: {
   }
 }
 
+function formatOverwerkStartDate(trip: {
+  start_datum?: string | null
+  start_date?: string | null
+}): string | null {
+  const start = toTripDateOnly(trip.start_datum || trip.start_date)
+  if (!start) return null
+  try {
+    return format(parseDay(start), "dd-MM-yyyy")
+  } catch {
+    return null
+  }
+}
+
 export function getOverwerkCardLabel(
   member: { id: string; ship_id?: string | null },
   viewShipId: string,
@@ -568,19 +690,36 @@ export function getOverwerkCardLabel(
   getShipName: (shipId: string) => string
 ): string | null {
   const homeShipId = member.ship_id
-  if (!homeShipId) return null
 
-  if (homeShipId === viewShipId) {
+  if (homeShipId && homeShipId === viewShipId) {
     const away = getActiveOverwerkTripAwayFromHomeShip(member.id, homeShipId, trips)
-    if (!away || !away.ship_id) return null
-    const until = formatOverwerkUntilDate(away)
-    return `Overwerkt op ${getShipName(away.ship_id)}${until ? ` t/m ${until}` : ""}`
+    if (away?.ship_id) {
+      const until = formatOverwerkUntilDate(away)
+      return `Overwerkt op ${getShipName(away.ship_id)}${until ? ` t/m ${until}` : ""}`
+    }
+    const upcomingAway = getUpcomingOverwerkTripAwayFromHomeShip(member.id, homeShipId, trips)
+    if (upcomingAway?.ship_id) {
+      const from = formatOverwerkStartDate(upcomingAway)
+      return `Overwerk op ${getShipName(upcomingAway.ship_id)}${from ? ` vanaf ${from}` : ""}`
+    }
+    const upcomingHere = getUpcomingOverwerkTripOnShip(member.id, viewShipId, trips)
+    if (upcomingHere) {
+      const from = formatOverwerkStartDate(upcomingHere)
+      return from ? `Overwerk vanaf ${from}` : "Overwerk"
+    }
+    return null
   }
 
   const guest = getActiveOverwerkTripOnShip(member.id, viewShipId, trips)
-  if (!guest) return null
-  const until = formatOverwerkUntilDate(guest)
-  return `Aflosser / overwerker${until ? ` t/m ${until}` : ""}`
+  if (guest) {
+    const until = formatOverwerkUntilDate(guest)
+    return `Aflosser / overwerker${until ? ` t/m ${until}` : ""}`
+  }
+
+  const upcoming = getUpcomingOverwerkTripOnShip(member.id, viewShipId, trips)
+  if (!upcoming) return null
+  const from = formatOverwerkStartDate(upcoming)
+  return from ? `Overwerk vanaf ${from}` : "Overwerk"
 }
 
 /** Actieve overwerk-reizen waarvan de einddatum verstreken is — af te sluiten als voltooid. */
@@ -658,6 +797,7 @@ export function shouldShowMemberOnShipOverview(
   if (member.status === "nog-in-te-delen" && !member.is_dummy) return false
 
   if (getActiveOverwerkTripOnShip(member.id, shipId, trips)) return true
+  if (getUpcomingOverwerkTripOnShip(member.id, shipId, trips)) return true
 
   if (member.ship_id !== shipId) {
     if (member.position === "Aflosser") {

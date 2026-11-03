@@ -17,6 +17,7 @@ import {
   getActiveOverwerkTripOnShip,
   getActiveOverwerkTripAwayFromHomeShip,
   getOverwerkCardLabel,
+  getUpcomingOverwerkTripOnShip,
   shouldShowMemberOnShipOverview,
 } from "@/utils/overwerker-availability"
 import { format } from "date-fns"
@@ -633,7 +634,12 @@ export function ShipOverview() {
     const isOverigPersoneel = member.ship_id?.toString().toLowerCase().trim() === 'overig'
     /** Gast op dit schip via overwerk-reis: geen vast regime / "naar huis op" tonen */
     const isGuestOverwerker = Boolean(
-      overwerkLabel && overwerkLabel.startsWith("Aflosser / overwerker")
+      overwerkLabel &&
+        (overwerkLabel.startsWith("Aflosser / overwerker") ||
+          overwerkLabel.startsWith("Overwerk vanaf"))
+    )
+    const isPlannedGuestOverwerker = Boolean(
+      overwerkLabel && overwerkLabel.startsWith("Overwerk vanaf")
     )
     
     // Get A/B designation (niet voor aflossers of overig personeel)
@@ -660,11 +666,11 @@ export function ShipOverview() {
     return (
       <div
         id={`crew-${member.id}`}
-        className={`p-3 bg-white border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative ${isMovableLikeDummy ? 'opacity-75 border-dashed cursor-move' : ''} ${draggedDummyId === member.id ? 'opacity-50' : ''}`}
+        className={`p-3 border rounded-lg cursor-pointer transition-colors relative ${isPlannedGuestOverwerker ? 'bg-violet-100 hover:bg-violet-200' : 'bg-white hover:bg-gray-50'} ${isMovableLikeDummy ? 'opacity-75 border-dashed cursor-move' : ''} ${draggedDummyId === member.id ? 'opacity-50' : ''}`}
         style={{
-          backgroundColor: isMovableLikeDummy ? '#f9fafb' : (crewColorTags[member.id] || undefined),
+          backgroundColor: isMovableLikeDummy ? '#f9fafb' : (crewColorTags[member.id] || (isPlannedGuestOverwerker ? '#ede9fe' : undefined)),
           boxShadow: crewColorTags[member.id] && !isDummy ? "inset 0 0 0 2px rgba(0,0,0,0.05)" : undefined,
-          borderColor: isCopied ? "#eab308" : (highlightTargetId === `crew-${member.id}` ? "#f59e0b" : (borderColor || "#e5e7eb")),
+          borderColor: isCopied ? "#eab308" : (highlightTargetId === `crew-${member.id}` ? "#f59e0b" : (isPlannedGuestOverwerker ? "#7c3aed" : (borderColor || "#e5e7eb"))),
           borderWidth: "2px",
           transition: 'border-color 0.2s ease',
           backgroundImage: isMovableLikeDummy ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)' : undefined
@@ -859,7 +865,7 @@ export function ShipOverview() {
                   <span className="text-sm">{getNationalityFlag(member.nationality)}</span>
                 </>
               )}
-              {overwerkLabel && (
+              {overwerkLabel && !isPlannedGuestOverwerker && (
                 <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-normal whitespace-normal text-left max-w-[200px]">
                   {overwerkLabel}
                 </Badge>
@@ -901,6 +907,12 @@ export function ShipOverview() {
                 )
               })()}
             </div>
+
+            {isPlannedGuestOverwerker && overwerkLabel && (
+              <div className="mb-1.5 mr-12 rounded-md bg-violet-800 px-2.5 py-1.5 text-sm font-bold leading-snug text-white">
+                {overwerkLabel}
+              </div>
+            )}
 
             {/* Function - alleen tonen als geen dummy */}
             {!isDummy && (
@@ -1916,6 +1928,7 @@ export function ShipOverview() {
                                           }
                                           if (isUnavailableCrewMember(member)) return false
                                           if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
+                                          if (getUpcomingOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
                                           if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return false
                                           if (isExpectedStartInFuture(member.expected_start_date)) return false
                                           if (!member.regime) return member.status === "aan-boord"
@@ -1934,6 +1947,7 @@ export function ShipOverview() {
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
                                         if (isUnavailableCrewMember(member)) return false
                                         if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
+                                        if (getUpcomingOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
                                         if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return false
                                         if (isExpectedStartInFuture(member.expected_start_date)) return false
                                         if (!member.regime) return member.status === "aan-boord"
@@ -1980,6 +1994,7 @@ export function ShipOverview() {
                                           if (member.is_dummy === true || isCopiedCrewMember(member)) {
                                             return !dummyLocations[member.id] || dummyLocations[member.id] === 'thuis'
                                           }
+                                          if (getUpcomingOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
                                           if (isUnavailableCrewMember(member)) return false
                                           if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
                                           if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return true
@@ -1998,6 +2013,7 @@ export function ShipOverview() {
                                       {sortCrewByRank(shipCrew.filter((member: any) => {
                                         // Geen dummy's/kopieen hier (die worden apart getoond)
                                         if (member.is_dummy === true || isCopiedCrewMember(member)) return false
+                                        if (getUpcomingOverwerkTripOnShip(member.id, ship.id, trips || [])) return true
                                         if (isUnavailableCrewMember(member)) return false
                                         if (getActiveOverwerkTripOnShip(member.id, ship.id, trips || [])) return false
                                         if (getActiveOverwerkTripAwayFromHomeShip(member.id, ship.id, trips || [])) return true
@@ -2041,11 +2057,11 @@ export function ShipOverview() {
                                       <UserX className="w-4 h-4 text-red-600" />
                                       <h5 className="font-medium text-red-700">{uiText.absent}</h5>
                                       <Badge className="bg-red-100 text-red-800 text-xs">
-                                        {shipCrew.filter((member: any) => isUnavailableCrewMember(member)).length}
+                                        {shipCrew.filter((member: any) => isUnavailableCrewMember(member) && !getUpcomingOverwerkTripOnShip(member.id, ship.id, trips || [])).length}
                                       </Badge>
                                     </div>
                                     <div className="space-y-3 min-h-[100px]">
-                                      {sortCrewByRank(shipCrew.filter((member: any) => isUnavailableCrewMember(member))).map((member: any) => (
+                                      {sortCrewByRank(shipCrew.filter((member: any) => isUnavailableCrewMember(member) && !getUpcomingOverwerkTripOnShip(member.id, ship.id, trips || []))).map((member: any) => (
                                         <CrewCard
                                           key={member.id}
                                           member={member}
