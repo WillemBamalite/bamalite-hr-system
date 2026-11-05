@@ -11,6 +11,7 @@ import {
   parseLocalDate,
 } from '@/utils/regime-calculator'
 import { hasOutOfServiceStatus, parseCrewDate } from '@/utils/crew-filters'
+import { appendCrewHistory } from '@/utils/crew-personal-history'
 import { parseLoanInstallmentSchedule } from '@/utils/loan-installments'
 // Function to calculate work days for vaste dienst aflossers based on hours
 // Uses 12-hour increments: 0-12h = 0.5 day, 12-24h = 1.0 day, etc.
@@ -107,6 +108,15 @@ export function calculateWorkDaysVasteDienst(startDate: string, startTime: strin
   return dayCredits
 }
 
+async function saveCrewFields(id: string, fields: Record<string, unknown>) {
+  const first = await supabase.from('crew').update(fields).eq('id', id)
+  if (first.error && Object.prototype.hasOwnProperty.call(fields, 'assignment_history')) {
+    const { assignment_history: _history, ...rest } = fields
+    return supabase.from('crew').update(rest).eq('id', id)
+  }
+  return first
+}
+
 // Activeer bemanningsleden op hun startdatum (lokale datum, geen UTC-shift).
 async function autoActivateCrewMembers(crewData: any[]): Promise<any[]> {
   let updatedCrew = [...crewData]
@@ -121,16 +131,22 @@ async function autoActivateCrewMembers(crewData: any[]): Promise<any[]> {
       isLocalDateOnOrBeforeToday(member.expected_start_date)
     ) {
       const startDate = getLocalDateString(parseLocalDate(member.expected_start_date))
-      const activationUpdate = {
+      const history = appendCrewHistory(member, {
+        status: 'aan-boord',
+        ship_id: member.ship_id,
+        from: startDate,
+      })
+      const activationUpdate: Record<string, unknown> = {
         status: 'aan-boord',
         on_board_since: startDate,
         thuis_sinds: null,
         expected_start_date: null,
         sub_status: null,
       }
+      if (history) activationUpdate.assignment_history = history
 
       try {
-        const { error } = await supabase.from('crew').update(activationUpdate).eq('id', member.id)
+        const { error } = await saveCrewFields(member.id, activationUpdate)
         if (error) {
           console.error('Error auto-activating crew member:', error)
         } else {
@@ -155,9 +171,14 @@ async function autoRepairFormerCrewStatus(crewData: any[]): Promise<any[]> {
     if (hasOutOfServiceStatus(member)) continue
     if (!parseCrewDate(member?.out_of_service_date)) continue
 
-    const repair = { status: 'uit-dienst', ship_id: null as string | null }
+    const history = appendCrewHistory(member, {
+      status: 'uit-dienst',
+      ship_id: null,
+    })
+    const repair: Record<string, unknown> = { status: 'uit-dienst', ship_id: null }
+    if (history) repair.assignment_history = history
     try {
-      const { error } = await supabase.from('crew').update(repair).eq('id', member.id)
+      const { error } = await saveCrewFields(member.id, repair)
       if (error) {
         console.error(`Error repairing former crew status for ${member.first_name} ${member.last_name}:`, error)
       } else {
@@ -181,14 +202,21 @@ async function autoRotateCrewMembers(crewData: any[]): Promise<any[]> {
     if (hasOutOfServiceStatus(member)) continue
     const sync = getRotationSyncUpdate(member)
     if (!sync) continue
+    const history = appendCrewHistory(member, {
+      status: sync.status,
+      ship_id: member.ship_id,
+      from: sync.on_board_since || sync.thuis_sinds,
+    })
+    const payload: Record<string, unknown> = { ...sync }
+    if (history) payload.assignment_history = history
 
     try {
-      const { error } = await supabase.from('crew').update(sync).eq('id', member.id)
+      const { error } = await saveCrewFields(member.id, payload)
       if (error) {
         console.error(`Error rotating ${member.first_name} ${member.last_name}:`, error)
       } else {
         updatedCrew = updatedCrew.map((row) =>
-          row.id === member.id ? { ...row, ...sync } : row,
+          row.id === member.id ? { ...row, ...payload } : row,
         )
       }
     } catch (err) {
@@ -1356,13 +1384,30 @@ export function useSupabaseData() {
   const updateCrew = async (id: string, updates: any) => {
     try {
       console.log('Updating crew member in Supabase:', id, updates)
-      
-      const { data, error } = await supabase
+      const current = crew.find((member: any) => member.id === id)
+      let from: string | null = null
+      if (updates?.status === 'aan-boord' && updates?.on_board_since) from = updates.on_board_since
+      else if (updates?.status === 'thuis' && updates?.thuis_sinds) from = updates.thuis_sinds
+      const history = appendCrewHistory(current, {
+        status: updates && Object.prototype.hasOwnProperty.call(updates, 'status') ? updates.status : undefined,
+        ship_id: updates && Object.prototype.hasOwnProperty.call(updates, 'ship_id') ? updates.ship_id : undefined,
+        from,
+      })
+      const payload = history ? { ...updates, assignment_history: history } : updates
+
+      let { data, error } = await supabase
         .from('crew')
-        .update(updates)
+        .update(payload)
         .eq('id', id)
         .select()
         .single()
+
+      if (error && payload.assignment_history) {
+        const { assignment_history: _history, ...rest } = payload
+        const retry = await supabase.from('crew').update(rest).eq('id', id).select().single()
+        data = retry.data
+        error = retry.error
+      }
 
       if (error) {
         const msg =

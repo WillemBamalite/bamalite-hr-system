@@ -6,7 +6,7 @@ import { CrewMemberHeader } from "@/components/crew/crew-member-header"
 import { CrewMemberProfile } from "@/components/crew/crew-member-profile"
 import { CrewMemberNotes } from "@/components/crew/crew-member-notes"
 import { CrewMemberStatusChanges } from "@/components/crew/crew-member-status-changes"
-import { CrewMemberShipHistory } from "@/components/crew/crew-member-ship-history"
+import { CrewMemberShipHistoryButton } from "@/components/crew/crew-member-ship-history"
 import { CrewMemberPrint } from "@/components/crew/crew-member-print"
 import Link from "next/link"
 import { MobileHeaderNav } from "@/components/ui/mobile-header-nav"
@@ -76,7 +76,7 @@ function BemanningslidContent({ params }: Props) {
                 {role === "admin_full" && (
                   <>
                     <CrewMemberStatusChanges crewMemberId={resolvedParams.id} />
-                    <CrewMemberShipHistory crewMemberId={resolvedParams.id} />
+                    <CrewMemberShipHistoryButton crewMemberId={resolvedParams.id} />
                   </>
                 )}
               </div>
