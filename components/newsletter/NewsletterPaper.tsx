@@ -220,7 +220,6 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
   const monthTitleCap = monthTitle.charAt(0).toUpperCase() + monthTitle.slice(1)
   const edition = String(month.getMonth() + 1).padStart(2, "0")
   const year = month.getFullYear()
-  const footerLeft = `Bamalite Scheepsnieuws  •  ${monthTitleCap}  •  Interne distributie`.replace(/["\\]/g, "")
 
   const kpis = content.kpis.filter((item) => item.value.trim() || item.title.trim())
   const spotlight = content.spotlight
@@ -442,12 +441,6 @@ export function NewsletterPaper({ month, events, content, crew, ships }: Props) 
       @page {
         size: A4 portrait;
         margin: 11mm 12mm 16mm 12mm;
-        @bottom-left {
-          content: "${footerLeft}";
-          font-family: "Segoe UI", sans-serif;
-          font-size: 8pt;
-          color: #6b7280;
-        }
         @bottom-right {
           content: counter(page, decimal-leading-zero) "  /  " counter(pages, decimal-leading-zero);
           font-family: "Segoe UI", sans-serif;
