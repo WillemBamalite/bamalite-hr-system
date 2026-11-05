@@ -39,7 +39,8 @@ import {
   Wallet,
   RefreshCw,
   Trash2,
-  Printer
+  Printer,
+  Pencil
 } from 'lucide-react'
 
 type InstallmentDialogState = {
@@ -196,6 +197,14 @@ export default function LeningenPage() {
     loanId: "",
     loanName: ""
   })
+  const [editLoanDialog, setEditLoanDialog] = useState<{
+    isOpen: boolean
+    loan: any | null
+    amount: string
+  }>({ isOpen: false, loan: null, amount: "" })
+  const [editingPaymentIndex, setEditingPaymentIndex] = useState<number | null>(null)
+  const [paymentEdit, setPaymentEdit] = useState({ date: "", amount: "", note: "" })
+  const [savingLoanEdit, setSavingLoanEdit] = useState(false)
   const [expandedPaymentHistory, setExpandedPaymentHistory] = useState<Record<string, boolean>>({})
   const [searchTerm, setSearchTerm] = useState("")
   const defaultNewLoanData = () => ({
@@ -487,6 +496,135 @@ export default function LeningenPage() {
     }
   }
 
+  const roundMoney = (value: number) => Math.round(value * 100) / 100
+
+  const toPaymentDateInput = (value: string) => {
+    const raw = String(value || "")
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10)
+    const parsed = new Date(raw)
+    if (Number.isNaN(parsed.getTime())) return ""
+    return format(parsed, "yyyy-MM-dd")
+  }
+
+  const buildLoanBalance = (amount: number, history: any[], completedAt?: string | null) => {
+    const paid = roundMoney(history.reduce((sum, entry) => sum + Number(entry?.amount || 0), 0))
+    const remaining = roundMoney(amount - paid)
+    const settled = remaining <= 0
+    return {
+      amount: roundMoney(amount),
+      amount_paid: paid,
+      amount_remaining: Math.max(0, remaining),
+      status: settled ? "voltooid" : "open",
+      completed_at: settled ? completedAt || new Date().toISOString() : null,
+      payment_history: history,
+    }
+  }
+
+  const openEditLoanDialog = (loan: any) => {
+    setEditLoanDialog({
+      isOpen: true,
+      loan,
+      amount: String(loan.amount ?? ""),
+    })
+    setEditingPaymentIndex(null)
+    setPaymentEdit({ date: "", amount: "", note: "" })
+  }
+
+  const closeEditLoanDialog = () => {
+    setEditLoanDialog({ isOpen: false, loan: null, amount: "" })
+    setEditingPaymentIndex(null)
+  }
+
+  const saveLoanAmount = async () => {
+    const loan = editLoanDialog.loan
+    if (!loan) return
+    const parsed = parseFloat(String(editLoanDialog.amount).replace(",", "."))
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      alert("Vul een geldig hoofdbedrag in")
+      return
+    }
+    const history = Array.isArray(loan.payment_history) ? loan.payment_history : []
+    const updates = buildLoanBalance(parsed, history, loan.completed_at)
+    setSavingLoanEdit(true)
+    try {
+      await updateLoan(loan.id, updates)
+      setEditLoanDialog((prev) => ({
+        ...prev,
+        amount: String(updates.amount),
+        loan: { ...prev.loan, ...updates },
+      }))
+    } catch (error) {
+      console.error("Error updating loan amount:", error)
+      alert("Fout bij wijzigen van het hoofdbedrag")
+    } finally {
+      setSavingLoanEdit(false)
+    }
+  }
+
+  const savePaymentEdit = async () => {
+    const loan = editLoanDialog.loan
+    if (!loan || editingPaymentIndex == null) return
+    const parsed = parseFloat(String(paymentEdit.amount).replace(",", "."))
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      alert("Vul een geldig betaald bedrag in")
+      return
+    }
+    if (!paymentEdit.date) {
+      alert("Vul een datum in")
+      return
+    }
+    const history = [...(Array.isArray(loan.payment_history) ? loan.payment_history : [])]
+    const current = history[editingPaymentIndex]
+    if (!current) return
+    history[editingPaymentIndex] = {
+      ...current,
+      date: `${paymentEdit.date}T12:00:00`,
+      amount: roundMoney(parsed),
+      note: paymentEdit.note.trim(),
+    }
+    const updates = buildLoanBalance(Number(loan.amount), history, loan.completed_at)
+    setSavingLoanEdit(true)
+    try {
+      await updateLoan(loan.id, updates)
+      setEditLoanDialog((prev) => ({
+        ...prev,
+        loan: { ...prev.loan, ...updates },
+      }))
+      setEditingPaymentIndex(null)
+    } catch (error) {
+      console.error("Error updating payment:", error)
+      alert("Fout bij wijzigen van de betaling")
+    } finally {
+      setSavingLoanEdit(false)
+    }
+  }
+
+  const deletePayment = async (index: number) => {
+    const loan = editLoanDialog.loan
+    if (!loan) return
+    const history = [...(Array.isArray(loan.payment_history) ? loan.payment_history : [])]
+    const payment = history[index]
+    if (!payment) return
+    const label = `€${Number(payment.amount || 0).toFixed(2)} op ${format(new Date(payment.date), "dd-MM-yyyy")}`
+    if (!confirm(`Betaling ${label} verwijderen? Het openstaande bedrag wordt opnieuw berekend.`)) return
+    history.splice(index, 1)
+    const updates = buildLoanBalance(Number(loan.amount), history, loan.completed_at)
+    setSavingLoanEdit(true)
+    try {
+      await updateLoan(loan.id, updates)
+      setEditLoanDialog((prev) => ({
+        ...prev,
+        loan: { ...prev.loan, ...updates },
+      }))
+      setEditingPaymentIndex(null)
+    } catch (error) {
+      console.error("Error deleting payment:", error)
+      alert("Fout bij verwijderen van de betaling")
+    } finally {
+      setSavingLoanEdit(false)
+    }
+  }
+
   const togglePaymentHistory = (loanId: string) => {
     setExpandedPaymentHistory((prev) => ({
       ...prev,
@@ -739,6 +877,14 @@ export default function LeningenPage() {
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => openEditLoanDialog(loan)}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Wijzigen
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => setPaymentDialog({
                               isOpen: true,
                               loanId: loan.id,
@@ -881,6 +1027,14 @@ export default function LeningenPage() {
                           <Badge className="bg-green-100 text-green-800">
                             Voltooid
                           </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEditLoanDialog(loan)}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Wijzigen
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -1154,6 +1308,128 @@ export default function LeningenPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editLoanDialog.isOpen} onOpenChange={(open) => !open && closeEditLoanDialog()}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Lening wijzigen</DialogTitle>
+          </DialogHeader>
+          {editLoanDialog.loan && (
+            <div className="space-y-5">
+              <p className="text-sm text-gray-600">
+                {editLoanDialog.loan.name}. Betaald en nog open worden opnieuw berekend uit het hoofdbedrag en de betalingen.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="edit-loan-amount">Hoofdbedrag (€)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="edit-loan-amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={editLoanDialog.amount}
+                    onChange={(e) => setEditLoanDialog((prev) => ({ ...prev, amount: e.target.value }))}
+                  />
+                  <Button onClick={saveLoanAmount} disabled={savingLoanEdit}>
+                    Opslaan
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-900">Betalingshistorie</p>
+                {(editLoanDialog.loan.payment_history || []).length === 0 ? (
+                  <p className="text-sm text-gray-500">Nog geen betalingen.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {editLoanDialog.loan.payment_history.map((payment: any, index: number) => (
+                      <div key={`${payment.date}-${index}`} className="rounded border p-2 space-y-2">
+                        {editingPaymentIndex === index ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <Label htmlFor={`pay-date-${index}`}>Datum</Label>
+                                <Input
+                                  id={`pay-date-${index}`}
+                                  type="date"
+                                  value={paymentEdit.date}
+                                  onChange={(e) => setPaymentEdit((prev) => ({ ...prev, date: e.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor={`pay-amount-${index}`}>Bedrag (€)</Label>
+                                <Input
+                                  id={`pay-amount-${index}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  value={paymentEdit.amount}
+                                  onChange={(e) => setPaymentEdit((prev) => ({ ...prev, amount: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label htmlFor={`pay-note-${index}`}>Omschrijving</Label>
+                              <Input
+                                id={`pay-note-${index}`}
+                                value={paymentEdit.note}
+                                onChange={(e) => setPaymentEdit((prev) => ({ ...prev, note: e.target.value }))}
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={() => setEditingPaymentIndex(null)}>
+                                Annuleren
+                              </Button>
+                              <Button size="sm" onClick={savePaymentEdit} disabled={savingLoanEdit}>
+                                Opslaan
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 text-sm">
+                              <p className="font-medium text-gray-900">€{Number(payment.amount || 0).toFixed(2)}</p>
+                              <p className="text-xs text-gray-500">
+                                {format(new Date(payment.date), "dd-MM-yyyy")}
+                                {payment.note ? ` · ${payment.note}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={savingLoanEdit}
+                                onClick={() => {
+                                  setEditingPaymentIndex(index)
+                                  setPaymentEdit({
+                                    date: toPaymentDateInput(payment.date),
+                                    amount: String(payment.amount ?? ""),
+                                    note: payment.note || "",
+                                  })
+                                }}
+                              >
+                                Wijzigen
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-700"
+                                disabled={savingLoanEdit}
+                                onClick={() => deletePayment(index)}
+                              >
+                                Verwijderen
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
