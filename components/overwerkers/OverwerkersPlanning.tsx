@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { Card, CardContent } from "@/components/ui/card"
@@ -44,6 +44,7 @@ import {
   type OverwerkSettlementType,
 } from "@/utils/overwerk-settlement"
 import { StandBackManagement } from "@/components/sick-leave/stand-back-management"
+import { supabase } from "@/lib/supabase"
 
 export type OverwerkersPageTab = "planning" | "alle" | "terug-te-staan" | "reizen"
 
@@ -144,17 +145,99 @@ export interface OverwerkersPlanningProps {
   initialPageTab?: OverwerkersPageTab
 }
 
-function memberName(member: { first_name?: string; last_name?: string }) {
-  return `${member.first_name || ""} ${member.last_name || ""}`.trim()
+const OVERWERK_FUNCTIES = [
+  "Kapitein",
+  "2e kapitein",
+  "Stuurman",
+  "Vol Matroos",
+  "Matroos",
+  "Lichtmatroos",
+  "Deksman",
+  "Kok",
+] as const
+
+type OpenPlek = {
+  id: string
+  ship_id: string
+  start_date: string
+  end_date: string
+  position: string
 }
 
-function matchesSearch(
-  member: { first_name?: string; last_name?: string; position?: string },
-  q: string
+const OPEN_PLEKKEN_KEY = "overwerk-open-plekken"
+
+function readLocalOpenPlekken(): OpenPlek[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(OPEN_PLEKKEN_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeLocalOpenPlekken(items: OpenPlek[]) {
+  window.localStorage.setItem(OPEN_PLEKKEN_KEY, JSON.stringify(items))
+}
+
+function tripDateOnly(value?: string | null) {
+  if (!value) return null
+  const raw = String(value).trim()
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10)
+  return null
+}
+
+function sameFunctie(needed: string, actual?: string | null) {
+  return needed.trim().toLowerCase() === String(actual || "").trim().toLowerCase()
+}
+
+function tripOverlapsOpenPlek(
+  plek: OpenPlek,
+  trip: {
+    ship_id?: string | null
+    start_date?: string | null
+    end_date?: string | null
+    start_datum?: string | null
+    eind_datum?: string | null
+  }
 ) {
-  if (!q) return true
-  const name = memberName(member).toLowerCase()
-  return name.includes(q) || (member.position || "").toLowerCase().includes(q)
+  if (!plek.ship_id || plek.ship_id !== trip.ship_id) return false
+  const tripStart = tripDateOnly(trip.start_datum || trip.start_date)
+  const plekStart = tripDateOnly(plek.start_date)
+  const plekEnd = tripDateOnly(plek.end_date) || plekStart
+  if (!tripStart || !plekStart || !plekEnd) return false
+  if (tripStart > plekEnd) return false
+  const tripEnd = tripDateOnly(trip.eind_datum || trip.end_date)
+  if (tripEnd && tripEnd < plekStart) return false
+  return true
+}
+
+function findFilledOpenPlekIds(
+  plekken: OpenPlek[],
+  trips: OverwerkersPlanningProps["trips"],
+  crew: OverwerkersPlanningProps["crew"]
+) {
+  const used = new Set<string>()
+  const active = new Set(["gepland", "ingedeeld", "actief"])
+  for (const trip of trips) {
+    if (!trip.aflosser_id || !trip.ship_id) continue
+    if (!isOverwerkTrip(trip)) continue
+    if (trip.status && !active.has(trip.status)) continue
+    const member = crew.find((person) => person.id === trip.aflosser_id)
+    const overlapping = plekken.filter(
+      (plek) => !used.has(plek.id) && tripOverlapsOpenPlek(plek, trip)
+    )
+    if (overlapping.length === 0) continue
+    const matched = overlapping.find((plek) => sameFunctie(plek.position, member?.position))
+    const chosen = matched || (overlapping.length === 1 ? overlapping[0] : undefined)
+    if (chosen) used.add(chosen.id)
+  }
+  return [...used]
+}
+
+function memberName(member: { first_name?: string; last_name?: string }) {
+  return `${member.first_name || ""} ${member.last_name || ""}`.trim()
 }
 
 export function OverwerkersPlanning({
@@ -182,12 +265,150 @@ export function OverwerkersPlanning({
   const nowTime = format(new Date(), "HH:mm")
   const [pageTab, setPageTab] = useState<PageTab>(initialPageTab)
   const [planningDate, setPlanningDate] = useState(today)
-  const [search, setSearch] = useState("")
   const [deletingTripId, setDeletingTripId] = useState<string | null>(null)
+  const [openPlekken, setOpenPlekken] = useState<OpenPlek[]>([])
+  const [plekShipId, setPlekShipId] = useState("")
+  const [plekStart, setPlekStart] = useState("")
+  const [plekEnd, setPlekEnd] = useState("")
+  const [plekPosition, setPlekPosition] = useState("")
+  const [savingPlek, setSavingPlek] = useState(false)
+  const openPlekkenRemote = useRef(false)
 
   useEffect(() => {
     setPageTab(initialPageTab)
   }, [initialPageTab])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase
+        .from("overwerk_open_plekken")
+        .select("id, ship_id, start_date, end_date, position")
+        .order("start_date", { ascending: true })
+      if (cancelled) return
+      if (error) {
+        openPlekkenRemote.current = false
+        setOpenPlekken(readLocalOpenPlekken())
+        return
+      }
+      openPlekkenRemote.current = true
+      const remote = (data || []) as OpenPlek[]
+      if (remote.length === 0) {
+        const local = readLocalOpenPlekken()
+        if (local.length > 0) {
+          const { data: inserted, error: insertError } = await supabase
+            .from("overwerk_open_plekken")
+            .insert(
+              local.map((plek) => ({
+                id: plek.id,
+                ship_id: plek.ship_id,
+                start_date: plek.start_date,
+                end_date: plek.end_date,
+                position: plek.position,
+              }))
+            )
+            .select("id, ship_id, start_date, end_date, position")
+          if (!cancelled && !insertError && inserted) {
+            writeLocalOpenPlekken([])
+            setOpenPlekken(
+              (inserted as OpenPlek[]).sort((a, b) => a.start_date.localeCompare(b.start_date))
+            )
+            return
+          }
+        }
+      }
+      if (!cancelled) setOpenPlekken(remote)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const addOpenPlek = async () => {
+    if (!plekShipId || !plekStart || !plekEnd || !plekPosition) {
+      alert("Vul schip, van, tot en functie in")
+      return
+    }
+    if (plekEnd < plekStart) {
+      alert("De einddatum ligt voor de startdatum")
+      return
+    }
+    setSavingPlek(true)
+    const plek: OpenPlek = {
+      id: crypto.randomUUID(),
+      ship_id: plekShipId,
+      start_date: plekStart,
+      end_date: plekEnd,
+      position: plekPosition,
+    }
+    try {
+      if (openPlekkenRemote.current) {
+        const { error } = await supabase.from("overwerk_open_plekken").insert([
+          {
+            id: plek.id,
+            ship_id: plek.ship_id,
+            start_date: plek.start_date,
+            end_date: plek.end_date,
+            position: plek.position,
+          },
+        ])
+        if (error) throw error
+      } else {
+        writeLocalOpenPlekken(
+          [...openPlekken, plek].sort((a, b) => a.start_date.localeCompare(b.start_date))
+        )
+      }
+      setOpenPlekken((prev) =>
+        [...prev, plek].sort((a, b) => a.start_date.localeCompare(b.start_date))
+      )
+      setPlekStart("")
+      setPlekEnd("")
+      setPlekPosition("")
+    } catch (error) {
+      console.error("Open plek opslaan mislukt:", error)
+      alert("De open plek kon niet worden opgeslagen")
+    } finally {
+      setSavingPlek(false)
+    }
+  }
+
+  const removeOpenPlek = async (id: string) => {
+    const previous = openPlekken
+    const next = previous.filter((plek) => plek.id !== id)
+    setOpenPlekken(next)
+    if (!openPlekkenRemote.current) {
+      writeLocalOpenPlekken(next)
+      return
+    }
+    const { error } = await supabase.from("overwerk_open_plekken").delete().eq("id", id)
+    if (error) {
+      console.error("Open plek verwijderen mislukt:", error)
+      setOpenPlekken(previous)
+      alert("De open plek kon niet worden verwijderd")
+    }
+  }
+
+  useEffect(() => {
+    if (openPlekken.length === 0) return
+    const filledIds = findFilledOpenPlekIds(openPlekken, trips, crew)
+    if (filledIds.length === 0) return
+    const filled = new Set(filledIds)
+    const next = openPlekken.filter((plek) => !filled.has(plek.id))
+    setOpenPlekken(next)
+    if (!openPlekkenRemote.current) {
+      writeLocalOpenPlekken(next)
+      return
+    }
+    filledIds.forEach((id) => {
+      supabase
+        .from("overwerk_open_plekken")
+        .delete()
+        .eq("id", id)
+        .then(({ error }: { error: { message?: string } | null }) => {
+          if (error) console.error("Ingedeelde open plek verwijderen mislukt:", error)
+        })
+    })
+  }, [openPlekken, trips, crew])
   const [assignDialog, setAssignDialog] = useState<{ memberId: string; name: string } | null>(null)
   const [assignShipId, setAssignShipId] = useState("")
   const [assignStartDate, setAssignStartDate] = useState(today)
@@ -249,8 +470,6 @@ export function OverwerkersPlanning({
     }>
   }, [overwerkerIds, crew, planningDate, trips, getOverwerkerPeriods, getShipName])
 
-  const q = search.trim().toLowerCase()
-
   const planningByColumn = useMemo(() => {
     const cols: Record<
       Exclude<OverwerkerPlanningColumn, null>,
@@ -261,23 +480,19 @@ export function OverwerkersPlanning({
       echt_beschikbaar: [],
       mogelijk_beschikbaar: [],
     }
-    rows
-      .filter(({ member }) => matchesSearch(member, q))
-      .forEach((row) => {
-        const col = row.status.planningColumn
-        if (col) cols[col].push(row)
-      })
+    rows.forEach((row) => {
+      const col = row.status.planningColumn
+      if (col) cols[col].push(row)
+    })
     const sortByName = (a: (typeof rows)[0], b: (typeof rows)[0]) =>
       memberName(a.member).localeCompare(memberName(b.member), "nl")
     ;(Object.keys(cols) as Array<keyof typeof cols>).forEach((k) => cols[k].sort(sortByName))
     return cols
-  }, [rows, q])
+  }, [rows])
 
   const alleRows = useMemo(() => {
-    return rows
-      .filter(({ member }) => matchesSearch(member, q))
-      .sort((a, b) => memberName(a.member).localeCompare(memberName(b.member), "nl"))
-  }, [rows, q])
+    return [...rows].sort((a, b) => memberName(a.member).localeCompare(memberName(b.member), "nl"))
+  }, [rows])
 
   const planningCounts = useMemo(
     () => ({
@@ -755,14 +970,106 @@ export function OverwerkersPlanning({
         </CardContent>
       </Card>
 
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <Input
-          placeholder="Zoek op naam of functie..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
-      </div>
+      <Card className="border-amber-200 bg-amber-50/50">
+        <CardContent className="pt-4 pb-4 space-y-3">
+          <div>
+            <p className="font-semibold text-sm">Nog in te delen</p>
+            <p className="text-xs text-gray-600">
+              Schip, periode en functie die nog openstaan. De regel gaat weg zodra iemand daar voor die datum is ingedeeld.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_auto_auto_minmax(0,1fr)_auto] gap-2 items-end">
+            <div>
+              <Label htmlFor="open-plek-schip">Schip</Label>
+              <Select value={plekShipId} onValueChange={setPlekShipId}>
+                <SelectTrigger id="open-plek-schip" className="bg-white">
+                  <SelectValue placeholder="Kies schip" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...ships]
+                    .sort((a, b) => a.name.localeCompare(b.name, "nl"))
+                    .map((ship) => (
+                      <SelectItem key={ship.id} value={ship.id}>
+                        {ship.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="open-plek-van">Van</Label>
+              <Input
+                id="open-plek-van"
+                type="date"
+                value={plekStart}
+                onChange={(e) => setPlekStart(e.target.value)}
+                className="bg-white"
+              />
+            </div>
+            <div>
+              <Label htmlFor="open-plek-tot">Tot</Label>
+              <Input
+                id="open-plek-tot"
+                type="date"
+                value={plekEnd}
+                onChange={(e) => setPlekEnd(e.target.value)}
+                className="bg-white"
+              />
+            </div>
+            <div>
+              <Label htmlFor="open-plek-functie">Functie</Label>
+              <Select value={plekPosition} onValueChange={setPlekPosition}>
+                <SelectTrigger id="open-plek-functie" className="bg-white">
+                  <SelectValue placeholder="Kies functie" />
+                </SelectTrigger>
+                <SelectContent>
+                  {OVERWERK_FUNCTIES.map((functie) => (
+                    <SelectItem key={functie} value={functie}>
+                      {functie}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={addOpenPlek} disabled={savingPlek} className="shrink-0">
+              <Plus className="w-4 h-4 mr-2" />
+              Toevoegen
+            </Button>
+          </div>
+          {openPlekken.length === 0 ? (
+            <p className="text-xs text-gray-500">Nog geen open plekken.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {openPlekken.map((plek) => (
+                <div
+                  key={plek.id}
+                  className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-white px-3 py-2"
+                >
+                  <p className="text-sm text-gray-900">
+                    <span className="font-medium">{getShipName(plek.ship_id) || "Onbekend schip"}</span>
+                    <span className="text-gray-500">
+                      {" "}
+                      · {formatDateDDMMYYYY(plek.start_date) || plek.start_date} t/m{" "}
+                      {formatDateDDMMYYYY(plek.end_date) || plek.end_date} · {plek.position}
+                    </span>
+                  </p>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 text-gray-500 hover:text-red-700"
+                    title="Open plek verwijderen"
+                    aria-label="Open plek verwijderen"
+                    onClick={() => removeOpenPlek(plek.id)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Tabs value={pageTab} onValueChange={(v) => setPageTab(v as PageTab)}>
         <TabsList>
@@ -787,7 +1094,7 @@ export function OverwerkersPlanning({
               <CardContent className="py-12 text-center text-gray-500">
                 {rows.length === 0
                   ? "Nog geen overwerkers. Voeg iemand toe."
-                  : "Geen resultaten voor deze zoekopdracht."}
+                  : "Geen overwerkers om te tonen."}
               </CardContent>
             </Card>
           ) : (
