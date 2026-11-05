@@ -74,26 +74,46 @@ export default function MedischeKeuringenPage() {
     return isBefore(nextDate, new Date())
   }
 
+  // Proeftijd start = aparte datum, anders de indienst-datum die al op het profiel staat.
+  const getProeftijdStart = (member: any): string | null => {
+    return member.proeftijd_datum || member.in_dienst_vanaf || null
+  }
+
   // Helper functie voor nieuwe bemanningsleden: deadline = proeftijd + 3 maanden + 1 jaar
   const calculateNewMemberDeadline = (member: any): Date | null => {
-    if (!member.proeftijd_datum) return null
+    const startRaw = getProeftijdStart(member)
+    if (!startRaw) return null
     
-    const proeftijdStart = new Date(member.proeftijd_datum)
+    const proeftijdStart = new Date(startRaw)
     // Proeftijd 3 maanden + dan 1 jaar de tijd voor keuring
     return addYears(addMonths(proeftijdStart, 3), 1)
   }
 
   // Helper functie voor proeftijd einddatum: proeftijd + 3 maanden
   const calculateProeftijdEinddatum = (member: any): Date | null => {
-    if (!member.proeftijd_datum) return null
+    const startRaw = getProeftijdStart(member)
+    if (!startRaw) return null
     
-    const proeftijdStart = new Date(member.proeftijd_datum)
+    const proeftijdStart = new Date(startRaw)
     return addMonths(proeftijdStart, 3)
   }
 
-  // Helper functie om te bepalen of iemand net in dienst is (heeft proeftijd_datum maar nog geen keuring)
+  // Nog geen keuring, wel een startdatum (proeftijd of in dienst).
   const isNewMember = (member: any): boolean => {
-    return !member.laatste_keuring_datum && !!member.proeftijd_datum
+    return !member.laatste_keuring_datum && !!getProeftijdStart(member)
+  }
+
+  // Geen keuring en geen enkele startdatum: anders verdwijnt het bemanningslid uit alle lijsten.
+  const isMissingExaminationRecord = (member: any): boolean => {
+    return !member.laatste_keuring_datum && !getProeftijdStart(member)
+  }
+
+  const isVerlopenMember = (member: any): boolean => {
+    const nextExaminationDate = calculateNextExaminationDate(member)
+    const newMemberDeadline = calculateNewMemberDeadline(member)
+    const isOverdue = nextExaminationDate ? isExaminationOverdue(nextExaminationDate) : false
+    const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
+    return isOverdue || (isNewMember(member) && isNewMemberPastDeadline) || isMissingExaminationRecord(member)
   }
 
   // Helper functie om member card te renderen
@@ -112,7 +132,11 @@ export default function MedischeKeuringenPage() {
 
     if (category === "verlopen") {
       statusColor = "bg-red-50 border-red-200"
-      statusBadge = <Badge className="bg-red-600 text-xs px-1.5 py-0.5">Verlopen</Badge>
+      statusBadge = (
+        <Badge className="bg-red-600 text-xs px-1.5 py-0.5">
+          {!member.laatste_keuring_datum ? "Geen keuring" : "Verlopen"}
+        </Badge>
+      )
     } else if (category === "binnenkort") {
       statusColor = "bg-orange-50 border-orange-200"
       statusBadge = <Badge className="bg-orange-600 text-xs px-1.5 py-0.5">Binnenkort</Badge>
@@ -161,7 +185,7 @@ export default function MedischeKeuringenPage() {
             )}
             
             {/* Keurings info */}
-            {hasNoExamination && member.proeftijd_datum ? (
+            {hasNoExamination && getProeftijdStart(member) ? (
               <>
                 {proeftijdEinddatum && (
                   <div className="flex items-center gap-1.5">
@@ -228,7 +252,7 @@ export default function MedischeKeuringenPage() {
     setEditForm({
       laatste_keuring_datum: member.laatste_keuring_datum ? format(new Date(member.laatste_keuring_datum), 'yyyy-MM-dd') : "",
       fit_verklaard_jaren: member.fit_verklaard_jaren ? String(member.fit_verklaard_jaren) : "",
-      proeftijd_datum: member.proeftijd_datum ? format(new Date(member.proeftijd_datum), 'yyyy-MM-dd') : ""
+      proeftijd_datum: getProeftijdStart(member) ? format(new Date(getProeftijdStart(member) as string), 'yyyy-MM-dd') : ""
     })
     setEditDialogOpen(true)
   }
@@ -319,8 +343,7 @@ export default function MedischeKeuringenPage() {
     const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
     const hasNoExamination = !member.laatste_keuring_datum
 
-    // Zelfde logica als 'Verlopen' lijst (geen oude medewerkers zonder proeftijd)
-    const countsAsOverdue = isOverdueVal || (isNewMember(member) && isNewMemberPastDeadline)
+    const countsAsOverdue = isVerlopenMember(member)
     if (countsAsOverdue) stats.overdue++
 
     // Zelfde logica als 'Binnenkort' lijst (niet-overdue en binnen 3 maanden)
@@ -419,35 +442,15 @@ export default function MedischeKeuringenPage() {
         <div className="space-y-3">
           <div className="sticky top-0 bg-white z-10 pb-2 border-b-2 border-red-200">
             <h2 className="text-xl font-bold text-red-600 mb-2">Verlopen</h2>
-            <Badge className="bg-red-600">{activeCrew.filter((member: any) => {
-              const nextExaminationDate = calculateNextExaminationDate(member)
-              const newMemberDeadline = calculateNewMemberDeadline(member)
-              const isOverdue = nextExaminationDate ? isExaminationOverdue(nextExaminationDate) : false
-              const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
-              // Verlopen: heeft verlopen keuring OF nieuwe medewerker met verlopen deadline OF geen keuringsgegevens (oude medewerker zonder keuring)
-              return isOverdue || (isNewMember(member) && isNewMemberPastDeadline)
-            }).length}</Badge>
+            <Badge className="bg-red-600">{activeCrew.filter((member: any) => isVerlopenMember(member)).length}</Badge>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {activeCrew
-              .filter((member: any) => {
-                const nextExaminationDate = calculateNextExaminationDate(member)
-                const newMemberDeadline = calculateNewMemberDeadline(member)
-                const isOverdue = nextExaminationDate ? isExaminationOverdue(nextExaminationDate) : false
-                const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
-                // Verlopen: heeft verlopen keuring OF nieuwe medewerker met verlopen deadline OF geen keuringsgegevens (oude medewerker zonder keuring)
-                return isOverdue || (isNewMember(member) && isNewMemberPastDeadline)
-              })
+              .filter((member: any) => isVerlopenMember(member))
               .map((member: any) => renderMemberCard(member, "verlopen"))}
           </div>
           
-          {activeCrew.filter((member: any) => {
-            const nextExaminationDate = calculateNextExaminationDate(member)
-            const newMemberDeadline = calculateNewMemberDeadline(member)
-            const isOverdue = nextExaminationDate ? isExaminationOverdue(nextExaminationDate) : false
-            const isNewMemberPastDeadline = newMemberDeadline ? isBefore(newMemberDeadline, new Date()) : false
-            return isOverdue || (isNewMember(member) && isNewMemberPastDeadline)
-          }).length === 0 && (
+          {activeCrew.filter((member: any) => isVerlopenMember(member)).length === 0 && (
             <div className="col-span-full text-sm text-gray-500 italic text-center py-4">Geen verlopen keuringen</div>
           )}
         </div>

@@ -284,10 +284,11 @@ export function DashboardStats() {
       let dueSoon = 0
 
       activeCrewForMedical.forEach((member: any) => {
-        const isNewMember = !member.laatste_keuring_datum && !!member.proeftijd_datum
+        const proeftijdStartRaw = member.proeftijd_datum || member.in_dienst_vanaf
+        const isNewMember = !member.laatste_keuring_datum && !!proeftijdStartRaw
 
         if (isNewMember) {
-          const proeftijdStart = new Date(member.proeftijd_datum as string)
+          const proeftijdStart = new Date(proeftijdStartRaw as string)
           const deadline = addYears(addMonths(proeftijdStart, 3), 1)
           const diffDays = differenceInDays(deadline, new Date())
           if (isBefore(deadline, new Date())) {
@@ -298,8 +299,7 @@ export function DashboardStats() {
           return
         }
 
-        // Oude medewerkers zonder keuring/proeftijd: niet meetellen
-        if (!member.laatste_keuring_datum && !member.proeftijd_datum) {
+        if (!member.laatste_keuring_datum) {
           return
         }
 
