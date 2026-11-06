@@ -181,61 +181,6 @@ function writeLocalOpenPlekken(items: OpenPlek[]) {
   window.localStorage.setItem(OPEN_PLEKKEN_KEY, JSON.stringify(items))
 }
 
-function tripDateOnly(value?: string | null) {
-  if (!value) return null
-  const raw = String(value).trim()
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10)
-  return null
-}
-
-function sameFunctie(needed: string, actual?: string | null) {
-  return needed.trim().toLowerCase() === String(actual || "").trim().toLowerCase()
-}
-
-function tripOverlapsOpenPlek(
-  plek: OpenPlek,
-  trip: {
-    ship_id?: string | null
-    start_date?: string | null
-    end_date?: string | null
-    start_datum?: string | null
-    eind_datum?: string | null
-  }
-) {
-  if (!plek.ship_id || plek.ship_id !== trip.ship_id) return false
-  const tripStart = tripDateOnly(trip.start_datum || trip.start_date)
-  const plekStart = tripDateOnly(plek.start_date)
-  const plekEnd = tripDateOnly(plek.end_date) || plekStart
-  if (!tripStart || !plekStart || !plekEnd) return false
-  if (tripStart > plekEnd) return false
-  const tripEnd = tripDateOnly(trip.eind_datum || trip.end_date)
-  if (tripEnd && tripEnd < plekStart) return false
-  return true
-}
-
-function findFilledOpenPlekIds(
-  plekken: OpenPlek[],
-  trips: OverwerkersPlanningProps["trips"],
-  crew: OverwerkersPlanningProps["crew"]
-) {
-  const used = new Set<string>()
-  const active = new Set(["gepland", "ingedeeld", "actief"])
-  for (const trip of trips) {
-    if (!trip.aflosser_id || !trip.ship_id) continue
-    if (!isOverwerkTrip(trip)) continue
-    if (trip.status && !active.has(trip.status)) continue
-    const member = crew.find((person) => person.id === trip.aflosser_id)
-    const overlapping = plekken.filter(
-      (plek) => !used.has(plek.id) && tripOverlapsOpenPlek(plek, trip)
-    )
-    if (overlapping.length === 0) continue
-    const matched = overlapping.find((plek) => sameFunctie(plek.position, member?.position))
-    const chosen = matched || (overlapping.length === 1 ? overlapping[0] : undefined)
-    if (chosen) used.add(chosen.id)
-  }
-  return [...used]
-}
-
 function memberName(member: { first_name?: string; last_name?: string }) {
   return `${member.first_name || ""} ${member.last_name || ""}`.trim()
 }
@@ -388,27 +333,6 @@ export function OverwerkersPlanning({
     }
   }
 
-  useEffect(() => {
-    if (openPlekken.length === 0) return
-    const filledIds = findFilledOpenPlekIds(openPlekken, trips, crew)
-    if (filledIds.length === 0) return
-    const filled = new Set(filledIds)
-    const next = openPlekken.filter((plek) => !filled.has(plek.id))
-    setOpenPlekken(next)
-    if (!openPlekkenRemote.current) {
-      writeLocalOpenPlekken(next)
-      return
-    }
-    filledIds.forEach((id) => {
-      supabase
-        .from("overwerk_open_plekken")
-        .delete()
-        .eq("id", id)
-        .then(({ error }: { error: { message?: string } | null }) => {
-          if (error) console.error("Ingedeelde open plek verwijderen mislukt:", error)
-        })
-    })
-  }, [openPlekken, trips, crew])
   const [assignDialog, setAssignDialog] = useState<{ memberId: string; name: string } | null>(null)
   const [assignShipId, setAssignShipId] = useState("")
   const [assignStartDate, setAssignStartDate] = useState(today)
@@ -975,7 +899,7 @@ export function OverwerkersPlanning({
           <div>
             <p className="font-semibold text-sm">Nog in te delen</p>
             <p className="text-xs text-gray-600">
-              Schip, periode en functie die nog openstaan. De regel gaat weg zodra iemand daar voor die datum is ingedeeld.
+              Schip, periode en functie die nog openstaan. Haal de regel zelf weg met het kruisje als de plek is ingevuld.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_auto_auto_minmax(0,1fr)_auto] gap-2 items-end">
