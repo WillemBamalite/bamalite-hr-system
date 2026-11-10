@@ -41,3 +41,11 @@ export function getBirthdayEmailRecipient(): string {
   if (isTestMode()) return TEST_USER
   return PROD_BIRTHDAY_EMAIL
 }
+
+const PROD_OUT_OF_SERVICE_EMAIL = ["willem@bamalite.com", "tanja@bamalite.com"] as const
+
+/** Mail bij uit dienst. In testmodus alleen naar Willem. */
+export function getOutOfServiceEmailRecipients(): string[] {
+  if (isTestMode()) return [TEST_USER]
+  return [...PROD_OUT_OF_SERVICE_EMAIL]
+}

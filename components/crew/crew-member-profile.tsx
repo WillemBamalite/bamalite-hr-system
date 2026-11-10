@@ -23,6 +23,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { format } from "date-fns"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { generateOutOfServiceLetter, downloadContract } from "@/utils/contract-generator"
+import { authenticatedFetch } from "@/lib/authenticated-fetch"
 import { formatEuro, openLoanRemaining, studyAsOfDate, studyDebtSnapshot } from "@/utils/study-debt"
 import Link from "next/link"
 
@@ -182,12 +183,38 @@ export function CrewMemberProfile({ crewMemberId, onProfileUpdate, autoEdit = fa
     }
     try {
       // Update crew member in Supabase met status, datum en reden
+      const fullName = `${crewMember?.first_name || ""} ${crewMember?.last_name || ""}`.trim()
+      const company = String(crewMember?.company || "").trim()
+      const position = String(crewMember?.position || "").trim()
+      const shipName = resolveShipDisplayName(crewMember?.ship_id, ships || [])
+
       await updateCrew(crewMemberId, {
         status: 'uit-dienst',
         ship_id: null,
         out_of_service_date: outDate,
         out_of_service_reason: outReason
       } as any)
+
+      try {
+        const emailResponse = await authenticatedFetch("/api/send-out-of-service-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: fullName,
+            company,
+            position,
+            ship: shipName,
+            outOfServiceDate: outDate,
+            reason: outReason,
+          }),
+        })
+        if (!emailResponse.ok) {
+          throw new Error("E-mail versturen mislukt")
+        }
+      } catch (emailError) {
+        console.error("Error sending out-of-service email:", emailError)
+        alert("De persoon is uit dienst gezet, maar de mail naar Willem en Tanja kon niet worden verstuurd.")
+      }
 
       // Genereer beëindiging dienstverband PDF
       try {
