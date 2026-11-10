@@ -9,6 +9,10 @@
       "schedule": "0 8 * * *"
     },
     {
+      "path": "/api/check-medical-examinations",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/notifications/morning-bundle",
       "schedule": "30 7 * * *"
     },
