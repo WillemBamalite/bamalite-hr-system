@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import nodemailer from "nodemailer"
 import { createServerSupabase } from "@/lib/supabase-server"
 import { requireApiAccess } from "@/lib/api-security"
-import { buildDashboardNotifications, type DashboardNotification } from "@/utils/dashboard-notifications"
+import {
+  buildDashboardNotifications,
+  parseFlexibleDate,
+  type DashboardNotification,
+} from "@/utils/dashboard-notifications"
 import { logNotificationDispatch } from "@/lib/notifications/dispatch-log"
 import {
+  getBirthdayEmailRecipient,
   getDailyEmailManagementRecipients,
   getDailyEmailOfficeRecipients,
 } from "@/lib/notifications/recipients"
@@ -17,6 +22,14 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_APP_PASSWORD,
   },
 })
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
 
 const severityLabel = (severity: string) => {
   switch (severity) {
@@ -265,11 +278,131 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 3) Losse verjaardagsmail naar nautic, alleen als er vandaag iemand jarig is.
+    const birthdayItems = byKind["birthday"] || []
+    const birthdayRecipient = getBirthdayEmailRecipient()
+    const birthdayEventKey = `birthday-email-nautic:${ymd}`
+    let birthdaySent = false
+    let birthdaySkipped = false
+
+    if (birthdayItems.length > 0) {
+      const { data: alreadySent } = await supabase
+        .from("notification_dispatch_log")
+        .select("id")
+        .eq("event_key", birthdayEventKey)
+        .eq("status", "ok")
+        .limit(1)
+
+      if ((alreadySent || []).length > 0) {
+        birthdaySkipped = true
+      } else {
+        const crewById = new Map(
+          (crewRes.data || []).map((member: any) => [String(member.id), member])
+        )
+        const shipNameById = new Map(
+          (shipsRes.data || []).map((ship: any) => [String(ship.id), String(ship.name || "").trim()])
+        )
+        const today = new Date()
+        const people = birthdayItems.map((item) => {
+          const crewId = String(item.href || "").split("/").filter(Boolean).pop() || ""
+          const member = crewById.get(crewId)
+          const birthDate = parseFlexibleDate(member?.birth_date)
+          const age = birthDate ? today.getFullYear() - birthDate.getFullYear() : null
+          const name = String(item.description || "").trim() || "Onbekend"
+          const position = String(member?.position || "").trim()
+          const shipName = shipNameById.get(String(member?.ship_id || "")) || ""
+          return { name, age, position, shipName }
+        })
+
+        const subject =
+          people.length === 1
+            ? `Verjaardag: ${people[0].name}${people[0].age ? ` wordt ${people[0].age}` : ""}`
+            : `Verjaardagen vandaag (${people.length})`
+
+        const rows = people
+          .map((person) => {
+            const details = [
+              person.age ? `wordt ${person.age}` : "",
+              person.position,
+              person.shipName,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+            return `
+              <tr>
+                <td style="padding:10px 0; border-bottom:1px solid #e5e7eb;">
+                  <div style="font-weight:700; color:#111827;">${escapeHtml(person.name)}</div>
+                  ${details ? `<div style="color:#4b5563; font-size:13px; margin-top:2px;">${escapeHtml(details)}</div>` : ""}
+                </td>
+              </tr>
+            `
+          })
+          .join("")
+
+        const intro =
+          people.length === 1
+            ? `Vandaag, ${todayText}, is ${people[0].name} jarig.`
+            : `Vandaag, ${todayText}, zijn ${people.length} collega's jarig.`
+
+        const html = `
+          <div style="font-family:Arial,sans-serif; max-width:640px; margin:0 auto; padding:20px;">
+            <h1 style="margin:0 0 8px 0; color:#111827; font-size:20px;">${escapeHtml(subject)}</h1>
+            <p style="margin:0 0 14px 0; color:#4b5563;">${escapeHtml(intro)}</p>
+            <table style="width:100%; border-collapse:collapse;">${rows}</table>
+            <p style="margin-top:20px; color:#6b7280; font-size:12px;">
+              Dit bericht is automatisch verzonden door Bamalite HR.
+            </p>
+          </div>
+        `
+        const text = people
+          .map((person) => {
+            const details = [person.age ? `wordt ${person.age}` : "", person.position, person.shipName]
+              .filter(Boolean)
+              .join(", ")
+            return details ? `${person.name} (${details})` : person.name
+          })
+          .join("\n")
+
+        try {
+          await transporter.sendMail({
+            from: `"Bemanningslijst" <${process.env.GMAIL_USER}>`,
+            to: birthdayRecipient,
+            subject,
+            html,
+            text: `${subject}\n\n${text}`,
+          })
+          birthdaySent = true
+          await logNotificationDispatch({
+            event_key: birthdayEventKey,
+            channel: "email",
+            recipient: birthdayRecipient,
+            payload: { count: people.length, names: people.map((person) => person.name) },
+            status: "ok",
+          })
+        } catch (err: any) {
+          await logNotificationDispatch({
+            event_key: birthdayEventKey,
+            channel: "email",
+            recipient: birthdayRecipient,
+            payload: { count: people.length },
+            status: "error",
+            error: err?.message || String(err),
+          })
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       hrOnboarding,
       mgmt: { sent: mgmtSent, total: mgmtTotal, recipients: mgmtRecipients },
       office: { sent: officeSent, total: officeTotal, recipients: officeRecipients },
+      birthday: {
+        sent: birthdaySent,
+        skipped: birthdaySkipped,
+        count: birthdayItems.length,
+        recipient: birthdayItems.length > 0 ? birthdayRecipient : null,
+      },
     })
   } catch (error: any) {
     console.error("morning-bundle error:", error)

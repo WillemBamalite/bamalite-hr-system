@@ -19,6 +19,8 @@ const PROD_DAILY_EMAIL_OFFICE = [
   "lucie@bamalite.com",
 ] as const
 
+const PROD_BIRTHDAY_EMAIL = "nautic@bamalite.com"
+
 export function isTestMode(): boolean {
   const value = (process.env.NOTIFICATIONS_TEST_MODE || "").toLowerCase().trim()
   return value === "true" || value === "1" || value === "yes"
@@ -32,4 +34,10 @@ export function getDailyEmailManagementRecipients(): string[] {
 export function getDailyEmailOfficeRecipients(): string[] {
   if (isTestMode()) return [TEST_USER]
   return [...PROD_DAILY_EMAIL_OFFICE]
+}
+
+/** Losse verjaardagsmail. In testmodus naar Willem, anders naar nautic. */
+export function getBirthdayEmailRecipient(): string {
+  if (isTestMode()) return TEST_USER
+  return PROD_BIRTHDAY_EMAIL
 }
