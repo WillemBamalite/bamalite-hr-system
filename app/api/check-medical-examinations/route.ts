@@ -7,6 +7,7 @@ import { logNotificationDispatch } from "@/lib/notifications/dispatch-log"
 import { countsAsTotalCrewMember } from "@/utils/crew-filters"
 
 export const runtime = "nodejs"
+export const maxDuration = 300
 
 const WILLEM_EMAIL = "willem@bamalite.com"
 
