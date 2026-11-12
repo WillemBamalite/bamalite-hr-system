@@ -29,11 +29,13 @@ function isActiveCrewRow(m: Record<string, unknown>): boolean {
 }
 
 /**
- * Maakt HR-onboardingtaken pas aan zodra de ingangsdatum dat toelaat:
- * - functioneren: vanaf 10 kalenderdagen na in_dienst_vanaf
- * - samenwerking: vanaf 2 kalendermaanden na in_dienst_vanaf
+ * Maakt HR-onboardingtaken aan op de dag dat ze aan de beurt zijn:
+ * - functioneren: 10 kalenderdagen na in_dienst_vanaf
+ * - samenwerking: 2 kalendermaanden na in_dienst_vanaf
  *
- * Idempotent: bestaande taak metzelfde titel-prefix voor hetzelfde bemanningslid wordt overgeslagen.
+ * Alleen die dag of de dag erna. Oudere datums niet alsnog aanmaken, anders komt
+ * bij een eerste run de hele bemanning in één keer in de meldingen.
+ * Idempotent: bestaande taak met dezelfde titel voor hetzelfde bemanningslid wordt overgeslagen.
  */
 export async function createDueHrOnboardingTasks(supabase: SupabaseClient): Promise<{
   createdFunctioneren: number
@@ -89,8 +91,10 @@ export async function createDueHrOnboardingTasks(supabase: SupabaseClient): Prom
     const fnDue = startOfDay(addDays(inStart, 10))
     const samDue = startOfDay(addMonths(inStart, 2))
 
-    const fnEligible = differenceInCalendarDays(today, fnDue) >= 0
-    const samEligible = differenceInCalendarDays(today, samDue) >= 0
+    const fnLag = differenceInCalendarDays(today, fnDue)
+    const samLag = differenceInCalendarDays(today, samDue)
+    const fnEligible = fnLag >= 0 && fnLag <= 1
+    const samEligible = samLag >= 0 && samLag <= 1
 
     const first = String(m.first_name || "").trim()
     const last = String(m.last_name || "").trim()
