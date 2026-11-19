@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { differenceInDays, isBefore, addMonths, addYears } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, Bell, ScrollText, UserCheck, Newspaper, Clock, LayoutGrid } from "lucide-react"
+import { Ship, Users, AlertTriangle, FileText, Cloud, ListTodo, Calendar, AlertCircle, Building2, Bell, ScrollText, UserCheck, Newspaper, Clock, LayoutGrid, BookOpen } from "lucide-react"
 import { useSupabaseData } from "@/hooks/use-supabase-data"
 import { useShipVisits } from "@/hooks/use-ship-visits"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -664,6 +664,20 @@ export function DashboardStats() {
             </div>
           </Link>
         </div>}
+
+        {canAccessPath("/handleidingen") && (
+          <div className="aspect-[3/1]">
+            <Link
+              href="/handleidingen"
+              className="h-full flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-lg p-2 md:p-4 text-center hover:bg-slate-100 transition cursor-pointer"
+            >
+              <div className="text-xl md:text-2xl font-semibold text-slate-800 mt-1 flex items-center justify-center gap-1 text-center leading-tight">
+                <BookOpen className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />
+                <span>Handleidingen</span>
+              </div>
+            </Link>
+          </div>
+        )}
 
         {/* Schepen klad (whiteboard herindelen) */}
         {canAccessPath("/schepen/klad") && (
